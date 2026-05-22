@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { browseSkills } from '@/lib/skill-queries';
-import { estimateTokenCost } from '@/lib/skill-parser';
 
 const createSchema = z.object({
   slug: z.string().min(2).max(64).regex(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/, 'Invalid slug'),
@@ -16,6 +15,7 @@ const createSchema = z.object({
   license: z.string().default('MIT'),
   sourceType: z.enum(['internal', 'user_uploaded']).default('user_uploaded'),
   skillFormat: z.enum(['bundle', 'structured']).default('structured'),
+  tokenCostEstimate: z.number().int().min(0).max(50000).default(0),
   publish: z.boolean().default(false),
 });
 
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'slug_taken' }, { status: 409 });
   }
 
-  const tokenCost = estimateTokenCost(input.descriptionMd);
+  const tokenCost = input.tokenCostEstimate;
 
   const created = await prisma.$transaction(async (tx) => {
     const skill = await tx.skill.create({

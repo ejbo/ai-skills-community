@@ -13,7 +13,8 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:seed": "tsx scripts/seed.ts",
-    "admin:promote": "tsx scripts/promote-admin.ts"
+    "admin:promote": "tsx scripts/promote-admin.ts",
+    "refresh-trending": "tsx scripts/refresh-trending.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.4",

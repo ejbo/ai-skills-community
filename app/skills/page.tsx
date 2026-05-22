@@ -7,7 +7,6 @@ import { FilterSidebar } from '@/components/FilterSidebar';
 import { SearchBar } from '@/components/SearchBar';
 import { SortMenu } from '@/components/SortMenu';
 import { SourceTabs } from '@/components/SourceTabs';
-import { CategoryStrip } from '@/components/CategoryStrip';
 import { EmptyState } from '@/components/EmptyState';
 
 export const dynamic = 'force-dynamic';
@@ -50,13 +49,10 @@ export default async function BrowseSkillsPage({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <SourceTabs />
           <div className="ml-auto flex items-center gap-3">
-            <span className="text-xs text-muted">
-              {total.toLocaleString()} skills
-            </span>
+            <span className="text-xs text-muted">共 {total.toLocaleString()} 个 Skill</span>
             <SortMenu />
           </div>
         </div>
-        <CategoryStrip categories={categories} />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[220px_1fr]">
@@ -116,7 +112,7 @@ function Pagination({ current, pageSize, total }: { current: number; pageSize: n
   return (
     <div className="mt-8 flex items-center justify-center gap-2 text-sm">
       <span className="text-muted">
-        Page {current} / {totalPages}
+        第 {current} / {totalPages} 页
       </span>
     </div>
   );

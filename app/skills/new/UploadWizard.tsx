@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useTranslations } from 'next-intl';
 import { Loader2, FileText, Upload } from 'lucide-react';
@@ -83,12 +84,11 @@ function FormMode({
   const [summary, setSummary] = useState('');
   const [categoryId, setCategoryId] = useState<string>(categories[0]?.id ?? '');
   const [tagsRaw, setTagsRaw] = useState('');
-  const [body, setBody] = useState('# My new skill\n\nDescribe what it does and when it triggers.\n');
+  const [body, setBody] = useState('# 新 Skill\n\n描述它能做什么以及在什么场景下触发。\n');
   const [triggers, setTriggers] = useState('');
   const [license, setLicense] = useState('MIT');
   const [makeInternal, setMakeInternal] = useState(false);
-
-  const tokenCost = Math.ceil(body.length / 4);
+  const [tokenCost, setTokenCost] = useState<number>(0);
 
   function submit(action: 'draft' | 'publish') {
     startTransition(async () => {
@@ -111,6 +111,7 @@ function FormMode({
           license,
           sourceType: makeInternal && canPublishInternal ? 'internal' : 'user_uploaded',
           skillFormat: 'structured',
+          tokenCostEstimate: tokenCost,
           publish: action === 'publish',
         }),
       });
@@ -177,12 +178,12 @@ function FormMode({
             className="input font-mono text-[13px]"
           />
         </Field>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <Field label={t('triggers')}>
             <input
               value={triggers}
               onChange={(e) => setTriggers(e.target.value)}
-              placeholder="comma-separated"
+              placeholder="逗号分隔多个触发词"
               className="input"
             />
           </Field>
@@ -192,6 +193,18 @@ function FormMode({
                 <option key={l}>{l}</option>
               ))}
             </select>
+          </Field>
+          <Field label="Token 成本">
+            <input
+              type="number"
+              min={0}
+              max={50000}
+              step={100}
+              value={tokenCost || ''}
+              onChange={(e) => setTokenCost(Number(e.target.value) || 0)}
+              placeholder="如 1200"
+              className="input font-mono tabular-nums"
+            />
           </Field>
         </div>
         {canPublishInternal && (
@@ -249,13 +262,12 @@ function FormMode({
         <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
           <h4 className="truncate font-semibold">{name || '<未命名>'}</h4>
           <p className="mt-1 line-clamp-2 text-xs text-muted">{summary || '<一句话描述会出现在这里>'}</p>
-          <div className="mt-3 flex items-center gap-2 text-[11px] text-muted">
-            <TokenCostBadge tokens={tokenCost} compact />
-          </div>
+          {tokenCost > 0 && (
+            <div className="mt-3 flex items-center gap-2 text-[11px] text-muted">
+              <TokenCostBadge tokens={tokenCost} compact />
+            </div>
+          )}
         </div>
-        <p className="text-xs text-muted">
-          token cost 估算基于正文长度 / 4，发布后会以服务器计算为准。
-        </p>
       </aside>
     </div>
   );
@@ -263,32 +275,141 @@ function FormMode({
 
 function PackageMode() {
   const t = useTranslations('upload');
+  const router = useRouter();
   const [dragging, setDragging] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [parsed, setParsed] = useState<{
+    name?: string;
+    description?: string;
+    version?: string;
+    fileCount: number;
+    totalBytes: number;
+    tokenCost: number;
+    slug?: string;
+  } | null>(null);
+  const [pendingPublish, startPublish] = useTransition();
+
+  async function upload(file: File, publish: boolean) {
+    if (!file.name.endsWith('.zip')) {
+      pushToast('error', '请上传 .zip 文件');
+      return;
+    }
+    const form = new FormData();
+    form.set('file', file);
+    if (publish) form.set('publish', 'true');
+    const res = await fetch('/api/skills/upload-package', { method: 'POST', body: form });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const reasons: Record<string, string> = {
+        slug_taken: `slug "${data.slug}" 已被占用`,
+        too_large: '包太大（>5MB）',
+        parse_failed: `解析失败：${data.reason ?? ''}`,
+        invalid_version: `frontmatter 里的 version 不合法：${data.version}`,
+      };
+      pushToast('error', reasons[data.error] ?? data.error ?? '上传失败');
+      return;
+    }
+    if (publish) {
+      pushToast('success', '已发布');
+      router.push(`/skills/${data.skill.slug}`);
+      return;
+    }
+    setParsed({ ...data.parsed, slug: data.skill.slug });
+    pushToast('success', '解析成功，已存为草稿');
+  }
+
+  function pick(file: File | null | undefined) {
+    if (!file) return;
+    startTransition(() => upload(file, false));
+  }
+
   return (
-    <div
-      onDragOver={(e) => {
-        e.preventDefault();
-        setDragging(true);
-      }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setDragging(false);
-        pushToast('info', 'zip 上传 finalize 接口接入中…暂请使用表单模式');
-      }}
-      className={`surface flex h-60 flex-col items-center justify-center rounded-2xl border-2 border-dashed transition ${
-        dragging ? 'border-accent-500 bg-accent-500/5' : 'border-zinc-300 dark:border-zinc-700'
-      }`}
-    >
-      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-500/10 text-accent-600">
-        <Upload className="h-6 w-6" />
-      </div>
-      <p className="mt-3 text-sm font-medium">{t('drop_zip')}</p>
-      <p className="mt-1 text-xs text-muted">支持 SKILL.md + 附属脚本，单包 &lt; 5MB</p>
-      <button className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 px-4 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800">
-        <FileText className="h-3.5 w-3.5" />
-        选择文件
-      </button>
+    <div className="space-y-3">
+      <label
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragging(false);
+          pick(e.dataTransfer.files?.[0]);
+        }}
+        className={`surface flex h-60 flex-col items-center justify-center rounded-2xl border-2 border-dashed transition ${
+          dragging ? 'border-accent-500 bg-accent-500/5' : 'border-zinc-300 dark:border-zinc-700'
+        } ${pending ? 'opacity-60' : 'cursor-pointer'}`}
+      >
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-500/10 text-accent-600">
+          {pending ? <Loader2 className="h-6 w-6 animate-spin" /> : <Upload className="h-6 w-6" />}
+        </div>
+        <p className="mt-3 text-sm font-medium">{t('drop_zip')}</p>
+        <p className="mt-1 text-xs text-muted">支持 SKILL.md + 附属脚本，单包 &lt; 5MB</p>
+        <span className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 px-4 py-1.5 text-sm dark:border-zinc-700">
+          <FileText className="h-3.5 w-3.5" />
+          选择文件
+        </span>
+        <input
+          type="file"
+          accept=".zip,application/zip"
+          className="hidden"
+          disabled={pending}
+          onChange={(e) => pick(e.target.files?.[0])}
+        />
+      </label>
+
+      {parsed && (
+        <div className="surface rounded-2xl p-4 text-sm">
+          <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-ok/15 px-2 py-0.5 text-xs font-medium text-ok">
+            ✓ 已识别
+          </div>
+          <dl className="grid grid-cols-2 gap-y-1 text-sm">
+            <dt className="text-muted">名称</dt>
+            <dd>{parsed.name}</dd>
+            <dt className="text-muted">描述</dt>
+            <dd>{parsed.description}</dd>
+            <dt className="text-muted">版本</dt>
+            <dd className="font-mono">v{parsed.version}</dd>
+            <dt className="text-muted">文件数 / 大小</dt>
+            <dd className="font-mono">
+              {parsed.fileCount} · {(parsed.totalBytes / 1024).toFixed(1)} KB
+            </dd>
+            <dt className="text-muted">Token 估算</dt>
+            <dd className="font-mono">{parsed.tokenCost}</dd>
+          </dl>
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <Link
+              href={`/skills/${parsed.slug}/edit`}
+              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            >
+              去编辑
+            </Link>
+            <button
+              onClick={() => {
+                if (!parsed.slug) return;
+                startPublish(async () => {
+                  const res = await fetch(`/api/skills/${parsed.slug}`, {
+                    method: 'PUT',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ status: 'published' }),
+                  });
+                  if (!res.ok) {
+                    pushToast('error', '发布失败');
+                    return;
+                  }
+                  pushToast('success', '已发布');
+                  router.push(`/skills/${parsed.slug}`);
+                });
+              }}
+              disabled={pendingPublish}
+              className="flex h-8 items-center gap-1.5 rounded-lg bg-accent-500 px-3 text-xs font-medium text-white hover:bg-accent-600 disabled:opacity-60"
+            >
+              {pendingPublish && <Loader2 className="h-3 w-3 animate-spin" />}
+              直接发布
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

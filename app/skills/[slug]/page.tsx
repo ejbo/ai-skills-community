@@ -12,6 +12,9 @@ import { TokenCostBadge } from '@/components/TokenCostBadge';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { DetailTabs } from './DetailTabs';
 import { ActionButtons } from './ActionButtons';
+import { ReviewsTab } from './ReviewsTab';
+import { TryItTab } from './TryItTab';
+import { CompositionTab } from './CompositionTab';
 
 export const dynamic = 'force-dynamic';
 
@@ -116,22 +119,16 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
         <article>
           {tab === 'overview' && <MarkdownRenderer content={skill.descriptionMd || skill.summary} />}
           {tab === 'versions' && <VersionsTab skillId={skill.id} />}
-          {tab === 'reviews' && (
-            <div className="text-sm text-muted">Reviews coming soon — first review wins eternal glory.</div>
-          )}
-          {tab === 'composition' && (
-            <div className="text-sm text-muted">Composition graph appears once this skill has enough install data.</div>
-          )}
-          {tab === 'try_it' && (
-            <div className="text-sm text-muted">Try It sandbox launching in v1.1 — needs Anthropic API key configured.</div>
-          )}
+          {tab === 'reviews' && <ReviewsTab skillId={skill.id} slug={skill.slug} />}
+          {tab === 'composition' && <CompositionTab skillId={skill.id} />}
+          {tab === 'try_it' && <TryItTab slug={skill.slug} />}
         </article>
         <aside className="space-y-5 text-sm">
           <StatBlock label={t('downloads')} value={skill.downloadCount.toLocaleString()} icon={<TokenCostBadge tokens={skill.tokenCostEstimate} compact />} />
           <StatBlock label={t('subscribers')} value={skill.subscriberCount.toLocaleString()} icon={<Bell className="h-3.5 w-3.5" />} />
-          <StatBlock label="Likes" value={skill.likeCount.toLocaleString()} icon={<Heart className="h-3.5 w-3.5" />} />
+          <StatBlock label="点赞" value={skill.likeCount.toLocaleString()} icon={<Heart className="h-3.5 w-3.5" />} />
           <StatBlock
-            label="Rating"
+            label="评分"
             value={skill.avgRating > 0 ? `${skill.avgRating.toFixed(1)} (${skill.reviewCount})` : '—'}
             icon={<Star className="h-3.5 w-3.5" />}
           />
@@ -174,12 +171,12 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
               className="inline-flex items-center gap-1 text-xs text-accent-600 hover:text-accent-700"
             >
               <ExternalLink className="h-3 w-3" />
-              From upstream
+              查看上游来源
             </a>
           )}
           {skill.forkedFrom && (
             <div className="text-xs">
-              <span className="text-muted">Forked from </span>
+              <span className="text-muted">Fork 自 </span>
               <Link href={`/skills/${skill.forkedFrom.slug}`} className="text-accent-600 hover:underline">
                 {skill.forkedFrom.name}
               </Link>
@@ -187,8 +184,9 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
           )}
           {skill._count.forks > 0 && (
             <div className="text-xs">
-              <span className="text-muted">Remixes </span>
+              <span className="text-muted">被 Remix </span>
               <span className="font-mono tabular-nums">{skill._count.forks}</span>
+              <span className="text-muted"> 次</span>
               <GitFork className="ml-1 inline h-3 w-3 text-muted" />
             </div>
           )}
@@ -221,7 +219,7 @@ async function VersionsTab({ skillId }: { skillId: string }) {
     orderBy: [{ major: 'desc' }, { minor: 'desc' }, { patch: 'desc' }],
   });
   if (versions.length === 0) {
-    return <div className="text-sm text-muted">No published versions yet.</div>;
+    return <div className="text-sm text-muted">还没有发布过版本。</div>;
   }
   return (
     <ul className="space-y-3">
@@ -238,7 +236,7 @@ async function VersionsTab({ skillId }: { skillId: string }) {
                 </span>
               )}
               {v.status === 'yanked' && (
-                <span className="text-xs text-warn">Yanked</span>
+                <span className="text-xs text-warn">已撤回</span>
               )}
             </div>
             <span className="font-mono text-[11px] text-muted">{(v.totalBytes / 1024).toFixed(1)} KB</span>

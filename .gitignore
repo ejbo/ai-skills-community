@@ -14,3 +14,4 @@ dist
 coverage
 *.tsbuildinfo
 next-env.d.ts
+.claude/settings.local.json

@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
-import { estimateTokenCost } from '@/lib/skill-parser';
 
 const updateSchema = z.object({
   name: z.string().min(2).max(120).optional(),
@@ -11,6 +10,7 @@ const updateSchema = z.object({
   categoryId: z.string().nullable().optional(),
   license: z.string().optional(),
   status: z.enum(['draft', 'published', 'archived']).optional(),
+  tokenCostEstimate: z.number().int().min(0).max(50000).optional(),
 });
 
 async function loadOwned(slug: string, userId: string) {
@@ -48,16 +48,9 @@ export async function PUT(req: Request, { params }: { params: { slug: string } }
     return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
   }
 
-  const tokenCost = parsed.data.descriptionMd
-    ? estimateTokenCost(parsed.data.descriptionMd)
-    : undefined;
-
   const updated = await prisma.skill.update({
     where: { id: owned.id },
-    data: {
-      ...parsed.data,
-      ...(tokenCost ? { tokenCostEstimate: tokenCost } : {}),
-    },
+    data: parsed.data,
   });
   return NextResponse.json({ skill: updated });
 }

@@ -9,11 +9,9 @@ function pickLocale(): Locale {
   if (cookieLocale && SUPPORTED_LOCALES.includes(cookieLocale as Locale)) {
     return cookieLocale as Locale;
   }
-  const host = headers().get('host') ?? '';
-  if (host.includes('huawei')) return 'zh-CN';
   const accept = headers().get('accept-language') ?? '';
-  if (accept.toLowerCase().startsWith('zh')) return 'zh-CN';
-  return 'en';
+  if (accept.toLowerCase().startsWith('en')) return 'en';
+  return 'zh-CN';
 }
 
 export default getRequestConfig(async () => {
