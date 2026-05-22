@@ -1,0 +1,376 @@
+// Skills Community — Prisma schema
+// 14 core tables covering users, auth, audit, skills, social, CLI tokens.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Users & Auth ─────────────────────────────────────────────────────────
+
+enum AuthMethod {
+  password
+  huawei_sso
+  both
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  handle        String    @unique
+  displayName   String
+  passwordHash  String?
+  huaweiW3Id    String?   @unique
+  authMethod    AuthMethod @default(password)
+  avatarUrl     String?
+  bio           String?
+  isAdmin       Boolean   @default(false)
+  isActive      Boolean   @default(true)
+  canPublishSkills   Boolean @default(true)
+  canPublishInternal Boolean @default(false)
+  canRemix           Boolean @default(true)
+  canUseCli          Boolean @default(true)
+  dailyDownloadLimit Int?
+  dailyPublishLimit  Int?
+  lastLoginAt   DateTime?
+  lastLoginIp   String?
+  lastSeenAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  skills          Skill[]          @relation("AuthoredSkills")
+  reviews         Review[]
+  favorites       Favorite[]
+  likes           Like[]
+  subscriptions   Subscription[]
+  loginEvents     LoginEvent[]
+  pageVisits      PageVisit[]
+  adminActions    AdminLog[]       @relation("AdminActor")
+  cliTokens       CliToken[]
+  downloads       Download[]
+
+  @@index([handle])
+  @@index([email])
+  @@index([isAdmin])
+  @@index([lastLoginAt])
+}
+
+enum LoginMethod {
+  password
+  huawei_sso
+}
+
+model LoginEvent {
+  id            String      @id @default(cuid())
+  userId        String?
+  method        LoginMethod
+  ip            String?
+  userAgent     String?
+  success       Boolean
+  failureReason String?
+  createdAt     DateTime    @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@index([success])
+}
+
+model PageVisit {
+  id        String   @id @default(cuid())
+  userId    String
+  path      String
+  pageName  String?
+  referrer  String?
+  userAgent String?
+  ip        String?
+  visitedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, visitedAt])
+  @@index([path, visitedAt])
+}
+
+model AdminLog {
+  id          String   @id @default(cuid())
+  adminUserId String
+  action      String
+  targetType  String?
+  targetId    String?
+  details     Json?
+  ip          String?
+  createdAt   DateTime @default(now())
+
+  adminUser User @relation("AdminActor", fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@index([adminUserId, createdAt])
+  @@index([action, createdAt])
+  @@index([targetType, targetId])
+}
+
+// ─── Taxonomy ────────────────────────────────────────────────────────────
+
+model Category {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  description String?
+  parentId    String?
+  sortOrder   Int     @default(0)
+
+  parent   Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryHierarchy")
+  skills   Skill[]
+
+  @@index([parentId])
+}
+
+model Tag {
+  id         String  @id @default(cuid())
+  slug       String  @unique
+  name       String
+  usageCount Int     @default(0)
+
+  skills SkillTag[]
+}
+
+model SkillTag {
+  skillId String
+  tagId   String
+
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  tag   Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([skillId, tagId])
+  @@index([tagId])
+}
+
+// ─── Skills ──────────────────────────────────────────────────────────────
+
+enum SourceType {
+  internal
+  user_uploaded
+  external_curated
+}
+
+enum SkillFormat {
+  bundle
+  structured
+}
+
+enum SkillStatus {
+  draft
+  published
+  archived
+}
+
+model Skill {
+  id                   String       @id @default(cuid())
+  slug                 String       @unique
+  name                 String
+  summary              String
+  descriptionMd        String       @default("")
+  authorId             String
+  categoryId           String?
+  sourceType           SourceType   @default(user_uploaded)
+  skillFormat          SkillFormat  @default(bundle)
+  status               SkillStatus  @default(draft)
+  currentVersionId     String?      @unique
+  structuredPayload    Json?
+  externalSourceUrl    String?
+  license              String?      @default("MIT")
+  homepageUrl          String?
+  repoUrl              String?
+  downloadCount        Int          @default(0)
+  favoriteCount        Int          @default(0)
+  likeCount            Int          @default(0)
+  reviewCount          Int          @default(0)
+  subscriberCount      Int          @default(0)
+  remixCount           Int          @default(0)
+  avgRating            Float        @default(0)
+  trendingScore        Float        @default(0)
+  tokenCostEstimate    Int          @default(0)
+  triggerHitRate       Float?
+  forkedFromId         String?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  deletedAt            DateTime?
+
+  author        User          @relation("AuthoredSkills", fields: [authorId], references: [id], onDelete: Cascade)
+  category      Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  currentVersion SkillVersion? @relation("CurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  forkedFrom    Skill?        @relation("Forks", fields: [forkedFromId], references: [id], onDelete: SetNull)
+  forks         Skill[]       @relation("Forks")
+
+  versions      SkillVersion[] @relation("AllVersions")
+  tags          SkillTag[]
+  downloads     Download[]
+  reviews       Review[]
+  favorites     Favorite[]
+  likes         Like[]
+  subscriptions Subscription[]
+
+  @@index([status, sourceType])
+  @@index([categoryId])
+  @@index([authorId])
+  @@index([trendingScore])
+  @@index([createdAt])
+  @@index([forkedFromId])
+}
+
+enum VersionStatus {
+  draft
+  published
+  yanked
+}
+
+model SkillVersion {
+  id              String        @id @default(cuid())
+  skillId         String
+  version         String
+  major           Int
+  minor           Int
+  patch           Int
+  changelogMd     String        @default("")
+  storageUrl      String?
+  contentInline   String?
+  manifestJson    Json?
+  fileCount       Int           @default(0)
+  totalBytes      Int           @default(0)
+  checksumSha256  String?
+  status          VersionStatus @default(draft)
+  tokenCost       Int           @default(0)
+  publishedAt     DateTime?
+  createdAt       DateTime      @default(now())
+
+  skill           Skill         @relation("AllVersions", fields: [skillId], references: [id], onDelete: Cascade)
+  currentForSkill Skill?        @relation("CurrentVersion")
+  downloads       Download[]
+  reviews         Review[]
+  subscriptions   Subscription[]
+
+  @@unique([skillId, version])
+  @@index([skillId, major, minor, patch])
+  @@index([status])
+}
+
+// ─── Social ──────────────────────────────────────────────────────────────
+
+enum DownloadClient {
+  web
+  cli
+}
+
+model Download {
+  id           String         @id @default(cuid())
+  skillId      String
+  versionId    String?
+  userId       String?
+  client       DownloadClient @default(web)
+  clientMeta   Json?
+  ipHash       String?
+  createdAt    DateTime       @default(now())
+
+  skill   Skill         @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  version SkillVersion? @relation(fields: [versionId], references: [id], onDelete: SetNull)
+  user    User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([skillId, createdAt])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Favorite {
+  userId    String
+  skillId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([userId, skillId])
+  @@index([skillId])
+}
+
+model Like {
+  userId    String
+  skillId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([userId, skillId])
+  @@index([skillId])
+}
+
+model Subscription {
+  userId             String
+  skillId            String
+  installedVersionId String?
+  createdAt          DateTime  @default(now())
+  notifiedAt         DateTime?
+
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skill           Skill         @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  installedVersion SkillVersion? @relation(fields: [installedVersionId], references: [id], onDelete: SetNull)
+
+  @@id([userId, skillId])
+  @@index([skillId])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  skillId   String
+  versionId String?
+  authorId  String
+  rating    Int
+  bodyMd    String
+  authorReply String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  skill   Skill         @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  version SkillVersion? @relation(fields: [versionId], references: [id], onDelete: SetNull)
+  author  User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@unique([skillId, authorId])
+  @@index([skillId, createdAt])
+}
+
+// ─── CLI ─────────────────────────────────────────────────────────────────
+
+model CliToken {
+  id          String    @id @default(cuid())
+  userId      String
+  name        String
+  tokenHash   String
+  tokenPrefix String
+  scopes      String[]  @default([])
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenPrefix])
+}
+
+model DeviceCode {
+  deviceCode String   @id
+  userCode   String   @unique
+  userId     String?
+  expiresAt  DateTime
+  approvedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([userCode])
+  @@index([expiresAt])
+}

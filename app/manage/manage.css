@@ -1,0 +1,99 @@
+.manage-shell {
+  font-family: Inter, system-ui, sans-serif;
+}
+.manage-shell .stat-card {
+  background: rgb(var(--surface));
+  border: 1px solid rgb(var(--border));
+  border-radius: 12px;
+  padding: 16px;
+  transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.manage-shell .stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 1px 2px rgba(24, 24, 27, 0.04), 0 4px 12px rgba(24, 24, 27, 0.06);
+}
+.manage-shell .stat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  font-size: 16px;
+}
+.manage-shell .stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.manage-shell .stat-label {
+  color: rgb(var(--text-muted));
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+.manage-shell table.data {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.manage-shell table.data thead th {
+  position: sticky;
+  top: 0;
+  background: rgb(var(--surface));
+  text-align: left;
+  font-weight: 600;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgb(var(--text-muted));
+  padding: 8px 12px;
+  border-bottom: 1px solid rgb(var(--border));
+}
+.manage-shell table.data tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgb(var(--border) / 0.6);
+}
+.manage-shell table.data tbody tr {
+  transition: background 150ms;
+}
+.manage-shell table.data tbody tr:hover {
+  background: rgb(94 90 255 / 0.04);
+}
+.manage-shell .badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.manage-shell .toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: rgb(161 161 170);
+  transition: background 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.manage-shell .toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.manage-shell .toggle[data-on='true'] {
+  background: rgb(94 90 255);
+}
+.manage-shell .toggle[data-on='true']::after {
+  transform: translateX(16px);
+}
