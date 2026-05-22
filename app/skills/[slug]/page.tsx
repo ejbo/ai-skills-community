@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { Bell, GitFork, Heart, Star, Calendar, Tag as TagIcon, ExternalLink } from 'lucide-react';
+import { Bell, GitFork, Heart, Star, Calendar, Tag as TagIcon, ExternalLink, Download } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
@@ -67,6 +67,20 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
           <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">{skill.name}</h1>
           <p className="text-lg text-muted">{skill.summary}</p>
           <InstallSnippet slug={skill.slug} />
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+            <span>或</span>
+            <a
+              href={`/api/skills/${skill.slug}/raw`}
+              download
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:border-accent-500 hover:bg-accent-500/5 hover:text-accent-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-accent-400 dark:hover:bg-accent-500/10 dark:hover:text-accent-300"
+            >
+              <Download className="h-3.5 w-3.5" />
+              下载 SKILL.md
+            </a>
+            <span className="font-mono text-[11px]">
+              手动放到 <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">~/.claude/skills/{skill.slug}/</code>
+            </span>
+          </div>
           <ActionButtons
             slug={skill.slug}
             initiallyLiked={Boolean(isLiked)}
