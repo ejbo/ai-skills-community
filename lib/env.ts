@@ -45,8 +45,12 @@ const schema = z.object({
 function loadEnv() {
   const parsed = schema.safeParse(process.env);
   if (!parsed.success) {
-    console.error('Invalid environment variables:', parsed.error.flatten().fieldErrors);
-    throw new Error('Invalid environment variables');
+    const fieldErrors = parsed.error.flatten().fieldErrors;
+    const details = Object.entries(fieldErrors)
+      .map(([k, v]) => `  - ${k}: ${(v ?? []).join(', ')}`)
+      .join('\n');
+    console.error('Invalid environment variables:\n' + details);
+    throw new Error('Invalid environment variables:\n' + details);
   }
   return parsed.data;
 }
