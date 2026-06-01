@@ -17,8 +17,15 @@ export interface Config {
 const CONFIG_DIR = path.join(os.homedir(), '.skills');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 
+// Resolution order for the Skills server address:
+//   1. SKILLS_REGISTRY        — runtime override on the user's machine (read at run time)
+//   2. SKILLS_DEFAULT_REGISTRY — baked in at BUILD time by tsup (see tsup.config.ts)
+//   3. localhost fallback      — dev default when nothing was baked in
 const DEFAULT: Config = {
-  registry: process.env.SKILLS_REGISTRY ?? 'http://localhost:3000',
+  registry:
+    process.env.SKILLS_REGISTRY ??
+    process.env.SKILLS_DEFAULT_REGISTRY ??
+    'http://localhost:3000',
   token: null,
   defaultTarget: 'claude-code',
   targets: [

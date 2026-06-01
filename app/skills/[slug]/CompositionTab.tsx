@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { headers } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { SourceBadge } from '@/components/SourceBadge';
 
@@ -49,6 +50,13 @@ export async function CompositionTab({ skillId }: { skillId: string }) {
   const maxCount = Number(rows[0].coCount);
   const stackUrl = `/skills?install=${rows.map((r) => r.slug).join(',')}`;
 
+  // CLI is served as a tarball from this same host — build an absolute origin so
+  // the npx command works as-is and tracks the current server (AWS / intranet).
+  const h = headers();
+  const host = h.get('host') ?? '';
+  const proto = h.get('x-forwarded-proto') ?? 'http';
+  const origin = host ? `${proto}://${host}` : '';
+
   return (
     <div className="space-y-4">
       <div className="surface rounded-2xl p-4">
@@ -90,7 +98,7 @@ export async function CompositionTab({ skillId }: { skillId: string }) {
             一键打包安装这个 Stack（{rows.length} 个 Skill）
           </span>
           <code className="rounded bg-white px-2 py-1 font-mono dark:bg-zinc-900">
-            npx @skills-community/cli install {rows.map((r) => r.slug).join(' ')}
+            npx {origin}/skills-cli.tgz install {rows.map((r) => r.slug).join(' ')}
           </code>
         </div>
       </div>

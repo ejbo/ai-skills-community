@@ -1,6 +1,6 @@
 {
   "name": "@skills-community/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CLI for the AI Skills Community — install, update, publish skills.",
   "license": "MIT",
   "type": "module",
@@ -12,7 +12,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --target node20 --clean --shims --out-dir dist",
+    "build": "tsup",
     "dev": "tsx src/index.ts"
   },
   "dependencies": {

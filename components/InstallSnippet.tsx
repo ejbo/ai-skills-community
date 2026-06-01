@@ -2,14 +2,18 @@
 
 import { Check, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { pushToast } from './Toaster';
 
 export function InstallSnippet({ slug, version }: { slug: string; version?: string }) {
   const [copied, setCopied] = useState(false);
-  const cmd = version
-    ? `npx @skills-community/cli install ${slug}@${version}`
-    : `npx @skills-community/cli install ${slug}`;
+  // The CLI is served as a tarball from this same server, so the install command
+  // tracks whatever host the site is on (AWS now, intranet later) with no edits.
+  const [origin, setOrigin] = useState('');
+  useEffect(() => setOrigin(window.location.origin), []);
+
+  const ref = version ? `${slug}@${version}` : slug;
+  const cmd = `npx ${origin}/skills-cli.tgz install ${ref}`;
 
   async function copy() {
     try {

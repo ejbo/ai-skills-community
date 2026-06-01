@@ -8,23 +8,23 @@ const CONTENT = `
 
 ## 一、安装
 
-发布到 npm 之后（即将到来）：
+直接用 \`npx\` 从本站下载并运行 CLI —— 无需全局安装、无需登录：
 
 \`\`\`bash
-npx @skills-community/cli@latest install pdf-form-signer
+# <本站地址> 就是你打开这个网站的地址，例如 http://35.165.188.177:3000
+npx <本站地址>/skills-cli.tgz install pdf-form-signer
 \`\`\`
 
-在 npm 上线前，可以从本仓库构建：
+> 每个 Skill 详情页的"安装"框已经把完整命令填好了，复制即用。
+
+想要短命令 \`skills ...\`（省去每次敲一长串），全局装一次即可：
 
 \`\`\`bash
-git clone https://github.com/ejbo/ai-skills-community
-cd ai-skills-community/cli
-pnpm install
-pnpm build
-# 全局软链
-pnpm link --global
+npm i -g <本站地址>/skills-cli.tgz
 skills --version
 \`\`\`
+
+> 下面三/四/五节里写的 \`skills <命令>\`，如果你没有全局安装，把它整体换成 \`npx <本站地址>/skills-cli.tgz <命令>\` 即可。
 
 ## 二、登录（获取 CLI Token）
 
