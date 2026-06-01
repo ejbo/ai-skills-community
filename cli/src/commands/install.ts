@@ -3,23 +3,26 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import yauzl from 'yauzl';
 import kleur from 'kleur';
-import { loadConfig, resolveTarget } from '../config.js';
+import { loadConfig, resolveScope } from '../config.js';
 import { ApiClient } from '../api.js';
 import { writeMeta } from '../meta.js';
 
 interface InstallOptions {
   target?: string;
   subscribe?: boolean;
+  global?: boolean;
 }
 
 export async function installCommand(spec: string, opts: InstallOptions) {
   const [slug, version] = spec.split('@');
   const cfg = await loadConfig();
   const api = new ApiClient(cfg);
-  const target = resolveTarget(cfg, opts.target);
-  const skillDir = path.join(target.path, slug);
+  const scope = resolveScope(cfg, opts);
+  const skillDir = path.join(scope.dir, slug);
 
-  console.log(kleur.dim(`  → ${cfg.registry}`));
+  const where =
+    scope.scope === 'global' ? '全局' : scope.inGitProject ? '项目' : '当前目录(非 git)';
+  console.log(kleur.dim(`  → ${cfg.registry}  (${where}: ${scope.dir})`));
   const meta = await api.download(slug, version);
 
   await fs.mkdir(skillDir, { recursive: true });
@@ -55,6 +58,7 @@ export async function installCommand(spec: string, opts: InstallOptions) {
     source_url: api.raw(slug, meta.version),
     subscribed: opts.subscribe ?? false,
     registry: cfg.registry,
+    scope: scope.scope,
   });
 
   console.log(kleur.green(`✔ 安装 ${kleur.bold(slug)}@${meta.version}`));

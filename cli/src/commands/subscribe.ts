@@ -1,18 +1,19 @@
 import path from 'node:path';
 import kleur from 'kleur';
-import { loadConfig, resolveTarget } from '../config.js';
+import { loadConfig, resolveScope } from '../config.js';
 import { readMeta, writeMeta } from '../meta.js';
 
 export async function subscribeCommand(
   slug: string,
-  opts: { target?: string; off?: boolean },
+  opts: { target?: string; off?: boolean; global?: boolean },
 ) {
   const cfg = await loadConfig();
-  const target = resolveTarget(cfg, opts.target);
-  const dir = path.join(target.path, slug);
+  const scope = resolveScope(cfg, opts);
+  const dir = path.join(scope.dir, slug);
   const meta = await readMeta(dir);
   if (!meta) {
-    console.error(kleur.red(`✗ 本地未安装 ${slug}，先 \`skills install ${slug}\``));
+    const g = opts.global ? ' -g' : '';
+    console.error(kleur.red(`✗ ${scope.scope === 'global' ? '全局' : '项目'}未安装 ${slug}，先 \`skills install ${slug}${g}\``));
     process.exit(1);
   }
   await writeMeta(dir, { ...meta, subscribed: !opts.off });

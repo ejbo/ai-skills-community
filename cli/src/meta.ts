@@ -9,6 +9,7 @@ export interface SkillMeta {
   source_url: string;
   subscribed: boolean;
   registry: string;
+  scope?: 'global' | 'project';
 }
 
 const META_NAME = '.skills-meta.json';

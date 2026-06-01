@@ -3,8 +3,8 @@ import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 const CONTENT = `
 # CLI 快速开始
 
-\`@skills-community/cli\` 是命令行工具，用来把社区里的 Skill 一行命令装到你的本地 \`~/.claude/skills/\`，
-还能订阅自动更新、搜索、发布。
+\`@skills-community/cli\` 是命令行工具，用来把社区里的 Skill 一行命令装到本地，还能更新、搜索、订阅。
+**默认装到当前项目的 \`.claude/skills/\`（像 \`npm install\`）；加 \`-g\` 装到全局 \`~/.claude/skills/\`。**
 
 ## 一、安装
 
@@ -41,36 +41,41 @@ CLI 会把 token 保存到 \`~/.skills/config.json\`。匿名命令（search / i
 
 ## 三、常用命令
 
+**作用域**：不加参数 = 当前项目（\`.claude/skills/\`，类似 \`npm install\`）；加 \`-g\` = 全局（\`~/.claude/skills/\`）；\`-a\` = 项目 + 全局都看 / 都更。
+
 \`\`\`bash
 # 搜索
 skills search "pdf signing"
 
-# 安装最新版（顺便订阅自动更新）
-skills install pdf-form-signer --subscribe
+# 装到【当前项目】（默认）
+skills install pdf-form-signer
+# 装到【全局】
+skills install pdf-form-signer -g
+# 指定版本 + 订阅更新
+skills install pdf-form-signer@1.2.0 --subscribe
 
-# 安装指定版本
-skills install pdf-form-signer@1.2.0
-
-# 列出本地装的所有 skill，标出哪些有更新
+# 列出已装（默认看项目；-g 看全局；-a 两者都看）
 skills list
+skills list -g
+skills list -a
 
-# 拉取所有"有更新"的 skill
+# 更新（默认更新项目；-g 更新全局；-a 两者都更）
 skills update
+skills update -g
+skills update -a
+skills update --subscribed      # 只更新订阅了的
+skills update pdf-form-signer    # 只更一个
 
-# 只拉订阅了的
-skills update --subscribed
-
-# 单独更新一个
-skills update pdf-form-signer
-
-# 订阅 / 取消订阅
+# 订阅 / 取消订阅（-g 操作全局已装的）
 skills subscribe pdf-form-signer
 skills subscribe pdf-form-signer --off
 \`\`\`
 
+> 没有后台自动更新进程：\`skills update\` 是手动命令。想真正"自动"，把它挂到 cron 或 CI 定时跑（例如每天 \`skills update -a -s\` 更新所有订阅的）。
+
 ## 四、多 target 支持
 
-默认装到 \`~/.claude/skills/\`。如果你同时用 Cursor、Aider，可以在 \`~/.skills/config.json\` 里加：
+全局默认在 \`~/.claude/skills/\`（项目则是 \`.claude/skills/\`）。如果你同时用 Cursor、Aider，可以在 \`~/.skills/config.json\` 里加：
 
 \`\`\`json
 {
