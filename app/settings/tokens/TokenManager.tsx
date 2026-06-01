@@ -5,6 +5,7 @@ import { Plus, Trash2, Copy, Check, Loader2, Key } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { pushToast } from '@/components/Toaster';
+import { copyText } from '@/lib/clipboard';
 
 interface Token {
   id: string;
@@ -73,10 +74,13 @@ export function TokenManager({ initialTokens }: { initialTokens: Token[] }) {
 
   async function copyRaw() {
     if (!newlyCreated) return;
-    await navigator.clipboard.writeText(newlyCreated.raw);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
-    pushToast('success', '已复制 — 请保存到 ~/.skills/config.json');
+    if (await copyText(newlyCreated.raw)) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+      pushToast('success', '已复制 — 请保存到 ~/.skills/config.json');
+    } else {
+      pushToast('error', '复制失败 — 请手动选择并复制');
+    }
   }
 
   return (

@@ -4,6 +4,7 @@ import { Check, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { pushToast } from './Toaster';
+import { copyText } from '@/lib/clipboard';
 
 export function InstallSnippet({ slug, version }: { slug: string; version?: string }) {
   const [copied, setCopied] = useState(false);
@@ -16,12 +17,11 @@ export function InstallSnippet({ slug, version }: { slug: string; version?: stri
   const cmd = `npx ${origin}/skills-cli.tgz install ${ref}`;
 
   async function copy() {
-    try {
-      await navigator.clipboard.writeText(cmd);
+    if (await copyText(cmd)) {
       setCopied(true);
       pushToast('success', 'Copied — paste in your terminal');
       setTimeout(() => setCopied(false), 1800);
-    } catch {
+    } else {
       pushToast('error', 'Copy failed');
     }
   }
