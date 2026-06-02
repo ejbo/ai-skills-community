@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { selectReadme } from '@/lib/skill-context';
+import { assembleSkillContext, selectReadme } from '@/lib/skill-context';
 
 const f = (path: string, content: string | null, isText = true) => ({ path, content, isText });
 
@@ -18,5 +18,46 @@ describe('selectReadme', () => {
 
   it('ignores binary or empty readme', () => {
     expect(selectReadme([f('README.md', null, false)])).toBeNull();
+  });
+});
+
+describe('assembleSkillContext', () => {
+  const meta = { name: 'My Skill', summary: 'does things' };
+
+  it('includes SKILL.md body and supporting files', () => {
+    const out = assembleSkillContext(meta, '# the skill body', [
+      { path: 'references/api.md', content: 'API DOCS', isText: true },
+    ]);
+    expect(out).toContain('My Skill');
+    expect(out).toContain('# the skill body');
+    expect(out).toContain('--- FILE: references/api.md ---');
+    expect(out).toContain('API DOCS');
+  });
+
+  it('excludes the SKILL.md file from the supporting list (no duplication)', () => {
+    const out = assembleSkillContext(meta, 'BODY', [
+      { path: 'SKILL.md', content: 'BODY', isText: true },
+    ]);
+    expect(out).not.toContain('--- FILE: SKILL.md ---');
+  });
+
+  it('omits files beyond the budget and lists them', () => {
+    const big = 'x'.repeat(500);
+    const out = assembleSkillContext(
+      meta,
+      'short body',
+      [{ path: 'references/big.md', content: big, isText: true }],
+      200,
+    );
+    expect(out).not.toContain(big);
+    expect(out).toContain('omitted for length');
+    expect(out).toContain('references/big.md');
+  });
+
+  it('skips binary and empty files', () => {
+    const out = assembleSkillContext(meta, 'body', [
+      { path: 'logo.png', content: null, isText: false },
+    ]);
+    expect(out).not.toContain('logo.png');
   });
 });
