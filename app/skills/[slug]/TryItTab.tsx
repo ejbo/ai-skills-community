@@ -3,7 +3,9 @@
 import { useState } from 'react';
 import { Loader2, Send, Sparkles, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
+import { ChatPanel } from './ChatPanel';
 
 interface TryResult {
   model: string;
@@ -13,6 +15,8 @@ interface TryResult {
 }
 
 export function TryItTab({ slug }: { slug: string }) {
+  const t = useTranslations('detail.chat');
+  const [mode, setMode] = useState<'compare' | 'chat'>('compare');
   const [prompt, setPrompt] = useState('');
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<TryResult | null>(null);
@@ -47,7 +51,34 @@ export function TryItTab({ slug }: { slug: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="surface space-y-2 rounded-2xl p-4">
+      <div className="inline-flex rounded-lg border border-zinc-200 p-0.5 dark:border-zinc-800">
+        <button
+          onClick={() => setMode('compare')}
+          className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+            mode === 'compare'
+              ? 'bg-accent-500 text-white'
+              : 'text-muted hover:text-zinc-700 dark:hover:text-zinc-200'
+          }`}
+        >
+          {t('compare_mode')}
+        </button>
+        <button
+          onClick={() => setMode('chat')}
+          className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+            mode === 'chat'
+              ? 'bg-accent-500 text-white'
+              : 'text-muted hover:text-zinc-700 dark:hover:text-zinc-200'
+          }`}
+        >
+          {t('chat_mode')}
+        </button>
+      </div>
+
+      {mode === 'chat' ? (
+        <ChatPanel slug={slug} />
+      ) : (
+        <>
+          <div className="surface space-y-2 rounded-2xl p-4">
         <label className="block">
           <span className="mb-1 block text-xs font-medium text-muted">Prompt</span>
           <textarea
@@ -103,6 +134,8 @@ export function TryItTab({ slug }: { slug: string }) {
           <span className="ml-1">本小时还剩 {result.remaining} 次。</span>
         )}
       </p>
+        </>
+      )}
     </div>
   );
 }
