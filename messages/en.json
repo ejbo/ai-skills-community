@@ -54,6 +54,7 @@
       "versions": "Versions",
       "reviews": "Reviews",
       "composition": "Composition",
+      "comparison": "Comparison",
       "try_it": "Try it"
     },
     "files": {
@@ -64,8 +65,6 @@
       "select": "Select a file on the left to view its content"
     },
     "chat": {
-      "compare_mode": "Compare",
-      "chat_mode": "Chat",
       "placeholder": "Ask how to use this skill…",
       "send": "Send",
       "empty": "Ask the assistant (which has this skill loaded), e.g.:",

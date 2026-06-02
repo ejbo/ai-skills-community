@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { Loader2, Send } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useTranslations } from 'next-intl';
+import { streamChat } from './streamChat';
 
 interface Msg {
   role: 'user' | 'assistant';
@@ -28,51 +29,20 @@ export function ChatPanel({ slug }: { slug: string }) {
     setPending(true);
 
     try {
-      const res = await fetch(`/api/skills/${slug}/chat`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ messages: history }),
+      const result = await streamChat(`/api/skills/${slug}/chat`, { messages: history }, (delta) => {
+        setMessages((prev) => {
+          const next = [...prev];
+          next[next.length - 1] = {
+            role: 'assistant',
+            content: next[next.length - 1].content + delta,
+          };
+          return next;
+        });
+        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
       });
-      if (!res.ok || !res.body) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.reason ?? data.error ?? '请求失败');
-        setMessages((prev) => prev.slice(0, -1)); // drop empty assistant msg
-        return;
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = '';
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const chunks = buf.split('\n\n');
-        buf = chunks.pop() ?? '';
-        for (const chunk of chunks) {
-          for (const line of chunk.split('\n')) {
-            const m = line.match(/^data:\s?(.*)$/);
-            if (!m) continue;
-            try {
-              const obj = JSON.parse(m[1]);
-              if (obj.type === 'content_block_delta' && obj.delta?.type === 'text_delta') {
-                const delta: string = obj.delta.text;
-                setMessages((prev) => {
-                  const next = [...prev];
-                  next[next.length - 1] = {
-                    role: 'assistant',
-                    content: next[next.length - 1].content + delta,
-                  };
-                  return next;
-                });
-                scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-              } else if (obj.type === 'error') {
-                setError(obj.error?.message ?? 'stream error');
-              }
-            } catch {
-              /* ignore non-JSON keepalive lines */
-            }
-          }
-        }
+      if (!result.ok) {
+        setError(result.error ?? '请求失败');
+        setMessages((prev) => (prev[prev.length - 1]?.content ? prev : prev.slice(0, -1)));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : '未知错误');

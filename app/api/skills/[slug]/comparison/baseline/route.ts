@@ -1,48 +1,33 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { rateLimit } from '@/lib/rate-limit';
-import { loadAccessContext, accessDenial } from '@/lib/access';
+import { loadAccessContext } from '@/lib/access';
 import { buildContextFromSkill } from '@/lib/skill-files';
-import { getProvider, LLMConfigError, toSseResponseStream } from '@/lib/llm';
+import { rateLimit } from '@/lib/rate-limit';
+import { getProvider, LLMConfigError } from '@/lib/llm';
 
 export const dynamic = 'force-dynamic';
 
 const schema = z.object({
-  messages: z
-    .array(
-      z.object({
-        role: z.enum(['user', 'assistant']),
-        content: z.string().min(1).max(8000),
-      }),
-    )
-    .min(1)
-    .max(40),
+  taskPrompt: z.string().min(1).max(4000),
   model: z.string().optional(),
 });
 
 const HOUR_MS = 60 * 60 * 1000;
 
+// Author-only. Runs the sample task twice with the configured model — once with
+// the skill loaded as system context, once as a plain baseline — and returns the
+// two real outputs for the comparison workshop to analyze.
 export async function POST(req: Request, { params }: { params: { slug: string } }) {
-  const url = new URL(req.url);
   const { skill, actor, decision } = await loadAccessContext(params.slug, req);
   if (!skill || skill.deletedAt || !skill.currentVersion) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
   const privileged = decision.kind === 'owner' || decision.kind === 'admin';
-  // Drafts are chattable only by the owner/admin.
-  if (skill.status !== 'published' && !privileged) {
+  if (!privileged || !actor) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
-  // Restricted / private skills require content access (public stays open).
-  if (skill.visibility !== 'public' && !decision.canContent) {
-    const denial = accessDenial(decision, params.slug, url.origin);
-    return NextResponse.json(denial.body, { status: denial.status });
-  }
 
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  const key = actor ? `chat:user:${actor.id}` : `chat:ip:${ip}`;
-  const limit = actor ? 60 : 10;
-  const gate = rateLimit(key, limit, HOUR_MS);
+  const gate = rateLimit(`cmp-baseline:${actor.id}`, 30, HOUR_MS);
   if (!gate.allowed) {
     return NextResponse.json(
       { error: 'rate_limited', reason: '请求过于频繁，请稍后再试', resetAt: gate.resetAt },
@@ -67,17 +52,24 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
     throw e;
   }
 
-  const deltas = provider.streamDeltas({
-    system: context,
-    messages: parsed.data.messages,
-    model: parsed.data.model,
-  });
-
-  return new NextResponse(toSseResponseStream(deltas), {
-    headers: {
-      'content-type': 'text/event-stream; charset=utf-8',
-      'cache-control': 'no-cache, no-transform',
-      'x-ratelimit-remaining': String(gate.remaining),
-    },
-  });
+  const userMessage = [{ role: 'user' as const, content: parsed.data.taskPrompt }];
+  const model = parsed.data.model;
+  try {
+    const [withRun, withoutRun] = await Promise.all([
+      provider.complete({ system: context, messages: userMessage, model }),
+      provider.complete({ messages: userMessage, model }),
+    ]);
+    return NextResponse.json({
+      example: {
+        taskPrompt: parsed.data.taskPrompt,
+        withOutput: withRun.text,
+        withoutOutput: withoutRun.text,
+      },
+      model: model ?? provider.model,
+      remaining: gate.remaining,
+    });
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : 'unknown';
+    return NextResponse.json({ error: 'upstream_failed', reason }, { status: 502 });
+  }
 }

@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import crypto from 'node:crypto';
-import yaml from 'js-yaml';
 import { prisma } from '@/lib/db';
 import { storage, skillBundleKey } from '@/lib/storage';
 import { loadAccessContext, accessDenial } from '@/lib/access';
+import { synthesizeSkillMd } from '@/lib/skill-md';
+import { createZip } from '@/lib/zip';
 
 function hashIp(ip: string | null): string | null {
   if (!ip) return null;
@@ -77,24 +78,15 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
     }
   }
 
-  // Structured / fallback: synthesize SKILL.md with YAML frontmatter.
-  const manifest = (version.manifestJson as Record<string, unknown> | null) ?? {};
-  const frontmatter: Record<string, unknown> = {
-    name: manifest.name ?? skill.name,
-    description: manifest.description ?? skill.summary,
-    version: version.version,
-    license: skill.license ?? 'MIT',
-  };
-  if (Array.isArray(manifest.triggers) && manifest.triggers.length > 0) {
-    frontmatter.triggers = manifest.triggers;
-  }
-  const body = version.contentInline ?? skill.descriptionMd ?? '';
-  const content = `---\n${yaml.dump(frontmatter).trim()}\n---\n\n${body}`;
+  // Structured / fallback: synthesize SKILL.md and ship it as a .zip package so
+  // every download — bundle or structured — is a consistent "whole package".
+  const skillMd = synthesizeSkillMd(skill, version);
+  const zip = await createZip([{ path: 'SKILL.md', content: skillMd }]);
 
-  return new NextResponse(content, {
+  return new NextResponse(new Uint8Array(zip), {
     headers: {
-      'content-type': 'text/markdown; charset=utf-8',
-      'content-disposition': `attachment; filename="${skill.slug}-${version.version}.md"`,
+      'content-type': 'application/zip',
+      'content-disposition': `attachment; filename="${skill.slug}-${version.version}.zip"`,
     },
   });
 }

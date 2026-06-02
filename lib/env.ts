@@ -53,6 +53,14 @@ const schema = z.object({
     .string()
     .url()
     .default('https://github.com/anthropics/skills'),
+
+  // LLM provider config for Chat + Comparison generation. Switch model/provider
+  // purely via env (see lib/llm). When unset, falls back to Anthropic using
+  // ANTHROPIC_API_KEY for backwards compatibility.
+  LLM_PROVIDER: z.string().optional(), // 'anthropic' | 'openai-compatible'
+  LLM_BASE_URL: z.string().optional(),
+  LLM_API_KEY: z.string().optional(),
+  LLM_MODEL: z.string().optional(),
 });
 
 function loadEnv() {

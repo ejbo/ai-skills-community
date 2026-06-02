@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useTranslations } from 'next-intl';
-import { Loader2, FileText, Upload } from 'lucide-react';
+import JSZip from 'jszip';
+import { Loader2, FileText, Upload, FilePlus, FolderPlus, X, Archive } from 'lucide-react';
 import type { SkillVisibility } from '@prisma/client';
 import { pushToast } from '@/components/Toaster';
 import { TokenCostBadge } from '@/components/TokenCostBadge';
@@ -86,6 +87,7 @@ function FormMode({
   const [summary, setSummary] = useState('');
   const [categoryId, setCategoryId] = useState<string>(categories[0]?.id ?? '');
   const [tagsRaw, setTagsRaw] = useState('');
+  const [overview, setOverview] = useState('');
   const [body, setBody] = useState('# 新 Skill\n\n描述它能做什么以及在什么场景下触发。\n');
   const [triggers, setTriggers] = useState('');
   const [license, setLicense] = useState('MIT');
@@ -107,7 +109,8 @@ function FormMode({
           slug: finalSlug,
           name,
           summary,
-          descriptionMd: body,
+          descriptionMd: overview,
+          bodyMd: body,
           categoryId: categoryId || null,
           tags: tagsRaw.split(/[,\s]+/).filter(Boolean),
           triggers: triggers.split(/[,]+/).map((s) => s.trim()).filter(Boolean),
@@ -174,7 +177,16 @@ function FormMode({
             />
           </Field>
         </div>
-        <Field label={t('content')}>
+        <Field label="Overview / 公开简介（可选）">
+          <textarea
+            value={overview}
+            onChange={(e) => setOverview(e.target.value)}
+            rows={5}
+            placeholder="对所有人公开（含未获授权用户）。受限技能请勿在此放置受保护内容。留空则展示一行描述。"
+            className="input font-mono text-[13px]"
+          />
+        </Field>
+        <Field label={`${t('content')}（SKILL.md，受限技能仅授权用户可见）`}>
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
@@ -280,12 +292,75 @@ function FormMode({
   );
 }
 
+interface StagedFile {
+  path: string; // relative path inside the package
+  size: number;
+  file?: File; // original File, re-zipped on upload
+  bytes?: Uint8Array; // content for entries extracted from a dropped .zip
+}
+
+const MAX_PACKAGE_BYTES = 5 * 1024 * 1024;
+
+function hasSkillMd(files: StagedFile[]): boolean {
+  return files.some((f) => /(^|\/)SKILL\.md$/i.test(f.path));
+}
+function findReadme(files: StagedFile[]): StagedFile | undefined {
+  return files.find((f) => /(^|\/)readme(\.md|\.markdown|\.txt)?$/i.test(f.path));
+}
+
+// Walk a dropped FileSystemEntry tree (folders included) into flat {file, path}
+// pairs. webkitGetAsEntry() must be called synchronously during the drop event;
+// the resulting entries stay valid across awaits.
+function walkEntry(
+  entry: FileSystemEntry,
+  base: string,
+  out: { file: File; path: string }[],
+): Promise<void> {
+  if (entry.isFile) {
+    return new Promise((resolve) => {
+      (entry as FileSystemFileEntry).file(
+        (file) => {
+          out.push({ file, path: base + entry.name });
+          resolve();
+        },
+        () => resolve(),
+      );
+    });
+  }
+  if (entry.isDirectory) {
+    const reader = (entry as FileSystemDirectoryEntry).createReader();
+    return new Promise((resolve) => {
+      const all: FileSystemEntry[] = [];
+      const readBatch = () =>
+        reader.readEntries(
+          (batch) => {
+            if (batch.length === 0) {
+              (async () => {
+                for (const e of all) await walkEntry(e, `${base}${entry.name}/`, out);
+                resolve();
+              })();
+            } else {
+              all.push(...batch);
+              readBatch();
+            }
+          },
+          () => resolve(),
+        );
+      readBatch();
+    });
+  }
+  return Promise.resolve();
+}
+
 function PackageMode() {
-  const t = useTranslations('upload');
   const router = useRouter();
   const [dragging, setDragging] = useState(false);
   const [visibility, setVisibility] = useState<SkillVisibility>('public');
-  const [pending, startTransition] = useTransition();
+  const [staged, setStaged] = useState<StagedFile[]>([]);
+  const [busy, setBusy] = useState(false); // extracting / staging
+  const [submitting, setSubmitting] = useState(false);
+  const [useReadmeOverview, setUseReadmeOverview] = useState(true);
+  const [customOverview, setCustomOverview] = useState('');
   const [parsed, setParsed] = useState<{
     name?: string;
     description?: string;
@@ -296,40 +371,133 @@ function PackageMode() {
     slug?: string;
   } | null>(null);
   const [pendingPublish, startPublish] = useTransition();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
 
-  async function upload(file: File, publish: boolean) {
-    if (!file.name.endsWith('.zip')) {
-      pushToast('error', '请上传 .zip 文件');
-      return;
-    }
-    const form = new FormData();
-    form.set('file', file);
-    form.set('visibility', visibility);
-    if (publish) form.set('publish', 'true');
-    const res = await fetch('/api/skills/upload-package', { method: 'POST', body: form });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const reasons: Record<string, string> = {
-        slug_taken: `slug "${data.slug}" 已被占用`,
-        too_large: '包太大（>5MB）',
-        parse_failed: `解析失败：${data.reason ?? ''}`,
-        invalid_version: `frontmatter 里的 version 不合法：${data.version}`,
-      };
-      pushToast('error', reasons[data.error] ?? data.error ?? '上传失败');
-      return;
-    }
-    if (publish) {
-      pushToast('success', '已发布');
-      router.push(`/skills/${data.skill.slug}`);
-      return;
-    }
-    setParsed({ ...data.parsed, slug: data.skill.slug });
-    pushToast('success', '解析成功，已存为草稿');
+  const readme = useMemo(() => findReadme(staged), [staged]);
+  const skillMdPresent = useMemo(() => hasSkillMd(staged), [staged]);
+  const totalBytes = useMemo(() => staged.reduce((n, f) => n + f.size, 0), [staged]);
+
+  function mergeStaged(incoming: StagedFile[]) {
+    setStaged((prev) => {
+      const map = new Map(prev.map((f) => [f.path, f]));
+      for (const f of incoming) map.set(f.path, f); // dedupe by path, later wins
+      return Array.from(map.values()).sort((a, b) => a.path.localeCompare(b.path));
+    });
   }
 
-  function pick(file: File | null | undefined) {
-    if (!file) return;
-    startTransition(() => upload(file, false));
+  async function stageRaw(entries: { file: File; path: string }[]) {
+    if (entries.length === 0) return;
+    setBusy(true);
+    try {
+      const next: StagedFile[] = [];
+      for (const { file, path } of entries) {
+        if (/\.zip$/i.test(file.name)) {
+          // Auto-extract a dropped/picked zip into the staging area.
+          const zip = await JSZip.loadAsync(file);
+          for (const name of Object.keys(zip.files)) {
+            const z = zip.files[name];
+            if (z.dir) continue;
+            const bytes = await z.async('uint8array');
+            next.push({ path: name, size: bytes.byteLength, bytes });
+          }
+        } else {
+          next.push({ path, size: file.size, file });
+        }
+      }
+      mergeStaged(next);
+    } catch (e) {
+      pushToast('error', `解压失败：${e instanceof Error ? e.message : '未知错误'}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function pickFiles(list: FileList | null, useRelPath: boolean) {
+    if (!list || list.length === 0) return;
+    const entries = Array.from(list).map((file) => ({
+      file,
+      path: (useRelPath && file.webkitRelativePath) || file.name,
+    }));
+    void stageRaw(entries);
+  }
+
+  async function onDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragging(false);
+    const items = Array.from(e.dataTransfer.items).filter((i) => i.kind === 'file');
+    const fsEntries = items
+      .map((i) => (typeof i.webkitGetAsEntry === 'function' ? i.webkitGetAsEntry() : null))
+      .filter((x): x is FileSystemEntry => Boolean(x));
+    if (fsEntries.length > 0) {
+      const out: { file: File; path: string }[] = [];
+      for (const entry of fsEntries) await walkEntry(entry, '', out);
+      await stageRaw(out);
+    } else {
+      // Fallback: no entry API → flat file list.
+      pickFiles(e.dataTransfer.files, false);
+    }
+  }
+
+  async function buildZip(): Promise<File> {
+    const zip = new JSZip();
+    for (const f of staged) zip.file(f.path, f.file ?? f.bytes ?? new Uint8Array());
+    const blob = await zip.generateAsync({
+      type: 'blob',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 },
+    });
+    return new File([blob], 'skill-package.zip', { type: 'application/zip' });
+  }
+
+  async function upload(publish: boolean) {
+    if (staged.length === 0) {
+      pushToast('error', '请先添加文件');
+      return;
+    }
+    if (!skillMdPresent) {
+      pushToast('error', '缺少 SKILL.md —— 技能包必须包含一个 SKILL.md');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const zipFile = await buildZip();
+      if (zipFile.size > MAX_PACKAGE_BYTES) {
+        pushToast('error', `打包后 ${(zipFile.size / 1024 / 1024).toFixed(1)}MB，超过 5MB 上限`);
+        return;
+      }
+      const form = new FormData();
+      form.set('file', zipFile);
+      form.set('visibility', visibility);
+      const usingReadme = useReadmeOverview && Boolean(readme);
+      form.set('overviewSource', usingReadme ? 'readme' : 'custom');
+      if (!usingReadme) form.set('customOverview', customOverview);
+      if (publish) form.set('publish', 'true');
+
+      const res = await fetch('/api/skills/upload-package', { method: 'POST', body: form });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const reasons: Record<string, string> = {
+          slug_taken: `slug "${data.slug}" 已被占用`,
+          too_large: '包太大（>5MB）',
+          parse_failed: `解析失败：${data.reason ?? ''}`,
+          invalid_version: `frontmatter 里的 version 不合法：${data.version}`,
+          file_missing: '没有收到文件',
+          empty_file: '文件为空',
+        };
+        pushToast('error', reasons[data.error] ?? data.error ?? '上传失败');
+        return;
+      }
+      if (publish) {
+        pushToast('success', '已发布');
+        router.push(`/skills/${data.skill.slug}`);
+        return;
+      }
+      setParsed({ ...data.parsed, slug: data.skill.slug });
+      pushToast('success', '解析成功，已存为草稿');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -338,38 +506,161 @@ function PackageMode() {
         <div className="mb-1.5 text-xs font-medium text-muted">可见性 / 访问权限</div>
         <VisibilitySelector value={visibility} onChange={setVisibility} />
       </div>
-      <label
+
+      {/* Drop / add zone */}
+      <div
         onDragOver={(e) => {
           e.preventDefault();
           setDragging(true);
         }}
         onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragging(false);
-          pick(e.dataTransfer.files?.[0]);
-        }}
-        className={`surface flex h-60 flex-col items-center justify-center rounded-2xl border-2 border-dashed transition ${
+        onDrop={(e) => void onDrop(e)}
+        className={`surface flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-4 py-10 text-center transition ${
           dragging ? 'border-accent-500 bg-accent-500/5' : 'border-zinc-300 dark:border-zinc-700'
-        } ${pending ? 'opacity-60' : 'cursor-pointer'}`}
+        }`}
       >
         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-500/10 text-accent-600">
-          {pending ? <Loader2 className="h-6 w-6 animate-spin" /> : <Upload className="h-6 w-6" />}
+          {busy ? <Loader2 className="h-6 w-6 animate-spin" /> : <Upload className="h-6 w-6" />}
         </div>
-        <p className="mt-3 text-sm font-medium">{t('drop_zip')}</p>
-        <p className="mt-1 text-xs text-muted">支持 SKILL.md + 附属脚本，单包 &lt; 5MB</p>
-        <span className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 px-4 py-1.5 text-sm dark:border-zinc-700">
-          <FileText className="h-3.5 w-3.5" />
-          选择文件
-        </span>
+        <p className="mt-3 text-sm font-medium">拖拽文件、文件夹或 .zip 到此处</p>
+        <p className="mt-1 text-xs text-muted">
+          .zip 会自动解压；可分多次从不同文件夹继续添加。必须包含 SKILL.md，单包 &lt; 5MB。
+        </p>
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 px-4 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          >
+            <FilePlus className="h-3.5 w-3.5" />
+            添加文件
+          </button>
+          <button
+            type="button"
+            onClick={() => folderInput.current?.click()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 px-4 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          >
+            <FolderPlus className="h-3.5 w-3.5" />
+            添加文件夹
+          </button>
+        </div>
         <input
+          ref={fileInput}
           type="file"
-          accept=".zip,application/zip"
+          multiple
           className="hidden"
-          disabled={pending}
-          onChange={(e) => pick(e.target.files?.[0])}
+          onChange={(e) => {
+            pickFiles(e.target.files, false);
+            e.target.value = '';
+          }}
         />
-      </label>
+        <input
+          ref={folderInput}
+          type="file"
+          multiple
+          className="hidden"
+          // @ts-expect-error -- webkitdirectory is non-standard but widely supported
+          webkitdirectory=""
+          onChange={(e) => {
+            pickFiles(e.target.files, true);
+            e.target.value = '';
+          }}
+        />
+      </div>
+
+      {/* Staged files */}
+      {staged.length > 0 && (
+        <div className="surface rounded-2xl p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Archive className="h-4 w-4 text-accent-600" />
+              暂存 {staged.length} 个文件 · {(totalBytes / 1024).toFixed(1)} KB
+            </div>
+            <button
+              type="button"
+              onClick={() => setStaged([])}
+              className="text-xs text-muted hover:text-danger"
+            >
+              清空
+            </button>
+          </div>
+          {!skillMdPresent && (
+            <div className="mb-2 rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-warn">
+              还缺少 SKILL.md，技能包必须包含它才能上传。
+            </div>
+          )}
+          <ul className="max-h-56 space-y-0.5 overflow-auto">
+            {staged.map((f) => (
+              <li
+                key={f.path}
+                className="group flex items-center justify-between gap-2 rounded px-2 py-1 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              >
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-muted" />
+                  <span className="truncate font-mono text-xs">{f.path}</span>
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
+                  <span className="font-mono text-[10px] text-muted">{(f.size / 1024).toFixed(1)} KB</span>
+                  <button
+                    type="button"
+                    onClick={() => setStaged((prev) => prev.filter((x) => x.path !== f.path))}
+                    className="text-muted opacity-0 transition group-hover:opacity-100 hover:text-danger"
+                    aria-label={`移除 ${f.path}`}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          {/* Overview source */}
+          <div className="mt-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={useReadmeOverview && Boolean(readme)}
+                disabled={!readme}
+                onChange={(e) => setUseReadmeOverview(e.target.checked)}
+                className="h-4 w-4 accent-accent-500"
+              />
+              <span>
+                用 <code className="rounded bg-zinc-100 px-1 font-mono text-xs dark:bg-zinc-800">README.md</code> 作为 Overview
+                {!readme && <span className="ml-1 text-xs text-muted">（暂存里没有 README，请自行填写）</span>}
+              </span>
+            </label>
+            {!(useReadmeOverview && readme) && (
+              <textarea
+                value={customOverview}
+                onChange={(e) => setCustomOverview(e.target.value)}
+                rows={4}
+                placeholder="自定义 Overview（公开，所有人可见）。留空则展示一行描述。"
+                className="mt-2 w-full resize-y rounded-lg border border-zinc-300 bg-white px-3 py-2 font-mono text-[13px] outline-none transition focus:border-accent-500 dark:border-zinc-700 dark:bg-zinc-900"
+              />
+            )}
+          </div>
+
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              disabled={submitting || busy}
+              onClick={() => upload(false)}
+              className="rounded-lg border border-zinc-300 px-4 py-1.5 text-sm transition hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            >
+              存为草稿
+            </button>
+            <button
+              type="button"
+              disabled={submitting || busy || !skillMdPresent}
+              onClick={() => upload(true)}
+              className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+            >
+              {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              上传并发布
+            </button>
+          </div>
+        </div>
+      )}
 
       {parsed && (
         <div className="surface rounded-2xl p-4 text-sm">

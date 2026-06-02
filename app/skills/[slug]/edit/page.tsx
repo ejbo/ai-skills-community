@@ -11,6 +11,7 @@ export default async function EditSkillPage({ params }: { params: { slug: string
 
   const skill = await prisma.skill.findUnique({
     where: { slug: params.slug },
+    include: { currentVersion: { select: { contentInline: true } } },
   });
   if (!skill || skill.deletedAt) notFound();
   if (skill.authorId !== session.user.id && !session.user.isAdmin) {
@@ -34,6 +35,7 @@ export default async function EditSkillPage({ params }: { params: { slug: string
               name: skill.name,
               summary: skill.summary,
               descriptionMd: skill.descriptionMd,
+              bodyMd: skill.currentVersion?.contentInline ?? '',
               categoryId: skill.categoryId,
               license: skill.license ?? 'MIT',
               status: skill.status,

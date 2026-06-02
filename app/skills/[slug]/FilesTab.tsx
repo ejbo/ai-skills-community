@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import DOMPurify from 'dompurify';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { CodeViewer } from '@/components/CodeViewer';
 import { buildFileTree, type TreeNode } from '@/lib/skill-tree';
 
 interface FileMeta {
@@ -219,6 +221,7 @@ function FileView({
   binaryLabel: string;
 }) {
   const isMarkdown = /\.(md|markdown)$/i.test(content.path);
+  const isHtml = /\.(html?|xhtml)$/i.test(content.path);
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between border-b border-zinc-100 pb-2 dark:border-zinc-800">
@@ -229,12 +232,26 @@ function FileView({
         <div className="text-sm text-muted">{binaryLabel}</div>
       ) : isMarkdown ? (
         <MarkdownRenderer content={content.content} />
+      ) : isHtml ? (
+        <HtmlViewer html={content.content} />
       ) : (
-        <pre className="overflow-auto rounded-lg bg-zinc-50 p-3 font-mono text-[12px] leading-relaxed text-zinc-800 dark:bg-zinc-900 dark:text-zinc-100">
-          <code>{content.content}</code>
-        </pre>
+        <CodeViewer path={content.path} content={content.content} />
       )}
       {content.truncated && <div className="text-[11px] text-warn">{truncatedLabel}</div>}
     </div>
+  );
+}
+
+/** Render a standalone .html file, sanitized in the browser with DOMPurify. */
+function HtmlViewer({ html }: { html: string }) {
+  const clean = useMemo(
+    () => (typeof window === 'undefined' ? '' : DOMPurify.sanitize(html, { USE_PROFILES: { html: true } })),
+    [html],
+  );
+  return (
+    <div
+      className="prose prose-zinc max-w-none text-[15px] leading-relaxed dark:prose-invert"
+      dangerouslySetInnerHTML={{ __html: clean }}
+    />
   );
 }

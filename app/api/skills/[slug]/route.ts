@@ -4,11 +4,15 @@ import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { resolveActor } from '@/lib/auth/either';
 import { canAccessSkillContent } from '@/lib/access';
+import { estimateTokenCost } from '@/lib/skill-parser';
 
 const updateSchema = z.object({
   name: z.string().min(2).max(120).optional(),
   summary: z.string().min(1).max(200).optional(),
+  // Public overview (Skill column).
   descriptionMd: z.string().optional(),
+  // Gated SKILL.md body (currentVersion.contentInline) — updated separately below.
+  bodyMd: z.string().optional(),
   categoryId: z.string().nullable().optional(),
   license: z.string().optional(),
   status: z.enum(['draft', 'published', 'archived']).optional(),
@@ -81,10 +85,18 @@ export async function PUT(req: Request, { params }: { params: { slug: string } }
     return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
   }
 
+  // bodyMd is not a Skill column — it updates the current version's gated content.
+  const { bodyMd, ...skillData } = parsed.data;
   const updated = await prisma.skill.update({
     where: { id: owned.id },
-    data: parsed.data,
+    data: skillData,
   });
+  if (typeof bodyMd === 'string' && owned.currentVersionId) {
+    await prisma.skillVersion.update({
+      where: { id: owned.currentVersionId },
+      data: { contentInline: bodyMd, tokenCost: estimateTokenCost(bodyMd) },
+    });
+  }
   return NextResponse.json({ skill: updated });
 }
 

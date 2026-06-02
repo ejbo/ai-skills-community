@@ -1,13 +1,19 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { rateLimit } from '@/lib/rate-limit';
-import { loadAccessContext, accessDenial } from '@/lib/access';
+import { loadAccessContext } from '@/lib/access';
 import { buildContextFromSkill } from '@/lib/skill-files';
+import { rateLimit } from '@/lib/rate-limit';
 import { getProvider, LLMConfigError, toSseResponseStream } from '@/lib/llm';
+import { buildComparisonSystemPrompt } from '@/lib/comparison';
 
 export const dynamic = 'force-dynamic';
 
 const schema = z.object({
+  example: z.object({
+    taskPrompt: z.string().min(1).max(4000),
+    withOutput: z.string().max(20000),
+    withoutOutput: z.string().max(20000),
+  }),
   messages: z
     .array(
       z.object({
@@ -22,27 +28,19 @@ const schema = z.object({
 
 const HOUR_MS = 60 * 60 * 1000;
 
+// Author-only. Streams the analysis chat: the model has the skill + both real
+// runs in context and writes / refines the structured comparison report.
 export async function POST(req: Request, { params }: { params: { slug: string } }) {
-  const url = new URL(req.url);
   const { skill, actor, decision } = await loadAccessContext(params.slug, req);
   if (!skill || skill.deletedAt || !skill.currentVersion) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
   const privileged = decision.kind === 'owner' || decision.kind === 'admin';
-  // Drafts are chattable only by the owner/admin.
-  if (skill.status !== 'published' && !privileged) {
+  if (!privileged || !actor) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
-  // Restricted / private skills require content access (public stays open).
-  if (skill.visibility !== 'public' && !decision.canContent) {
-    const denial = accessDenial(decision, params.slug, url.origin);
-    return NextResponse.json(denial.body, { status: denial.status });
-  }
 
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  const key = actor ? `chat:user:${actor.id}` : `chat:ip:${ip}`;
-  const limit = actor ? 60 : 10;
-  const gate = rateLimit(key, limit, HOUR_MS);
+  const gate = rateLimit(`cmp-workshop:${actor.id}`, 80, HOUR_MS);
   if (!gate.allowed) {
     return NextResponse.json(
       { error: 'rate_limited', reason: '请求过于频繁，请稍后再试', resetAt: gate.resetAt },
@@ -67,10 +65,12 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
     throw e;
   }
 
+  const system = buildComparisonSystemPrompt(context, parsed.data.example);
   const deltas = provider.streamDeltas({
-    system: context,
+    system,
     messages: parsed.data.messages,
     model: parsed.data.model,
+    maxTokens: 2048,
   });
 
   return new NextResponse(toSseResponseStream(deltas), {
