@@ -19,39 +19,41 @@ enum AuthMethod {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  handle        String    @unique
-  displayName   String
-  passwordHash  String?
-  huaweiW3Id    String?   @unique
-  authMethod    AuthMethod @default(password)
-  avatarUrl     String?
-  bio           String?
-  isAdmin       Boolean   @default(false)
-  isActive      Boolean   @default(true)
-  canPublishSkills   Boolean @default(true)
-  canPublishInternal Boolean @default(false)
-  canRemix           Boolean @default(true)
-  canUseCli          Boolean @default(true)
+  id                 String     @id @default(cuid())
+  email              String     @unique
+  handle             String     @unique
+  displayName        String
+  passwordHash       String?
+  huaweiW3Id         String?    @unique
+  authMethod         AuthMethod @default(password)
+  avatarUrl          String?
+  bio                String?
+  isAdmin            Boolean    @default(false)
+  isActive           Boolean    @default(true)
+  canPublishSkills   Boolean    @default(true)
+  canPublishInternal Boolean    @default(false)
+  canRemix           Boolean    @default(true)
+  canUseCli          Boolean    @default(true)
   dailyDownloadLimit Int?
   dailyPublishLimit  Int?
-  lastLoginAt   DateTime?
-  lastLoginIp   String?
-  lastSeenAt    DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  lastLoginAt        DateTime?
+  lastLoginIp        String?
+  lastSeenAt         DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
 
-  skills          Skill[]          @relation("AuthoredSkills")
+  skills          Skill[]              @relation("AuthoredSkills")
   reviews         Review[]
   favorites       Favorite[]
   likes           Like[]
   subscriptions   Subscription[]
   loginEvents     LoginEvent[]
   pageVisits      PageVisit[]
-  adminActions    AdminLog[]       @relation("AdminActor")
+  adminActions    AdminLog[]           @relation("AdminActor")
   cliTokens       CliToken[]
   downloads       Download[]
+  accessRequests  SkillAccessRequest[] @relation("AccessRequester")
+  accessDecisions SkillAccessRequest[] @relation("AccessDecider")
 
   @@index([handle])
   @@index([email])
@@ -132,10 +134,10 @@ model Category {
 }
 
 model Tag {
-  id         String  @id @default(cuid())
-  slug       String  @unique
+  id         String @id @default(cuid())
+  slug       String @unique
   name       String
-  usageCount Int     @default(0)
+  usageCount Int    @default(0)
 
   skills SkillTag[]
 }
@@ -170,58 +172,98 @@ enum SkillStatus {
   archived
 }
 
+enum SkillVisibility {
+  public // discoverable + downloadable by any logged-in user (current behavior)
+  restricted // discoverable, but file contents + download gated behind an approved access request
+  private // only the owner (and admins, in the admin panel) can see / edit / download / test
+}
+
+enum AccessRequestStatus {
+  pending
+  approved
+  rejected
+  revoked
+}
+
 model Skill {
-  id                   String       @id @default(cuid())
-  slug                 String       @unique
-  name                 String
-  summary              String
-  descriptionMd        String       @default("")
-  authorId             String
-  categoryId           String?
-  sourceType           SourceType   @default(user_uploaded)
-  skillFormat          SkillFormat  @default(bundle)
-  status               SkillStatus  @default(draft)
-  currentVersionId     String?      @unique
-  structuredPayload    Json?
-  externalSourceUrl    String?
-  license              String?      @default("MIT")
-  homepageUrl          String?
-  repoUrl              String?
-  downloadCount        Int          @default(0)
-  favoriteCount        Int          @default(0)
-  likeCount            Int          @default(0)
-  reviewCount          Int          @default(0)
-  subscriberCount      Int          @default(0)
-  remixCount           Int          @default(0)
-  avgRating            Float        @default(0)
-  trendingScore        Float        @default(0)
-  tokenCostEstimate    Int          @default(0)
-  triggerHitRate       Float?
-  forkedFromId         String?
-  createdAt            DateTime     @default(now())
-  updatedAt            DateTime     @updatedAt
-  deletedAt            DateTime?
+  id                String          @id @default(cuid())
+  slug              String          @unique
+  name              String
+  summary           String
+  descriptionMd     String          @default("")
+  authorId          String
+  categoryId        String?
+  sourceType        SourceType      @default(user_uploaded)
+  skillFormat       SkillFormat     @default(bundle)
+  status            SkillStatus     @default(draft)
+  visibility        SkillVisibility @default(public)
+  currentVersionId  String?         @unique
+  structuredPayload Json?
+  externalSourceUrl String?
+  license           String?         @default("MIT")
+  homepageUrl       String?
+  repoUrl           String?
+  downloadCount     Int             @default(0)
+  favoriteCount     Int             @default(0)
+  likeCount         Int             @default(0)
+  reviewCount       Int             @default(0)
+  subscriberCount   Int             @default(0)
+  remixCount        Int             @default(0)
+  avgRating         Float           @default(0)
+  trendingScore     Float           @default(0)
+  tokenCostEstimate Int             @default(0)
+  triggerHitRate    Float?
+  forkedFromId      String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  deletedAt         DateTime?
 
-  author        User          @relation("AuthoredSkills", fields: [authorId], references: [id], onDelete: Cascade)
-  category      Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  author         User          @relation("AuthoredSkills", fields: [authorId], references: [id], onDelete: Cascade)
+  category       Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   currentVersion SkillVersion? @relation("CurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
-  forkedFrom    Skill?        @relation("Forks", fields: [forkedFromId], references: [id], onDelete: SetNull)
-  forks         Skill[]       @relation("Forks")
+  forkedFrom     Skill?        @relation("Forks", fields: [forkedFromId], references: [id], onDelete: SetNull)
+  forks          Skill[]       @relation("Forks")
 
-  versions      SkillVersion[] @relation("AllVersions")
-  tags          SkillTag[]
-  downloads     Download[]
-  reviews       Review[]
-  favorites     Favorite[]
-  likes         Like[]
-  subscriptions Subscription[]
+  versions       SkillVersion[]       @relation("AllVersions")
+  tags           SkillTag[]
+  downloads      Download[]
+  reviews        Review[]
+  favorites      Favorite[]
+  likes          Like[]
+  subscriptions  Subscription[]
+  accessRequests SkillAccessRequest[]
 
   @@index([status, sourceType])
+  @@index([visibility, status])
   @@index([categoryId])
   @@index([authorId])
   @@index([trendingScore])
   @@index([createdAt])
   @@index([forkedFromId])
+}
+
+// Per-skill access requests for `restricted` skills. One row per (skill, user):
+// re-applying after a rejection/revocation mutates the existing row back to `pending`.
+// Access is granted iff status === approved (ongoing, revocable).
+model SkillAccessRequest {
+  id           String              @id @default(cuid())
+  skillId      String
+  userId       String // applicant
+  status       AccessRequestStatus @default(pending)
+  message      String? // applicant note (申请理由)
+  decidedById  String? // author or admin who approved / rejected / revoked
+  decidedAt    DateTime?
+  decisionNote String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  skill     Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  user      User  @relation("AccessRequester", fields: [userId], references: [id], onDelete: Cascade)
+  decidedBy User? @relation("AccessDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@unique([skillId, userId])
+  @@index([skillId, status])
+  @@index([userId, status])
 }
 
 enum VersionStatus {
@@ -231,26 +273,27 @@ enum VersionStatus {
 }
 
 model SkillVersion {
-  id              String        @id @default(cuid())
-  skillId         String
-  version         String
-  major           Int
-  minor           Int
-  patch           Int
-  changelogMd     String        @default("")
-  storageUrl      String?
-  contentInline   String?
-  manifestJson    Json?
-  fileCount       Int           @default(0)
-  totalBytes      Int           @default(0)
-  checksumSha256  String?
-  status          VersionStatus @default(draft)
-  tokenCost       Int           @default(0)
-  publishedAt     DateTime?
-  createdAt       DateTime      @default(now())
+  id             String        @id @default(cuid())
+  skillId        String
+  version        String
+  major          Int
+  minor          Int
+  patch          Int
+  changelogMd    String        @default("")
+  storageUrl     String?
+  contentInline  String?
+  manifestJson   Json?
+  fileCount      Int           @default(0)
+  totalBytes     Int           @default(0)
+  checksumSha256 String?
+  status         VersionStatus @default(draft)
+  tokenCost      Int           @default(0)
+  downloadCount  Int           @default(0)
+  publishedAt    DateTime?
+  createdAt      DateTime      @default(now())
 
-  skill           Skill         @relation("AllVersions", fields: [skillId], references: [id], onDelete: Cascade)
-  currentForSkill Skill?        @relation("CurrentVersion")
+  skill           Skill          @relation("AllVersions", fields: [skillId], references: [id], onDelete: Cascade)
+  currentForSkill Skill?         @relation("CurrentVersion")
   downloads       Download[]
   reviews         Review[]
   subscriptions   Subscription[]
@@ -268,20 +311,25 @@ enum DownloadClient {
 }
 
 model Download {
-  id           String         @id @default(cuid())
-  skillId      String
-  versionId    String?
-  userId       String?
-  client       DownloadClient @default(web)
-  clientMeta   Json?
-  ipHash       String?
-  createdAt    DateTime       @default(now())
+  id         String         @id @default(cuid())
+  skillId    String
+  versionId  String?
+  userId     String?
+  client     DownloadClient @default(web)
+  clientMeta Json?
+  ipHash     String?
+  via        String? // 'download' | 'raw' | 'install' | 'update' | 'try'
+  userAgent  String?
+  grantId    String? // SkillAccessRequest.id when this was a gated (restricted) download
+  createdAt  DateTime       @default(now())
 
   skill   Skill         @relation(fields: [skillId], references: [id], onDelete: Cascade)
   version SkillVersion? @relation(fields: [versionId], references: [id], onDelete: SetNull)
   user    User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([skillId, createdAt])
+  @@index([skillId, userId])
+  @@index([versionId, createdAt])
   @@index([userId])
   @@index([createdAt])
 }
@@ -317,8 +365,8 @@ model Subscription {
   createdAt          DateTime  @default(now())
   notifiedAt         DateTime?
 
-  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  skill           Skill         @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skill            Skill         @relation(fields: [skillId], references: [id], onDelete: Cascade)
   installedVersion SkillVersion? @relation(fields: [installedVersionId], references: [id], onDelete: SetNull)
 
   @@id([userId, skillId])
@@ -326,15 +374,15 @@ model Subscription {
 }
 
 model Review {
-  id        String   @id @default(cuid())
-  skillId   String
-  versionId String?
-  authorId  String
-  rating    Int
-  bodyMd    String
+  id          String   @id @default(cuid())
+  skillId     String
+  versionId   String?
+  authorId    String
+  rating      Int
+  bodyMd      String
   authorReply String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   skill   Skill         @relation(fields: [skillId], references: [id], onDelete: Cascade)
   version SkillVersion? @relation(fields: [versionId], references: [id], onDelete: SetNull)
@@ -364,12 +412,12 @@ model CliToken {
 }
 
 model DeviceCode {
-  deviceCode String   @id
-  userCode   String   @unique
+  deviceCode String    @id
+  userCode   String    @unique
   userId     String?
   expiresAt  DateTime
   approvedAt DateTime?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   @@index([userCode])
   @@index([expiresAt])

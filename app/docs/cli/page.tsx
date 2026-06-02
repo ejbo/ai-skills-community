@@ -8,14 +8,15 @@ const CONTENT = `
 
 ## 一、安装
 
-直接用 \`npx\` 从本站下载并运行 CLI —— 无需全局安装、无需登录：
+直接用 \`npx\` 从本站下载并运行 CLI —— 无需全局安装：
 
 \`\`\`bash
 # <本站地址> 就是你打开这个网站的地址，例如 http://35.165.188.177:3000
+npx <本站地址>/skills-cli.tgz login          # 先登录一次（见第二节）
 npx <本站地址>/skills-cli.tgz install pdf-form-signer
 \`\`\`
 
-> 每个 Skill 详情页的"安装"框已经把完整命令填好了，复制即用。
+> **下载所有 Skill 都需要先登录**（见第二节）。每个 Skill 详情页的"安装"框已经把完整命令填好了，复制即用。
 
 想要短命令 \`skills ...\`（省去每次敲一长串），全局装一次即可：
 
@@ -35,9 +36,25 @@ skills --version
 \`\`\`bash
 skills login
 # 粘贴 token，回车
+
+skills logout   # 需要时清除本地 token
 \`\`\`
 
-CLI 会把 token 保存到 \`~/.skills/config.json\`。匿名命令（search / install 公开 Skill）不需要登录。
+CLI 会把 token 保存到 \`~/.skills/config.json\`。**所有下载（install / update）都需要先登录**；只有 \`search\` 可匿名使用。
+
+## 私密 / 受限下载 Skill
+
+作者可以把自己的 Skill 设为三种可见性：
+
+- **公开**：任何登录用户都能直接 \`install\`。
+- **受限下载**：能搜到、能看介绍，但下载文件需作者批准。CLI 安装时会提示：
+  \`\`\`
+  你还没有访问权限。请到 <本站地址>/skills/<slug> 点击「申请下载」
+  \`\`\`
+  到该 Skill 详情页点 **申请下载**，作者批准后即可 \`install\` / \`update\`。权限被撤销后，\`update\` 会重新变为需申请。
+- **私密**：仅作者本人可见和下载，其他人搜索不到、安装返回「未找到」。
+
+> 没登录时下载会提示运行 \`skills login\`。
 
 ## 三、常用命令
 

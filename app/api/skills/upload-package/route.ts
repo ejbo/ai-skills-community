@@ -18,6 +18,11 @@ export async function POST(req: Request) {
   const file = form?.get('file');
   const publishField = form?.get('publish');
   const slugOverride = form?.get('slug');
+  const visibilityField = form?.get('visibility');
+  const visibility =
+    visibilityField === 'restricted' || visibilityField === 'private'
+      ? visibilityField
+      : 'public';
   if (!(file instanceof File)) {
     return NextResponse.json({ error: 'file_missing' }, { status: 400 });
   }
@@ -72,6 +77,7 @@ export async function POST(req: Request) {
         sourceType: 'user_uploaded',
         skillFormat: 'bundle',
         status: publish ? 'published' : 'draft',
+        visibility,
         tokenCostEstimate: parsed.tokenCost,
         license: typeof manifest.license === 'string' ? manifest.license : 'MIT',
         structuredPayload: Array.isArray(manifest.triggers)

@@ -1,20 +1,25 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { Bell, GitFork, Heart, Star, Calendar, Tag as TagIcon, ExternalLink, Download } from 'lucide-react';
+import { Bell, GitFork, Heart, Star, Calendar, Tag as TagIcon, ExternalLink, Download, Lock } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { getSkillBySlug } from '@/lib/skill-queries';
 import { prisma } from '@/lib/db';
+import { canAccessSkillContent } from '@/lib/access';
 import { SourceBadge } from '@/components/SourceBadge';
+import { VisibilityBadge } from '@/components/VisibilityBadge';
 import { InstallSnippet } from '@/components/InstallSnippet';
 import { TokenCostBadge } from '@/components/TokenCostBadge';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { BackButton } from '@/components/BackButton';
 import { DetailTabs } from './DetailTabs';
 import { ActionButtons } from './ActionButtons';
 import { ReviewsTab } from './ReviewsTab';
 import { TryItTab } from './TryItTab';
 import { CompositionTab } from './CompositionTab';
+import { AccessRequestPanel, type RequestState } from './AccessRequestPanel';
+import { ManageTab } from './ManageTab';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,13 +30,37 @@ interface PageProps {
 
 export default async function SkillDetailPage({ params, searchParams }: PageProps) {
   const skill = await getSkillBySlug(params.slug);
-  if (!skill || skill.deletedAt || (skill.status !== 'published' && !(await isOwner(skill.authorId)))) {
-    notFound();
+  if (!skill || skill.deletedAt) notFound();
+
+  const session = await auth();
+  const actor = session?.user
+    ? { id: session.user.id, isAdmin: session.user.isAdmin, via: 'session' as const, scopes: null }
+    : null;
+
+  // Viewer's grant status for restricted skills.
+  let grantStatus: string | null = null;
+  if (actor && skill.visibility === 'restricted' && actor.id !== skill.authorId && !actor.isAdmin) {
+    const g = await prisma.skillAccessRequest.findUnique({
+      where: { skillId_userId: { skillId: skill.id, userId: actor.id } },
+      select: { status: true },
+    });
+    grantStatus = g?.status ?? null;
   }
 
+  const decision = canAccessSkillContent(skill, actor, grantStatus as never);
+  const privileged = decision.kind === 'owner' || decision.kind === 'admin';
+  const canSeeMeta = privileged || (skill.status === 'published' && skill.visibility !== 'private');
+  if (!canSeeMeta) notFound();
+
+  const canContent = decision.canContent;
+  const restrictedLocked = skill.visibility === 'restricted' && !canContent;
+  const requestState: RequestState =
+    grantStatus === 'rejected' ? 'rejected' : grantStatus === 'revoked' ? 'revoked' : grantStatus === 'pending' ? 'pending' : 'none';
+  const pendingCount = privileged ? skill._count.accessRequests : 0;
+
   const t = await getTranslations('detail');
-  const session = await auth();
-  const tab = (searchParams.tab as 'overview' | 'versions' | 'reviews' | 'composition' | 'try_it') ?? 'overview';
+  const rawTab = (searchParams.tab as 'overview' | 'versions' | 'reviews' | 'composition' | 'try_it' | 'manage') ?? 'overview';
+  const tab = rawTab === 'manage' && !privileged ? 'overview' : rawTab;
 
   const [versionCount, isLiked, isFav, isSub] = await Promise.all([
     prisma.skillVersion.count({ where: { skillId: skill.id, status: 'published' } }),
@@ -48,11 +77,16 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
 
   return (
     <div className="container py-8">
+      <div className="mb-5">
+        <BackButton label={t('back')} />
+      </div>
+
       {/* Hero */}
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_280px]">
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <SourceBadge source={skill.sourceType} />
+            <VisibilityBadge visibility={skill.visibility} />
             {skill.currentVersion?.version && (
               <span className="rounded-full border border-zinc-200 px-2 py-0.5 font-mono text-[11px] text-muted dark:border-zinc-800">
                 v{skill.currentVersion.version}
@@ -69,21 +103,27 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
           </div>
           <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">{skill.name}</h1>
           <p className="text-lg text-muted">{skill.summary}</p>
-          <InstallSnippet slug={skill.slug} />
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-            <span>或</span>
-            <a
-              href={`/api/skills/${skill.slug}/raw`}
-              download
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:border-accent-500 hover:bg-accent-500/5 hover:text-accent-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-accent-400 dark:hover:bg-accent-500/10 dark:hover:text-accent-300"
-            >
-              <Download className="h-3.5 w-3.5" />
-              下载 SKILL.md
-            </a>
-            <span className="font-mono text-[11px]">
-              手动放到 <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">~/.claude/skills/{skill.slug}/</code>
-            </span>
-          </div>
+          {restrictedLocked ? (
+            <AccessRequestPanel slug={skill.slug} state={requestState} loggedIn={Boolean(session?.user)} />
+          ) : (
+            <>
+              <InstallSnippet slug={skill.slug} />
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                <span>或</span>
+                <a
+                  href={session?.user ? `/api/skills/${skill.slug}/raw` : `/auth/login?callbackUrl=/skills/${skill.slug}`}
+                  download={Boolean(session?.user)}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:border-accent-500 hover:bg-accent-500/5 hover:text-accent-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-accent-400 dark:hover:bg-accent-500/10 dark:hover:text-accent-300"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  下载 SKILL.md
+                </a>
+                <span className="font-mono text-[11px]">
+                  手动放到 <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">~/.claude/skills/{skill.slug}/</code>
+                </span>
+              </div>
+            </>
+          )}
           <ActionButtons
             slug={skill.slug}
             initiallyLiked={Boolean(isLiked)}
@@ -112,16 +152,23 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
 
       {/* Tabs */}
       <div className="mt-8">
-        <DetailTabs slug={skill.slug} current={tab} hasVersions={versionCount > 1} />
+        <DetailTabs
+          slug={skill.slug}
+          current={tab}
+          hasVersions={versionCount > 1}
+          showManage={privileged}
+          pendingCount={pendingCount}
+        />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_240px]">
         <article>
           {tab === 'overview' && <MarkdownRenderer content={skill.descriptionMd || skill.summary} />}
-          {tab === 'versions' && <VersionsTab skillId={skill.id} />}
+          {tab === 'versions' && (restrictedLocked ? <LockedNote /> : <VersionsTab skillId={skill.id} />)}
           {tab === 'reviews' && <ReviewsTab skillId={skill.id} slug={skill.slug} />}
-          {tab === 'composition' && <CompositionTab skillId={skill.id} />}
-          {tab === 'try_it' && <TryItTab slug={skill.slug} />}
+          {tab === 'composition' && (restrictedLocked ? <LockedNote /> : <CompositionTab skillId={skill.id} />)}
+          {tab === 'try_it' && (restrictedLocked ? <LockedNote /> : <TryItTab slug={skill.slug} />)}
+          {tab === 'manage' && privileged && <ManageTab skillId={skill.id} slug={skill.slug} />}
         </article>
         <aside className="space-y-5 text-sm">
           <StatBlock label={t('downloads')} value={skill.downloadCount.toLocaleString()} icon={<TokenCostBadge tokens={skill.tokenCostEstimate} compact />} />
@@ -196,9 +243,13 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
   );
 }
 
-async function isOwner(authorId: string) {
-  const session = await auth();
-  return session?.user?.id === authorId;
+function LockedNote() {
+  return (
+    <div className="surface flex items-center gap-2 rounded-2xl border border-warn/30 p-4 text-sm text-muted">
+      <Lock className="h-4 w-4 text-warn" />
+      此内容为「受限下载」，申请并获得作者批准后即可查看。
+    </div>
+  );
 }
 
 function StatBlock({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {

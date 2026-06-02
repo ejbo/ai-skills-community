@@ -9,6 +9,7 @@
     "login": "Sign in",
     "signup": "Sign up",
     "logout": "Sign out",
+    "profile": "Profile",
     "search_placeholder": "Search skills…"
   },
   "home": {
@@ -33,9 +34,13 @@
     "no_results": "No matching skills",
     "category_label": "Category",
     "token_cost_label": "Token cost",
-    "rating_label": "Rating ≥"
+    "rating_label": "Rating ≥",
+    "no_results_hint": "Try adjusting your keywords, or reset the filters",
+    "prev_page": "Previous",
+    "next_page": "Next"
   },
   "detail": {
+    "back": "Back",
     "install": "Install",
     "subscribe": "Subscribe",
     "subscribed": "Subscribed",
@@ -127,7 +132,10 @@
     "loading": "Loading…",
     "saved": "Saved",
     "copy": "Copy",
-    "copied": "Copied"
+    "copied": "Copied",
+    "copy_failed": "Copy failed",
+    "copied_hint": "Copied — paste in your terminal",
+    "dismiss": "Dismiss"
   },
   "source": {
     "internal": "Internal",

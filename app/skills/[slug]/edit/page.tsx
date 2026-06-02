@@ -37,6 +37,7 @@ export default async function EditSkillPage({ params }: { params: { slug: string
               categoryId: skill.categoryId,
               license: skill.license ?? 'MIT',
               status: skill.status,
+              visibility: skill.visibility,
               tokenCostEstimate: skill.tokenCostEstimate,
             }}
             categories={categories}

@@ -12,6 +12,7 @@ export interface BrowseFilters {
   page?: number;
   pageSize?: number;
   minRating?: number;
+  maxTokens?: number;
   hasUpdate?: boolean;
 }
 
@@ -36,6 +37,8 @@ export async function browseSkills(filters: BrowseFilters) {
   const where: Prisma.SkillWhereInput = {
     status: 'published',
     deletedAt: null,
+    // Private skills are never discoverable; restricted ones stay listed.
+    visibility: { not: 'private' },
   };
 
   if (filters.source && filters.source !== 'all') {
@@ -60,6 +63,9 @@ export async function browseSkills(filters: BrowseFilters) {
   if (filters.minRating && filters.minRating > 0) {
     where.avgRating = { gte: filters.minRating };
   }
+  if (filters.maxTokens && filters.maxTokens > 0) {
+    where.tokenCostEstimate = { lte: filters.maxTokens };
+  }
 
   const [total, items] = await Promise.all([
     prisma.skill.count({ where }),
@@ -74,6 +80,7 @@ export async function browseSkills(filters: BrowseFilters) {
         name: true,
         summary: true,
         sourceType: true,
+        visibility: true,
         updatedAt: true,
         downloadCount: true,
         likeCount: true,
@@ -103,7 +110,14 @@ export async function getSkillBySlug(slug: string) {
       currentVersion: true,
       tags: { include: { tag: true } },
       forkedFrom: { select: { slug: true, name: true } },
-      _count: { select: { forks: true, versions: true, reviews: true } },
+      _count: {
+        select: {
+          forks: true,
+          versions: true,
+          reviews: true,
+          accessRequests: { where: { status: 'pending' } },
+        },
+      },
     },
   });
 }

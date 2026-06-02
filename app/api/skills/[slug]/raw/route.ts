@@ -2,75 +2,82 @@ import { NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 import yaml from 'js-yaml';
 import { prisma } from '@/lib/db';
-import { auth } from '@/lib/auth';
-import { storage } from '@/lib/storage';
+import { storage, skillBundleKey } from '@/lib/storage';
+import { loadAccessContext, accessDenial } from '@/lib/access';
 
 function hashIp(ip: string | null): string | null {
   if (!ip) return null;
   return crypto.createHash('sha256').update(ip).digest('hex').slice(0, 16);
 }
 
+/**
+ * The single gated, attributed byte stream for skill content. Both the web
+ * "下载 SKILL.md" button and the CLI byte fetch hit this endpoint, so every
+ * served download is access-checked and recorded here (and only here).
+ */
 export async function GET(req: Request, { params }: { params: { slug: string } }) {
   const url = new URL(req.url);
   const versionArg = url.searchParams.get('version');
-  const session = await auth();
+  const viaArg = url.searchParams.get('via'); // 'install' | 'update' from the CLI
 
-  const skill = await prisma.skill.findUnique({
-    where: { slug: params.slug },
-    include: { currentVersion: true },
-  });
-  if (!skill || skill.deletedAt || skill.status !== 'published') {
-    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  const { skill, actor, grant, decision } = await loadAccessContext(params.slug, req);
+  if (!skill) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  if (!decision.canContent) {
+    const denial = accessDenial(decision, params.slug, url.origin);
+    return NextResponse.json(denial.body, { status: denial.status });
   }
 
+  const privileged = decision.kind === 'owner' || decision.kind === 'admin';
   const version = versionArg
     ? await prisma.skillVersion.findUnique({
         where: { skillId_version: { skillId: skill.id, version: versionArg } },
       })
     : skill.currentVersion;
 
-  if (!version || version.status !== 'published') {
+  if (!version || (version.status !== 'published' && !privileged)) {
     return NextResponse.json({ error: 'version_not_found' }, { status: 404 });
   }
 
-  // Best-effort download log (don't block the response)
+  const isCli = req.headers.get('user-agent')?.includes('skills-cli') ?? false;
+  const via = viaArg ?? (isCli ? 'install' : 'raw');
+
+  // Attributed download log + counters (best-effort, don't block the response).
   prisma
     .$transaction([
-      prisma.skill.update({
-        where: { id: skill.id },
-        data: { downloadCount: { increment: 1 } },
-      }),
+      prisma.skill.update({ where: { id: skill.id }, data: { downloadCount: { increment: 1 } } }),
+      prisma.skillVersion.update({ where: { id: version.id }, data: { downloadCount: { increment: 1 } } }),
       prisma.download.create({
         data: {
           skillId: skill.id,
           versionId: version.id,
-          userId: session?.user?.id,
-          client: 'web',
+          userId: actor?.id,
+          client: isCli ? 'cli' : 'web',
+          via,
+          userAgent: req.headers.get('user-agent') ?? undefined,
+          grantId: grant?.id ?? undefined,
           ipHash: hashIp(req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null),
         },
       }),
     ])
     .catch(() => undefined);
 
-  // Bundle format: stream the original zip from storage
+  // Bundle format: stream the original zip from storage (by canonical key, so it
+  // works for both the local and the Vercel Blob adapter).
   if (skill.skillFormat === 'bundle' && version.storageUrl) {
-    const match = version.storageUrl.match(/\/api\/storage\/(.+)$/);
-    if (match) {
-      try {
-        const buf = await storage.get(match[1]);
-        return new NextResponse(new Uint8Array(buf), {
-          headers: {
-            'content-type': 'application/zip',
-            'content-disposition': `attachment; filename="${skill.slug}-${version.version}.zip"`,
-          },
-        });
-      } catch {
-        /* fall through to synthesized markdown */
-      }
+    try {
+      const buf = await storage.get(skillBundleKey(skill.slug, version.version));
+      return new NextResponse(new Uint8Array(buf), {
+        headers: {
+          'content-type': 'application/zip',
+          'content-disposition': `attachment; filename="${skill.slug}-${version.version}.zip"`,
+        },
+      });
+    } catch {
+      /* fall through to synthesized markdown */
     }
   }
 
-  // Structured / fallback: synthesize SKILL.md with YAML frontmatter
+  // Structured / fallback: synthesize SKILL.md with YAML frontmatter.
   const manifest = (version.manifestJson as Record<string, unknown> | null) ?? {};
   const frontmatter: Record<string, unknown> = {
     name: manifest.name ?? skill.name,

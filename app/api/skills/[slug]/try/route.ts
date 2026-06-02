@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { auth } from '@/lib/auth';
 import { env } from '@/lib/env';
 import { rateLimit } from '@/lib/rate-limit';
+import { loadAccessContext, accessDenial } from '@/lib/access';
 
 const schema = z.object({
   prompt: z.string().min(1).max(2000),
@@ -59,18 +59,30 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
     return NextResponse.json({ error: 'try_disabled', reason: '服务端未配置 ANTHROPIC_API_KEY' }, { status: 503 });
   }
 
-  const session = await auth();
+  const url = new URL(req.url);
+  const { skill, actor, decision } = await loadAccessContext(params.slug, req);
+  if (!skill || skill.deletedAt || !skill.currentVersion) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
+
+  const privileged = decision.kind === 'owner' || decision.kind === 'admin';
+  // Drafts are testable only by the owner/admin.
+  if (skill.status !== 'published' && !privileged) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
+  // Restricted / private skills require content access to test (public stays open).
+  if (skill.visibility !== 'public' && !decision.canContent) {
+    const denial = accessDenial(decision, params.slug, url.origin);
+    return NextResponse.json(denial.body, { status: denial.status });
+  }
+
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  const key = session?.user ? `try:user:${session.user.id}` : `try:ip:${ip}`;
-  const limit = session?.user ? 30 : 5;
+  const key = actor ? `try:user:${actor.id}` : `try:ip:${ip}`;
+  const limit = actor ? 30 : 5;
   const gate = rateLimit(key, limit, HOUR_MS);
   if (!gate.allowed) {
     return NextResponse.json(
-      {
-        error: 'rate_limited',
-        reason: '请求过于频繁，请稍后再试',
-        resetAt: gate.resetAt,
-      },
+      { error: 'rate_limited', reason: '请求过于频繁，请稍后再试', resetAt: gate.resetAt },
       { status: 429 },
     );
   }
@@ -79,38 +91,31 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
 
-  const skill = await prisma.skill.findUnique({
-    where: { slug: params.slug },
-    include: { currentVersion: true },
-  });
-  if (!skill || skill.deletedAt || skill.status !== 'published' || !skill.currentVersion) {
-    return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  }
-
   const skillContent = skill.currentVersion.contentInline ?? skill.descriptionMd;
   const systemPrompt = `You have the following skill loaded. Use it whenever it applies to the user's prompt.\n\n--- SKILL ---\n${skillContent}\n--- END SKILL ---`;
 
   const model = parsed.data.model ?? DEFAULT_MODEL;
   try {
     const [withSkill, baseline] = await Promise.all([
-      callAnthropic({
-        apiKey: env.ANTHROPIC_API_KEY,
-        model,
-        systemPrompt,
-        userPrompt: parsed.data.prompt,
-      }),
-      callAnthropic({
-        apiKey: env.ANTHROPIC_API_KEY,
-        model,
-        userPrompt: parsed.data.prompt,
-      }),
+      callAnthropic({ apiKey: env.ANTHROPIC_API_KEY, model, systemPrompt, userPrompt: parsed.data.prompt }),
+      callAnthropic({ apiKey: env.ANTHROPIC_API_KEY, model, userPrompt: parsed.data.prompt }),
     ]);
-    return NextResponse.json({
-      model,
-      with: withSkill,
-      without: baseline,
-      remaining: gate.remaining,
-    });
+
+    // Usage event (via='try' never bumps the download counters).
+    prisma.download
+      .create({
+        data: {
+          skillId: skill.id,
+          versionId: skill.currentVersion.id,
+          userId: actor?.id,
+          client: 'web',
+          via: 'try',
+          userAgent: req.headers.get('user-agent') ?? undefined,
+        },
+      })
+      .catch(() => undefined);
+
+    return NextResponse.json({ model, with: withSkill, without: baseline, remaining: gate.remaining });
   } catch (e) {
     const message = e instanceof Error ? e.message : 'unknown';
     return NextResponse.json({ error: 'upstream_failed', reason: message }, { status: 502 });

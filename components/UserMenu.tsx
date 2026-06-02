@@ -34,7 +34,10 @@ export function UserMenu({ user }: { user: MenuUser }) {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+        aria-label={user.displayName ?? user.email}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 transition hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 dark:hover:bg-zinc-800"
       >
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-500 text-xs font-semibold text-white">
           {initial}
@@ -52,7 +55,7 @@ export function UserMenu({ user }: { user: MenuUser }) {
           >
             <div className="px-3 py-2 text-xs text-muted">{user.email}</div>
             <MenuItem href={`/users/${user.handle ?? user.id}`} icon={<User className="h-4 w-4" />}>
-              个人主页
+              {t('profile')}
             </MenuItem>
             <MenuItem href="/dashboard" icon={<LayoutDashboard className="h-4 w-4" />}>
               {t('dashboard')}

@@ -23,24 +23,20 @@ export async function installCommand(spec: string, opts: InstallOptions) {
   const where =
     scope.scope === 'global' ? '全局' : scope.inGitProject ? '项目' : '当前目录(非 git)';
   console.log(kleur.dim(`  → ${cfg.registry}  (${where}: ${scope.dir})`));
+
+  // Metadata first (gated: throws an actionable error on 401/403).
   const meta = await api.download(slug, version);
 
   await fs.mkdir(skillDir, { recursive: true });
 
-  // Two cases: inline (.md) or url (.zip)
-  if (meta.url) {
-    // Try fetching as zip; if it's our local /api/storage URL, normalize to absolute.
-    const absoluteUrl = meta.url.startsWith('http') ? meta.url : `${cfg.registry.replace(/\/$/, '')}${meta.url}`;
-    const res = await fetch(absoluteUrl);
-    if (!res.ok) throw new Error(`download failed: ${res.status}`);
+  // Always fetch the bytes through the gated, attributed /raw stream so private/
+  // restricted skills are enforced and every install is logged to the real user.
+  const res = await api.rawFetch(slug, meta.version, 'install');
+  const contentType = res.headers.get('content-type') ?? '';
+  if (contentType.includes('zip') || meta.format === 'bundle') {
     const buf = Buffer.from(await res.arrayBuffer());
     await extractZip(buf, skillDir);
-  } else if (meta.inline) {
-    await fs.writeFile(path.join(skillDir, 'SKILL.md'), meta.inline);
   } else {
-    // Fall back to /api/skills/<slug>/raw which always returns something installable.
-    const res = await fetch(api.raw(slug, version));
-    if (!res.ok) throw new Error(`download failed: ${res.status}`);
     const text = await res.text();
     await fs.writeFile(path.join(skillDir, 'SKILL.md'), text);
   }

@@ -4,8 +4,10 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, Trash2 } from 'lucide-react';
+import type { SkillVisibility } from '@prisma/client';
 import { pushToast } from '@/components/Toaster';
 import { TokenCostBadge } from '@/components/TokenCostBadge';
+import { VisibilitySelector } from '@/app/skills/_components/VisibilitySelector';
 
 interface SkillData {
   slug: string;
@@ -15,6 +17,7 @@ interface SkillData {
   categoryId: string | null;
   license: string;
   status: 'draft' | 'published' | 'archived';
+  visibility: SkillVisibility;
   tokenCostEstimate: number;
 }
 
@@ -32,6 +35,7 @@ export function EditForm({ skill, categories }: { skill: SkillData; categories: 
   const [categoryId, setCategoryId] = useState(skill.categoryId ?? '');
   const [license, setLicense] = useState(skill.license);
   const [status, setStatus] = useState(skill.status);
+  const [visibility, setVisibility] = useState<SkillVisibility>(skill.visibility);
   const [tokenCost, setTokenCost] = useState(skill.tokenCostEstimate);
   const [pending, startTransition] = useTransition();
   const [deletePending, startDelete] = useTransition();
@@ -48,6 +52,7 @@ export function EditForm({ skill, categories }: { skill: SkillData; categories: 
           categoryId: categoryId || null,
           license,
           status,
+          visibility,
           tokenCostEstimate: tokenCost,
         }),
       });
@@ -151,6 +156,10 @@ export function EditForm({ skill, categories }: { skill: SkillData; categories: 
             </button>
           ))}
         </div>
+      </Field>
+
+      <Field label="可见性 / 访问权限">
+        <VisibilitySelector value={visibility} onChange={setVisibility} />
       </Field>
 
       <div className="flex items-center justify-between gap-2 pt-2">

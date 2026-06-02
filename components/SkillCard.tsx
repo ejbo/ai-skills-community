@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { formatDistanceToNowStrict } from 'date-fns';
+import type { SkillVisibility } from '@prisma/client';
 import { SourceBadge } from './SourceBadge';
+import { VisibilityBadge } from './VisibilityBadge';
 import { StatRow } from './StatRow';
 
 export interface SkillCardProps {
@@ -8,6 +10,7 @@ export interface SkillCardProps {
   name: string;
   summary: string;
   sourceType: 'internal' | 'user_uploaded' | 'external_curated';
+  visibility?: SkillVisibility;
   author: { handle: string; displayName: string };
   updatedAt: Date | string;
   stats: {
@@ -33,7 +36,10 @@ export function SkillCard(props: SkillCardProps) {
           </h3>
           <p className="mt-1 line-clamp-2 text-sm text-muted">{props.summary}</p>
         </div>
-        <SourceBadge source={props.sourceType} />
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <SourceBadge source={props.sourceType} />
+          {props.visibility && <VisibilityBadge visibility={props.visibility} />}
+        </div>
       </div>
       <div className="flex items-center justify-between gap-2 border-t border-zinc-100 pt-3 dark:border-zinc-800/60">
         <div className="flex items-center gap-2 text-xs text-muted">

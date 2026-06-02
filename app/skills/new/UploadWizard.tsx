@@ -6,8 +6,10 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useTranslations } from 'next-intl';
 import { Loader2, FileText, Upload } from 'lucide-react';
+import type { SkillVisibility } from '@prisma/client';
 import { pushToast } from '@/components/Toaster';
 import { TokenCostBadge } from '@/components/TokenCostBadge';
+import { VisibilitySelector } from '@/app/skills/_components/VisibilitySelector';
 
 interface Category {
   id: string;
@@ -88,6 +90,7 @@ function FormMode({
   const [triggers, setTriggers] = useState('');
   const [license, setLicense] = useState('MIT');
   const [makeInternal, setMakeInternal] = useState(false);
+  const [visibility, setVisibility] = useState<SkillVisibility>('public');
   const [tokenCost, setTokenCost] = useState<number>(0);
 
   function submit(action: 'draft' | 'publish') {
@@ -111,6 +114,7 @@ function FormMode({
           license,
           sourceType: makeInternal && canPublishInternal ? 'internal' : 'user_uploaded',
           skillFormat: 'structured',
+          visibility,
           tokenCostEstimate: tokenCost,
           publish: action === 'publish',
         }),
@@ -221,6 +225,9 @@ function FormMode({
             />
           </label>
         )}
+        <Field label="可见性 / 访问权限">
+          <VisibilitySelector value={visibility} onChange={setVisibility} />
+        </Field>
         <div className="flex items-center justify-end gap-2 pt-2">
           <button
             disabled={pending}
@@ -277,6 +284,7 @@ function PackageMode() {
   const t = useTranslations('upload');
   const router = useRouter();
   const [dragging, setDragging] = useState(false);
+  const [visibility, setVisibility] = useState<SkillVisibility>('public');
   const [pending, startTransition] = useTransition();
   const [parsed, setParsed] = useState<{
     name?: string;
@@ -296,6 +304,7 @@ function PackageMode() {
     }
     const form = new FormData();
     form.set('file', file);
+    form.set('visibility', visibility);
     if (publish) form.set('publish', 'true');
     const res = await fetch('/api/skills/upload-package', { method: 'POST', body: form });
     const data = await res.json().catch(() => ({}));
@@ -325,6 +334,10 @@ function PackageMode() {
 
   return (
     <div className="space-y-3">
+      <div className="surface rounded-2xl p-4">
+        <div className="mb-1.5 text-xs font-medium text-muted">可见性 / 访问权限</div>
+        <VisibilitySelector value={visibility} onChange={setVisibility} />
+      </div>
       <label
         onDragOver={(e) => {
           e.preventDefault();

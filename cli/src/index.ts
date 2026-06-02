@@ -2,6 +2,7 @@
 import { Command } from 'commander';
 import kleur from 'kleur';
 import { loginCommand } from './commands/login.js';
+import { logoutCommand } from './commands/logout.js';
 import { searchCommand } from './commands/search.js';
 import { installCommand } from './commands/install.js';
 import { listCommand } from './commands/list.js';
@@ -22,13 +23,18 @@ program
   .action((opts) => loginCommand(opts).catch(fail));
 
 program
+  .command('logout')
+  .description('清除本地保存的 CLI Token')
+  .action(() => logoutCommand().catch(fail));
+
+program
   .command('search <query>')
   .description('搜索 skill')
   .action((q) => searchCommand(q).catch(fail));
 
 program
   .command('install <slug[@version]>')
-  .description('安装 skill（默认装到当前项目 .claude/skills/，加 -g 装到全局 ~/.claude/skills/）')
+  .description('安装 skill（需先 `skills login`；默认装到当前项目 .claude/skills/，加 -g 装到全局 ~/.claude/skills/）')
   .option('-t, --target <name>', '目标 (claude-code / cursor / ...)')
   .option('-g, --global', '装到全局（~/.claude/skills），默认装到当前项目')
   .option('-s, --subscribe', '同时订阅自动更新')

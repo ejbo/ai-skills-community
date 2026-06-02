@@ -9,22 +9,47 @@ interface FetchOptions {
 export class ApiClient {
   constructor(private readonly cfg: Config) {}
 
+  private buildUrl(path: string): string {
+    return `${this.cfg.registry.replace(/\/$/, '')}${path}`;
+  }
+
+  private headers(extra: Record<string, string> = {}): Record<string, string> {
+    const h: Record<string, string> = { 'user-agent': 'skills-cli/0.1.0', ...extra };
+    if (this.cfg.token) h['authorization'] = `Bearer ${this.cfg.token}`;
+    return h;
+  }
+
+  /** Turn a non-OK response into an actionable error (login / apply-for-access). */
+  private async fail(res: Response): Promise<never> {
+    type ErrBody = { error?: string; message?: string; applyUrl?: string };
+    let body: ErrBody | null = null;
+    try {
+      body = (await res.json()) as ErrBody;
+    } catch {
+      /* non-JSON body */
+    }
+    if (res.status === 401) {
+      throw new Error(
+        `需要登录：运行 \`skills login\`（在 ${this.cfg.registry}/settings/tokens 创建 token）`,
+      );
+    }
+    if (res.status === 403 && body?.error === 'needs_request') {
+      throw new Error(
+        `你还没有访问权限。请到 ${body.applyUrl ?? `${this.cfg.registry}`} 点击「申请下载」`,
+      );
+    }
+    throw new Error(body?.message || `${res.status} ${res.statusText}`);
+  }
+
   private async call(path: string, opts: FetchOptions = {}): Promise<unknown> {
-    const url = `${this.cfg.registry.replace(/\/$/, '')}${path}`;
-    const headers: Record<string, string> = {
-      'user-agent': 'skills-cli/0.1.0',
-    };
+    const headers = this.headers();
     if (opts.body) headers['content-type'] = 'application/json';
-    if (opts.auth && this.cfg.token) headers['authorization'] = `Bearer ${this.cfg.token}`;
-    const res = await fetch(url, {
+    const res = await fetch(this.buildUrl(path), {
       method: opts.method ?? 'GET',
       headers,
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`${res.status} ${res.statusText} — ${text.slice(0, 200)}`);
-    }
+    if (!res.ok) await this.fail(res);
     return res.json();
   }
 
@@ -33,14 +58,34 @@ export class ApiClient {
     return this.call(`/api/skills?${qs.toString()}`) as Promise<never>;
   }
 
-  download(slug: string, version?: string): Promise<{ version: string; url: string | null; inline: string | null; checksum: string | null; manifest: unknown }> {
+  download(slug: string, version?: string): Promise<{ version: string; url: string | null; format: string; checksum: string | null; manifest: unknown }> {
     const qs = version ? `?version=${encodeURIComponent(version)}` : '';
-    return this.call(`/api/skills/${slug}/download${qs}`) as Promise<never>;
+    return this.call(`/api/skills/${slug}/download${qs}`, { auth: true }) as Promise<never>;
   }
 
   raw(slug: string, version?: string): string {
     const qs = version ? `?version=${encodeURIComponent(version)}` : '';
-    return `${this.cfg.registry.replace(/\/$/, '')}/api/skills/${slug}/raw${qs}`;
+    return this.buildUrl(`/api/skills/${slug}/raw${qs}`);
+  }
+
+  /** Fetch the gated, attributed byte stream (zip or SKILL.md) with the Bearer token. */
+  async rawFetch(slug: string, version?: string, via = 'install'): Promise<Response> {
+    const qs = new URLSearchParams();
+    if (version) qs.set('version', version);
+    qs.set('via', via);
+    const res = await fetch(this.buildUrl(`/api/skills/${slug}/raw?${qs.toString()}`), {
+      headers: this.headers(),
+    });
+    if (!res.ok) await this.fail(res);
+    return res;
+  }
+
+  /** Fetch an arbitrary URL with the Bearer token attached (for our own origin). */
+  async fetchAuthed(url: string): Promise<Response> {
+    const abs = url.startsWith('http') ? url : this.buildUrl(url);
+    const res = await fetch(abs, { headers: this.headers() });
+    if (!res.ok) await this.fail(res);
+    return res;
   }
 
   checkUpdates(installed: Array<{ slug: string; installed_version?: string }>): Promise<{
@@ -57,6 +102,7 @@ export class ApiClient {
     return this.call('/api/skills/check-updates', {
       method: 'POST',
       body: { installed },
+      auth: true,
     }) as Promise<never>;
   }
 }

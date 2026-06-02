@@ -23,6 +23,8 @@ export default async function UserProfilePage({ params }: { params: { handle: st
       authorId: user.id,
       deletedAt: null,
       status: 'published',
+      // Private skills never appear on the public profile.
+      visibility: { not: 'private' },
     },
     orderBy: { trendingScore: 'desc' },
     take: 24,
@@ -32,6 +34,7 @@ export default async function UserProfilePage({ params }: { params: { handle: st
       name: true,
       summary: true,
       sourceType: true,
+      visibility: true,
       updatedAt: true,
       downloadCount: true,
       likeCount: true,
@@ -89,6 +92,7 @@ export default async function UserProfilePage({ params }: { params: { handle: st
                 name={s.name}
                 summary={s.summary}
                 sourceType={s.sourceType}
+                visibility={s.visibility}
                 author={s.author}
                 updatedAt={s.updatedAt}
                 stats={{
