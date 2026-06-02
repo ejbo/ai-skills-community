@@ -15,6 +15,7 @@ const createSchema = z.object({
   license: z.string().default('MIT'),
   sourceType: z.enum(['internal', 'user_uploaded']).default('user_uploaded'),
   skillFormat: z.enum(['bundle', 'structured']).default('structured'),
+  visibility: z.enum(['public', 'restricted', 'private']).default('public'),
   tokenCostEstimate: z.number().int().min(0).max(50000).default(0),
   publish: z.boolean().default(false),
 });
@@ -72,6 +73,7 @@ export async function POST(req: Request) {
         sourceType: input.sourceType,
         skillFormat: input.skillFormat,
         status: input.publish ? 'published' : 'draft',
+        visibility: input.visibility,
         tokenCostEstimate: tokenCost,
         license: input.license,
         structuredPayload: {

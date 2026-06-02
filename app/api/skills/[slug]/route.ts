@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { resolveActor } from '@/lib/auth/either';
+import { canAccessSkillContent } from '@/lib/access';
 
 const updateSchema = z.object({
   name: z.string().min(2).max(120).optional(),
@@ -10,6 +12,7 @@ const updateSchema = z.object({
   categoryId: z.string().nullable().optional(),
   license: z.string().optional(),
   status: z.enum(['draft', 'published', 'archived']).optional(),
+  visibility: z.enum(['public', 'restricted', 'private']).optional(),
   tokenCostEstimate: z.number().int().min(0).max(50000).optional(),
 });
 
@@ -20,7 +23,7 @@ async function loadOwned(slug: string, userId: string) {
   return skill;
 }
 
-export async function GET(_req: Request, { params }: { params: { slug: string } }) {
+export async function GET(req: Request, { params }: { params: { slug: string } }) {
   const skill = await prisma.skill.findUnique({
     where: { slug: params.slug },
     include: {
@@ -31,7 +34,37 @@ export async function GET(_req: Request, { params }: { params: { slug: string } 
   if (!skill || skill.deletedAt) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
-  return NextResponse.json({ skill });
+
+  const actor = await resolveActor(req);
+  let grantStatus: string | null = null;
+  if (actor && skill.visibility === 'restricted' && actor.id !== skill.authorId && !actor.isAdmin) {
+    const g = await prisma.skillAccessRequest.findUnique({
+      where: { skillId_userId: { skillId: skill.id, userId: actor.id } },
+      select: { status: true },
+    });
+    grantStatus = g?.status ?? null;
+  }
+  const decision = canAccessSkillContent(skill, actor, grantStatus as never);
+  const privileged = decision.kind === 'owner' || decision.kind === 'admin';
+
+  // Hide drafts/archived and private skills from non-owners entirely.
+  const canSeeMeta = privileged || (skill.status === 'published' && skill.visibility !== 'private');
+  if (!canSeeMeta) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
+
+  // Strip content fields when the caller can't access content (restricted/un-granted).
+  if (!decision.canContent && skill.currentVersion) {
+    skill.currentVersion = {
+      ...skill.currentVersion,
+      storageUrl: null,
+      contentInline: null,
+      manifestJson: null,
+      checksumSha256: null,
+    };
+  }
+
+  return NextResponse.json({ skill, access: { canContent: decision.canContent, kind: decision.kind } });
 }
 
 export async function PUT(req: Request, { params }: { params: { slug: string } }) {

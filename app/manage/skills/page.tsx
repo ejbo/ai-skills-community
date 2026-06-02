@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { prisma } from '@/lib/db';
+import { VisibilityBadge } from '@/components/VisibilityBadge';
 import { SkillStatusActions } from './SkillStatusActions';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +11,7 @@ const PAGE_SIZE = 30;
 export default async function AdminSkillsPage({
   searchParams,
 }: {
-  searchParams: { q?: string; status?: string; source?: string; page?: string };
+  searchParams: { q?: string; status?: string; source?: string; visibility?: string; page?: string };
 }) {
   const page = Math.max(1, Number(searchParams.page ?? 1));
   const q = (searchParams.q ?? '').trim();
@@ -20,10 +21,12 @@ export default async function AdminSkillsPage({
     | 'user_uploaded'
     | 'external_curated'
     | undefined;
+  const visibilityFilter = searchParams.visibility as 'public' | 'restricted' | 'private' | undefined;
 
   const where: import('@prisma/client').Prisma.SkillWhereInput = { deletedAt: null };
   if (statusFilter) where.status = statusFilter;
   if (sourceFilter) where.sourceType = sourceFilter;
+  if (visibilityFilter) where.visibility = visibilityFilter;
   if (q) {
     where.OR = [
       { name: { contains: q, mode: 'insensitive' } },
@@ -82,6 +85,16 @@ export default async function AdminSkillsPage({
           <option value="user_uploaded">社区上传</option>
           <option value="external_curated">官方搬运</option>
         </select>
+        <select
+          name="visibility"
+          defaultValue={visibilityFilter ?? ''}
+          className="h-9 rounded-lg border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
+        >
+          <option value="">所有可见性</option>
+          <option value="public">公开</option>
+          <option value="restricted">受限下载</option>
+          <option value="private">私密</option>
+        </select>
         <button className="h-9 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white hover:bg-accent-600">
           筛选
         </button>
@@ -94,6 +107,7 @@ export default async function AdminSkillsPage({
               <th>Skill</th>
               <th>作者</th>
               <th>来源</th>
+              <th>可见性</th>
               <th>状态</th>
               <th>版本</th>
               <th>统计</th>
@@ -104,7 +118,7 @@ export default async function AdminSkillsPage({
           <tbody>
             {skills.length === 0 && (
               <tr>
-                <td colSpan={8} className="text-center text-xs text-muted">
+                <td colSpan={9} className="text-center text-xs text-muted">
                   暂无匹配的 Skill
                 </td>
               </tr>
@@ -112,7 +126,7 @@ export default async function AdminSkillsPage({
             {skills.map((s) => (
               <tr key={s.id}>
                 <td>
-                  <Link href={`/skills/${s.slug}`} className="font-medium hover:text-accent-600">
+                  <Link href={`/manage/skills/${s.slug}`} className="font-medium hover:text-accent-600">
                     {s.name}
                   </Link>
                   <div className="font-mono text-[10px] text-muted">{s.slug}</div>
@@ -124,6 +138,9 @@ export default async function AdminSkillsPage({
                 </td>
                 <td className="text-[11px]">
                   {s.sourceType === 'internal' ? '内部' : s.sourceType === 'user_uploaded' ? '社区' : '搬运'}
+                </td>
+                <td>
+                  <VisibilityBadge visibility={s.visibility} showPublic />
                 </td>
                 <td>
                   <span
@@ -148,7 +165,12 @@ export default async function AdminSkillsPage({
                   {format(s.updatedAt, 'MM-dd HH:mm')}
                 </td>
                 <td>
-                  <SkillStatusActions slug={s.slug} status={s.status} sourceType={s.sourceType} />
+                  <SkillStatusActions
+                    slug={s.slug}
+                    status={s.status}
+                    sourceType={s.sourceType}
+                    visibility={s.visibility}
+                  />
                 </td>
               </tr>
             ))}

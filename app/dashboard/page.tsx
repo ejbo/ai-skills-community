@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus, Sparkles, Bell, Star } from 'lucide-react';
+import { Plus, Sparkles, Bell, Star, Inbox } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { SkillCard } from '@/components/SkillCard';
 import { SourceBadge } from '@/components/SourceBadge';
+import { VisibilityBadge } from '@/components/VisibilityBadge';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,6 +56,15 @@ export default async function DashboardPage() {
       s.installedVersionId !== s.skill.currentVersionId,
   );
 
+  // Pending download-access requests across the user's own skills.
+  const pendingGroups = await prisma.skillAccessRequest.groupBy({
+    by: ['skillId'],
+    where: { status: 'pending', skillId: { in: owned.map((s) => s.id) } },
+    _count: { _all: true },
+  });
+  const pendingMap = new Map(pendingGroups.map((p) => [p.skillId, p._count._all]));
+  const totalPending = pendingGroups.reduce((sum, p) => sum + p._count._all, 0);
+
   return (
     <div className="container py-8">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
@@ -73,10 +83,11 @@ export default async function DashboardPage() {
         </Link>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatBox icon={<Sparkles className="h-4 w-4" />} label="我发布的" value={owned.length} />
         <StatBox icon={<Bell className="h-4 w-4" />} label="我订阅的" value={subscribed.length} extra={subscribedWithUpdates.length > 0 ? `${subscribedWithUpdates.length} 个有新版本` : undefined} />
         <StatBox icon={<Star className="h-4 w-4" />} label="我收藏的" value={favorited.length} />
+        <StatBox icon={<Inbox className="h-4 w-4" />} label="待处理申请" value={totalPending} extra={totalPending > 0 ? '点击下方 Skill 处理' : undefined} />
       </div>
 
       <section className="mt-10">
@@ -93,9 +104,18 @@ export default async function DashboardPage() {
                       {s.name}
                     </Link>
                     <SourceBadge source={s.sourceType} />
+                    <VisibilityBadge visibility={s.visibility} />
                     <StatusBadge status={s.status} />
                     {s.currentVersion && (
                       <span className="font-mono text-[11px] text-muted">v{s.currentVersion.version}</span>
+                    )}
+                    {(pendingMap.get(s.id) ?? 0) > 0 && (
+                      <Link
+                        href={`/skills/${s.slug}?tab=manage`}
+                        className="rounded-full bg-danger/15 px-2 py-0.5 text-[10px] font-medium text-danger transition hover:bg-danger/25"
+                      >
+                        {pendingMap.get(s.id)} 个下载申请待处理
+                      </Link>
                     )}
                   </div>
                   <p className="mt-0.5 truncate text-xs text-muted">{s.summary}</p>

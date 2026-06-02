@@ -4,6 +4,7 @@ import { Sparkles } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { UserMenu } from './UserMenu';
 import { SearchTrigger } from './SearchTrigger';
+import { NavLink } from './NavLink';
 import { getTranslations } from 'next-intl/server';
 
 export async function NavBar({ session }: { session: Session | null }) {
@@ -17,7 +18,6 @@ export async function NavBar({ session }: { session: Session | null }) {
         </Link>
         <nav className="hidden items-center gap-1 md:flex">
           <NavLink href="/skills">{t('browse')}</NavLink>
-          <NavLink href="/categories">{t('categories')}</NavLink>
           <NavLink href="/docs/cli">{t('docs')}</NavLink>
         </nav>
         <div className="flex flex-1 items-center justify-end gap-2">
@@ -36,16 +36,5 @@ export async function NavBar({ session }: { session: Session | null }) {
         </div>
       </div>
     </header>
-  );
-}
-
-function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
-    >
-      {children}
-    </Link>
   );
 }

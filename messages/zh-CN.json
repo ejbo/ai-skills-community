@@ -9,6 +9,7 @@
     "login": "登录",
     "signup": "注册",
     "logout": "退出登录",
+    "profile": "个人主页",
     "search_placeholder": "搜索 skills…"
   },
   "home": {
@@ -33,9 +34,13 @@
     "no_results": "没有匹配的 Skill",
     "category_label": "类别",
     "token_cost_label": "Token 成本",
-    "rating_label": "评分 ≥"
+    "rating_label": "评分 ≥",
+    "no_results_hint": "试试调整关键词，或重置筛选条件",
+    "prev_page": "上一页",
+    "next_page": "下一页"
   },
   "detail": {
+    "back": "返回",
     "install": "安装",
     "subscribe": "订阅更新",
     "subscribed": "已订阅",
@@ -145,7 +150,10 @@
     "loading": "加载中…",
     "saved": "已保存",
     "copy": "复制",
-    "copied": "已复制"
+    "copied": "已复制",
+    "copy_failed": "复制失败",
+    "copied_hint": "已复制 — 粘贴到终端运行",
+    "dismiss": "关闭"
   },
   "source": {
     "internal": "内部专用",

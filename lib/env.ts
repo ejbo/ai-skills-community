@@ -4,6 +4,19 @@ const schema = z.object({
   DATABASE_URL: z.string().url(),
   AUTH_SECRET: z.string().min(16),
   AUTH_URL: z.string().url().default('http://localhost:3000'),
+  // Public base URL used to build links inside notification emails.
+  APP_URL: z.string().url().optional(),
+
+  // SMTP (optional). When unset, email notifications are silently skipped.
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.string().optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().optional(),
+  SMTP_SECURE: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
 
   STORAGE_DRIVER: z.enum(['local', 'blob']).default('local'),
   LOCAL_STORAGE_DIR: z.string().default('./storage'),

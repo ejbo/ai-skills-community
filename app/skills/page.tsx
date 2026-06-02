@@ -1,4 +1,6 @@
 import { Suspense } from 'react';
+import Link from 'next/link';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { browseSkills, listCategories } from '@/lib/skill-queries';
 import type { SourceType } from '@prisma/client';
@@ -39,6 +41,7 @@ export default async function BrowseSkillsPage({
     sort: (searchParams.sort as 'trending' | 'downloads' | 'newest' | 'top_rated') ?? 'trending',
     page: Number(searchParams.page ?? 1),
     minRating: Number(searchParams.minRating ?? 0),
+    maxTokens: searchParams.maxTokens ? Number(searchParams.maxTokens) : undefined,
   });
 
   return (
@@ -62,7 +65,12 @@ export default async function BrowseSkillsPage({
 
         <div>
           {items.length === 0 ? (
-            <EmptyState title={t('no_results')} actionLabel={t('reset_filters')} actionHref="/skills" />
+            <EmptyState
+              title={t('no_results')}
+              description={t('no_results_hint')}
+              actionLabel={t('reset_filters')}
+              actionHref="/skills"
+            />
           ) : (
             <Suspense fallback={<GridSkeleton />}>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -73,6 +81,7 @@ export default async function BrowseSkillsPage({
                     name={skill.name}
                     summary={skill.summary}
                     sourceType={skill.sourceType}
+                    visibility={skill.visibility}
                     author={skill.author}
                     updatedAt={skill.updatedAt}
                     stats={{
@@ -89,7 +98,15 @@ export default async function BrowseSkillsPage({
           )}
 
           {(page > 1 || hasMore) && (
-            <Pagination current={page} pageSize={pageSize} total={total} />
+            <Pagination
+              searchParams={searchParams}
+              current={page}
+              pageSize={pageSize}
+              total={total}
+              hasMore={hasMore}
+              prevLabel={t('prev_page')}
+              nextLabel={t('next_page')}
+            />
           )}
         </div>
       </div>
@@ -107,13 +124,68 @@ function GridSkeleton() {
   );
 }
 
-function Pagination({ current, pageSize, total }: { current: number; pageSize: number; total: number }) {
+function pageHref(searchParams: SearchParams, page: number) {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(searchParams)) {
+    if (k === 'page' || v == null || v === '') continue;
+    sp.set(k, String(v));
+  }
+  if (page > 1) sp.set('page', String(page));
+  const qs = sp.toString();
+  return qs ? `/skills?${qs}` : '/skills';
+}
+
+function Pagination({
+  searchParams,
+  current,
+  pageSize,
+  total,
+  hasMore,
+  prevLabel,
+  nextLabel,
+}: {
+  searchParams: SearchParams;
+  current: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+  prevLabel: string;
+  nextLabel: string;
+}) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const btn =
+    'inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 transition hover:border-accent-500 hover:text-accent-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-accent-400 dark:hover:text-accent-300';
+  const disabled = 'inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 px-3 text-sm font-medium text-muted opacity-40 dark:border-zinc-800';
+
   return (
-    <div className="mt-8 flex items-center justify-center gap-2 text-sm">
-      <span className="text-muted">
-        第 {current} / {totalPages} 页
+    <div className="mt-8 flex items-center justify-center gap-3 text-sm">
+      {current > 1 ? (
+        <Link href={pageHref(searchParams, current - 1)} rel="prev" aria-label={prevLabel} className={btn}>
+          <ChevronLeft className="h-4 w-4" />
+          {prevLabel}
+        </Link>
+      ) : (
+        <span aria-disabled className={disabled}>
+          <ChevronLeft className="h-4 w-4" />
+          {prevLabel}
+        </span>
+      )}
+
+      <span className="text-muted tabular-nums">
+        {current} / {totalPages}
       </span>
+
+      {hasMore ? (
+        <Link href={pageHref(searchParams, current + 1)} rel="next" aria-label={nextLabel} className={btn}>
+          {nextLabel}
+          <ChevronRight className="h-4 w-4" />
+        </Link>
+      ) : (
+        <span aria-disabled className={disabled}>
+          {nextLabel}
+          <ChevronRight className="h-4 w-4" />
+        </span>
+      )}
     </div>
   );
 }

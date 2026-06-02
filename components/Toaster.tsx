@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 
 type ToastKind = 'success' | 'error' | 'info';
 interface Toast {
@@ -23,6 +24,7 @@ export function pushToast(kind: ToastKind, message: string) {
 }
 
 export function Toaster() {
+  const t = useTranslations('common');
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const remove = useCallback((id: number) => {
@@ -41,23 +43,28 @@ export function Toaster() {
   }, [remove]);
 
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="false"
+      className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col gap-2"
+    >
       <AnimatePresence>
-        {toasts.map((t) => (
+        {toasts.map((toast) => (
           <motion.div
-            key={t.id}
+            key={toast.id}
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 12 }}
             transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
             className="pointer-events-auto surface flex min-w-[260px] items-center gap-2 rounded-xl px-3 py-2 shadow-lg"
           >
-            <Icon kind={t.kind} />
-            <span className="text-sm">{t.message}</span>
+            <Icon kind={toast.kind} />
+            <span className="text-sm">{toast.message}</span>
             <button
-              onClick={() => remove(t.id)}
+              onClick={() => remove(toast.id)}
               className="ml-auto text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-              aria-label="Dismiss"
+              aria-label={t('dismiss')}
             >
               <X className="h-3.5 w-3.5" />
             </button>

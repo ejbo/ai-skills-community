@@ -1,4 +1,5 @@
 import yaml from 'js-yaml';
+import type { SkillFormat } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { storage, skillBundleKey } from '@/lib/storage';
 import { parseSkillBundle } from '@/lib/skill-parser';
@@ -10,19 +11,26 @@ export interface VersionFileMeta {
   isText: boolean;
 }
 
-interface SkillForSynth {
+// Structural shape of a skill loaded with its current version. Compatible with
+// the objects returned by lib/access.loadAccessContext and lib/skill-queries.
+export interface LoadedVersion {
+  id: string;
+  version: string;
+  contentInline: string | null;
+  storageUrl: string | null;
+  manifestJson: unknown;
+}
+export interface LoadedSkill {
+  slug: string;
   name: string;
   summary: string;
-  license: string | null;
   descriptionMd: string;
-}
-interface VersionForSynth {
-  version: string;
-  manifestJson: unknown;
-  contentInline: string | null;
+  license: string | null;
+  skillFormat: SkillFormat;
+  currentVersion: LoadedVersion | null;
 }
 
-function synthesizeSkillMd(skill: SkillForSynth, version: VersionForSynth): string {
+function synthesizeSkillMd(skill: LoadedSkill, version: LoadedVersion): string {
   const manifest = (version.manifestJson as Record<string, unknown> | null) ?? {};
   const frontmatter: Record<string, unknown> = {
     name: manifest.name ?? skill.name,
@@ -62,10 +70,9 @@ async function backfillVersionFiles(versionId: string, slug: string, version: st
 }
 
 export async function getSkillFileList(
-  slug: string,
+  skill: LoadedSkill,
 ): Promise<{ versionId: string; files: VersionFileMeta[] } | null> {
-  const skill = await prisma.skill.findUnique({ where: { slug }, include: { currentVersion: true } });
-  if (!skill || skill.deletedAt || skill.status !== 'published' || !skill.currentVersion) return null;
+  if (!skill.currentVersion) return null;
   const version = skill.currentVersion;
 
   if (skill.skillFormat === 'structured') {
@@ -80,7 +87,7 @@ export async function getSkillFileList(
     select: { path: true, size: true, isText: true },
   });
   if (rows.length === 0 && version.storageUrl) {
-    await backfillVersionFiles(version.id, slug, version.version);
+    await backfillVersionFiles(version.id, skill.slug, version.version);
     rows = await prisma.skillFile.findMany({
       where: { versionId: version.id },
       select: { path: true, size: true, isText: true },
@@ -93,11 +100,8 @@ export type FileContentResult =
   | { ok: true; path: string; isText: boolean; content: string | null; truncated: boolean; size: number }
   | { ok: false; status: number };
 
-export async function getSkillFileContent(slug: string, path: string): Promise<FileContentResult> {
-  const skill = await prisma.skill.findUnique({ where: { slug }, include: { currentVersion: true } });
-  if (!skill || skill.deletedAt || skill.status !== 'published' || !skill.currentVersion) {
-    return { ok: false, status: 404 };
-  }
+export async function getSkillFileContent(skill: LoadedSkill, path: string): Promise<FileContentResult> {
+  if (!skill.currentVersion) return { ok: false, status: 404 };
   const version = skill.currentVersion;
 
   if (skill.skillFormat === 'structured') {
@@ -110,7 +114,7 @@ export async function getSkillFileContent(slug: string, path: string): Promise<F
     where: { versionId_path: { versionId: version.id, path } },
   });
   if (!row && version.storageUrl) {
-    await backfillVersionFiles(version.id, slug, version.version);
+    await backfillVersionFiles(version.id, skill.slug, version.version);
     row = await prisma.skillFile.findUnique({
       where: { versionId_path: { versionId: version.id, path } },
     });
@@ -126,9 +130,10 @@ export async function getSkillFileContent(slug: string, path: string): Promise<F
   };
 }
 
-export async function getSkillContextForSlug(slug: string): Promise<string | null> {
-  const skill = await prisma.skill.findUnique({ where: { slug }, include: { currentVersion: true } });
-  if (!skill || skill.deletedAt || skill.status !== 'published' || !skill.currentVersion) return null;
+// Assemble the full-skill AI context (SKILL.md + supporting text files) from an
+// already-loaded skill. Caller is responsible for access control.
+export async function buildContextFromSkill(skill: LoadedSkill): Promise<string | null> {
+  if (!skill.currentVersion) return null;
   const version = skill.currentVersion;
   const skillMd = version.contentInline ?? skill.descriptionMd ?? '';
 
@@ -139,7 +144,7 @@ export async function getSkillContextForSlug(slug: string): Promise<string | nul
       select: { path: true, content: true, isText: true },
     });
     if (rows.length === 0 && version.storageUrl) {
-      await backfillVersionFiles(version.id, slug, version.version);
+      await backfillVersionFiles(version.id, skill.slug, version.version);
       rows = await prisma.skillFile.findMany({
         where: { versionId: version.id },
         select: { path: true, content: true, isText: true },
