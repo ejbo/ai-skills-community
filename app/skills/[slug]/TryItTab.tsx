@@ -98,7 +98,7 @@ export function TryItTab({ slug }: { slug: string }) {
       )}
 
       <p className="text-[11px] text-muted">
-        服务端会并行调用 Claude API 两次。匿名用户每小时 5 次、登录用户 30 次。
+        服务端会并行调用 Claude API 两次。「不装」列故意不加载该 skill，仅作对比基线。匿名用户每小时 5 次、登录用户 30 次。
         {result?.remaining !== undefined && (
           <span className="ml-1">本小时还剩 {result.remaining} 次。</span>
         )}
