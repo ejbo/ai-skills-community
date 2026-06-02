@@ -20,6 +20,7 @@ import { TryItTab } from './TryItTab';
 import { CompositionTab } from './CompositionTab';
 import { AccessRequestPanel, type RequestState } from './AccessRequestPanel';
 import { ManageTab } from './ManageTab';
+import { FilesTab } from './FilesTab';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,7 +60,7 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
   const pendingCount = privileged ? skill._count.accessRequests : 0;
 
   const t = await getTranslations('detail');
-  const rawTab = (searchParams.tab as 'overview' | 'versions' | 'reviews' | 'composition' | 'try_it' | 'manage') ?? 'overview';
+  const rawTab = (searchParams.tab as 'overview' | 'files' | 'versions' | 'reviews' | 'composition' | 'try_it' | 'manage') ?? 'overview';
   const tab = rawTab === 'manage' && !privileged ? 'overview' : rawTab;
 
   const [versionCount, isLiked, isFav, isSub] = await Promise.all([
@@ -163,7 +164,16 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
 
       <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_240px]">
         <article>
-          {tab === 'overview' && <MarkdownRenderer content={skill.descriptionMd || skill.summary} />}
+          {tab === 'overview' &&
+            (skill.descriptionMd ? (
+              <MarkdownRenderer content={skill.descriptionMd} />
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-muted">作者还没有为这个 skill 撰写使用指南。下面是简介：</p>
+                <MarkdownRenderer content={skill.summary} />
+              </div>
+            ))}
+          {tab === 'files' && (restrictedLocked ? <LockedNote /> : <FilesTab slug={skill.slug} />)}
           {tab === 'versions' && (restrictedLocked ? <LockedNote /> : <VersionsTab skillId={skill.id} />)}
           {tab === 'reviews' && <ReviewsTab skillId={skill.id} slug={skill.slug} />}
           {tab === 'composition' && (restrictedLocked ? <LockedNote /> : <CompositionTab skillId={skill.id} />)}

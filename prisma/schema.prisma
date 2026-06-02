@@ -297,10 +297,26 @@ model SkillVersion {
   downloads       Download[]
   reviews         Review[]
   subscriptions   Subscription[]
+  files           SkillFile[]
 
   @@unique([skillId, version])
   @@index([skillId, major, minor, patch])
   @@index([status])
+}
+
+model SkillFile {
+  id        String  @id @default(cuid())
+  versionId String
+  path      String
+  size      Int
+  isText    Boolean @default(true)
+  content   String?
+  truncated Boolean @default(false)
+
+  version   SkillVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([versionId, path])
+  @@index([versionId])
 }
 
 // ─── Social ──────────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { storage, skillBundleKey } from '@/lib/storage';
 import { parseSkillBundle } from '@/lib/skill-parser';
+import { selectReadme } from '@/lib/skill-context';
 
 const MAX_BYTES = 5 * 1024 * 1024;
 
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
         slug,
         name: String(manifest.name ?? slug),
         summary: String(manifest.description ?? '').slice(0, 200) || `${manifest.name ?? slug}`,
-        descriptionMd: parsed.body,
+        descriptionMd: selectReadme(parsed.files) ?? '',
         authorId: session.user.id,
         sourceType: 'user_uploaded',
         skillFormat: 'bundle',
@@ -103,6 +104,18 @@ export async function POST(req: Request) {
         publishedAt: publish ? new Date() : null,
       },
     });
+    if (parsed.files.length > 0) {
+      await tx.skillFile.createMany({
+        data: parsed.files.map((file) => ({
+          versionId: v.id,
+          path: file.path,
+          size: file.size,
+          isText: file.isText,
+          content: file.content,
+          truncated: file.truncated,
+        })),
+      });
+    }
     await tx.skill.update({ where: { id: skill.id }, data: { currentVersionId: v.id } });
     return skill;
   });

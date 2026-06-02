@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
 import { rateLimit } from '@/lib/rate-limit';
 import { loadAccessContext, accessDenial } from '@/lib/access';
+import { buildContextFromSkill } from '@/lib/skill-files';
 
 const schema = z.object({
   prompt: z.string().min(1).max(2000),
@@ -22,7 +23,7 @@ interface AnthropicResponse {
 async function callAnthropic(opts: {
   apiKey: string;
   model: string;
-  systemPrompt?: string;
+  systemPrompt?: unknown;
   userPrompt: string;
 }): Promise<{ text: string; usage: { input: number; output: number } | null }> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -91,8 +92,11 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
 
-  const skillContent = skill.currentVersion.contentInline ?? skill.descriptionMd;
-  const systemPrompt = `You have the following skill loaded. Use it whenever it applies to the user's prompt.\n\n--- SKILL ---\n${skillContent}\n--- END SKILL ---`;
+  const context = await buildContextFromSkill(skill);
+  if (context === null) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
+  const systemPrompt = [{ type: 'text', text: context, cache_control: { type: 'ephemeral' } }];
 
   const model = parsed.data.model ?? DEFAULT_MODEL;
   try {
