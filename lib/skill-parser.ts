@@ -2,6 +2,42 @@ import yauzl from 'yauzl';
 import yaml from 'js-yaml';
 import crypto from 'node:crypto';
 
+export const MAX_TEXT_FILE_CHARS = 256 * 1024;
+
+const TEXT_EXTENSIONS = new Set([
+  'md', 'markdown', 'txt', 'text', 'rst', 'py', 'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs',
+  'json', 'jsonc', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env', 'sh', 'bash',
+  'zsh', 'fish', 'rb', 'go', 'rs', 'java', 'kt', 'c', 'h', 'cpp', 'hpp', 'cc', 'cs',
+  'php', 'swift', 'scala', 'sql', 'html', 'htm', 'css', 'scss', 'less', 'xml', 'svg',
+  'csv', 'tsv', 'log', 'gitignore', 'dockerignore', 'editorconfig', 'gitattributes',
+  'lock', 'properties', 'gradle', 'makefile', 'make', 'mk', 'r', 'lua', 'pl', 'vim',
+  'dot', 'graphql', 'proto', 'tf', 'tfvars',
+]);
+
+const BINARY_EXTENSIONS = new Set([
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'tiff', 'pdf', 'zip', 'gz', 'tar',
+  'tgz', 'rar', '7z', 'mp3', 'mp4', 'wav', 'ogg', 'mov', 'avi', 'woff', 'woff2', 'ttf',
+  'otf', 'eot', 'exe', 'dll', 'so', 'dylib', 'bin', 'wasm', 'class', 'pyc',
+]);
+
+function extensionOf(path: string): string {
+  const base = (path.split('/').pop() ?? path).toLowerCase();
+  const name = base.startsWith('.') ? base.slice(1) : base;
+  const dot = name.lastIndexOf('.');
+  return dot >= 0 ? name.slice(dot + 1) : name;
+}
+
+export function isProbablyText(path: string, buf: Buffer): boolean {
+  const sample = buf.subarray(0, 8000);
+  for (let i = 0; i < sample.length; i++) {
+    if (sample[i] === 0) return false; // null byte → binary
+  }
+  const ext = extensionOf(path);
+  if (TEXT_EXTENSIONS.has(ext)) return true;
+  if (BINARY_EXTENSIONS.has(ext)) return false;
+  return true; // no null byte and unknown extension → treat as text
+}
+
 export interface SkillManifest {
   name: string;
   description?: string;

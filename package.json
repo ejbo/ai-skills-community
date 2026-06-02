@@ -14,7 +14,10 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx scripts/seed.ts",
     "admin:promote": "tsx scripts/promote-admin.ts",
-    "refresh-trending": "tsx scripts/refresh-trending.ts"
+    "refresh-trending": "tsx scripts/refresh-trending.ts",
+    "backfill:files": "tsx scripts/backfill-skill-files.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.4",
@@ -42,12 +45,12 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@tailwindcss/typography": "^0.5.15",
     "@types/bcryptjs": "^2.4.6",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.16",
     "@types/react-dom": "^18.3.5",
-    "@tailwindcss/typography": "^0.5.15",
     "@types/yauzl": "^2.10.3",
     "autoprefixer": "^10.4.20",
     "dotenv": "^16.4.7",
@@ -57,7 +60,8 @@
     "prisma": "^5.22.0",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.7"
   },
   "engines": {
     "node": ">=20"
