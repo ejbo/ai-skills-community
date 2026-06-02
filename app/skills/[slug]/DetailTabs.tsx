@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { motion } from 'framer-motion';
 
-type Tab = 'overview' | 'versions' | 'reviews' | 'composition' | 'try_it';
+type Tab = 'overview' | 'files' | 'versions' | 'reviews' | 'composition' | 'try_it';
 
 export function DetailTabs({
   slug,
@@ -16,7 +16,7 @@ export function DetailTabs({
   hasVersions: boolean;
 }) {
   const t = useTranslations('detail.tabs');
-  const tabs: Tab[] = ['overview', 'versions', 'reviews', 'composition', 'try_it'];
+  const tabs: Tab[] = ['overview', 'files', 'versions', 'reviews', 'composition', 'try_it'];
 
   return (
     <div className="flex gap-1 overflow-x-auto border-b border-zinc-200 dark:border-zinc-800 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
