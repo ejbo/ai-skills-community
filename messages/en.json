@@ -51,6 +51,13 @@
       "composition": "Composition",
       "try_it": "Try it"
     },
+    "files": {
+      "loading": "Loading files…",
+      "empty": "This skill has no browsable files.",
+      "binary": "Binary file — preview unavailable",
+      "truncated": "File too large — showing a truncated preview",
+      "select": "Select a file on the left to view its content"
+    },
     "downloads": "Downloads",
     "subscribers": "Subscribers",
     "tags": "Tags",

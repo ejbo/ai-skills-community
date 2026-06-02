@@ -51,6 +51,13 @@
       "composition": "组合",
       "try_it": "试一下"
     },
+    "files": {
+      "loading": "加载文件中…",
+      "empty": "这个 skill 没有可浏览的文件。",
+      "binary": "二进制文件，无法预览",
+      "truncated": "文件过大，已截断显示",
+      "select": "从左侧选择一个文件查看内容"
+    },
     "downloads": "下载",
     "subscribers": "订阅者",
     "tags": "标签",
