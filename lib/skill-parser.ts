@@ -48,10 +48,18 @@ export interface SkillManifest {
   [key: string]: unknown;
 }
 
+export interface ParsedFile {
+  path: string;
+  size: number;
+  isText: boolean;
+  content: string | null;
+  truncated: boolean;
+}
+
 export interface ParsedBundle {
   manifest: SkillManifest;
   body: string;
-  files: Array<{ path: string; size: number }>;
+  files: ParsedFile[];
   totalBytes: number;
   checksum: string;
   tokenCost: number;
@@ -86,7 +94,7 @@ export function estimateTokenCost(body: string): number {
 
 export async function parseSkillBundle(zipBuffer: Buffer): Promise<ParsedBundle> {
   const checksum = crypto.createHash('sha256').update(zipBuffer).digest('hex');
-  const files: Array<{ path: string; size: number }> = [];
+  const files: ParsedFile[] = [];
   let skillMd: string | null = null;
   let totalBytes = 0;
 
@@ -104,22 +112,32 @@ export async function parseSkillBundle(zipBuffer: Buffer): Promise<ParsedBundle>
         zip.readEntry();
         return;
       }
-      totalBytes += entry.uncompressedSize;
-      files.push({ path: entry.fileName, size: entry.uncompressedSize });
-      if (/(^|\/)SKILL\.md$/i.test(entry.fileName) && skillMd === null) {
-        zip.openReadStream(entry, async (err, stream) => {
-          if (err || !stream) return reject(err ?? new Error('open stream failed'));
-          try {
-            const buf = await streamToBuffer(stream);
-            skillMd = buf.toString('utf8');
-          } catch (e) {
-            return reject(e);
+      zip.openReadStream(entry, async (err, stream) => {
+        if (err || !stream) return reject(err ?? new Error('open stream failed'));
+        try {
+          const buf = await streamToBuffer(stream);
+          totalBytes += buf.length;
+          const isText = isProbablyText(entry.fileName, buf);
+          let content: string | null = null;
+          let truncated = false;
+          if (isText) {
+            const full = buf.toString('utf8');
+            if (full.length > MAX_TEXT_FILE_CHARS) {
+              content = full.slice(0, MAX_TEXT_FILE_CHARS);
+              truncated = true;
+            } else {
+              content = full;
+            }
+            if (/(^|\/)SKILL\.md$/i.test(entry.fileName) && skillMd === null) {
+              skillMd = full;
+            }
           }
+          files.push({ path: entry.fileName, size: buf.length, isText, content, truncated });
           zip.readEntry();
-        });
-      } else {
-        zip.readEntry();
-      }
+        } catch (e) {
+          reject(e);
+        }
+      });
     });
     zip.on('end', () => resolve());
     zip.on('error', reject);
