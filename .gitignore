@@ -15,3 +15,6 @@ coverage
 *.tsbuildinfo
 next-env.d.ts
 .claude/settings.local.json
+
+# Visual brainstorm companion
+.superpowers/

@@ -7,6 +7,10 @@ import {
 } from '@/lib/skill-analytics';
 import { DecisionButtons } from './DecisionButtons';
 
+type AccessOverview = Awaited<ReturnType<typeof getSkillAccessOverview>>;
+type Analytics = Awaited<ReturnType<typeof getSkillAnalytics>>;
+type Downloaders = Awaited<ReturnType<typeof getSkillDownloaders>>;
+
 type Identity = {
   id: string;
   handle: string;
@@ -65,21 +69,11 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-export async function ManageTab({ skillId, slug }: { skillId: string; slug: string }) {
-  const [overview, analytics, downloaders] = await Promise.all([
-    getSkillAccessOverview(skillId),
-    getSkillAnalytics(skillId),
-    getSkillDownloaders(skillId, 100),
-  ]);
-
+/** Pending download requests + active grants. Presentational; data passed in. */
+export function AccessSection({ overview, slug }: { overview: AccessOverview; slug: string }) {
   return (
     <div className="space-y-5">
-      {/* Pending requests */}
-      <Section
-        icon={<Clock className="h-4 w-4 text-warn" />}
-        title="待处理申请"
-        count={overview.pending.length}
-      >
+      <Section icon={<Clock className="h-4 w-4 text-warn" />} title="待处理申请" count={overview.pending.length}>
         {overview.pending.length === 0 ? (
           <p className="text-sm text-muted">暂无待处理的下载申请。</p>
         ) : (
@@ -103,12 +97,7 @@ export async function ManageTab({ skillId, slug }: { skillId: string; slug: stri
         )}
       </Section>
 
-      {/* Active grants */}
-      <Section
-        icon={<Users className="h-4 w-4 text-ok" />}
-        title="已授权用户"
-        count={overview.approved.length}
-      >
+      <Section icon={<Users className="h-4 w-4 text-ok" />} title="已授权用户" count={overview.approved.length}>
         {overview.approved.length === 0 ? (
           <p className="text-sm text-muted">还没有授权任何用户。</p>
         ) : (
@@ -140,13 +129,21 @@ export async function ManageTab({ skillId, slug }: { skillId: string; slug: stri
           </div>
         )}
       </Section>
+    </div>
+  );
+}
 
-      {/* Downloaders */}
-      <Section
-        icon={<Download className="h-4 w-4" />}
-        title="下载记录"
-        count={analytics.totals.downloads}
-      >
+/** Download log + aggregate analytics. Presentational; data passed in. */
+export function AnalyticsSection({
+  analytics,
+  downloaders,
+}: {
+  analytics: Analytics;
+  downloaders: Downloaders;
+}) {
+  return (
+    <div className="space-y-5">
+      <Section icon={<Download className="h-4 w-4" />} title="下载记录" count={analytics.totals.downloads}>
         {downloaders.length === 0 ? (
           <p className="text-sm text-muted">还没有下载记录。</p>
         ) : (
@@ -187,7 +184,6 @@ export async function ManageTab({ skillId, slug }: { skillId: string; slug: stri
         )}
       </Section>
 
-      {/* Analytics */}
       <Section icon={<BarChart3 className="h-4 w-4" />} title="数据分析">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Stat label="总下载" value={analytics.totals.downloads.toLocaleString()} />
@@ -202,9 +198,7 @@ export async function ManageTab({ skillId, slug }: { skillId: string; slug: stri
             value={analytics.totals.avgRating > 0 ? analytics.totals.avgRating.toFixed(1) : '—'}
           />
         </div>
-        <h4 className="mb-2 mt-4 text-[11px] font-semibold uppercase tracking-wider text-muted">
-          各版本下载
-        </h4>
+        <h4 className="mb-2 mt-4 text-[11px] font-semibold uppercase tracking-wider text-muted">各版本下载</h4>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -228,6 +222,21 @@ export async function ManageTab({ skillId, slug }: { skillId: string; slug: stri
           </table>
         </div>
       </Section>
+    </div>
+  );
+}
+
+/** Combined access + analytics view (legacy single-tab composition). */
+export async function ManageTab({ skillId, slug }: { skillId: string; slug: string }) {
+  const [overview, analytics, downloaders] = await Promise.all([
+    getSkillAccessOverview(skillId),
+    getSkillAnalytics(skillId),
+    getSkillDownloaders(skillId, 100),
+  ]);
+  return (
+    <div className="space-y-5">
+      <AccessSection overview={overview} slug={slug} />
+      <AnalyticsSection analytics={analytics} downloaders={downloaders} />
     </div>
   );
 }

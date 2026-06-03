@@ -127,10 +127,10 @@ export default async function DashboardPage() {
                     {formatDistanceToNowStrict(s.updatedAt, { addSuffix: true })}
                   </span>
                   <Link
-                    href={`/skills/${s.slug}/edit`}
+                    href={`/skills/${s.slug}/manage`}
                     className="rounded border border-zinc-200 px-2 py-0.5 text-[11px] transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
                   >
-                    编辑
+                    管理
                   </Link>
                 </div>
               </li>
