@@ -7,7 +7,8 @@ const schema = z.object({
   slug: z.string().min(2).max(64).regex(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/, 'invalid slug'),
   name: z.string().min(2).max(120),
   summary: z.string().min(1).max(200),
-  descriptionMd: z.string().default(''),
+  descriptionMd: z.string().default(''), // public overview
+  bodyMd: z.string().default(''), // gated SKILL.md body
   categoryId: z.string().nullable().optional(),
   license: z.string().default('MIT'),
   tokenCostEstimate: z.number().int().min(0).max(50000).default(0),
@@ -59,7 +60,7 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
         major: 1,
         minor: 0,
         patch: 0,
-        contentInline: input.descriptionMd,
+        contentInline: input.bodyMd,
         manifestJson: { name: skill.name, description: skill.summary, license: input.license },
         tokenCost: input.tokenCostEstimate,
         status: input.publish ? 'published' : 'draft',

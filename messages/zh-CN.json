@@ -54,6 +54,7 @@
       "versions": "版本",
       "reviews": "评论",
       "composition": "组合",
+      "comparison": "对比",
       "try_it": "试一下"
     },
     "files": {
@@ -64,8 +65,6 @@
       "select": "从左侧选择一个文件查看内容"
     },
     "chat": {
-      "compare_mode": "并排对比",
-      "chat_mode": "对话",
       "placeholder": "问问这个 skill 怎么用…",
       "send": "发送",
       "empty": "向已加载该 skill 的助手提问，比如：",

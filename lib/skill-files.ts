@@ -1,9 +1,9 @@
-import yaml from 'js-yaml';
 import type { SkillFormat } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { storage, skillBundleKey } from '@/lib/storage';
 import { parseSkillBundle } from '@/lib/skill-parser';
 import { assembleSkillContext } from '@/lib/skill-context';
+import { synthesizeSkillMd } from '@/lib/skill-md';
 
 export interface VersionFileMeta {
   path: string;
@@ -28,21 +28,6 @@ export interface LoadedSkill {
   license: string | null;
   skillFormat: SkillFormat;
   currentVersion: LoadedVersion | null;
-}
-
-function synthesizeSkillMd(skill: LoadedSkill, version: LoadedVersion): string {
-  const manifest = (version.manifestJson as Record<string, unknown> | null) ?? {};
-  const frontmatter: Record<string, unknown> = {
-    name: manifest.name ?? skill.name,
-    description: manifest.description ?? skill.summary,
-    version: version.version,
-    license: skill.license ?? 'MIT',
-  };
-  if (Array.isArray(manifest.triggers) && manifest.triggers.length > 0) {
-    frontmatter.triggers = manifest.triggers;
-  }
-  const body = version.contentInline ?? skill.descriptionMd ?? '';
-  return `---\n${yaml.dump(frontmatter).trim()}\n---\n\n${body}`;
 }
 
 async function backfillVersionFiles(versionId: string, slug: string, version: string): Promise<void> {

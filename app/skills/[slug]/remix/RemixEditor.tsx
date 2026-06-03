@@ -10,7 +10,8 @@ interface Source {
   slug: string;
   name: string;
   summary: string;
-  descriptionMd: string;
+  descriptionMd: string; // public overview
+  bodyMd: string; // gated SKILL.md body
   categoryId: string | null;
   license: string;
   tokenCostEstimate: number;
@@ -48,14 +49,15 @@ export function RemixEditor({ source, categories }: { source: Source; categories
   const [name, setName] = useState(`${source.name} (Remix)`);
   const [slug, setSlug] = useState(slugify(`${source.slug}-remix`));
   const [summary, setSummary] = useState(source.summary);
-  const [body, setBody] = useState(source.descriptionMd);
+  const [overview, setOverview] = useState(source.descriptionMd);
+  const [body, setBody] = useState(source.bodyMd);
   const [categoryId, setCategoryId] = useState(source.categoryId ?? '');
   const [license, setLicense] = useState(source.license);
   const [tokenCost, setTokenCost] = useState(source.tokenCostEstimate);
   const [view, setView] = useState<'edit' | 'diff'>('edit');
   const [pending, startTransition] = useTransition();
 
-  const diff = useMemo(() => diffLines(source.descriptionMd, body), [source.descriptionMd, body]);
+  const diff = useMemo(() => diffLines(source.bodyMd, body), [source.bodyMd, body]);
   const additions = diff.filter((d) => d.kind === 'add').length;
   const deletions = diff.filter((d) => d.kind === 'del').length;
 
@@ -72,7 +74,8 @@ export function RemixEditor({ source, categories }: { source: Source; categories
           slug,
           name,
           summary,
-          descriptionMd: body,
+          descriptionMd: overview,
+          bodyMd: body,
           categoryId: categoryId || null,
           license,
           tokenCostEstimate: tokenCost,
@@ -102,6 +105,15 @@ export function RemixEditor({ source, categories }: { source: Source; categories
         </div>
         <Field label="一行描述">
           <input value={summary} onChange={(e) => setSummary(e.target.value.slice(0, 140))} maxLength={140} className="input" />
+        </Field>
+        <Field label="Overview / 公开简介（可选，所有人可见）">
+          <textarea
+            value={overview}
+            onChange={(e) => setOverview(e.target.value)}
+            rows={4}
+            placeholder="对所有人公开。受限技能请勿在此放置受保护内容。留空则展示一行描述。"
+            className="input font-mono text-[13px]"
+          />
         </Field>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <Field label="类别">

@@ -232,6 +232,7 @@ model Skill {
   likes          Like[]
   subscriptions  Subscription[]
   accessRequests SkillAccessRequest[]
+  comparison     SkillComparison?
 
   @@index([status, sourceType])
   @@index([visibility, status])
@@ -264,6 +265,25 @@ model SkillAccessRequest {
   @@unique([skillId, userId])
   @@index([skillId, status])
   @@index([userId, status])
+}
+
+// Author-generated, editable "install vs not" comparison shown on a skill's
+// Comparison tab. One row per skill. The `example` JSON holds a real dual-run
+// ({ taskPrompt, withOutput, withoutOutput }); `bodyMd` is the structured
+// analysis report a visitor reads. Generated/edited in the author-side workshop.
+model SkillComparison {
+  id                    String   @id @default(cuid())
+  skillId               String   @unique
+  status                String   @default("draft") // draft | published
+  bodyMd                String?
+  example               Json?
+  guidancePrompt        String?
+  model                 String?
+  generatedForVersionId String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
 }
 
 enum VersionStatus {

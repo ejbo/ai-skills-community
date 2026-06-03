@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { canAccessSkillContent } from '@/lib/access';
 import { RemixEditor } from './RemixEditor';
 
 export const dynamic = 'force-dynamic';
@@ -17,6 +18,21 @@ export default async function RemixPage({ params }: { params: { slug: string } }
     },
   });
   if (!skill || skill.deletedAt || skill.status !== 'published') notFound();
+
+  // You can only remix content you can actually read — otherwise this server
+  // component would hand a restricted skill's gated body to the client.
+  const actor = { id: session.user.id, isAdmin: session.user.isAdmin };
+  let grantStatus: string | null = null;
+  if (skill.visibility === 'restricted' && actor.id !== skill.authorId && !actor.isAdmin) {
+    const g = await prisma.skillAccessRequest.findUnique({
+      where: { skillId_userId: { skillId: skill.id, userId: actor.id } },
+      select: { status: true },
+    });
+    grantStatus = g?.status ?? null;
+  }
+  if (!canAccessSkillContent(skill, actor, grantStatus as never).canContent) {
+    redirect(`/skills/${params.slug}`);
+  }
 
   const categories = await prisma.category.findMany({
     orderBy: { name: 'asc' },
@@ -37,6 +53,7 @@ export default async function RemixPage({ params }: { params: { slug: string } }
               name: skill.name,
               summary: skill.summary,
               descriptionMd: skill.descriptionMd,
+              bodyMd: skill.currentVersion?.contentInline ?? '',
               categoryId: skill.category?.id ?? null,
               license: skill.license ?? 'MIT',
               tokenCostEstimate: skill.tokenCostEstimate,

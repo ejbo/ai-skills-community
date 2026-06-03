@@ -24,6 +24,12 @@ export async function POST(req: Request) {
     visibilityField === 'restricted' || visibilityField === 'private'
       ? visibilityField
       : 'public';
+  // Overview source: 'readme' (default, use the bundle's README.md) or 'custom'
+  // (author-written). SKILL.md is never used as the public overview — it lives
+  // in Files only.
+  const overviewSource = form?.get('overviewSource') === 'custom' ? 'custom' : 'readme';
+  const customOverview =
+    typeof form?.get('customOverview') === 'string' ? (form.get('customOverview') as string) : '';
   if (!(file instanceof File)) {
     return NextResponse.json({ error: 'file_missing' }, { status: 400 });
   }
@@ -73,7 +79,8 @@ export async function POST(req: Request) {
         slug,
         name: String(manifest.name ?? slug),
         summary: String(manifest.description ?? '').slice(0, 200) || `${manifest.name ?? slug}`,
-        descriptionMd: selectReadme(parsed.files) ?? '',
+        descriptionMd:
+          overviewSource === 'custom' ? customOverview : selectReadme(parsed.files) ?? '',
         authorId: session.user.id,
         sourceType: 'user_uploaded',
         skillFormat: 'bundle',

@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, Trash2 } from 'lucide-react';
+import { Loader2, Trash2, Wand2 } from 'lucide-react';
 import type { SkillVisibility } from '@prisma/client';
 import { pushToast } from '@/components/Toaster';
 import { TokenCostBadge } from '@/components/TokenCostBadge';
@@ -13,7 +13,8 @@ interface SkillData {
   slug: string;
   name: string;
   summary: string;
-  descriptionMd: string;
+  descriptionMd: string; // public overview
+  bodyMd: string; // gated SKILL.md body (currentVersion.contentInline)
   categoryId: string | null;
   license: string;
   status: 'draft' | 'published' | 'archived';
@@ -31,7 +32,8 @@ export function EditForm({ skill, categories }: { skill: SkillData; categories: 
   const router = useRouter();
   const [name, setName] = useState(skill.name);
   const [summary, setSummary] = useState(skill.summary);
-  const [body, setBody] = useState(skill.descriptionMd);
+  const [overview, setOverview] = useState(skill.descriptionMd);
+  const [body, setBody] = useState(skill.bodyMd);
   const [categoryId, setCategoryId] = useState(skill.categoryId ?? '');
   const [license, setLicense] = useState(skill.license);
   const [status, setStatus] = useState(skill.status);
@@ -48,7 +50,8 @@ export function EditForm({ skill, categories }: { skill: SkillData; categories: 
         body: JSON.stringify({
           name,
           summary,
-          descriptionMd: body,
+          descriptionMd: overview,
+          bodyMd: body,
           categoryId: categoryId || null,
           license,
           status,
@@ -130,7 +133,16 @@ export function EditForm({ skill, categories }: { skill: SkillData; categories: 
           />
         </Field>
       </div>
-      <Field label="Skill 正文">
+      <Field label="Overview / 公开简介（可选，所有人可见）">
+        <textarea
+          value={overview}
+          onChange={(e) => setOverview(e.target.value)}
+          rows={5}
+          placeholder="对所有人公开（含未获授权用户）。受限技能请勿在此放置受保护内容。留空则展示一行描述。"
+          className="input font-mono text-[13px]"
+        />
+      </Field>
+      <Field label="SKILL.md 正文（受限技能仅授权用户可见）">
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
@@ -160,6 +172,16 @@ export function EditForm({ skill, categories }: { skill: SkillData; categories: 
 
       <Field label="可见性 / 访问权限">
         <VisibilitySelector value={visibility} onChange={setVisibility} />
+      </Field>
+
+      <Field label="对比展示">
+        <Link
+          href={`/skills/${skill.slug}?tab=comparison`}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm transition hover:border-accent-500 hover:text-accent-700 dark:border-zinc-700 dark:hover:text-accent-300"
+        >
+          <Wand2 className="h-3.5 w-3.5" />
+          打开对比工坊（生成「装上 vs 不装」对比）
+        </Link>
       </Field>
 
       <div className="flex items-center justify-between gap-2 pt-2">

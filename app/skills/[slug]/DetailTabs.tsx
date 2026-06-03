@@ -4,23 +4,27 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { motion } from 'framer-motion';
 
-type Tab = 'overview' | 'files' | 'versions' | 'reviews' | 'composition' | 'try_it' | 'manage';
+type Tab = 'overview' | 'files' | 'versions' | 'reviews' | 'composition' | 'comparison' | 'try_it' | 'manage';
 
 export function DetailTabs({
   slug,
   current,
   hasVersions,
+  showComparison = false,
   showManage = false,
   pendingCount = 0,
 }: {
   slug: string;
   current: Tab;
   hasVersions: boolean;
+  showComparison?: boolean;
   showManage?: boolean;
   pendingCount?: number;
 }) {
   const t = useTranslations('detail.tabs');
-  const tabs: Tab[] = ['overview', 'files', 'versions', 'reviews', 'composition', 'try_it'];
+  const tabs: Tab[] = ['overview', 'files', 'versions', 'reviews', 'composition'];
+  if (showComparison) tabs.push('comparison');
+  tabs.push('try_it');
   if (showManage) tabs.push('manage');
 
   return (

@@ -16,7 +16,8 @@ import { BackButton } from '@/components/BackButton';
 import { DetailTabs } from './DetailTabs';
 import { ActionButtons } from './ActionButtons';
 import { ReviewsTab } from './ReviewsTab';
-import { TryItTab } from './TryItTab';
+import { ChatPanel } from './ChatPanel';
+import { ComparisonTab } from './ComparisonTab';
 import { CompositionTab } from './CompositionTab';
 import { AccessRequestPanel, type RequestState } from './AccessRequestPanel';
 import { ManageTab } from './ManageTab';
@@ -59,11 +60,19 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
     grantStatus === 'rejected' ? 'rejected' : grantStatus === 'revoked' ? 'revoked' : grantStatus === 'pending' ? 'pending' : 'none';
   const pendingCount = privileged ? skill._count.accessRequests : 0;
 
-  const t = await getTranslations('detail');
-  const rawTab = (searchParams.tab as 'overview' | 'files' | 'versions' | 'reviews' | 'composition' | 'try_it' | 'manage') ?? 'overview';
-  const tab = rawTab === 'manage' && !privileged ? 'overview' : rawTab;
+  // Legacy/coupled structured skills can have descriptionMd === the gated body
+  // (contentInline). For a restricted viewer the always-public Overview tab would
+  // then leak the protected content, so hide it when there is no DISTINCT public
+  // overview. Data-independent guard (covers legacy rows with no backfill).
+  const overviewLeaksBody =
+    restrictedLocked &&
+    Boolean(skill.descriptionMd) &&
+    skill.descriptionMd === (skill.currentVersion?.contentInline ?? null);
 
-  const [versionCount, isLiked, isFav, isSub] = await Promise.all([
+  const t = await getTranslations('detail');
+  const rawTab = (searchParams.tab as 'overview' | 'files' | 'versions' | 'reviews' | 'composition' | 'comparison' | 'try_it' | 'manage') ?? 'overview';
+
+  const [versionCount, isLiked, isFav, isSub, comparison] = await Promise.all([
     prisma.skillVersion.count({ where: { skillId: skill.id, status: 'published' } }),
     session?.user
       ? prisma.like.findUnique({ where: { userId_skillId: { userId: session.user.id, skillId: skill.id } } })
@@ -74,7 +83,21 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
     session?.user
       ? prisma.subscription.findUnique({ where: { userId_skillId: { userId: session.user.id, skillId: skill.id } } })
       : null,
+    prisma.skillComparison.findUnique({ where: { skillId: skill.id } }),
   ]);
+
+  // The Comparison tab shows for owner/admin always; for visitors only when a
+  // published comparison exists and they may access the skill's content.
+  const hasPublishedComparison = comparison?.status === 'published';
+  const comparisonStale = Boolean(
+    comparison && comparison.generatedForVersionId && comparison.generatedForVersionId !== skill.currentVersionId,
+  );
+  const showComparison = privileged || (hasPublishedComparison && !restrictedLocked);
+
+  const tab =
+    (rawTab === 'manage' && !privileged) || (rawTab === 'comparison' && !showComparison)
+      ? 'overview'
+      : rawTab;
 
   return (
     <div className="container py-8">
@@ -117,10 +140,10 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
                   className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:border-accent-500 hover:bg-accent-500/5 hover:text-accent-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-accent-400 dark:hover:bg-accent-500/10 dark:hover:text-accent-300"
                 >
                   <Download className="h-3.5 w-3.5" />
-                  下载 SKILL.md
+                  下载技能包 (.zip)
                 </a>
                 <span className="font-mono text-[11px]">
-                  手动放到 <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">~/.claude/skills/{skill.slug}/</code>
+                  解压到 <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">~/.claude/skills/{skill.slug}/</code>
                 </span>
               </div>
             </>
@@ -157,6 +180,7 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
           slug={skill.slug}
           current={tab}
           hasVersions={versionCount > 1}
+          showComparison={showComparison}
           showManage={privileged}
           pendingCount={pendingCount}
         />
@@ -165,7 +189,9 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
       <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_240px]">
         <article>
           {tab === 'overview' &&
-            (skill.descriptionMd ? (
+            (overviewLeaksBody ? (
+              <LockedNote />
+            ) : skill.descriptionMd ? (
               <MarkdownRenderer content={skill.descriptionMd} />
             ) : (
               <div className="space-y-3">
@@ -177,7 +203,15 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
           {tab === 'versions' && (restrictedLocked ? <LockedNote /> : <VersionsTab skillId={skill.id} />)}
           {tab === 'reviews' && <ReviewsTab skillId={skill.id} slug={skill.slug} />}
           {tab === 'composition' && (restrictedLocked ? <LockedNote /> : <CompositionTab skillId={skill.id} />)}
-          {tab === 'try_it' && (restrictedLocked ? <LockedNote /> : <TryItTab slug={skill.slug} />)}
+          {tab === 'comparison' && showComparison && (
+            <ComparisonTab
+              slug={skill.slug}
+              privileged={privileged}
+              comparison={comparison}
+              stale={comparisonStale}
+            />
+          )}
+          {tab === 'try_it' && (restrictedLocked ? <LockedNote /> : <ChatPanel slug={skill.slug} />)}
           {tab === 'manage' && privileged && <ManageTab skillId={skill.id} slug={skill.slug} />}
         </article>
         <aside className="space-y-5 text-sm">

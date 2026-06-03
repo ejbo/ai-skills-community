@@ -8,7 +8,10 @@ const createSchema = z.object({
   slug: z.string().min(2).max(64).regex(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/, 'Invalid slug'),
   name: z.string().min(2).max(120),
   summary: z.string().min(1).max(200),
+  // Public overview (shown to everyone, incl. anonymous on restricted skills).
   descriptionMd: z.string().default(''),
+  // The SKILL.md body — gated content for restricted skills (never public).
+  bodyMd: z.string().default(''),
   categoryId: z.string().nullable().optional(),
   tags: z.array(z.string()).default([]),
   triggers: z.array(z.string()).default([]),
@@ -89,7 +92,7 @@ export async function POST(req: Request) {
         major: 1,
         minor: 0,
         patch: 0,
-        contentInline: input.descriptionMd,
+        contentInline: input.bodyMd,
         manifestJson: {
           name: skill.name,
           description: skill.summary,
