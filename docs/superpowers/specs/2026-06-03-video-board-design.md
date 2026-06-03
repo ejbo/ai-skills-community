@@ -333,29 +333,38 @@ videoCommentLikes VideoCommentLike[]
 
 ## 5. 上传 / 存储 / 播放
 
-### 5.1 上传（绕开 6mb 墙）
+### 5.1 视频存哪里（对象存储，绝不入 Postgres）
 
-[next.config.mjs](../../../next.config.mjs) 的 `serverActions.bodySizeLimit='6mb'` 对视频远远不够。**必须用 `@vercel/blob` 客户端直传**（`@vercel/blob@0.27.3` 已导出 `./client` 子路径，已验证）：
+- 视频文件存**对象存储（object/blob storage）**，数据库里**只存元数据 + 一个 URL/key**。这是所有大型视频站的标准做法。
+- **不要存进 Postgres。** 把视频字节塞进数据库（`bytea`/large object）是公认反模式，对性能/运维是实打实的伤害：①库体积爆炸，备份/恢复/复制变巨慢且昂贵；②每次读取把大对象灌进 DB 内存与连接，挤掉正常查询缓存；③无法走 CDN、无法天然 HTTP Range 拖动（要自写流式，又回到"代理字节"的坑）；④Postgres 单字段上限 1GB，长视频顶不住。**结论：DB 存元数据，文件存对象存储。**
+- **外部 → 内部（与 AI 同一套路线）**：
+  - 现在（外部）：用 skill 包已在用的 **Vercel Blob**（或任意 S3 兼容云存储），浏览器**直传**。
+  - 日后（内部）：切**内网 S3 兼容对象存储**（MinIO / 华为 OBS / 自建），上传走 **S3 presigned PUT**（与 Vercel Blob 直传等价：浏览器直传到对象存储、不经过 Next），播放走 presigned GET 或内网 CDN。
+  - 做法：把视频存储收敛到适配器接口 `lib/video/storage.ts`（仿 `lib/llm` 的 provider 抽象）——外部适配器＝Vercel Blob 直传，内部适配器＝S3 presigned。**换存储＝换适配器＋改 env，业务代码不动。**
+
+### 5.2 上传（直传：绕开 6mb 墙，不强加大小限制）
+
+[next.config.mjs](../../../next.config.mjs) 的 `serverActions.bodySizeLimit='6mb'` 是 **Next.js 自带的请求体上限**（限制"经 Next 服务器提交的表单/请求体"大小），**不是我们要给视频设的限制**。普通"文件→Next 服务器→存储"的上传会撞这 6mb 墙。**正因为不想限制视频大小，才改成浏览器直传到对象存储**——直传不经过 Next，这个 6mb 完全不适用，视频可以很大。**必须用客户端直传**（`@vercel/blob@0.27.3` 已导出 `./client` 子路径，已验证；内部 S3 用 presigned PUT 同理）：
 
 1. `VideoUploadForm`（client）调 `upload(pathname, file, { access:'public', handleUploadUrl:'/api/videos/blob-upload', clientPayload, onUploadProgress })` 传 MP4，再传封面图。
-2. `/api/videos/blob-upload` 跑 `handleUpload`，`onBeforeGenerateToken` 内**校验 admin**（`auth()` 读转发 cookie；非 admin 抛错 → 不发 token）、限 `allowedContentTypes`（视频 `['video/mp4']`，封面 `image/*`）、限 `maximumSizeInBytes`。
+2. `/api/videos/blob-upload` 跑 `handleUpload`，`onBeforeGenerateToken` 内**校验 admin**（`auth()` 读转发 cookie；非 admin 抛错 → 不发 token）、限 `allowedContentTypes`（视频 `['video/mp4']`，封面 `image/*`）、可选地设一个**较大的** `maximumSizeInBytes` 安全阀（防误传异常超大文件，不是限制正常视频；也可不设）。
 3. 浏览器拿到 `blob.url + pathname`。
 4. 表单 `POST /api/videos` 提交小 JSON 元数据建库。
 5. 时长由前端 `<video>.loadedmetadata` 的 `videoEl.duration` 读出存 `durationSec`，免 ffprobe。
 
-> 视频上传**绕过 `lib/storage`**，在 `lib/video/blob.ts` 内独立设 `addRandomSuffix:true`，得到不可猜的"能力 URL"。
+> 视频上传**绕过 `lib/storage`**，在独立的 `lib/video/storage.ts`（外部适配器）内设 `addRandomSuffix:true`，得到不可猜的"能力 URL"。
 
-### 5.2 播放与流式
+### 5.3 播放与流式
 
 - `components/video/VideoPlayer.tsx`（`'use client'`）：原生 `<video controls preload="metadata" playsInline poster={posterUrl}><source src={videoUrl} type="video/mp4"/></video>`。直接吃 Blob URL → **天然 HTTP Range/拖动**，无需自写 range handler。
 - **绝不代理字节**：已确认 [lib/storage/local.ts](../../../lib/storage) 的 `storage.get` 把整对象读进 Buffer、[app/api/storage/[...key]/route.ts](../../../app/api/storage) 一次性返回——对 ~5MB zip 没问题，对视频是致命的（每个观看者整文件进内存、毁掉 Range/拖动、拖垮函数）。
 
-### 5.3 访问控制（MVP）
+### 5.4 访问控制（MVP）
 
 - 全站登录墙（见 §7）。视频 URL 仅在服务端判定"已授权"后才渲染给前端；未授权只给封面 + 登录墙，前端永远拿不到 URL。
 - 不可猜的能力 URL（`addRandomSuffix:true`）作为 MVP 的事实门禁；按请求签发的短时签名 URL + 私有 Blob 推迟 phase-2。
 
-### 5.4 搜索（MVP）
+### 5.5 搜索（MVP）
 
 Prisma `contains + mode:'insensitive'`（ILIKE）匹配 `title/descriptionMd`，叠加 `status=published`、`deletedAt:null`、可见性过滤——即 [app/manage/skills/page.tsx](../../../app/manage/skills) 的现成写法。Postgres 全文/`pg_trgm` 排序推迟 phase-2。
 
@@ -363,7 +372,7 @@ Prisma `contains + mode:'insensitive'`（ILIKE）匹配 `title/descriptionMd`，
 
 ### 6.1 后端
 
-全程复用 [lib/llm](../../../lib/llm) 的 `getProvider()`（供应商无关、env 切换；默认 `AnthropicProvider` + `claude-haiku-4-5-20251001`，已验证 `lib/llm/config.ts:7`）。**不新增任何 SDK/provider/model 接线**。摘要用 `complete()` 一次性；对话用 `streamDeltas() + toSseResponseStream()`——与现有 skill chat 路由同源。
+全程复用 [lib/llm](../../../lib/llm) 的 `getProvider()`（供应商无关、env 切换；默认 `AnthropicProvider` + `claude-haiku-4-5-20251001`，已验证 `lib/llm/config.ts:7`）。**不新增任何 SDK/provider/model 接线**。**外部→内部**：v1 用外部 Anthropic，日后切内网只把 `LLM_PROVIDER/LLM_BASE_URL/LLM_API_KEY/LLM_MODEL` 指向内网 OpenAI 兼容网关，零代码改动（与视频存储同一套"外部先行、内部后续"路线）。摘要用 `complete()` 一次性；对话用 `streamDeltas() + toSseResponseStream()`——与现有 skill chat 路由同源。
 
 ### 6.2 纯函数 `lib/video/ai.ts`（仿 `lib/skill-context.ts`，无 DB/env/LLM 依赖）
 
@@ -405,7 +414,29 @@ AI 摘要/对话的输出语言**跟界面语言走**（next-intl locale，zh-CN
 
 视频侧访问判定全部走独立的 `lib/video/access.ts`（纯模块），**不碰** `lib/access.ts`。
 
-## 8. 前端组件树
+## 8. 前端
+
+### 8.1 首页（feed）：Netflix / YouTube 风格视觉与交互
+
+**布局与逻辑**
+- **Hero / Billboard（Netflix 式）**：顶部精选一支访谈（`featured=true`），大图或静音自动播放预览、底部渐变压暗、标题＋嘉宾＋一句话＋「播放／更多信息」CTA；多支精选可轮播。
+- **分类横向 rails（Netflix 式行）**：多条横向滚动卡片行，每行一个主题——「最新」(`publishedAt`)、「热门」(`trendingScore`)、按 `VideoCategory` 各成一行、「稍后看」(`VideoFavorite`)；箭头／滑动滚动并吸附。
+- **卡片 hover 预览（YouTube/Netflix 式）**：悬停卡片放大＋抬升＋阴影，静音自动播放前几秒预览，浮出时长／标题／嘉宾／计数；移开还原。**只播被悬停的那一张**，避免同时拉多路流。
+- **全量浏览网格（YouTube 式）**：`/videos` 响应式网格，封面优先、时长角标。
+- **无限滚动＋骨架屏**：滚到底懒加载下一页；加载用 shimmer 骨架占位，靠已存的 `width/height` 预留宽高比避免抖动（CLS）。
+
+**动效与视觉（复用已有的 `framer-motion`）**
+- 卡片 hover：scale＋translateY＋shadow，spring 过渡。
+- rail 滚动：惯性/吸附，箭头淡入淡出。
+- 路由切换：fade/slide；详情进入可用 `layoutId` 做卡片→详情共享元素放大（phase-2）。
+- 骨架：shimmer 扫光。
+- 暗色优先、海报为主、强调色用现有 accent；**尊重 `prefers-reduced-motion`**（无障碍降级动画）。
+
+**数据来源（全部已在模型里）**：`featured/featuredAt`（Hero）、`trendingScore`（热门）、`publishedAt`（最新）、`categoryId`（分类行）、`VideoFavorite`（稍后看）、`posterUrl/durationSec/width/height`（卡片）。hover 预览＝MVP 直接 `<video muted>` 拉 `videoUrl` 前几秒；真正的预览雪碧/转码短片 phase-2。
+
+> 真正落地这套视觉/动效时，会走 `frontend-design` skill 出高质量实现；本节先锁定方向与信息架构。
+
+### 8.2 组件清单
 
 | 组件 | 位置 | 作用 |
 |---|---|---|
@@ -464,11 +495,12 @@ AI 摘要/对话的输出语言**跟界面语言走**（next-intl locale，zh-CN
 
 ## 13. 需用户/运维确认的外部前提
 
-1. **LLM 后端可达性**：内网能否实际访问 LLM 端点（`api.anthropic.com` 或内网 OpenAI 兼容 `LLM_BASE_URL`）、用哪个模型。skill chat 已假定其可用，视频沿用同一套。
-2. **文字稿来源**：v1 用管理员**粘贴** `transcriptText`（无 ASR）。无文字稿时摘要/对话会偏弱/泛化——确认可接受。
-3. **存储/带宽预算**：Vercel Blob 的单视频上限与总容量/带宽预算，决定 `maximumSizeInBytes` 与是否提前需要分片续传。
+1. **LLM 后端（已定：外部先行、内部后续）**：v1 用外部 Anthropic（`api.anthropic.com`）；后续切内网 OpenAI 兼容网关，仅改 `LLM_*` env。需确认外部端点从部署环境可达，以及后续内网网关地址/模型。
+2. **存储后端（已定：外部先行、内部后续）**：v1 用 Vercel Blob 直传；后续切内网 S3 兼容对象存储（MinIO / 华为 OBS）走 presigned PUT/GET。需确认外部 Blob 配额，以及后续内网对象存储的 endpoint/bucket/凭证。
+3. **文字稿来源**：v1 用管理员**粘贴** `transcriptText`（无 ASR）。无文字稿时摘要/对话会偏弱/泛化——确认可接受。
+4. **容量/带宽预算**：单视频体量与总容量/带宽预算，决定可选的 `maximumSizeInBytes` 安全阀大小、以及是否提前需要分片续传（默认不给正常视频设小限制）。
 
-> 已拍板：浏览=全站登录墙；评论=即时发布+admin 事后软删；AI 输出语言=跟界面语言；匿名 AI 对话=不允许。
+> 已拍板：浏览=全站登录墙；评论=即时发布+admin 事后软删；AI 输出语言=跟界面语言；匿名 AI 对话=不允许；**视频存对象存储（不入 Postgres）**；**存储与 LLM 同走"外部先行、内部后续"、经适配器抽象切换**；**不给正常视频设大小限制（仅可选大安全阀）**。
 
 ## 14. 验收标准
 
