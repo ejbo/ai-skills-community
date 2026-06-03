@@ -1,6 +1,7 @@
 {
   "nav": {
     "browse": "浏览",
+    "videos": "视频",
     "categories": "类别",
     "docs": "文档",
     "upload": "上传",
@@ -158,5 +159,97 @@
     "internal": "内部专用",
     "community": "社区上传",
     "curated": "官方搬运"
+  },
+  "video": {
+    "nav": "视频",
+    "home": { "watch": "播放", "more": "详情", "featured": "精选" },
+    "feed": {
+      "title": "视频",
+      "search_placeholder": "搜索视频…",
+      "sort_latest": "最新",
+      "sort_trending": "热门",
+      "sort_popular": "最多观看",
+      "all_categories": "全部",
+      "no_results": "没有匹配的视频",
+      "no_results_hint": "换个关键词或分类试试",
+      "load_more": "加载更多"
+    },
+    "detail": {
+      "views": "次观看",
+      "like": "点赞",
+      "favorite": "稍后看",
+      "share": "分享",
+      "copied": "已复制链接",
+      "related": "相关视频",
+      "description": "简介",
+      "guest": "嘉宾",
+      "by": "上传者"
+    },
+    "ai": {
+      "summary_title": "AI 摘要",
+      "chat_title": "就本视频提问",
+      "generate": "生成",
+      "regenerate": "重新生成",
+      "generating": "生成中…",
+      "summary_empty": "暂无摘要。",
+      "chat_placeholder": "关于这个视频，问我任何问题…",
+      "chat_empty": "就这个视频向 AI 提问，例如：",
+      "starter1": "总结一下要点",
+      "starter2": "嘉宾是谁？",
+      "starter3": "这期讨论了什么问题？",
+      "send": "发送",
+      "thinking": "思考中…"
+    },
+    "comments": {
+      "title": "评论",
+      "placeholder": "添加评论…",
+      "post": "评论",
+      "empty": "还没有评论 — 来抢沙发吧。",
+      "sort_top": "最热",
+      "sort_newest": "最新",
+      "reply": "回复",
+      "view_replies": "查看 {count} 条回复",
+      "hide_replies": "收起回复",
+      "edit": "编辑",
+      "delete": "删除",
+      "save": "保存",
+      "cancel": "取消",
+      "edited": "已编辑",
+      "deleted": "[已删除]",
+      "load_more": "加载更多"
+    },
+    "manage": {
+      "title": "视频管理",
+      "new": "新建视频",
+      "list_empty": "暂无视频",
+      "f_title": "标题",
+      "f_slug": "Slug",
+      "f_summary": "一句话简介",
+      "f_description": "详细描述",
+      "f_category": "分类",
+      "f_tags": "标签",
+      "f_transcript": "文字稿（供 AI 使用）",
+      "f_status": "状态",
+      "f_visibility": "可见性",
+      "f_language": "语言",
+      "f_interviewee": "受访嘉宾",
+      "upload_video": "上传视频",
+      "upload_poster": "上传封面",
+      "uploading": "上传中…",
+      "save_draft": "存草稿",
+      "publish": "发布",
+      "save": "保存",
+      "delete": "删除",
+      "delete_confirm": "确定删除这个视频？",
+      "regenerate_summary": "重新生成 AI 摘要"
+    },
+    "status": {
+      "draft": "草稿",
+      "processing": "处理中",
+      "published": "已发布",
+      "unlisted": "不公开列出",
+      "archived": "已归档"
+    },
+    "login_required": "请先登录"
   }
 }
