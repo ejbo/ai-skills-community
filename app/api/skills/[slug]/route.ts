@@ -18,6 +18,8 @@ const updateSchema = z.object({
   status: z.enum(['draft', 'published', 'archived']).optional(),
   visibility: z.enum(['public', 'restricted', 'private']).optional(),
   tokenCostEstimate: z.number().int().min(0).max(50000).optional(),
+  tags: z.array(z.string()).optional(),
+  triggers: z.array(z.string()).optional(),
 });
 
 async function loadOwned(slug: string, userId: string) {
@@ -85,18 +87,41 @@ export async function PUT(req: Request, { params }: { params: { slug: string } }
     return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
   }
 
-  // bodyMd is not a Skill column — it updates the current version's gated content.
-  const { bodyMd, ...skillData } = parsed.data;
-  const updated = await prisma.skill.update({
-    where: { id: owned.id },
-    data: skillData,
-  });
+  // bodyMd → current version's gated content; tags/triggers have their own
+  // tables / JSON column. Everything else maps straight onto Skill columns.
+  const { bodyMd, tags, triggers, ...skillData } = parsed.data;
+  const data: Record<string, unknown> = { ...skillData };
+  if (triggers) {
+    data.structuredPayload = { ...(owned.structuredPayload as object | null), triggers };
+  }
+  const updated = await prisma.skill.update({ where: { id: owned.id }, data });
+
   if (typeof bodyMd === 'string' && owned.currentVersionId) {
     await prisma.skillVersion.update({
       where: { id: owned.currentVersionId },
       data: { contentInline: bodyMd, tokenCost: estimateTokenCost(bodyMd) },
     });
   }
+
+  if (tags) {
+    // Replace the skill's tag set with the provided list.
+    await prisma.skillTag.deleteMany({ where: { skillId: owned.id } });
+    for (const tagName of tags) {
+      const tagSlug = tagName.toLowerCase().replace(/[^a-z0-9-]/g, '');
+      if (!tagSlug) continue;
+      const tag = await prisma.tag.upsert({
+        where: { slug: tagSlug },
+        update: {},
+        create: { slug: tagSlug, name: tagName, usageCount: 1 },
+      });
+      await prisma.skillTag.upsert({
+        where: { skillId_tagId: { skillId: owned.id, tagId: tag.id } },
+        update: {},
+        create: { skillId: owned.id, tagId: tag.id },
+      });
+    }
+  }
+
   return NextResponse.json({ skill: updated });
 }
 

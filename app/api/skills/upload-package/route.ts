@@ -11,25 +11,54 @@ function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
 }
 
+function str(form: FormData, key: string): string | undefined {
+  const v = form.get(key);
+  return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+}
+
+/** Parse a list field that may be JSON (`["a","b"]`) or comma/space separated. */
+function list(form: FormData, key: string): string[] | undefined {
+  const raw = form.get(key);
+  if (typeof raw !== 'string' || !raw.trim()) return undefined;
+  try {
+    const j = JSON.parse(raw);
+    if (Array.isArray(j)) return j.map((x) => String(x).trim()).filter(Boolean);
+  } catch {
+    /* not JSON — fall through */
+  }
+  return raw.split(/[,\n]+/).map((s) => s.trim()).filter(Boolean);
+}
+
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
   const form = await req.formData().catch(() => null);
-  const file = form?.get('file');
-  const publishField = form?.get('publish');
-  const slugOverride = form?.get('slug');
-  const visibilityField = form?.get('visibility');
+  if (!form) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
+
+  const file = form.get('file');
+  const publish = form.get('publish') === 'true' || form.get('publish') === '1';
+  const visibilityField = form.get('visibility');
   const visibility =
-    visibilityField === 'restricted' || visibilityField === 'private'
-      ? visibilityField
-      : 'public';
-  // Overview source: 'readme' (default, use the bundle's README.md) or 'custom'
-  // (author-written). SKILL.md is never used as the public overview — it lives
-  // in Files only.
-  const overviewSource = form?.get('overviewSource') === 'custom' ? 'custom' : 'readme';
-  const customOverview =
-    typeof form?.get('customOverview') === 'string' ? (form.get('customOverview') as string) : '';
+    visibilityField === 'restricted' || visibilityField === 'private' ? visibilityField : 'public';
+
+  // Author-supplied metadata overrides (from the unified upload form). When a
+  // field is absent we derive it from the SKILL.md manifest / README instead.
+  const nameOverride = str(form, 'name');
+  const summaryOverride = str(form, 'summary');
+  const slugOverride = str(form, 'slug');
+  const licenseOverride = str(form, 'license');
+  const categoryId = str(form, 'categoryId');
+  const tagsOverride = list(form, 'tags');
+  const triggersOverride = list(form, 'triggers');
+  const tokenCostRaw = str(form, 'tokenCostEstimate');
+  const tokenCostOverride = tokenCostRaw !== undefined ? Number(tokenCostRaw) : undefined;
+
+  // Overview source: 'readme' (use the bundle's README.md) or 'custom' (author-written).
+  // SKILL.md is never used as the public overview — it lives in Files only.
+  const overviewSource = form.get('overviewSource') === 'custom' ? 'custom' : 'readme';
+  const customOverview = str(form, 'customOverview') ?? '';
+
   if (!(file instanceof File)) {
     return NextResponse.json({ error: 'file_missing' }, { status: 400 });
   }
@@ -46,14 +75,15 @@ export async function POST(req: Request) {
   try {
     parsed = await parseSkillBundle(buffer);
   } catch (e) {
-    return NextResponse.json({ error: 'parse_failed', reason: e instanceof Error ? e.message : 'unknown' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'parse_failed', reason: e instanceof Error ? e.message : 'unknown' },
+      { status: 400 },
+    );
   }
 
   const manifest = parsed.manifest;
   const slug = slugify(
-    (typeof slugOverride === 'string' && slugOverride) ||
-      (typeof manifest.name === 'string' ? manifest.name : 'skill') ||
-      'skill',
+    slugOverride || (typeof manifest.name === 'string' ? manifest.name : 'skill') || 'skill',
   );
   if (!slug) return NextResponse.json({ error: 'invalid_slug' }, { status: 400 });
   const existing = await prisma.skill.findUnique({ where: { slug } });
@@ -68,29 +98,34 @@ export async function POST(req: Request) {
   }
   const [major, minor, patch] = versionParts;
 
+  const triggers = triggersOverride ?? (Array.isArray(manifest.triggers) ? manifest.triggers : []);
+  const tokenCost =
+    tokenCostOverride !== undefined && Number.isFinite(tokenCostOverride) && tokenCostOverride >= 0
+      ? Math.min(Math.round(tokenCostOverride), 50000)
+      : parsed.tokenCost;
+
   const storageKey = skillBundleKey(slug, version);
   const url = await storage.put(storageKey, buffer, 'application/zip');
-
-  const publish = publishField === 'true' || publishField === '1';
 
   const created = await prisma.$transaction(async (tx) => {
     const skill = await tx.skill.create({
       data: {
         slug,
-        name: String(manifest.name ?? slug),
-        summary: String(manifest.description ?? '').slice(0, 200) || `${manifest.name ?? slug}`,
+        name: nameOverride ?? String(manifest.name ?? slug),
+        summary:
+          (summaryOverride ?? String(manifest.description ?? '')).slice(0, 200) ||
+          `${manifest.name ?? slug}`,
         descriptionMd:
           overviewSource === 'custom' ? customOverview : selectReadme(parsed.files) ?? '',
         authorId: session.user.id,
+        categoryId: categoryId ?? null,
         sourceType: 'user_uploaded',
         skillFormat: 'bundle',
         status: publish ? 'published' : 'draft',
         visibility,
-        tokenCostEstimate: parsed.tokenCost,
-        license: typeof manifest.license === 'string' ? manifest.license : 'MIT',
-        structuredPayload: Array.isArray(manifest.triggers)
-          ? { triggers: manifest.triggers }
-          : undefined,
+        tokenCostEstimate: tokenCost,
+        license: licenseOverride ?? (typeof manifest.license === 'string' ? manifest.license : 'MIT'),
+        structuredPayload: triggers.length > 0 ? { triggers } : undefined,
       },
     });
     const v = await tx.skillVersion.create({
@@ -106,24 +141,41 @@ export async function POST(req: Request) {
         fileCount: parsed.files.length,
         totalBytes: parsed.totalBytes,
         checksumSha256: parsed.checksum,
-        tokenCost: parsed.tokenCost,
+        tokenCost,
         status: publish ? 'published' : 'draft',
         publishedAt: publish ? new Date() : null,
       },
     });
     if (parsed.files.length > 0) {
       await tx.skillFile.createMany({
-        data: parsed.files.map((file) => ({
+        data: parsed.files.map((f) => ({
           versionId: v.id,
-          path: file.path,
-          size: file.size,
-          isText: file.isText,
-          content: file.content,
-          truncated: file.truncated,
+          path: f.path,
+          size: f.size,
+          isText: f.isText,
+          content: f.content,
+          truncated: f.truncated,
         })),
       });
     }
     await tx.skill.update({ where: { id: skill.id }, data: { currentVersionId: v.id } });
+
+    if (tagsOverride && tagsOverride.length > 0) {
+      for (const tagName of tagsOverride) {
+        const tagSlug = tagName.toLowerCase().replace(/[^a-z0-9-]/g, '');
+        if (!tagSlug) continue;
+        const tag = await tx.tag.upsert({
+          where: { slug: tagSlug },
+          update: { usageCount: { increment: 1 } },
+          create: { slug: tagSlug, name: tagName, usageCount: 1 },
+        });
+        await tx.skillTag.upsert({
+          where: { skillId_tagId: { skillId: skill.id, tagId: tag.id } },
+          update: {},
+          create: { skillId: skill.id, tagId: tag.id },
+        });
+      }
+    }
     return skill;
   });
 
@@ -131,12 +183,12 @@ export async function POST(req: Request) {
     ok: true,
     skill: { slug: created.slug, id: created.id, status: created.status },
     parsed: {
-      name: manifest.name,
-      description: manifest.description,
+      name: created.name,
+      description: created.summary,
       version,
       fileCount: parsed.files.length,
       totalBytes: parsed.totalBytes,
-      tokenCost: parsed.tokenCost,
+      tokenCost,
     },
   });
 }

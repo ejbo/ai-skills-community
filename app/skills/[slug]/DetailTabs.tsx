@@ -31,7 +31,12 @@ export function DetailTabs({
     <div className="flex gap-1 overflow-x-auto border-b border-zinc-200 dark:border-zinc-800 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {tabs.map((tab) => {
         const active = tab === current;
-        const href = tab === 'overview' ? `/skills/${slug}` : `/skills/${slug}?tab=${tab}`;
+        const href =
+          tab === 'overview'
+            ? `/skills/${slug}`
+            : tab === 'manage'
+              ? `/skills/${slug}/manage`
+              : `/skills/${slug}?tab=${tab}`;
         const label = tab === 'manage' ? '管理' : t(tab);
         return (
           <Link

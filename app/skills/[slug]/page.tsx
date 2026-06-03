@@ -20,7 +20,6 @@ import { ChatPanel } from './ChatPanel';
 import { ComparisonTab } from './ComparisonTab';
 import { CompositionTab } from './CompositionTab';
 import { AccessRequestPanel, type RequestState } from './AccessRequestPanel';
-import { ManageTab } from './ManageTab';
 import { FilesTab } from './FilesTab';
 
 export const dynamic = 'force-dynamic';
@@ -94,10 +93,9 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
   );
   const showComparison = privileged || (hasPublishedComparison && !restrictedLocked);
 
+  // `manage` is now its own page (/skills/[slug]/manage); never render it inline.
   const tab =
-    (rawTab === 'manage' && !privileged) || (rawTab === 'comparison' && !showComparison)
-      ? 'overview'
-      : rawTab;
+    rawTab === 'manage' || (rawTab === 'comparison' && !showComparison) ? 'overview' : rawTab;
 
   return (
     <div className="container py-8">
@@ -212,7 +210,6 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
             />
           )}
           {tab === 'try_it' && (restrictedLocked ? <LockedNote /> : <ChatPanel slug={skill.slug} />)}
-          {tab === 'manage' && privileged && <ManageTab skillId={skill.id} slug={skill.slug} />}
         </article>
         <aside className="space-y-5 text-sm">
           <StatBlock label={t('downloads')} value={skill.downloadCount.toLocaleString()} icon={<TokenCostBadge tokens={skill.tokenCostEstimate} compact />} />
