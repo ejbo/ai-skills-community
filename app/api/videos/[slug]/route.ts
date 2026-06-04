@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { logAdmin } from '@/lib/audit';
-import { deleteVideoBlob } from '@/lib/video/storage';
+import { deleteVideoFile } from '@/lib/video/storage';
 
 const updateSchema = z.object({
   title: z.string().min(1).max(300).optional(),
@@ -11,9 +11,9 @@ const updateSchema = z.object({
   summary: z.string().max(2000).optional(),
   descriptionMd: z.string().max(50000).optional(),
   categorySlug: z.string().nullable().optional(),
-  videoUrl: z.string().url().optional(),
+  videoUrl: z.string().max(2000).optional(),
   videoKey: z.string().optional(),
-  posterUrl: z.string().url().nullable().optional(),
+  posterUrl: z.string().max(2000).nullable().optional(),
   posterKey: z.string().optional(),
   durationSec: z.number().int().min(0).optional(),
   width: z.number().int().min(0).optional(),
@@ -126,7 +126,8 @@ export async function DELETE(req: Request, { params }: { params: { slug: string 
   if (!video || video.deletedAt) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   await prisma.video.update({ where: { id: video.id }, data: { deletedAt: new Date() } });
-  await deleteVideoBlob(video.videoUrl);
+  await deleteVideoFile(video.videoKey);
+  await deleteVideoFile(video.posterKey);
 
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
   await logAdmin({
