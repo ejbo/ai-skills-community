@@ -77,7 +77,7 @@ export function VideoRail({ title, href, videos }: VideoRailProps) {
         <div
           ref={scrollerRef}
           onScroll={updateArrows}
-          className="-mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth px-1 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="-mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth px-1 pt-5 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {videos.map((video) => (
             <div

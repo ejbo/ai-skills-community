@@ -147,7 +147,7 @@ export function CommentItem({ slug, comment, currentUser, onChanged }: Props) {
         // eslint-disable-next-line @next/next/no-img-element
         <img src={author.avatarUrl} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
       ) : (
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-500 text-xs font-semibold text-white">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-xs font-semibold text-zinc-700 dark:bg-zinc-700 dark:text-zinc-100">
           {author.displayName.charAt(0)}
         </div>
       )}
@@ -179,7 +179,7 @@ export function CommentItem({ slug, comment, currentUser, onChanged }: Props) {
               <button
                 onClick={saveEdit}
                 disabled={savingEdit || !editDraft.trim()}
-                className="flex h-8 items-center gap-1.5 rounded-lg bg-accent-500 px-3 text-xs font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+                className="flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
               >
                 {savingEdit && <Loader2 className="h-3 w-3 animate-spin" />}
                 {t('comments.save')}
@@ -255,7 +255,7 @@ export function CommentItem({ slug, comment, currentUser, onChanged }: Props) {
         {!comment.parentId && replyCount > 0 && (
           <button
             onClick={toggleReplies}
-            className="mt-2 flex items-center gap-1 text-xs font-medium text-accent-600 transition hover:text-accent-700"
+            className="mt-2 flex items-center gap-1 text-xs font-medium text-zinc-700 transition hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100"
           >
             {loadingReplies ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />

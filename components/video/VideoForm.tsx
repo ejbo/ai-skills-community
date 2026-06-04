@@ -334,7 +334,7 @@ export function VideoForm({
             type="button"
             disabled={submitting !== null}
             onClick={() => submit('published')}
-            className="flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-accent-500 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+            className="flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-zinc-900 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
           >
             {submitting === 'published' && <Loader2 className="h-4 w-4 animate-spin" />}
             {mode === 'create' ? t('manage.publish') : t('manage.save')}

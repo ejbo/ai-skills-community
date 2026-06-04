@@ -11,6 +11,7 @@ import { VideoRail } from '@/components/video/VideoRail';
 import { VideoGrid } from '@/components/video/VideoGrid';
 import { CategoryBar } from '@/components/video/CategoryBar';
 import { VideoSort } from '@/components/video/VideoSort';
+import { VideoBreadcrumb } from '@/components/video/VideoBreadcrumb';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,8 +38,11 @@ export default async function VideosPage({ searchParams }: { searchParams: Searc
 
     return (
       <div className="animate-fade-in">
+        <div className="container pt-4">
+          <VideoBreadcrumb items={[{ label: t('nav') }]} />
+        </div>
         {feed.hero.length > 0 && (
-          <div className="container pt-4 sm:pt-6">
+          <div className="container">
             <HomeHero videos={feed.hero} />
           </div>
         )}
@@ -65,8 +69,14 @@ export default async function VideosPage({ searchParams }: { searchParams: Searc
     page: currentPage,
   });
 
+  const activeCat = searchParams.category
+    ? categories.find((c) => c.slug === searchParams.category)
+    : null;
+  const browseLeaf = activeCat ? activeCat.name : searchParams.q ? `“${searchParams.q}”` : t('feed.title');
+
   return (
     <div className="container animate-fade-in py-6">
+      <VideoBreadcrumb items={[{ label: t('nav'), href: '/videos' }, { label: browseLeaf }]} />
       <div className="space-y-4">
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{t('feed.title')}</h1>
         <SearchBar />

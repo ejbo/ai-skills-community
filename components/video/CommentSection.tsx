@@ -85,7 +85,7 @@ export function CommentSection({ slug, initialComments, initialCursor, currentUs
             onClick={() => changeSort('top')}
             className={`rounded-md px-2.5 py-1 font-medium transition ${
               sort === 'top'
-                ? 'bg-accent-500/10 text-accent-700 dark:text-accent-300'
+                ? 'bg-zinc-200/70 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100'
                 : 'text-muted hover:text-zinc-700 dark:hover:text-zinc-200'
             }`}
           >
@@ -95,7 +95,7 @@ export function CommentSection({ slug, initialComments, initialCursor, currentUs
             onClick={() => changeSort('newest')}
             className={`rounded-md px-2.5 py-1 font-medium transition ${
               sort === 'newest'
-                ? 'bg-accent-500/10 text-accent-700 dark:text-accent-300'
+                ? 'bg-zinc-200/70 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100'
                 : 'text-muted hover:text-zinc-700 dark:hover:text-zinc-200'
             }`}
           >

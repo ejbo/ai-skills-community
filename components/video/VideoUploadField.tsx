@@ -146,9 +146,9 @@ export function VideoUploadField({
           type="button"
           disabled={uploading}
           onClick={() => inputRef.current?.click()}
-          className="surface flex w-full items-center gap-3 rounded-lg border-dashed p-3 text-left transition hover:border-accent-500 disabled:opacity-70"
+          className="surface flex w-full items-center gap-3 rounded-lg border-dashed p-3 text-left transition hover:border-zinc-400 disabled:opacity-70 dark:hover:border-zinc-500"
         >
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent-500/15 text-accent-600">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-200">
             <UploadCloud className="h-4 w-4" />
           </span>
           <div className="min-w-0 flex-1">
@@ -160,7 +160,7 @@ export function VideoUploadField({
                 </div>
                 <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
                   <div
-                    className="h-full rounded-full bg-accent-500 transition-all"
+                    className="h-full rounded-full bg-zinc-800 transition-all dark:bg-zinc-200"
                     style={{ width: `${progress}%` }}
                   />
                 </div>

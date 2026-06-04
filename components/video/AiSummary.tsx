@@ -1,12 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2, Sparkles } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 
+// Content-only: the surrounding fixed-height container + title live in AiPanel.
+// The summary is pre-generated on upload, so this only fetches the cached value.
 export function AiSummary({ slug }: { slug: string }) {
   const t = useTranslations('video');
+  const tc = useTranslations('common');
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<string | null>(null);
 
@@ -31,15 +34,11 @@ export function AiSummary({ slug }: { slug: string }) {
   }, [slug]);
 
   return (
-    <div className="surface rounded-2xl p-4">
-      <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
-        <Sparkles className="h-4 w-4 text-accent-600" />
-        {t('ai.summary_title')}
-      </div>
+    <div className="h-full overflow-auto p-4">
       {loading ? (
         <div className="flex items-center gap-1.5 text-sm text-muted">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          {t('ai.generating')}
+          {tc('loading')}
         </div>
       ) : summary ? (
         <MarkdownRenderer content={summary} />

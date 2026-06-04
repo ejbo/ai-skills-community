@@ -5,6 +5,8 @@ import { auth } from '@/lib/auth';
 import { browseVideos } from '@/lib/video/queries';
 import { parseVideoSort } from '@/lib/video/types';
 import { uniqueVideoSlug } from '@/lib/video/slug';
+import { generateVideoSummary } from '@/lib/video/summary';
+import { cookies } from 'next/headers';
 
 // GET /api/videos?q=&category=&sort=&page= (login) -> { videos, hasMore, page }
 export async function GET(req: Request) {
@@ -117,8 +119,17 @@ export async function POST(req: Request) {
           }
         : undefined,
     },
-    select: { slug: true },
+    select: { id: true, slug: true },
   });
+
+  // Generate the AI summary ONCE, now (best-effort — upload must not fail if the
+  // LLM is unconfigured or errors). Viewers only ever read the cached value.
+  try {
+    const locale = cookies().get('locale')?.value;
+    await generateVideoSummary(video.id, locale);
+  } catch {
+    /* ignore — can be regenerated later from the admin edit page */
+  }
 
   return NextResponse.json({ ok: true, slug: video.slug });
 }

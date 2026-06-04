@@ -68,10 +68,10 @@ export function VideoCard({ video }: { video: VideoCardType }) {
       onHoverEnd={endHover}
       onFocus={startHover}
       onBlur={endHover}
-      animate={reduceMotion ? undefined : { scale: hovered ? 1.04 : 1, y: hovered ? -4 : 0 }}
+      animate={reduceMotion ? undefined : { scale: hovered ? 1.05 : 1, y: hovered ? -6 : 0 }}
       transition={{ type: 'spring', stiffness: 320, damping: 26 }}
       className="group relative"
-      style={{ transformOrigin: 'center bottom' }}
+      style={{ transformOrigin: 'center', zIndex: hovered ? 30 : 0 }}
     >
       <Link
         href={`/videos/${video.slug}`}
@@ -93,7 +93,7 @@ export function VideoCard({ video }: { video: VideoCardType }) {
               }`}
             />
           ) : (
-            <div className="absolute inset-0 grid place-items-center bg-gradient-to-br from-accent-500/15 to-accent-700/15 text-2xl font-semibold text-accent-600/70">
+            <div className="absolute inset-0 grid place-items-center bg-gradient-to-br from-zinc-200 to-zinc-300 text-2xl font-semibold text-zinc-500 dark:from-zinc-800 dark:to-zinc-700 dark:text-zinc-400">
               {video.title.charAt(0)}
             </div>
           )}
@@ -133,13 +133,13 @@ export function VideoCard({ video }: { video: VideoCardType }) {
               className="mt-0.5 h-8 w-8 shrink-0 rounded-full object-cover"
             />
           ) : uploaderName ? (
-            <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent-500/15 text-xs font-semibold uppercase text-accent-600">
+            <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-zinc-200 text-xs font-semibold uppercase text-zinc-600 dark:bg-zinc-700 dark:text-zinc-200">
               {uploaderName.charAt(0)}
             </span>
           ) : null}
 
           <div className="min-w-0 flex-1">
-            <h3 className="line-clamp-2 text-sm font-semibold leading-snug tracking-tight transition-colors group-hover:text-accent-600">
+            <h3 className="line-clamp-2 text-sm font-semibold leading-snug tracking-tight transition-colors group-hover:text-zinc-900 dark:group-hover:text-white">
               {video.title}
             </h3>
             {uploaderName && <p className="mt-1 truncate text-xs text-muted">{uploaderName}</p>}

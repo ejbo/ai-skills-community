@@ -60,8 +60,8 @@ function Pill({
       aria-pressed={active}
       className={`shrink-0 whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
         active
-          ? 'bg-accent-500 text-white shadow-sm'
-          : 'surface text-muted hover:text-accent-600 dark:hover:text-accent-400'
+          ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900'
+          : 'surface text-muted hover:text-zinc-900 dark:hover:text-zinc-100'
       }`}
     >
       {children}

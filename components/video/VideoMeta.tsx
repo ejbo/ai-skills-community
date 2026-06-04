@@ -54,7 +54,7 @@ export async function VideoMeta({ video, privileged, initialLiked, initialFavori
             // eslint-disable-next-line @next/next/no-img-element
             <img src={uploader.avatarUrl} alt="" className="h-10 w-10 rounded-full object-cover" />
           ) : (
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-500 text-sm font-semibold text-white">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-200 text-sm font-semibold text-zinc-700 dark:bg-zinc-700 dark:text-zinc-100">
               {uploader.displayName.charAt(0)}
             </div>
           )}
