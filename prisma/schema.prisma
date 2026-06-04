@@ -55,6 +55,15 @@ model User {
   accessRequests  SkillAccessRequest[] @relation("AccessRequester")
   accessDecisions SkillAccessRequest[] @relation("AccessDecider")
 
+  // ── Video board back-relations (virtual; no SQL columns on User) ──
+  uploadedVideos    Video[]            @relation("UploadedVideos")
+  guestVideos       Video[]            @relation("GuestVideos")
+  videoViews        VideoView[]
+  videoLikes        VideoLike[]
+  videoFavorites    VideoFavorite[]
+  videoComments     VideoComment[]
+  videoCommentLikes VideoCommentLike[]
+
   @@index([handle])
   @@index([email])
   @@index([isAdmin])
@@ -333,7 +342,7 @@ model SkillFile {
   content   String?
   truncated Boolean @default(false)
 
-  version   SkillVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  version SkillVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
 
   @@unique([versionId, path])
   @@index([versionId])
@@ -457,4 +466,224 @@ model DeviceCode {
 
   @@index([userCode])
   @@index([expiresAt])
+}
+
+// ─── Video board ───────────────────────────────────────────────────────────
+// A self-contained YouTube/TikTok-style board. Every Video* model FKs ONLY to
+// User or Video* — never Skill. Self-hosted videos live in object storage; the
+// DB holds metadata + a URL. AI summary is cached on Video; chat is stateless.
+
+enum VideoStatus {
+  draft
+  processing
+  published
+  unlisted
+  archived
+}
+
+enum VideoVisibility {
+  public
+  unlisted
+  private
+}
+
+enum VideoSourceType {
+  admin_curated
+  user_uploaded
+  external_embed
+}
+
+enum VideoCommentStatus {
+  visible
+  hidden
+  deleted
+}
+
+model VideoCategory {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  coverKey    String?
+  parentId    String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent   VideoCategory?  @relation("VideoCategoryHierarchy", fields: [parentId], references: [id])
+  children VideoCategory[] @relation("VideoCategoryHierarchy")
+  videos   Video[]
+
+  @@index([parentId])
+  @@index([sortOrder])
+}
+
+model VideoTag {
+  id         String            @id @default(cuid())
+  slug       String            @unique
+  name       String
+  usageCount Int               @default(0)
+  videos     VideoTagOnVideo[]
+
+  @@index([usageCount])
+}
+
+model VideoTagOnVideo {
+  videoId   String
+  tagId     String
+  createdAt DateTime @default(now())
+
+  video Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  tag   VideoTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([videoId, tagId])
+  @@index([tagId])
+}
+
+model Video {
+  id            String @id @default(cuid())
+  slug          String @unique
+  title         String
+  summary       String @default("") // feed caption (≠ AI summary)
+  descriptionMd String @default("")
+
+  // Media (self-hosted, object storage; browser direct upload)
+  videoKey    String?
+  videoUrl    String?
+  posterKey   String?
+  posterUrl   String?
+  mimeType    String  @default("video/mp4")
+  sizeBytes   Int     @default(0)
+  width       Int?
+  height      Int?
+  durationSec Int     @default(0)
+  externalUrl String? // external_embed only (phase-2)
+
+  // Status / classification
+  status      VideoStatus     @default(draft)
+  visibility  VideoVisibility @default(public)
+  sourceType  VideoSourceType @default(admin_curated)
+  uploaderId  String
+  categoryId  String?
+  language    String?
+  featured    Boolean         @default(false)
+  featuredAt  DateTime?
+  publishedAt DateTime?
+
+  // Interviewee ("AI 极客访谈"), all optional
+  intervieweeName      String?
+  intervieweeTitle     String?
+  intervieweeOrg       String?
+  intervieweeBio       String?
+  intervieweeAvatarKey String?
+  guestUserId          String?
+
+  // Denormalized counters
+  viewCount     Int   @default(0)
+  likeCount     Int   @default(0)
+  commentCount  Int   @default(0)
+  favoriteCount Int   @default(0)
+  trendingScore Float @default(0)
+
+  // AI (cached summary columns; chat is stateless)
+  transcriptText      String?
+  aiSummaryMd         String?
+  aiSummaryModel      String?
+  aiSummaryAt         DateTime?
+  aiSummarySourceHash String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  uploader  User              @relation("UploadedVideos", fields: [uploaderId], references: [id], onDelete: Cascade)
+  guestUser User?             @relation("GuestVideos", fields: [guestUserId], references: [id], onDelete: SetNull)
+  category  VideoCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  tags      VideoTagOnVideo[]
+  comments  VideoComment[]
+  likes     VideoLike[]
+  favorites VideoFavorite[]
+  views     VideoView[]
+
+  @@index([status, visibility])
+  @@index([publishedAt])
+  @@index([categoryId])
+  @@index([uploaderId])
+  @@index([featured, publishedAt])
+  @@index([trendingScore])
+  @@index([createdAt])
+}
+
+model VideoComment {
+  id         String             @id @default(cuid())
+  videoId    String
+  authorId   String
+  parentId   String?
+  bodyMd     String
+  status     VideoCommentStatus @default(visible)
+  likeCount  Int                @default(0)
+  replyCount Int                @default(0)
+  pinned     Boolean            @default(false)
+  editedAt   DateTime?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  video   Video              @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  author  User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent  VideoComment?      @relation("VideoCommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies VideoComment[]     @relation("VideoCommentThread")
+  likes   VideoCommentLike[]
+
+  @@index([videoId, createdAt])
+  @@index([parentId])
+}
+
+model VideoCommentLike {
+  userId    String
+  commentId String
+  createdAt DateTime @default(now())
+
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment VideoComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@id([userId, commentId])
+  @@index([commentId])
+}
+
+model VideoLike {
+  userId    String
+  videoId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@id([userId, videoId])
+  @@index([videoId])
+}
+
+model VideoFavorite {
+  userId    String
+  videoId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@id([userId, videoId])
+  @@index([videoId])
+}
+
+model VideoView {
+  id          String   @id @default(cuid())
+  videoId     String
+  userId      String?
+  sessionHash String // sha256( (userId | ipHash) + videoId + UTC-day ) — day-bucket dedupe
+  createdAt   DateTime @default(now())
+
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([videoId, sessionHash])
+  @@index([videoId])
 }

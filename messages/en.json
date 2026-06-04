@@ -1,6 +1,7 @@
 {
   "nav": {
     "browse": "Browse",
+    "videos": "Videos",
     "categories": "Categories",
     "docs": "Docs",
     "upload": "Upload",
@@ -158,5 +159,97 @@
     "internal": "Internal",
     "community": "Community",
     "curated": "Curated"
+  },
+  "video": {
+    "nav": "Videos",
+    "home": { "watch": "Play", "more": "Details", "featured": "Featured" },
+    "feed": {
+      "title": "Videos",
+      "search_placeholder": "Search videos…",
+      "sort_latest": "Latest",
+      "sort_trending": "Trending",
+      "sort_popular": "Most viewed",
+      "all_categories": "All",
+      "no_results": "No matching videos",
+      "no_results_hint": "Try different keywords or another category",
+      "load_more": "Load more"
+    },
+    "detail": {
+      "views": "views",
+      "like": "Like",
+      "favorite": "Save",
+      "share": "Share",
+      "copied": "Link copied",
+      "related": "Related videos",
+      "description": "Description",
+      "guest": "Guest",
+      "by": "by"
+    },
+    "ai": {
+      "summary_title": "AI Summary",
+      "chat_title": "Ask about this video",
+      "generate": "Generate",
+      "regenerate": "Regenerate",
+      "generating": "Generating…",
+      "summary_empty": "No summary yet.",
+      "chat_placeholder": "Ask anything about this video…",
+      "chat_empty": "Ask the assistant about this video, e.g.:",
+      "starter1": "Summarize the key points",
+      "starter2": "Who is the guest?",
+      "starter3": "What problem does this discuss?",
+      "send": "Send",
+      "thinking": "Thinking…"
+    },
+    "comments": {
+      "title": "Comments",
+      "placeholder": "Add a comment…",
+      "post": "Comment",
+      "empty": "No comments yet — be the first.",
+      "sort_top": "Top",
+      "sort_newest": "Newest",
+      "reply": "Reply",
+      "view_replies": "View {count} replies",
+      "hide_replies": "Hide replies",
+      "edit": "Edit",
+      "delete": "Delete",
+      "save": "Save",
+      "cancel": "Cancel",
+      "edited": "edited",
+      "deleted": "[deleted]",
+      "load_more": "Load more"
+    },
+    "manage": {
+      "title": "Videos",
+      "new": "New video",
+      "list_empty": "No videos yet",
+      "f_title": "Title",
+      "f_slug": "Slug",
+      "f_summary": "Caption",
+      "f_description": "Description",
+      "f_category": "Category",
+      "f_tags": "Tags",
+      "f_transcript": "Transcript (for AI)",
+      "f_status": "Status",
+      "f_visibility": "Visibility",
+      "f_language": "Language",
+      "f_interviewee": "Interviewee",
+      "upload_video": "Upload video",
+      "upload_poster": "Upload poster",
+      "uploading": "Uploading…",
+      "save_draft": "Save draft",
+      "publish": "Publish",
+      "save": "Save",
+      "delete": "Delete",
+      "delete_confirm": "Delete this video?",
+      "regenerate_summary": "Regenerate AI summary"
+    },
+    "status": {
+      "draft": "Draft",
+      "processing": "Processing",
+      "published": "Published",
+      "unlisted": "Unlisted",
+      "archived": "Archived"
+    },
+    "login_required": "Sign in to continue"
   }
 }
