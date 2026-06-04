@@ -20,6 +20,7 @@ import { ChatPanel } from './ChatPanel';
 import { ComparisonTab } from './ComparisonTab';
 import { CompositionTab } from './CompositionTab';
 import { AccessRequestPanel, type RequestState } from './AccessRequestPanel';
+import { DownloadButton } from './DownloadButton';
 import { FilesTab } from './FilesTab';
 
 export const dynamic = 'force-dynamic';
@@ -132,14 +133,21 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
               <InstallSnippet slug={skill.slug} />
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
                 <span>或</span>
-                <a
-                  href={session?.user ? `/api/skills/${skill.slug}/raw` : `/auth/login?callbackUrl=/skills/${skill.slug}`}
-                  download={Boolean(session?.user)}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:border-accent-500 hover:bg-accent-500/5 hover:text-accent-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-accent-400 dark:hover:bg-accent-500/10 dark:hover:text-accent-300"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  下载技能包 (.zip)
-                </a>
+                {session?.user ? (
+                  <DownloadButton
+                    slug={skill.slug}
+                    version={skill.currentVersion?.version}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:border-accent-500 hover:bg-accent-500/5 hover:text-accent-700 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-accent-400 dark:hover:bg-accent-500/10 dark:hover:text-accent-300"
+                  />
+                ) : (
+                  <a
+                    href={`/auth/login?callbackUrl=/skills/${skill.slug}`}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:border-accent-500 hover:bg-accent-500/5 hover:text-accent-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-accent-400 dark:hover:bg-accent-500/10 dark:hover:text-accent-300"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    下载技能包 (.zip)
+                  </a>
+                )}
                 <span className="font-mono text-[11px]">
                   解压到 <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">~/.claude/skills/{skill.slug}/</code>
                 </span>
