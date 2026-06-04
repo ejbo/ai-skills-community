@@ -1,11 +1,10 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { upload } from '@vercel/blob/client';
 import { UploadCloud, CheckCircle2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { videoUploadPathname } from '@/lib/video/storage';
 import { pushToast } from '@/components/Toaster';
+import { withBasePath } from '@/lib/video/types';
 
 interface UploadResult {
   url: string;
@@ -17,8 +16,7 @@ interface UploadResult {
 
 /**
  * Reads intrinsic dimensions + duration from a video file by loading it into a
- * detached <video> element. Resolves with empty metadata if it can't be read
- * (the upload still proceeds; admin can fill these in by hand).
+ * detached <video> element. Resolves with empty metadata if it can't be read.
  */
 function probeVideoMetadata(
   file: File,
@@ -45,6 +43,49 @@ function probeVideoMetadata(
   });
 }
 
+/**
+ * Direct self-hosted upload: POST the raw file to our own route, streamed to
+ * disk server-side. XHR (not fetch) so we get upload progress.
+ */
+function uploadToServer(
+  file: File,
+  kind: 'source' | 'poster',
+  onProgress: (pct: number) => void,
+): Promise<{ key: string; url: string; size: number }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', withBasePath('/api/videos/upload'));
+    xhr.setRequestHeader(
+      'content-type',
+      file.type || (kind === 'poster' ? 'image/jpeg' : 'video/mp4'),
+    );
+    xhr.setRequestHeader('x-upload-kind', kind);
+    xhr.setRequestHeader('x-filename', encodeURIComponent(file.name));
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress((e.loaded / e.total) * 100);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText));
+        } catch {
+          reject(new Error('bad_response'));
+        }
+      } else {
+        let msg = 'upload_failed';
+        try {
+          msg = JSON.parse(xhr.responseText).error || msg;
+        } catch {
+          /* ignore */
+        }
+        reject(new Error(msg));
+      }
+    };
+    xhr.onerror = () => reject(new Error('network_error'));
+    xhr.send(file);
+  });
+}
+
 export function VideoUploadField({
   kind,
   label,
@@ -68,16 +109,10 @@ export function VideoUploadField({
     setFileName(file.name);
     try {
       const meta = kind === 'source' ? await probeVideoMetadata(file) : {};
-      const pathname = videoUploadPathname(kind, file.name);
-      const blob = await upload(pathname, file, {
-        access: 'public',
-        handleUploadUrl: '/api/videos/blob-upload',
-        clientPayload: JSON.stringify({ kind }),
-        onUploadProgress: (p) => setProgress(p.percentage),
-      });
+      const res = await uploadToServer(file, kind, (p) => setProgress(p));
       onUploaded({
-        url: blob.url,
-        pathname: blob.pathname,
+        url: res.url,
+        pathname: res.key,
         width: meta.width,
         height: meta.height,
         durationSec: meta.durationSec,
@@ -113,14 +148,10 @@ export function VideoUploadField({
         <div className="surface flex items-center gap-3 rounded-lg p-2">
           {kind === 'poster' ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={value.url}
-              alt=""
-              className="h-12 w-20 rounded object-cover"
-            />
+            <img src={withBasePath(value.url)} alt="" className="h-12 w-20 rounded object-cover" />
           ) : (
             <video
-              src={value.url}
+              src={withBasePath(value.url)}
               className="h-12 w-20 rounded bg-black object-cover"
               muted
               playsInline

@@ -6,7 +6,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { useTranslations } from 'next-intl';
 import type { VideoCard as VideoCardType } from '@/lib/video/queries';
-import { formatCount, formatDuration } from '@/lib/video/types';
+import { formatCount, formatDuration, withBasePath } from '@/lib/video/types';
 
 const PREVIEW_DELAY_MS = 400;
 
@@ -85,7 +85,7 @@ export function VideoCard({ video }: { video: VideoCardType }) {
           {video.posterUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={video.posterUrl}
+              src={withBasePath(video.posterUrl)}
               alt={video.title}
               loading="lazy"
               className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
@@ -101,8 +101,8 @@ export function VideoCard({ video }: { video: VideoCardType }) {
           {!reduceMotion && video.videoUrl && (
             <video
               ref={videoRef}
-              src={previewing ? video.videoUrl : undefined}
-              poster={video.posterUrl ?? undefined}
+              src={previewing ? withBasePath(video.videoUrl) : undefined}
+              poster={withBasePath(video.posterUrl) || undefined}
               muted
               loop
               playsInline
