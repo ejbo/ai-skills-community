@@ -41,7 +41,7 @@ export function AiSummary({ slug }: { slug: string }) {
           {tc('loading')}
         </div>
       ) : summary ? (
-        <MarkdownRenderer content={summary} />
+        <MarkdownRenderer content={summary} compact />
       ) : (
         <p className="text-sm text-muted">{t('ai.summary_empty')}</p>
       )}

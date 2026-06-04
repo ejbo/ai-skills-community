@@ -85,7 +85,7 @@ export function AiChat({ slug }: { slug: string }) {
               >
                 {msg.role === 'assistant' ? (
                   msg.content ? (
-                    <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1">
+                    <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-headings:my-1.5 prose-headings:text-[13px] prose-headings:font-semibold">
                       <ReactMarkdown>{msg.content}</ReactMarkdown>
                     </div>
                   ) : (
