@@ -1,9 +1,10 @@
-import NextAuth, { type DefaultSession } from 'next-auth';
+import NextAuth, { customFetch, type DefaultSession } from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import type { Provider } from 'next-auth/providers';
 import { prisma } from '@/lib/db';
 import { verifyPassword } from '@/lib/auth/password';
 import { env } from '@/lib/env';
+import { createHuaweiFetch } from '@/lib/auth/huawei-fetch';
 
 declare module 'next-auth' {
   interface Session {
@@ -55,18 +56,36 @@ function buildProviders(): Provider[] {
       type: 'oauth',
       clientId: env.SSO_CLIENT_ID,
       clientSecret: env.SSO_CLIENT_SECRET,
+      // Huawei IDaaS supports `state` (CSRF) but NOT PKCE/nonce — don't let Auth.js add them.
+      checks: ['state'],
       authorization: {
         url: env.SSO_AUTHORIZE_URL!,
-        params: { scope: env.SSO_SCOPE, response_type: 'code' },
+        params: { scope: env.SSO_SCOPE, response_type: 'code', display: 'page' },
       },
       token: env.SSO_ACCESS_TOKEN_URL!,
       userinfo: env.SSO_USERINFO_URL!,
+      // Map Huawei's real fields. Identity: uid → uuid → globalUserID (userinfo may
+      // return ONLY uuid by default). Name: displayNameCn → displayName → cn → givenName.
       profile(raw: Record<string, unknown>) {
-        const uid = String(raw.uid ?? raw.employee_id ?? raw.sub ?? '');
-        const email = String(raw.email ?? `${uid}@huawei.com`);
-        const name = String(raw.cn ?? raw.display_name ?? raw.name ?? uid);
+        const str = (v: unknown) => (v == null ? '' : String(v));
+        const uid = str(raw.uid) || str(raw.uuid) || str(raw.globalUserID);
+        const email = str(raw.email) || (uid ? `${uid}@huawei.com` : '');
+        const name =
+          str(raw.displayNameCn) || str(raw.displayName) || str(raw.cn) || str(raw.givenName) || uid;
         return { id: uid, email, name, huaweiW3Id: uid, displayName: name };
       },
+      // Reshape the non-standard token/userinfo calls to Huawei's protocol (see huawei-fetch.ts).
+      [customFetch]: createHuaweiFetch({
+        clientId: env.SSO_CLIENT_ID,
+        clientSecret: env.SSO_CLIENT_SECRET,
+        scope: env.SSO_SCOPE,
+        tokenUrl: env.SSO_ACCESS_TOKEN_URL!,
+        userinfoUrl: env.SSO_USERINFO_URL!,
+        verifySsl: env.SSO_VERIFY_SSL,
+        useProxy: env.USE_PROXY,
+        proxyHost: env.HUAWEI_PROXY_HOST,
+        proxyPort: env.HUAWEI_PROXY_PORT,
+      }),
     } as Provider);
   }
 

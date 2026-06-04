@@ -58,7 +58,7 @@ export default async function AdminVideosPage({
         <h2 className="text-2xl font-semibold tracking-tight">{t('manage.title')}</h2>
         <Link
           href="/manage/videos/new"
-          className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600"
+          className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
         >
           <Plus className="h-4 w-4" />
           {t('manage.new')}
@@ -72,7 +72,7 @@ export default async function AdminVideosPage({
           placeholder={t('feed.search_placeholder')}
           className="h-9 min-w-[200px] flex-1 rounded-lg border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
         />
-        <button className="h-9 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white hover:bg-accent-600">
+        <button className="h-9 rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white">
           {t('feed.search_placeholder')}
         </button>
       </form>
