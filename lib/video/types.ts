@@ -46,3 +46,18 @@ export function formatCount(n: number): string {
   if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}K`;
   return `${(n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0)}M`;
 }
+
+/**
+ * Prepend the configured base path to a root-relative media URL (locally-hosted
+ * video/poster like "/api/videos/file/..."). Absolute http(s) URLs (e.g. the
+ * external demo MP4s) and data:/blob: URLs pass through unchanged.
+ *
+ * For a subpath deploy, set NEXT_PUBLIC_BASE_PATH (= NEXT_BASE_PATH) at build
+ * time. For root/local deploys leave it unset — this is then a no-op.
+ */
+export function withBasePath(url: string | null | undefined): string {
+  if (!url) return '';
+  if (/^(https?:)?\/\//i.test(url) || url.startsWith('data:') || url.startsWith('blob:')) return url;
+  const bp = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+  return url.startsWith('/') ? `${bp}${url}` : url;
+}

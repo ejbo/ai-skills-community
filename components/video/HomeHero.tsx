@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Info, Play } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { VideoCard as VideoCardType } from '@/lib/video/queries';
+import { withBasePath } from '@/lib/video/types';
 
 const ROTATE_MS = 8000;
 
@@ -56,7 +57,7 @@ export function HomeHero({ videos }: { videos: VideoCardType[] }) {
             {active.posterUrl && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={active.posterUrl}
+                src={withBasePath(active.posterUrl)}
                 alt=""
                 className="absolute inset-0 h-full w-full object-cover"
               />
@@ -64,8 +65,8 @@ export function HomeHero({ videos }: { videos: VideoCardType[] }) {
             {!reduceMotion && active.videoUrl && (
               <video
                 ref={videoRef}
-                src={active.videoUrl}
-                poster={active.posterUrl ?? undefined}
+                src={withBasePath(active.videoUrl)}
+                poster={withBasePath(active.posterUrl) || undefined}
                 muted
                 loop
                 playsInline

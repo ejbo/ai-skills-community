@@ -3,6 +3,7 @@
 import { useRef } from 'react';
 import { Lock } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { withBasePath } from '@/lib/video/types';
 
 interface Props {
   src: string | null;
@@ -35,7 +36,7 @@ export function VideoPlayer({ src, poster, slug }: Props) {
       <div className="surface relative aspect-video w-full overflow-hidden rounded-2xl">
         {poster ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={poster} alt="" className="h-full w-full object-cover opacity-60" />
+          <img src={withBasePath(poster)} alt="" className="h-full w-full object-cover opacity-60" />
         ) : (
           <div className="h-full w-full bg-zinc-900" />
         )}
@@ -54,8 +55,8 @@ export function VideoPlayer({ src, poster, slug }: Props) {
         controls
         preload="metadata"
         playsInline
-        poster={poster ?? undefined}
-        src={src}
+        poster={withBasePath(poster) || undefined}
+        src={withBasePath(src)}
         onTimeUpdate={maybePing}
         onPlaying={maybePing}
         className="h-full w-full"
