@@ -40,7 +40,7 @@ export default async function ManageLayout({ children }: { children: React.React
       </aside>
 
       <header className="fixed inset-x-0 left-[220px] top-0 z-20 flex h-14 items-center justify-between border-b border-zinc-200 bg-white/85 px-6 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/85">
-        <h1 className="text-sm font-semibold">Skills Community · Admin</h1>
+        <h1 className="text-sm font-semibold">AI Community · Admin</h1>
         <Link
           href="/"
           className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"

@@ -2,7 +2,6 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireUser } from '@/lib/admin';
 import { prisma } from '@/lib/db';
-import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { RelatedVideos } from '@/components/video/RelatedVideos';
 import { getVideoActor, canViewVideo, canPlayVideo, isVideoPrivileged } from '@/lib/video/access';
 import { getVideoBySlug, listTopComments, relatedVideos } from '@/lib/video/queries';
@@ -11,6 +10,8 @@ import { VideoMeta } from '@/components/video/VideoMeta';
 import { AiPanel } from '@/components/video/AiPanel';
 import { CommentSection } from '@/components/video/CommentSection';
 import { VideoBreadcrumb } from '@/components/video/VideoBreadcrumb';
+import { VideoDescription } from '@/components/video/VideoDescription';
+import { ViewPing } from '@/components/video/ViewPing';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +54,7 @@ export default async function VideoDetailPage({ params }: PageProps) {
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_360px]">
         {/* MAIN COLUMN */}
         <div className="min-w-0 space-y-6">
+          <ViewPing slug={video.slug} />
           <VideoPlayer
             src={playable ? video.videoUrl : null}
             poster={video.posterUrl}
@@ -70,14 +72,7 @@ export default async function VideoDetailPage({ params }: PageProps) {
           {/* On mobile the AI panel sits between meta and description. */}
           <div className="lg:hidden">{aiPanel}</div>
 
-          {video.descriptionMd?.trim() && (
-            <div className="surface rounded-2xl p-4">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted">
-                {t('detail.description')}
-              </h2>
-              <MarkdownRenderer content={video.descriptionMd} />
-            </div>
-          )}
+          {video.descriptionMd?.trim() && <VideoDescription content={video.descriptionMd} />}
 
           <CommentSection
             slug={video.slug}

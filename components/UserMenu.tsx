@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, LayoutDashboard, ShieldCheck, Upload, LogOut, User } from 'lucide-react';
 import { signOut } from 'next-auth/react';
 import { useTranslations } from 'next-intl';
+import { withBasePath } from '@/lib/base-path';
 
 interface MenuUser {
   id: string;
@@ -69,7 +70,7 @@ export function UserMenu({ user }: { user: MenuUser }) {
               </MenuItem>
             )}
             <button
-              onClick={() => signOut({ callbackUrl: '/' })}
+              onClick={() => signOut({ redirectTo: withBasePath('/') })}
               className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
             >
               <LogOut className="h-4 w-4" />

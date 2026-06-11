@@ -1,6 +1,5 @@
 'use client';
 
-import { useRef } from 'react';
 import { Lock } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { withBasePath } from '@/lib/video/types';
@@ -12,24 +11,10 @@ interface Props {
   durationSec: number;
 }
 
-// Threshold of actual watch time (seconds) before we register a view. The ping
-// is decoupled from playback start so a quick hover/scrub doesn't count.
-const VIEW_THRESHOLD_SEC = 5;
-
-export function VideoPlayer({ src, poster, slug }: Props) {
+// View counting now lives in <ViewPing> on the detail page (counts on page
+// open), so the player is purely presentational.
+export function VideoPlayer({ src, poster }: Props) {
   const t = useTranslations('video');
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const pingedRef = useRef(false);
-
-  function maybePing() {
-    if (pingedRef.current) return;
-    const el = videoRef.current;
-    if (!el || el.currentTime < VIEW_THRESHOLD_SEC) return;
-    pingedRef.current = true;
-    fetch(`/api/videos/${slug}/view`, { method: 'POST', keepalive: true }).catch(() => {
-      // Best-effort: a failed view ping must never disturb playback.
-    });
-  }
 
   if (!src) {
     return (
@@ -51,14 +36,11 @@ export function VideoPlayer({ src, poster, slug }: Props) {
   return (
     <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black">
       <video
-        ref={videoRef}
         controls
         preload="metadata"
         playsInline
         poster={withBasePath(poster) || undefined}
         src={withBasePath(src)}
-        onTimeUpdate={maybePing}
-        onPlaying={maybePing}
         className="h-full w-full"
       />
     </div>

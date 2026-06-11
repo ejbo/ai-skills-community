@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Star, Loader2 } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
+import { RichTextEditor } from '@/components/RichTextEditor';
 
 export function ReviewForm({
   slug,
@@ -83,15 +84,15 @@ export function ReviewForm({
         })}
         <span className="ml-2 text-xs text-muted">{rating > 0 ? `${rating} 星` : '点击打分'}</span>
       </div>
-      <textarea
+      <RichTextEditor
         value={body}
-        onChange={(e) => setBody(e.target.value.slice(0, 2000))}
-        rows={3}
+        onChange={setBody}
+        variant="compact"
+        maxLength={2000}
         placeholder="说点什么（可选）"
-        className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900"
+        ariaLabel="评论内容"
       />
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] text-muted">{body.length} / 2000</span>
+      <div className="flex items-center justify-end gap-2">
         <div className="flex items-center gap-2">
           {existingRating && (
             <button
@@ -104,7 +105,7 @@ export function ReviewForm({
           )}
           <button
             onClick={submit}
-            disabled={pending}
+            disabled={pending || body.length > 2000}
             className="flex h-8 items-center gap-1.5 rounded-lg bg-accent-500 px-3 text-xs font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
           >
             {pending && <Loader2 className="h-3 w-3 animate-spin" />}

@@ -57,7 +57,7 @@ export async function POST(req: Request) {
   // Overview source: 'readme' (use the bundle's README.md) or 'custom' (author-written).
   // SKILL.md is never used as the public overview — it lives in Files only.
   const overviewSource = form.get('overviewSource') === 'custom' ? 'custom' : 'readme';
-  const customOverview = str(form, 'customOverview') ?? '';
+  const customOverview = (str(form, 'customOverview') ?? '').slice(0, 50000);
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: 'file_missing' }, { status: 400 });

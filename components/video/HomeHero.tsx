@@ -3,28 +3,33 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { Info, Play } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Info, Play } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import type { VideoCard as VideoCardType } from '@/lib/video/queries';
+import type { HeroVideo } from '@/lib/video/queries';
 import { withBasePath } from '@/lib/video/types';
+import { DescriptionModal } from '@/components/video/DescriptionModal';
 
 const ROTATE_MS = 8000;
 
-export function HomeHero({ videos }: { videos: VideoCardType[] }) {
+export function HomeHero({ videos }: { videos: HeroVideo[] }) {
   const t = useTranslations('video');
   const reduceMotion = useReducedMotion();
   const [index, setIndex] = useState(0);
+  const [modalOpen, setModalOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const items = videos.slice(0, 6);
   const active = items[index];
 
-  // Auto-rotate billboard.
+  // Auto-rotate billboard. Re-arming on every index change means a manual
+  // prev/next click also resets the timer; pause entirely while the modal reads.
   useEffect(() => {
-    if (items.length <= 1) return;
+    if (items.length <= 1 || modalOpen) return;
     const id = setInterval(() => setIndex((i) => (i + 1) % items.length), ROTATE_MS);
     return () => clearInterval(id);
-  }, [items.length]);
+  }, [index, items.length, modalOpen]);
+
+  const previewSrc = active ? active.previewUrl ?? active.videoUrl : null;
 
   // Restart the background preview whenever the active item changes.
   useEffect(() => {
@@ -35,14 +40,15 @@ export function HomeHero({ videos }: { videos: VideoCardType[] }) {
     el.play().catch(() => {
       /* autoplay may be blocked */
     });
-  }, [index, reduceMotion, active?.videoUrl]);
+  }, [index, reduceMotion, previewSrc]);
 
   if (!active) return null;
 
   const subtitle = [active.intervieweeName, active.intervieweeTitle].filter(Boolean).join(' · ');
+  const go = (delta: number) => setIndex((i) => (i + delta + items.length) % items.length);
 
   return (
-    <section className="relative -mx-4 overflow-hidden rounded-none sm:mx-0 sm:rounded-2xl">
+    <section className="group relative -mx-4 overflow-hidden rounded-none sm:mx-0 sm:rounded-2xl">
       <div className="relative aspect-[16/10] w-full sm:aspect-[21/8] lg:aspect-[21/7]">
         {/* Background: poster + muted preview */}
         <AnimatePresence mode="popLayout">
@@ -62,10 +68,10 @@ export function HomeHero({ videos }: { videos: VideoCardType[] }) {
                 className="absolute inset-0 h-full w-full object-cover"
               />
             )}
-            {!reduceMotion && active.videoUrl && (
+            {!reduceMotion && previewSrc && (
               <video
                 ref={videoRef}
-                src={withBasePath(active.videoUrl)}
+                src={withBasePath(previewSrc)}
                 poster={withBasePath(active.posterUrl) || undefined}
                 muted
                 loop
@@ -119,18 +125,41 @@ export function HomeHero({ videos }: { videos: VideoCardType[] }) {
                     <Play className="h-5 w-5 fill-current" />
                     {t('home.watch')}
                   </Link>
-                  <Link
-                    href={`/videos/${active.slug}`}
+                  <button
+                    type="button"
+                    onClick={() => setModalOpen(true)}
                     className="inline-flex h-11 items-center gap-2 rounded-xl bg-white/20 px-6 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
                   >
                     <Info className="h-5 w-5" />
                     {t('home.more')}
-                  </Link>
+                  </button>
                 </div>
               </motion.div>
             </AnimatePresence>
           </div>
         </div>
+
+        {/* Prev / next arrows — fade in on hover (always visible on touch) */}
+        {items.length > 1 && (
+          <>
+            <button
+              type="button"
+              onClick={() => go(-1)}
+              aria-label={t('home.prev')}
+              className="absolute left-3 top-1/2 z-10 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/35 text-white backdrop-blur transition-all duration-300 hover:bg-black/60 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:left-4 sm:opacity-0 sm:group-hover:opacity-100"
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+            <button
+              type="button"
+              onClick={() => go(1)}
+              aria-label={t('home.next')}
+              className="absolute right-3 top-1/2 z-10 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/35 text-white backdrop-blur transition-all duration-300 hover:bg-black/60 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:right-4 sm:opacity-0 sm:group-hover:opacity-100"
+            >
+              <ChevronRight className="h-6 w-6" />
+            </button>
+          </>
+        )}
 
         {/* Manual dots */}
         {items.length > 1 && (
@@ -150,6 +179,14 @@ export function HomeHero({ videos }: { videos: VideoCardType[] }) {
           </div>
         )}
       </div>
+
+      <DescriptionModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={active.title}
+        content={active.descriptionMd.trim() || active.summary}
+        detailHref={`/videos/${active.slug}`}
+      />
     </section>
   );
 }

@@ -19,6 +19,10 @@ export async function GET(req: Request, { params }: { params: { key: string[] } 
 
   const { size, contentType } = stat;
   const range = req.headers.get('range');
+  // Keys are fresh nanoids per upload, so content never changes under a key —
+  // safe to let the browser cache aggressively (private: the board is login-walled).
+  // Without this every page showing posters re-downloads them through this route.
+  const cacheControl = 'private, max-age=31536000, immutable';
 
   if (range) {
     const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
@@ -41,7 +45,7 @@ export async function GET(req: Request, { params }: { params: { key: string[] } 
         'content-length': String(end - start + 1),
         'content-range': `bytes ${start}-${end}/${size}`,
         'accept-ranges': 'bytes',
-        'cache-control': 'private, max-age=0, must-revalidate',
+        'cache-control': cacheControl,
       },
     });
   }
@@ -54,7 +58,7 @@ export async function GET(req: Request, { params }: { params: { key: string[] } 
       'content-type': contentType,
       'content-length': String(size),
       'accept-ranges': 'bytes',
-      'cache-control': 'private, max-age=0, must-revalidate',
+      'cache-control': cacheControl,
     },
   });
 }

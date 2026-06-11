@@ -49,7 +49,7 @@ function probeVideoMetadata(
  */
 function uploadToServer(
   file: File,
-  kind: 'source' | 'poster',
+  kind: 'source' | 'poster' | 'preview',
   onProgress: (pct: number) => void,
 ): Promise<{ key: string; url: string; size: number }> {
   return new Promise((resolve, reject) => {
@@ -92,7 +92,7 @@ export function VideoUploadField({
   value,
   onUploaded,
 }: {
-  kind: 'source' | 'poster';
+  kind: 'source' | 'poster' | 'preview';
   label: string;
   value: { url: string; key?: string } | null;
   onUploaded: (r: UploadResult) => void;

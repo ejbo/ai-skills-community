@@ -13,6 +13,7 @@ export const VIDEO_CARD_SELECT = {
   summary: true,
   posterUrl: true,
   videoUrl: true,
+  previewUrl: true,
   durationSec: true,
   width: true,
   height: true,
@@ -149,8 +150,11 @@ export function listVideoCategories() {
 }
 
 // ── Home feed (Netflix/YouTube-style hero + rails) ──────────────────────────
+/** Hero items carry the full description so the billboard can show it in a modal. */
+export type HeroVideo = VideoCard & { descriptionMd: string };
+
 export interface HomeFeed {
-  hero: VideoCard[];
+  hero: HeroVideo[];
   rails: { key: string; title: string; href?: string; videos: VideoCard[] }[];
 }
 
@@ -182,7 +186,22 @@ export async function getHomeFeed(actorId: string | null): Promise<HomeFeed> {
   });
 
   // Fallback hero: if nothing is featured, headline with the latest videos.
-  return { hero: hero.length ? hero : latest.slice(0, 5), rails };
+  const heroCards = hero.length ? hero : latest.slice(0, 5);
+
+  // Attach full descriptions (hero-only — card payloads stay lean).
+  const descRows = heroCards.length
+    ? await prisma.video.findMany({
+        where: { id: { in: heroCards.map((v) => v.id) } },
+        select: { id: true, descriptionMd: true },
+      })
+    : [];
+  const descById = new Map(descRows.map((r) => [r.id, r.descriptionMd]));
+  const heroWithDesc: HeroVideo[] = heroCards.map((v) => ({
+    ...v,
+    descriptionMd: descById.get(v.id) ?? '',
+  }));
+
+  return { hero: heroWithDesc, rails };
 }
 
 // ── Detail ───────────────────────────────────────────────────────────────────

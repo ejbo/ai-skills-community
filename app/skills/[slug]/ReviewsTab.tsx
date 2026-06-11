@@ -3,6 +3,7 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import { Star } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { ReviewForm } from './ReviewForm';
 
 export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: string }) {
@@ -117,13 +118,17 @@ export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: str
                     <span>{formatDistanceToNowStrict(r.createdAt, { addSuffix: true })}</span>
                   </div>
                 </div>
-                {r.bodyMd && <p className="mt-2 whitespace-pre-wrap text-sm">{r.bodyMd}</p>}
+                {r.bodyMd && (
+                  <div className="mt-2">
+                    <MarkdownRenderer content={r.bodyMd} compact />
+                  </div>
+                )}
                 {r.authorReply && (
                   <div className="mt-3 rounded-lg border-l-2 border-accent-500 bg-accent-500/5 p-3 text-sm">
                     <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-accent-600">
                       作者回复
                     </div>
-                    {r.authorReply}
+                    <MarkdownRenderer content={r.authorReply} compact />
                   </div>
                 )}
               </li>

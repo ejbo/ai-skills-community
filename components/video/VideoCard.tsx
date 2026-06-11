@@ -3,12 +3,15 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
+import { Eye, Heart, MessageCircle } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { useTranslations } from 'next-intl';
 import type { VideoCard as VideoCardType } from '@/lib/video/queries';
 import { formatCount, formatDuration, withBasePath } from '@/lib/video/types';
 
 const PREVIEW_DELAY_MS = 400;
+// Without a dedicated preview clip, loop only the first seconds of the source.
+const FALLBACK_PREVIEW_SEC = 10;
 
 export function VideoCard({ video }: { video: VideoCardType }) {
   const t = useTranslations('video');
@@ -22,6 +25,11 @@ export function VideoCard({ video }: { video: VideoCardType }) {
   const uploaderName = video.uploader?.displayName ?? video.intervieweeName ?? '';
   const avatarUrl = video.uploader?.avatarUrl ?? null;
 
+  // Dedicated hover clip wins; otherwise fall back to the source video, capped
+  // to its first FALLBACK_PREVIEW_SEC seconds (see onTimeUpdate below).
+  const previewSrc = video.previewUrl ?? video.videoUrl;
+  const isFallbackPreview = !video.previewUrl;
+
   function clearTimer() {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
@@ -31,7 +39,7 @@ export function VideoCard({ video }: { video: VideoCardType }) {
 
   function startHover() {
     setHovered(true);
-    if (reduceMotion || !video.videoUrl) return;
+    if (reduceMotion || !previewSrc) return;
     clearTimer();
     timerRef.current = setTimeout(() => setPreviewing(true), PREVIEW_DELAY_MS);
   }
@@ -98,10 +106,10 @@ export function VideoCard({ video }: { video: VideoCardType }) {
             </div>
           )}
 
-          {!reduceMotion && video.videoUrl && (
+          {!reduceMotion && previewSrc && (
             <video
               ref={videoRef}
-              src={previewing ? withBasePath(video.videoUrl) : undefined}
+              src={previewing ? withBasePath(previewSrc) : undefined}
               poster={withBasePath(video.posterUrl) || undefined}
               muted
               loop
@@ -109,6 +117,10 @@ export function VideoCard({ video }: { video: VideoCardType }) {
               preload="none"
               tabIndex={-1}
               aria-hidden
+              onTimeUpdate={(e) => {
+                const el = e.currentTarget;
+                if (isFallbackPreview && el.currentTime >= FALLBACK_PREVIEW_SEC) el.currentTime = 0;
+              }}
               className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
                 previewing ? 'opacity-100' : 'opacity-0'
               }`}
@@ -143,11 +155,22 @@ export function VideoCard({ video }: { video: VideoCardType }) {
               {video.title}
             </h3>
             {uploaderName && <p className="mt-1 truncate text-xs text-muted">{uploaderName}</p>}
-            <p className="mt-0.5 flex items-center gap-1 text-xs text-muted">
-              <span>{`${formatCount(video.viewCount)} ${t('detail.views')}`}</span>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-muted">
+              <span className="inline-flex items-center gap-1" title={t('detail.views')}>
+                <Eye className="h-3.5 w-3.5" />
+                {formatCount(video.viewCount)}
+              </span>
+              <span className="inline-flex items-center gap-1" title={t('detail.like')}>
+                <Heart className="h-3.5 w-3.5" />
+                {formatCount(video.likeCount)}
+              </span>
+              <span className="inline-flex items-center gap-1" title={t('comments.title')}>
+                <MessageCircle className="h-3.5 w-3.5" />
+                {formatCount(video.commentCount)}
+              </span>
               <span aria-hidden>·</span>
               <span>{formatDistanceToNowStrict(new Date(published), { addSuffix: true })}</span>
-            </p>
+            </div>
           </div>
         </div>
       </Link>

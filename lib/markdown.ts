@@ -16,5 +16,10 @@ export const sanitizeSchema = {
     code: [...(baseAttributes.code ?? []), 'className'],
     span: [...(baseAttributes.span ?? []), 'className'],
     pre: [...(baseAttributes.pre ?? []), 'className'],
+    // Rich-text editor output: keep image + link attributes so inserted images
+    // and links survive sanitization. (Relative src/href pass the protocol check;
+    // `javascript:` etc. are still stripped — the trust boundary is intact.)
+    img: [...(baseAttributes.img ?? []), 'src', 'alt', 'title', 'width', 'height'],
+    a: [...(baseAttributes.a ?? []), 'href', 'title', 'target', 'rel'],
   },
 };

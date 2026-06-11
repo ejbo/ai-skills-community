@@ -35,7 +35,7 @@ export function isAllowedImageType(type: string): boolean {
 }
 
 /** Pick a file extension from the content type, falling back to the filename. */
-export function extFor(kind: 'source' | 'poster', contentType: string, filename: string): string {
+export function extFor(kind: 'source' | 'poster' | 'preview', contentType: string, filename: string): string {
   const fromType = (kind === 'poster' ? IMAGE_EXT : VIDEO_EXT)[contentType];
   if (fromType) return fromType;
   const m = filename.match(/\.([a-zA-Z0-9]{1,5})$/);
@@ -43,7 +43,7 @@ export function extFor(kind: 'source' | 'poster', contentType: string, filename:
 }
 
 /** A fresh unguessable storage key, e.g. "source/V1StGXR8.mp4". */
-export function newVideoKey(kind: 'source' | 'poster', ext: string): string {
+export function newVideoKey(kind: 'source' | 'poster' | 'preview', ext: string): string {
   return `${kind}/${nanoid()}.${ext}`;
 }
 

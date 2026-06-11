@@ -11,6 +11,11 @@ const basePath = process.env.NEXT_BASE_PATH || '';
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   ...(basePath ? { basePath } : {}),
+  // Expose the base path to client code so render-time helpers (withBasePath in
+  // lib/base-path.ts and lib/video/types.ts) prefix root-relative media URLs
+  // correctly. Deriving it here means a single NEXT_BASE_PATH drives both Next's
+  // routing basePath and client-side URL prefixing — no separate var to forget.
+  env: { NEXT_PUBLIC_BASE_PATH: basePath },
   experimental: {
     serverActions: {
       bodySizeLimit: '6mb',

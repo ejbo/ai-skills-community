@@ -9,8 +9,8 @@ import { estimateTokenCost } from '@/lib/skill-parser';
 const updateSchema = z.object({
   name: z.string().min(2).max(120).optional(),
   summary: z.string().min(1).max(200).optional(),
-  // Public overview (Skill column).
-  descriptionMd: z.string().optional(),
+  // Public overview (Skill column). Capped for parity with video descriptionMd.
+  descriptionMd: z.string().max(50000).optional(),
   // Gated SKILL.md body (currentVersion.contentInline) — updated separately below.
   bodyMd: z.string().optional(),
   categoryId: z.string().nullable().optional(),

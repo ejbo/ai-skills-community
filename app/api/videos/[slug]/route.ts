@@ -15,6 +15,8 @@ const updateSchema = z.object({
   videoKey: z.string().optional(),
   posterUrl: z.string().max(2000).nullable().optional(),
   posterKey: z.string().optional(),
+  previewUrl: z.string().max(2000).nullable().optional(),
+  previewKey: z.string().nullable().optional(),
   durationSec: z.number().int().min(0).optional(),
   width: z.number().int().min(0).optional(),
   height: z.number().int().min(0).optional(),
@@ -56,6 +58,8 @@ export async function PATCH(req: Request, { params }: { params: { slug: string }
     'videoKey',
     'posterUrl',
     'posterKey',
+    'previewUrl',
+    'previewKey',
     'durationSec',
     'width',
     'height',
@@ -128,6 +132,7 @@ export async function DELETE(req: Request, { params }: { params: { slug: string 
   await prisma.video.update({ where: { id: video.id }, data: { deletedAt: new Date() } });
   await deleteVideoFile(video.videoKey);
   await deleteVideoFile(video.posterKey);
+  await deleteVideoFile(video.previewKey);
 
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
   await logAdmin({

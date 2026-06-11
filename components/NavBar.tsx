@@ -14,7 +14,7 @@ export async function NavBar({ session }: { session: Session | null }) {
       <div className="container flex h-16 items-center gap-6">
         <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
           <Sparkles className="h-5 w-5 text-accent-500" />
-          <span>Skills</span>
+          <span>AI Community</span>
         </Link>
         <nav className="hidden items-center gap-1 md:flex">
           <NavLink href="/skills">{t('browse')}</NavLink>

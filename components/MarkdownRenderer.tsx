@@ -4,6 +4,7 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import rehypeHighlight from 'rehype-highlight';
 import { sanitizeSchema } from '@/lib/markdown';
+import { withBasePath } from '@/lib/base-path';
 
 // Shared code / table styling for both sizes.
 const CODE_TABLE =
@@ -28,6 +29,30 @@ export function MarkdownRenderer({ content, compact = false }: { content: string
           [rehypeHighlight, { ignoreMissing: true, detect: false }],
           [rehypeSanitize, sanitizeSchema],
         ]}
+        components={{
+          // Apply the deploy basePath to root-relative media (e.g. editor-uploaded
+          // images stored as "/api/uploads/...") so they resolve under subpath
+          // deploys. Absolute/data/blob URLs pass through unchanged.
+          img: ({ node, src, alt, ...props }) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={withBasePath(typeof src === 'string' ? src : '')} alt={alt ?? ''} loading="lazy" {...props} />
+          ),
+          // External links open in a new tab and ALWAYS get a safe rel (closes
+          // reverse-tabnabbing — the sanitize schema permits target/rel, and any
+          // stored rel is overridden here). Root-relative hrefs get the basePath.
+          a: ({ node, href, target, rel, ...props }) => {
+            const h = typeof href === 'string' ? href : '';
+            const external = /^(https?:)?\/\//i.test(h);
+            return (
+              <a
+                href={withBasePath(h)}
+                target={external ? '_blank' : target}
+                rel={external || target === '_blank' ? 'noopener noreferrer nofollow' : rel}
+                {...props}
+              />
+            );
+          },
+        }}
       >
         {content || '_(empty)_'}
       </ReactMarkdown>
