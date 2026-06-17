@@ -37,6 +37,29 @@ describe('buildComparisonSystemPrompt', () => {
   });
 });
 
+describe('buildComparisonSystemPrompt without a baseline (实测 optional)', () => {
+  const prompt = buildComparisonSystemPrompt('=== SKILL CONTEXT ===', null);
+
+  it('still embeds the skill context', () => {
+    expect(prompt).toContain('=== SKILL CONTEXT ===');
+  });
+
+  it('still asks for every structured section', () => {
+    for (const section of COMPARISON_SECTIONS) {
+      expect(prompt).toContain(section);
+    }
+  });
+
+  it('does not fabricate a "real runs" block when there is no example', () => {
+    expect(prompt).not.toContain('真实运行');
+    expect(prompt).not.toContain('baseline');
+  });
+
+  it('still steers toward value/difference analysis', () => {
+    expect(prompt).toMatch(/价值|差别|差异/);
+  });
+});
+
 describe('parseComparisonExample', () => {
   it('accepts a well-formed example', () => {
     expect(parseComparisonExample(example)).toEqual(example);

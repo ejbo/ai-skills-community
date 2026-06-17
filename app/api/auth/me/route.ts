@@ -7,10 +7,13 @@ import { hashPassword, verifyPassword } from '@/lib/auth/password';
 const profileSchema = z.object({
   displayName: z.string().min(2).max(64).optional(),
   bio: z.string().max(240).nullable().optional(),
+  // Accepts an uploaded path ("/api/uploads/images/…"), an absolute URL, or "".
   avatarUrl: z
     .string()
-    .url()
-    .or(z.literal(''))
+    .max(2048)
+    .refine((v) => v === '' || v.startsWith('/') || /^https?:\/\//.test(v), {
+      message: 'must be an uploaded path or http(s) URL',
+    })
     .nullable()
     .optional(),
 });
@@ -25,7 +28,7 @@ export async function GET() {
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, email: true, handle: true, displayName: true, bio: true, isAdmin: true },
+    select: { id: true, email: true, handle: true, displayName: true, bio: true, avatarUrl: true, isAdmin: true },
   });
   return NextResponse.json({ user });
 }

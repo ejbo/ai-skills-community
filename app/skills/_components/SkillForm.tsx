@@ -510,14 +510,17 @@ function Field({
   hint?: string;
   children: React.ReactNode;
 }) {
+  // NOT a <label>: the AI chip is a <button> (a labelable element); wrapping it in
+  // a <label> made clicks on the field area forward to it and fire generation
+  // unintentionally. A <div> keeps the button click-only.
   return (
-    <label className="block">
+    <div className="block">
       <span className="mb-1.5 flex items-center justify-between gap-2 text-xs font-medium text-muted">
         <span>{label}</span>
         {ai}
       </span>
       {children}
       {hint && <span className="mt-1 block text-[11px] text-muted">{hint}</span>}
-    </label>
+    </div>
   );
 }

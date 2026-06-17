@@ -15,6 +15,7 @@ declare module 'next-auth' {
       displayName: string;
       isAdmin: boolean;
       authMethod: 'password' | 'huawei_sso' | 'both';
+      avatarUrl: string | null;
     } & DefaultSession['user'];
   }
 }
@@ -157,6 +158,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.isAdmin = Boolean(token.isAdmin);
         session.user.authMethod = (token.authMethod as 'password' | 'huawei_sso' | 'both') ?? 'password';
         session.user.displayName = (token.displayName as string) ?? session.user.name ?? '';
+        session.user.avatarUrl = null;
+        // Freshen mutable profile fields from the DB so an avatar / display-name
+        // change shows immediately (the navbar reads `session.user.avatarUrl`),
+        // without forcing a re-login — the JWT alone would be stale.
+        if (token.uid) {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: token.uid as string },
+            select: { avatarUrl: true, displayName: true },
+          });
+          if (dbUser) {
+            session.user.avatarUrl = dbUser.avatarUrl;
+            session.user.image = dbUser.avatarUrl;
+            session.user.displayName = dbUser.displayName;
+          }
+        }
       }
       return session;
     },

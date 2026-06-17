@@ -11,7 +11,15 @@
     "signup": "Sign up",
     "logout": "Sign out",
     "profile": "Profile",
-    "search_placeholder": "Search skills…"
+    "settings": "Settings",
+    "search_placeholder": "Search everything…",
+    "search_hint": "Search skills, users, categories, videos…",
+    "search_empty": "No matching results",
+    "search_skills": "Skills",
+    "search_users": "Users",
+    "search_categories": "Categories",
+    "search_tags": "Tags",
+    "search_videos": "Videos"
   },
   "home": {
     "hero_title": "AI Community",
@@ -74,7 +82,7 @@
       "reviews": "Reviews",
       "composition": "Composition",
       "comparison": "Comparison",
-      "try_it": "Try it"
+      "playground": "Playground"
     },
     "files": {
       "loading": "Loading files…",

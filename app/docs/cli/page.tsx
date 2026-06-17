@@ -1,3 +1,4 @@
+import { headers } from 'next/headers';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 
 const CONTENT = `
@@ -11,7 +12,7 @@ const CONTENT = `
 直接用 \`npx\` 从本站下载并运行 CLI —— 无需全局安装：
 
 \`\`\`bash
-# <本站地址> 就是你打开这个网站的地址，例如 http://35.165.188.177:3000
+# 下面命令里的地址已自动替换为本站地址，复制即可运行
 npx <本站地址>/skills-cli.tgz login          # 先登录一次（见第二节）
 npx <本站地址>/skills-cli.tgz install pdf-form-signer
 \`\`\`
@@ -129,9 +130,17 @@ skills subscribe pdf-form-signer --off
 `;
 
 export default function CliDocsPage() {
+  // Bake the live site origin into the commands so they're copy-paste ready
+  // (tracks whatever host serves the page — localhost / AWS / intranet).
+  const h = headers();
+  const host = h.get('host') ?? '';
+  const proto = h.get('x-forwarded-proto') ?? 'http';
+  const origin = host ? `${proto}://${host}` : '<本站地址>';
+  const content = CONTENT.replaceAll('<本站地址>', origin);
+
   return (
     <div className="prose prose-zinc max-w-none dark:prose-invert">
-      <MarkdownRenderer content={CONTENT} />
+      <MarkdownRenderer content={content} />
     </div>
   );
 }

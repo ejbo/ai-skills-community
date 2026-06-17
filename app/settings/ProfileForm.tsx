@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Upload, X } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
+import { Avatar } from '@/components/Avatar';
 
 interface User {
   handle: string;
@@ -21,7 +22,35 @@ export function ProfileForm({ user }: { user: User }) {
   const [displayName, setDisplayName] = useState(user.displayName);
   const [bio, setBio] = useState(user.bio ?? '');
   const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl ?? '');
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
+
+  async function onPickFile(file: File) {
+    if (!file.type.startsWith('image/')) {
+      pushToast('error', '请选择图片文件');
+      return;
+    }
+    setUploading(true);
+    try {
+      const res = await fetch('/api/uploads/image', {
+        method: 'POST',
+        headers: { 'content-type': file.type, 'x-filename': encodeURIComponent(file.name) },
+        body: file,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) {
+        pushToast('error', data.error === 'too_large' ? '图片过大（上限 10MB）' : data.error ?? '上传失败');
+        return;
+      }
+      setAvatarUrl(data.url);
+      pushToast('success', '头像已上传，点「保存」生效');
+    } catch {
+      pushToast('error', '上传失败');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   function save() {
     startTransition(async () => {
@@ -78,14 +107,49 @@ export function ProfileForm({ user }: { user: User }) {
           className="input"
         />
       </Field>
-      <Field label="头像 URL">
-        <input
-          value={avatarUrl}
-          onChange={(e) => setAvatarUrl(e.target.value)}
-          placeholder="https://..."
-          className="input"
-        />
-      </Field>
+      {/* Avatar uploader — NOT wrapped in <Field>'s <label>, so clicks don't
+          accidentally trigger the hidden file input. */}
+      <div className="block">
+        <span className="mb-1 block text-xs font-medium text-muted">头像</span>
+        <div className="flex items-center gap-4">
+          <Avatar name={displayName || user.displayName} src={avatarUrl || null} size="xl" />
+          <div className="flex flex-col gap-2">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onPickFile(f);
+                e.target.value = '';
+              }}
+            />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-3 text-sm font-medium transition hover:border-accent-500 disabled:opacity-60 dark:border-zinc-700"
+              >
+                {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                上传头像
+              </button>
+              {avatarUrl && (
+                <button
+                  type="button"
+                  onClick={() => setAvatarUrl('')}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm text-muted transition hover:text-danger"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  移除
+                </button>
+              )}
+            </div>
+            <span className="text-[11px] text-muted">支持 JPG / PNG / WebP / GIF，最大 10MB。</span>
+          </div>
+        </div>
+      </div>
       <div className="flex justify-end">
         <button
           onClick={save}

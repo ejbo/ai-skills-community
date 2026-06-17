@@ -11,7 +11,15 @@
     "signup": "注册",
     "logout": "退出登录",
     "profile": "个人主页",
-    "search_placeholder": "搜索 skills…"
+    "settings": "设置",
+    "search_placeholder": "搜索全站…",
+    "search_hint": "搜索技能、用户、分类、视频…",
+    "search_empty": "没有找到相关内容",
+    "search_skills": "技能",
+    "search_users": "用户",
+    "search_categories": "分类",
+    "search_tags": "标签",
+    "search_videos": "视频"
   },
   "home": {
     "hero_title": "AI Community",
@@ -74,7 +82,7 @@
       "reviews": "评论",
       "composition": "组合",
       "comparison": "对比",
-      "try_it": "试一下"
+      "playground": "演练场"
     },
     "files": {
       "loading": "加载文件中…",

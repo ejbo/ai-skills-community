@@ -4,6 +4,7 @@ import type { SkillVisibility } from '@prisma/client';
 import { SourceBadge } from './SourceBadge';
 import { VisibilityBadge } from './VisibilityBadge';
 import { StatRow } from './StatRow';
+import { Avatar } from './Avatar';
 
 export interface SkillCardProps {
   slug: string;
@@ -11,7 +12,7 @@ export interface SkillCardProps {
   summary: string;
   sourceType: 'internal' | 'user_uploaded' | 'external_curated';
   visibility?: SkillVisibility;
-  author: { handle: string; displayName: string };
+  author: { handle: string; displayName: string; avatarUrl?: string | null };
   updatedAt: Date | string;
   stats: {
     downloads: number;
@@ -43,9 +44,7 @@ export function SkillCard(props: SkillCardProps) {
       </div>
       <div className="flex items-center justify-between gap-2 border-t border-zinc-100 pt-3 dark:border-zinc-800/60">
         <div className="flex items-center gap-2 text-xs text-muted">
-          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-500/15 text-[10px] font-semibold uppercase text-accent-600">
-            {props.author.displayName.charAt(0)}
-          </span>
+          <Avatar name={props.author.displayName} src={props.author.avatarUrl} size="xs" tone="subtle" />
           <span className="truncate">{props.author.displayName}</span>
           <span>·</span>
           <span>{formatDistanceToNowStrict(updated, { addSuffix: true })}</span>

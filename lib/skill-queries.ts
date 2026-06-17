@@ -87,7 +87,7 @@ export async function browseSkills(filters: BrowseFilters) {
         reviewCount: true,
         avgRating: true,
         tokenCostEstimate: true,
-        author: { select: { handle: true, displayName: true } },
+        author: { select: { handle: true, displayName: true, avatarUrl: true } },
       },
     }),
   ]);

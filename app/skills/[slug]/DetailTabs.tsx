@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { motion } from 'framer-motion';
 
-type Tab = 'overview' | 'files' | 'versions' | 'reviews' | 'composition' | 'comparison' | 'try_it' | 'manage';
+type Tab = 'overview' | 'files' | 'versions' | 'reviews' | 'composition' | 'comparison' | 'playground' | 'manage';
 
 export function DetailTabs({
   slug,
@@ -24,7 +24,7 @@ export function DetailTabs({
   const t = useTranslations('detail.tabs');
   const tabs: Tab[] = ['overview', 'files', 'versions', 'reviews', 'composition'];
   if (showComparison) tabs.push('comparison');
-  tabs.push('try_it');
+  tabs.push('playground');
   if (showManage) tabs.push('manage');
 
   return (

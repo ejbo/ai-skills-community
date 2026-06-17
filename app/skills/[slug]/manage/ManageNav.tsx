@@ -3,17 +3,18 @@
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 
-export type ManageSection = 'overview' | 'edit' | 'versions' | 'access' | 'analytics';
+export type ManageSection = 'overview' | 'edit' | 'versions' | 'comparison' | 'access' | 'analytics';
 
 const LABELS: Record<ManageSection, string> = {
   overview: '概览',
   edit: '编辑',
   versions: '版本',
+  comparison: '对比',
   access: '访问申请',
   analytics: '分析',
 };
 
-const ORDER: ManageSection[] = ['overview', 'edit', 'versions', 'access', 'analytics'];
+const ORDER: ManageSection[] = ['overview', 'edit', 'versions', 'comparison', 'access', 'analytics'];
 
 export function ManageNav({
   slug,

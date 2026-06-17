@@ -4,6 +4,7 @@ import { Star } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { Avatar } from '@/components/Avatar';
 import { ReviewForm } from './ReviewForm';
 
 export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: string }) {
@@ -19,7 +20,7 @@ export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: str
     where: { skillId },
     orderBy: { createdAt: 'desc' },
     include: {
-      author: { select: { id: true, handle: true, displayName: true } },
+      author: { select: { id: true, handle: true, displayName: true, avatarUrl: true } },
     },
   });
 
@@ -99,9 +100,7 @@ export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: str
               <li key={r.id} className="surface rounded-xl p-4">
                 <div className="flex items-center justify-between">
                   <Link href={`/users/${r.author.handle}`} className="flex items-center gap-2 hover:text-accent-600">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-500 text-xs font-semibold text-white">
-                      {r.author.displayName.charAt(0)}
-                    </span>
+                    <Avatar name={r.author.displayName} src={r.author.avatarUrl} size="sm" />
                     <span className="text-sm font-medium">{r.author.displayName}</span>
                   </Link>
                   <div className="flex items-center gap-3 text-xs text-muted">
