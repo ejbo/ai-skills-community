@@ -4,6 +4,7 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import { Calendar, Sparkles, Download, Heart } from 'lucide-react';
 import { prisma } from '@/lib/db';
 import { SkillCard } from '@/components/SkillCard';
+import { Avatar } from '@/components/Avatar';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +42,7 @@ export default async function UserProfilePage({ params }: { params: { handle: st
       reviewCount: true,
       avgRating: true,
       tokenCostEstimate: true,
-      author: { select: { handle: true, displayName: true } },
+      author: { select: { handle: true, displayName: true, avatarUrl: true } },
     },
   });
 
@@ -52,9 +53,7 @@ export default async function UserProfilePage({ params }: { params: { handle: st
     <div className="container py-8">
       <header className="surface rounded-2xl p-6">
         <div className="flex flex-wrap items-start gap-5">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-accent-500 text-2xl font-semibold text-white">
-            {user.displayName.charAt(0)}
-          </div>
+          <Avatar name={user.displayName} src={user.avatarUrl} size="xl" />
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-semibold tracking-tight">{user.displayName}</h1>
             <p className="mt-0.5 text-sm text-muted">@{user.handle}</p>

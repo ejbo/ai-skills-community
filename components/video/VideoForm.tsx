@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { Loader2 } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 import { VideoUploadField } from '@/components/video/VideoUploadField';
+import { RichTextEditor } from '@/components/RichTextEditor';
 
 type Status = 'draft' | 'published';
 type Visibility = 'public' | 'unlisted' | 'private';
@@ -31,6 +32,8 @@ export interface VideoFormVideo {
   videoKey: string | null;
   posterUrl: string | null;
   posterKey: string | null;
+  previewUrl: string | null;
+  previewKey: string | null;
   durationSec: number | null;
   width: number | null;
   height: number | null;
@@ -91,6 +94,9 @@ export function VideoForm({
   const [poster, setPoster] = useState<Media | null>(
     video?.posterUrl ? { url: video.posterUrl, key: video.posterKey ?? undefined } : null,
   );
+  const [previewClip, setPreviewClip] = useState<Media | null>(
+    video?.previewUrl ? { url: video.previewUrl, key: video.previewKey ?? undefined } : null,
+  );
 
   const [submitting, setSubmitting] = useState<Status | null>(null);
 
@@ -122,6 +128,8 @@ export function VideoForm({
       videoKey: source.key,
       posterUrl: poster?.url,
       posterKey: poster?.key,
+      previewUrl: previewClip?.url,
+      previewKey: previewClip?.key,
       durationSec: source.durationSec,
       width: source.width,
       height: source.height,
@@ -193,11 +201,11 @@ export function VideoForm({
           </Field>
 
           <Field label={t('manage.f_description')}>
-            <textarea
-              className={textareaClass}
-              rows={6}
+            <RichTextEditor
               value={descriptionMd}
-              onChange={(e) => setDescriptionMd(e.target.value)}
+              onChange={setDescriptionMd}
+              maxLength={50000}
+              ariaLabel={t('manage.f_description')}
             />
           </Field>
         </section>
@@ -270,6 +278,15 @@ export function VideoForm({
             value={poster}
             onUploaded={(r) => setPoster({ url: r.url, key: r.pathname })}
           />
+          <div className="space-y-1">
+            <VideoUploadField
+              kind="preview"
+              label={t('manage.upload_preview')}
+              value={previewClip}
+              onUploaded={(r) => setPreviewClip({ url: r.url, key: r.pathname })}
+            />
+            <p className="text-[11px] leading-snug text-muted">{t('manage.upload_preview_hint')}</p>
+          </div>
         </section>
 
         <section className="surface space-y-4 rounded-xl p-4">

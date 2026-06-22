@@ -6,6 +6,7 @@ import { Loader2, ChevronRight } from 'lucide-react';
 import type { SkillVisibility, SkillStatus } from '@prisma/client';
 import { pushToast } from '@/components/Toaster';
 import { TokenCostBadge } from '@/components/TokenCostBadge';
+import { RichTextEditor } from '@/components/RichTextEditor';
 import { VisibilitySelector } from '@/app/skills/_components/VisibilitySelector';
 import type { AssistAction } from '@/lib/skill-assist';
 import { AiFieldButton, AiAutofillButton } from './AiButton';
@@ -314,12 +315,12 @@ export function SkillForm({
                 已用 <code className="font-mono">README.md</code> 作为 Overview。
               </div>
             ) : (
-              <textarea
+              <RichTextEditor
                 value={overview}
-                onChange={(e) => setOverview(e.target.value)}
-                rows={4}
-                className="input font-mono text-[13px]"
+                onChange={setOverview}
+                maxLength={50000}
                 placeholder="介绍用途、关键能力、适用场景…"
+                ariaLabel="Overview"
               />
             )}
             {mode === 'create' && readme && (
@@ -509,14 +510,17 @@ function Field({
   hint?: string;
   children: React.ReactNode;
 }) {
+  // NOT a <label>: the AI chip is a <button> (a labelable element); wrapping it in
+  // a <label> made clicks on the field area forward to it and fire generation
+  // unintentionally. A <div> keeps the button click-only.
   return (
-    <label className="block">
+    <div className="block">
       <span className="mb-1.5 flex items-center justify-between gap-2 text-xs font-medium text-muted">
         <span>{label}</span>
         {ai}
       </span>
       {children}
       {hint && <span className="mt-1 block text-[11px] text-muted">{hint}</span>}
-    </label>
+    </div>
   );
 }

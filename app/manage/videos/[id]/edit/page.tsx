@@ -49,6 +49,8 @@ export default async function EditVideoPage({ params }: { params: { id: string }
     videoKey: video.videoKey,
     posterUrl: video.posterUrl,
     posterKey: video.posterKey,
+    previewUrl: video.previewUrl,
+    previewKey: video.previewKey,
     durationSec: video.durationSec,
     width: video.width,
     height: video.height,

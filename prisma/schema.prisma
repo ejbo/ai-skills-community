@@ -552,6 +552,8 @@ model Video {
   videoUrl    String?
   posterKey   String?
   posterUrl   String?
+  previewKey  String? // optional dedicated hover-preview clip; falls back to first seconds of source
+  previewUrl  String?
   mimeType    String  @default("video/mp4")
   sizeBytes   Int     @default(0)
   width       Int?

@@ -7,6 +7,8 @@ import { ChevronDown, ChevronUp, Heart, Loader2, MessageSquare, Pencil, Trash2 }
 import { formatDistanceToNowStrict } from 'date-fns';
 import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
+import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { RichTextEditor } from '@/components/RichTextEditor';
 import { formatCount } from '@/lib/video/types';
 import type { VideoCommentView } from '@/lib/video/queries';
 import { CommentComposer } from './CommentComposer';
@@ -169,16 +171,18 @@ export function CommentItem({ slug, comment, currentUser, onChanged }: Props) {
           <p className="mt-1 text-sm italic text-muted">{t('comments.deleted')}</p>
         ) : editing ? (
           <div className="mt-2 space-y-2">
-            <textarea
+            <RichTextEditor
               value={editDraft}
-              onChange={(e) => setEditDraft(e.target.value.slice(0, 2000))}
-              rows={3}
-              className="w-full resize-none rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900"
+              onChange={setEditDraft}
+              variant="compact"
+              maxLength={2000}
+              autoFocus
+              ariaLabel={t('comments.edit')}
             />
             <div className="flex items-center gap-2">
               <button
                 onClick={saveEdit}
-                disabled={savingEdit || !editDraft.trim()}
+                disabled={savingEdit || !editDraft.trim() || editDraft.length > 2000}
                 className="flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
               >
                 {savingEdit && <Loader2 className="h-3 w-3 animate-spin" />}
@@ -196,9 +200,9 @@ export function CommentItem({ slug, comment, currentUser, onChanged }: Props) {
             </div>
           </div>
         ) : (
-          <p className="mt-1 whitespace-pre-wrap break-words text-sm text-zinc-800 dark:text-zinc-100">
-            {bodyMd}
-          </p>
+          <div className="mt-1 break-words text-zinc-800 dark:text-zinc-100">
+            <MarkdownRenderer content={bodyMd} compact />
+          </div>
         )}
 
         {!isTombstone && !editing && (

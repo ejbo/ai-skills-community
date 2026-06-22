@@ -5,13 +5,16 @@ import { ExternalLink, Upload } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { isLLMConfigured } from '@/lib/llm';
+import { parseComparisonExample } from '@/lib/comparison';
 import {
   getSkillAccessOverview,
   getSkillAnalytics,
   getSkillDownloaders,
 } from '@/lib/skill-analytics';
 import { TokenCostBadge } from '@/components/TokenCostBadge';
+import { BackButton } from '@/components/BackButton';
 import { SkillForm } from '@/app/skills/_components/SkillForm';
+import { ComparisonStudio } from '../ComparisonStudio';
 import { AccessSection, AnalyticsSection } from '../ManageTab';
 import { ManageNav, type ManageSection } from './ManageNav';
 import { VersionUploader } from './VersionUploader';
@@ -20,7 +23,7 @@ import { DeleteSkillButton } from './DeleteSkillButton';
 
 export const dynamic = 'force-dynamic';
 
-const SECTIONS: ManageSection[] = ['overview', 'edit', 'versions', 'access', 'analytics'];
+const SECTIONS: ManageSection[] = ['overview', 'edit', 'versions', 'comparison', 'access', 'analytics'];
 
 function triggersOf(payload: unknown): string[] {
   const t = (payload as { triggers?: unknown } | null)?.triggers;
@@ -62,6 +65,9 @@ export default async function ManageSkillPage({
   return (
     <div className="container py-8">
       <div className="mx-auto max-w-4xl">
+        <div className="mb-4">
+          <BackButton fallbackHref={`/skills/${skill.slug}`} />
+        </div>
         <div className="text-xs text-muted">
           <Link href="/dashboard" className="hover:text-accent-600">
             我的面板
@@ -105,6 +111,8 @@ export default async function ManageSkillPage({
           )}
 
           {section === 'versions' && <VersionsSection slug={skill.slug} skillId={skill.id} currentVersionId={skill.currentVersionId} currentVersion={skill.currentVersion?.version ?? null} />}
+
+          {section === 'comparison' && <ComparisonSectionLoader skillId={skill.id} slug={skill.slug} currentVersionId={skill.currentVersionId} />}
 
           {section === 'access' && <AccessSectionLoader skillId={skill.id} slug={skill.slug} />}
 
@@ -303,6 +311,36 @@ async function VersionsSection({
         <VersionUploader slug={slug} currentVersion={currentVersion} />
       </div>
     </div>
+  );
+}
+
+async function ComparisonSectionLoader({
+  skillId,
+  slug,
+  currentVersionId,
+}: {
+  skillId: string;
+  slug: string;
+  currentVersionId: string | null;
+}) {
+  const comparison = await prisma.skillComparison.findUnique({ where: { skillId } });
+  const stale = Boolean(
+    comparison &&
+      comparison.generatedForVersionId &&
+      comparison.generatedForVersionId !== currentVersionId,
+  );
+  return (
+    <ComparisonStudio
+      slug={slug}
+      initial={{
+        status: comparison?.status ?? null,
+        bodyMd: comparison?.bodyMd ?? '',
+        example: parseComparisonExample(comparison?.example),
+        guidancePrompt: comparison?.guidancePrompt ?? '',
+        model: comparison?.model ?? null,
+        stale,
+      }}
+    />
   );
 }
 

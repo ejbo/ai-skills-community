@@ -9,11 +9,15 @@ import { buildComparisonSystemPrompt } from '@/lib/comparison';
 export const dynamic = 'force-dynamic';
 
 const schema = z.object({
-  example: z.object({
-    taskPrompt: z.string().min(1).max(4000),
-    withOutput: z.string().max(20000),
-    withoutOutput: z.string().max(20000),
-  }),
+  // Optional: the 实测 (real 装上/不装 dual-run). When absent the model generates
+  // the comparison copy from the skill content alone — 实测 is an optional step.
+  example: z
+    .object({
+      taskPrompt: z.string().min(1).max(4000),
+      withOutput: z.string().max(20000),
+      withoutOutput: z.string().max(20000),
+    })
+    .nullish(),
   messages: z
     .array(
       z.object({

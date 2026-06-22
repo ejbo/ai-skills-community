@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Code2, Eye, FileText, Folder, FolderOpen, Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import DOMPurify from 'dompurify';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { CodeViewer } from '@/components/CodeViewer';
 import { buildFileTree, type TreeNode } from '@/lib/skill-tree';
+import { splitFrontmatter } from '@/lib/frontmatter';
 
 interface FileMeta {
   path: string;
@@ -110,8 +111,9 @@ export function FilesTab({ slug }: { slug: string }) {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-[240px_1fr]">
-      <div className="surface max-h-[70vh] overflow-auto rounded-2xl p-2">
+    <div className="grid grid-cols-1 gap-4 md:h-[78vh] md:grid-cols-[260px_1fr]">
+      {/* File tree — scrolls on its own */}
+      <div className="surface max-h-[45vh] overflow-auto rounded-2xl p-2 md:max-h-none md:h-full">
         <TreeView
           nodes={tree}
           selected={selected}
@@ -120,17 +122,18 @@ export function FilesTab({ slug }: { slug: string }) {
           onSelect={setSelected}
         />
       </div>
-      <div className="surface min-h-[40vh] overflow-auto rounded-2xl p-4">
+      {/* Content — pinned header, body scrolls on its own */}
+      <div className="surface flex max-h-[80vh] min-h-[50vh] flex-col overflow-hidden rounded-2xl md:max-h-none md:h-full">
         {!selected ? (
-          <div className="text-sm text-muted">{t('select')}</div>
+          <div className="p-4 text-sm text-muted">{t('select')}</div>
         ) : loadingContent ? (
-          <div className="flex items-center gap-2 text-sm text-muted">
+          <div className="flex items-center gap-2 p-4 text-sm text-muted">
             <Loader2 className="h-4 w-4 animate-spin" /> {t('loading')}
           </div>
         ) : content ? (
           <FileView content={content} truncatedLabel={t('truncated')} binaryLabel={t('binary')} />
         ) : (
-          <div className="text-sm text-muted">{t('select')}</div>
+          <div className="p-4 text-sm text-muted">{t('select')}</div>
         )}
       </div>
     </div>
@@ -222,22 +225,124 @@ function FileView({
 }) {
   const isMarkdown = /\.(md|markdown)$/i.test(content.path);
   const isHtml = /\.(html?|xhtml)$/i.test(content.path);
+  const renderable = (isMarkdown || isHtml) && content.isText && content.content !== null;
+  const [view, setView] = useState<'rendered' | 'raw'>('rendered');
+  // Each newly opened file defaults to the rendered view.
+  useEffect(() => setView('rendered'), [content.path]);
+
+  const showRendered = renderable && view === 'rendered';
+
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between border-b border-zinc-100 pb-2 dark:border-zinc-800">
-        <span className="font-mono text-xs text-muted">{content.path}</span>
-        <span className="font-mono text-[10px] text-muted">{(content.size / 1024).toFixed(1)} KB</span>
+    <>
+      {/* Pinned header — never scrolls */}
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <FileText className="h-3.5 w-3.5 shrink-0 text-muted" />
+          <Breadcrumb path={content.path} />
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {renderable && <ViewToggle view={view} onChange={setView} />}
+          <span className="font-mono text-[10px] text-muted">{(content.size / 1024).toFixed(1)} KB</span>
+        </div>
       </div>
-      {!content.isText || content.content === null ? (
-        <div className="text-sm text-muted">{binaryLabel}</div>
-      ) : isMarkdown ? (
-        <MarkdownRenderer content={content.content} />
-      ) : isHtml ? (
-        <HtmlViewer html={content.content} />
-      ) : (
-        <CodeViewer path={content.path} content={content.content} />
-      )}
-      {content.truncated && <div className="text-[11px] text-warn">{truncatedLabel}</div>}
+
+      {/* Body — scrolls independently of the tree and the header */}
+      <div className="min-h-0 flex-1 overflow-auto">
+        {!content.isText || content.content === null ? (
+          <div className="p-4 text-sm text-muted">{binaryLabel}</div>
+        ) : showRendered ? (
+          <div className="p-4">
+            {isMarkdown ? (
+              <MarkdownFile content={content.content} />
+            ) : (
+              <HtmlViewer html={content.content} />
+            )}
+          </div>
+        ) : (
+          <CodeViewer path={content.path} content={content.content} lineNumbers />
+        )}
+        {content.truncated && <div className="px-4 py-2 text-[11px] text-warn">{truncatedLabel}</div>}
+      </div>
+    </>
+  );
+}
+
+function ViewToggle({
+  view,
+  onChange,
+}: {
+  view: 'rendered' | 'raw';
+  onChange: (v: 'rendered' | 'raw') => void;
+}) {
+  const base = 'inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium transition';
+  const on = 'bg-accent-500/10 text-accent-700 dark:text-accent-300';
+  const off = 'text-muted hover:bg-zinc-100 dark:hover:bg-zinc-800';
+  return (
+    <div className="inline-flex overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
+      <button onClick={() => onChange('rendered')} className={`${base} ${view === 'rendered' ? on : off}`}>
+        <Eye className="h-3 w-3" /> 渲染
+      </button>
+      <button
+        onClick={() => onChange('raw')}
+        className={`${base} border-l border-zinc-200 dark:border-zinc-800 ${view === 'raw' ? on : off}`}
+      >
+        <Code2 className="h-3 w-3" /> 原始
+      </button>
+    </div>
+  );
+}
+
+function Breadcrumb({ path }: { path: string }) {
+  const parts = path.split('/');
+  return (
+    <span className="truncate font-mono text-xs">
+      {parts.map((p, i) => (
+        <span key={i}>
+          {i > 0 && <span className="text-zinc-300 dark:text-zinc-600"> / </span>}
+          <span
+            className={
+              i === parts.length - 1 ? 'font-medium text-zinc-700 dark:text-zinc-200' : 'text-muted'
+            }
+          >
+            {p}
+          </span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * Render a markdown file. SKILL.md leads with a `---` YAML frontmatter block that
+ * markdown would otherwise turn into a giant setext heading; pull it out and show
+ * it as a tidy metadata panel, then render the body normally.
+ */
+function MarkdownFile({ content }: { content: string }) {
+  const { fields, body } = useMemo(() => splitFrontmatter(content), [content]);
+  return (
+    <div className="space-y-4">
+      {fields && <FrontmatterPanel fields={fields} />}
+      <MarkdownRenderer content={body} />
+    </div>
+  );
+}
+
+function FrontmatterPanel({ fields }: { fields: Array<{ key: string; value: string }> }) {
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-zinc-50/60 p-3 dark:border-zinc-800 dark:bg-zinc-900/40">
+      <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted">
+        Frontmatter
+      </div>
+      <dl className="space-y-1.5">
+        {fields.map((f) => (
+          <div key={f.key} className="grid grid-cols-[88px_1fr] gap-2 text-xs">
+            <dt className="font-mono font-medium text-muted">{f.key}</dt>
+            <dd className="min-w-0 whitespace-pre-wrap break-words text-zinc-700 dark:text-zinc-300">
+              {f.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }

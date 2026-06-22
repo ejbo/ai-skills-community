@@ -16,4 +16,11 @@ describe('sanitizeSchema', () => {
     expect(sanitizeSchema.tagNames).toContain('table');
     expect(sanitizeSchema.tagNames).toContain('code');
   });
+
+  it('keeps img + link attributes so rich-text editor output survives', () => {
+    expect(sanitizeSchema.attributes?.img).toEqual(expect.arrayContaining(['src', 'alt', 'title']));
+    expect(sanitizeSchema.attributes?.a).toEqual(expect.arrayContaining(['href', 'target', 'rel']));
+    expect(sanitizeSchema.tagNames).toContain('img');
+    expect(sanitizeSchema.tagNames).toContain('a');
+  });
 });

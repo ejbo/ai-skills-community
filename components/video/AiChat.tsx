@@ -116,9 +116,9 @@ export function AiChat({ slug }: { slug: string }) {
               send(input);
             }
           }}
-          rows={2}
+          rows={1}
           placeholder={t('ai.chat_placeholder')}
-          className="flex-1 resize-none rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none dark:border-zinc-800 dark:bg-zinc-900"
+          className="h-9 flex-1 resize-none rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm leading-6 focus:border-zinc-400 focus:outline-none dark:border-zinc-800 dark:bg-zinc-900"
         />
         <button
           onClick={() => send(input)}

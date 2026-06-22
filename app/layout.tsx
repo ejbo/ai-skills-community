@@ -21,8 +21,8 @@ import { auth } from '@/lib/auth';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Skills Community',
-  description: 'Share, discover and install AI agent skills.',
+  title: 'AI Community',
+  description: 'Share, discover and install AI agent skills. Watch geek videos.',
   icons: { icon: '/favicon.ico' },
 };
 

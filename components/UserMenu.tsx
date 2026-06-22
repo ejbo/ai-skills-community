@@ -3,9 +3,11 @@
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, LayoutDashboard, ShieldCheck, Upload, LogOut, User } from 'lucide-react';
+import { ChevronDown, LayoutDashboard, Settings, ShieldCheck, Upload, LogOut, User } from 'lucide-react';
 import { signOut } from 'next-auth/react';
 import { useTranslations } from 'next-intl';
+import { withBasePath } from '@/lib/base-path';
+import { Avatar } from '@/components/Avatar';
 
 interface MenuUser {
   id: string;
@@ -13,6 +15,7 @@ interface MenuUser {
   displayName?: string;
   handle?: string;
   isAdmin?: boolean;
+  avatarUrl?: string | null;
   image?: string | null;
 }
 
@@ -29,7 +32,6 @@ export function UserMenu({ user }: { user: MenuUser }) {
     return () => document.removeEventListener('click', close);
   }, []);
 
-  const initial = (user.displayName ?? user.email ?? 'U').charAt(0).toUpperCase();
   return (
     <div ref={ref} className="relative">
       <button
@@ -39,9 +41,7 @@ export function UserMenu({ user }: { user: MenuUser }) {
         aria-expanded={open}
         className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 transition hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 dark:hover:bg-zinc-800"
       >
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-500 text-xs font-semibold text-white">
-          {initial}
-        </span>
+        <Avatar name={user.displayName ?? user.email} src={user.avatarUrl ?? user.image ?? null} size="sm" />
         <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
       </button>
       <AnimatePresence>
@@ -63,13 +63,16 @@ export function UserMenu({ user }: { user: MenuUser }) {
             <MenuItem href="/skills/new" icon={<Upload className="h-4 w-4" />}>
               {t('upload')}
             </MenuItem>
+            <MenuItem href="/settings" icon={<Settings className="h-4 w-4" />}>
+              {t('settings')}
+            </MenuItem>
             {user.isAdmin && (
               <MenuItem href="/manage" icon={<ShieldCheck className="h-4 w-4" />}>
                 {t('manage')}
               </MenuItem>
             )}
             <button
-              onClick={() => signOut({ callbackUrl: '/' })}
+              onClick={() => signOut({ redirectTo: withBasePath('/') })}
               className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
             >
               <LogOut className="h-4 w-4" />

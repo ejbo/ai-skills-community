@@ -1,7 +1,7 @@
 {
   "nav": {
-    "browse": "Browse",
-    "videos": "Videos",
+    "browse": "Skills",
+    "videos": "Geek Videos",
     "categories": "Categories",
     "docs": "Docs",
     "upload": "Upload",
@@ -11,14 +11,40 @@
     "signup": "Sign up",
     "logout": "Sign out",
     "profile": "Profile",
-    "search_placeholder": "Search skills…"
+    "settings": "Settings",
+    "search_placeholder": "Search everything…",
+    "search_hint": "Search skills, users, categories, videos…",
+    "search_empty": "No matching results",
+    "search_skills": "Skills",
+    "search_users": "Users",
+    "search_categories": "Categories",
+    "search_tags": "Tags",
+    "search_videos": "Videos"
   },
   "home": {
-    "hero_title": "AI Skills Community",
-    "hero_subtitle": "Upload, discover, install, subscribe. One command to ship a skill into your coding agent.",
+    "hero_title": "AI Community",
+    "hero_subtitle": "Discover and install AI agent skills, watch geek videos. One command to ship a skill into your coding agent.",
     "install_cta": "Install to your agent",
     "trending": "Trending this week",
-    "featured": "Featured"
+    "featured": "Featured",
+    "welcome_back": "Welcome back, {name}",
+    "community_kicker": "AI Community",
+    "community_subtitle": "Trending skills and geek videos from the community, refreshed daily.",
+    "hot_skills": "Trending Skills",
+    "hot_videos": "Trending Geek Videos",
+    "view_all": "View all",
+    "post_skill": "Publish a skill",
+    "browse_videos": "Geek videos",
+    "no_skills_yet": "No skills yet.",
+    "be_first": "Be the first to publish",
+    "hero_badge": "AI Community · Skills & Geek Videos",
+    "browse_skills": "Browse skills",
+    "feature_install_title": "One-command install",
+    "feature_install_body": "Ship skills into Claude Code, Cursor, Aider — synced across multiple target directories.",
+    "feature_subscribe_title": "Subscribe to updates",
+    "feature_subscribe_body": "When the author ships a new version, one update command syncs your local skill.",
+    "feature_remix_title": "Remix",
+    "feature_remix_body": "Fork any skill as a starting point — the community builds prompt craft together."
   },
   "browse": {
     "title": "Browse Skills",
@@ -56,7 +82,7 @@
       "reviews": "Reviews",
       "composition": "Composition",
       "comparison": "Comparison",
-      "try_it": "Try it"
+      "playground": "Playground"
     },
     "files": {
       "loading": "Loading files…",
@@ -161,10 +187,17 @@
     "curated": "Curated"
   },
   "video": {
-    "nav": "Videos",
-    "home": { "watch": "Play", "more": "Details", "featured": "Featured" },
+    "nav": "Geek Videos",
+    "home": {
+      "watch": "Play",
+      "more": "Details",
+      "featured": "Featured",
+      "prev": "Previous",
+      "next": "Next",
+      "go_detail": "Open video page"
+    },
     "feed": {
-      "title": "Videos",
+      "title": "Geek Videos",
       "search_placeholder": "Search videos…",
       "sort_latest": "Latest",
       "sort_trending": "Trending",
@@ -183,7 +216,9 @@
       "related": "Related videos",
       "description": "Description",
       "guest": "Guest",
-      "by": "by"
+      "by": "by",
+      "expand": "Show more",
+      "collapse": "Show less"
     },
     "ai": {
       "summary_title": "AI Summary",
@@ -235,6 +270,8 @@
       "f_interviewee": "Interviewee",
       "upload_video": "Upload video",
       "upload_poster": "Upload poster",
+      "upload_preview": "Upload hover preview clip (optional)",
+      "upload_preview_hint": "Shown when visitors hover the card. Without one, the first 10 seconds of the video loop instead.",
       "uploading": "Uploading…",
       "save_draft": "Save draft",
       "publish": "Publish",

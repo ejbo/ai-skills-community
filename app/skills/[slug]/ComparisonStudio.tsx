@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2, FlaskConical, Wand2, Check, Send, Trash2, Eye, EyeOff } from 'lucide-react';
+import { Loader2, FlaskConical, Wand2, Check, Send, Trash2, Eye, EyeOff, ChevronRight } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 import { DEFAULT_GUIDANCE_PROMPT } from '@/lib/comparison';
 import { streamChat } from './streamChat';
@@ -34,6 +34,7 @@ export function ComparisonStudio({ slug, initial }: { slug: string; initial: Stu
   const [chatPending, setChatPending] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [showBaseline, setShowBaseline] = useState(Boolean(initial.example));
 
   async function runBaseline() {
     if (!taskPrompt.trim()) {
@@ -55,7 +56,7 @@ export function ComparisonStudio({ slug, initial }: { slug: string; initial: Stu
       setExample(data.example);
       setModel(data.model ?? null);
       setMessages([]);
-      pushToast('success', '实测完成，下面可以生成对比');
+      pushToast('success', '实测完成，已作为真实证据，重新生成时会用上');
     } catch (e) {
       pushToast('error', e instanceof Error ? e.message : '实测失败');
     } finally {
@@ -63,17 +64,15 @@ export function ComparisonStudio({ slug, initial }: { slug: string; initial: Stu
     }
   }
 
+  // Generation only ever fires from an explicit button click (生成 / 微调 / 发送),
+  // never from focus/typing — so the author is always in control of model calls.
   async function sendToWorkshop(history: Msg[]) {
-    if (!example) {
-      pushToast('error', '请先点「实测」跑一次');
-      return;
-    }
     setChatPending(true);
     setMessages([...history, { role: 'assistant', content: '' }]);
     try {
       const result = await streamChat(
         `/api/skills/${slug}/comparison/workshop`,
-        { example, messages: history },
+        { example, messages: history }, // example may be null — workshop generates from the skill alone
         (delta) =>
           setMessages((prev) => {
             const next = [...prev];
@@ -97,6 +96,7 @@ export function ComparisonStudio({ slug, initial }: { slug: string; initial: Stu
   }
 
   function generate() {
+    if (chatPending) return;
     sendToWorkshop([{ role: 'user', content: guidance.trim() || DEFAULT_GUIDANCE_PROMPT }]);
   }
 
@@ -184,40 +184,20 @@ export function ComparisonStudio({ slug, initial }: { slug: string; initial: Stu
         </div>
       )}
 
-      {/* Step 1 — real dual-run */}
-      <section className="surface space-y-2 rounded-2xl p-4">
-        <StepHeader n={1} title="实测：跑一个样例任务（装上 / 不装各一次）" />
-        <textarea
-          value={taskPrompt}
-          onChange={(e) => setTaskPrompt(e.target.value.slice(0, 4000))}
-          rows={3}
-          placeholder="给一个能体现这个 skill 价值的任务，比如「帮我做一页 MoE 架构的技术汇报」"
-          className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900"
-        />
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] text-muted">{taskPrompt.length} / 4000</span>
-          <button
-            onClick={runBaseline}
-            disabled={baselinePending}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
-          >
-            {baselinePending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FlaskConical className="h-3.5 w-3.5" />}
-            实测
-          </button>
+      {/* AI generate + refine chat (primary) */}
+      <section className="surface space-y-3 rounded-2xl p-4">
+        <div>
+          <h3 className="text-sm font-semibold">用 AI 生成对比文案</h3>
+          <p className="mt-1 text-xs text-muted">
+            AI 会读取这个 skill 的完整内容，直接写出「装上 vs 不装」的结构化对比。
+            {example
+              ? '已附带下方实测结果，会作为真实证据一并参考。'
+              : '想更有说服力，可在下方「实测（可选）」跑一次真实 Before / After。'}
+          </p>
         </div>
-        {example && (
-          <div className="grid grid-cols-1 gap-3 pt-2 md:grid-cols-2">
-            <RawOutput title="不装（baseline）" text={example.withoutOutput} />
-            <RawOutput title="装上这个 Skill" text={example.withOutput} accent />
-          </div>
-        )}
-      </section>
 
-      {/* Step 2 — analysis chat */}
-      <section className="surface space-y-2 rounded-2xl p-4">
-        <StepHeader n={2} title="生成对比：让模型结合两次结果写结构化报告" />
         <label className="block">
-          <span className="mb-1 block text-[11px] font-medium text-muted">定向 prompt（可改）</span>
+          <span className="mb-1 block text-[11px] font-medium text-muted">想让 AI 重点突出什么？（可选）</span>
           <textarea
             value={guidance}
             onChange={(e) => setGuidance(e.target.value.slice(0, 8000))}
@@ -225,17 +205,18 @@ export function ComparisonStudio({ slug, initial }: { slug: string; initial: Stu
             className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900"
           />
         </label>
+
         <button
           onClick={generate}
-          disabled={chatPending || !example}
+          disabled={chatPending}
           className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
         >
           {chatPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-          生成对比
+          AI 一键生成对比文案
         </button>
 
         {messages.length > 0 && (
-          <div className="space-y-3 pt-2">
+          <div className="space-y-3 pt-1">
             {messages.map((m, i) => (
               <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
@@ -294,9 +275,52 @@ export function ComparisonStudio({ slug, initial }: { slug: string; initial: Stu
         )}
       </section>
 
-      {/* Step 3 — edit + publish */}
+      {/* 实测 — optional, collapsible */}
+      <section className="surface overflow-hidden rounded-2xl">
+        <button
+          onClick={() => setShowBaseline((v) => !v)}
+          className="flex w-full items-center gap-2 px-4 py-3 text-sm font-medium"
+        >
+          <ChevronRight className={`h-4 w-4 transition ${showBaseline ? 'rotate-90' : ''}`} />
+          实测（可选）：真实跑一次「装上 / 不装」对照
+          {example && (
+            <span className="ml-1 rounded-full bg-ok/10 px-2 py-0.5 text-[10px] font-semibold text-ok">已实测</span>
+          )}
+          <span className="ml-auto text-xs font-normal text-muted">给对比加上真实 Before / After 证据</span>
+        </button>
+        {showBaseline && (
+          <div className="space-y-2 border-t border-zinc-200 px-4 py-4 dark:border-zinc-800">
+            <textarea
+              value={taskPrompt}
+              onChange={(e) => setTaskPrompt(e.target.value.slice(0, 4000))}
+              rows={3}
+              placeholder="给一个能体现这个 skill 价值的任务，比如「帮我做一页 MoE 架构的技术汇报」"
+              className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900"
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-muted">{taskPrompt.length} / 4000</span>
+              <button
+                onClick={runBaseline}
+                disabled={baselinePending}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-4 text-sm font-medium transition hover:border-accent-500 disabled:opacity-60 dark:border-zinc-700"
+              >
+                {baselinePending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FlaskConical className="h-3.5 w-3.5" />}
+                实测
+              </button>
+            </div>
+            {example && (
+              <div className="grid grid-cols-1 gap-3 pt-2 md:grid-cols-2">
+                <RawOutput title="不装（baseline）" text={example.withoutOutput} />
+                <RawOutput title="装上这个 Skill" text={example.withOutput} accent />
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* Edit + publish */}
       <section className="surface space-y-2 rounded-2xl p-4">
-        <StepHeader n={3} title="编辑并发布" />
+        <h3 className="text-sm font-semibold">编辑并发布</h3>
         <textarea
           value={bodyMd}
           onChange={(e) => setBodyMd(e.target.value.slice(0, 40000))}
@@ -345,17 +369,6 @@ function StatusPill({ status }: { status: string | null }) {
   if (status === 'draft')
     return <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-[11px] text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">草稿</span>;
   return <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-muted dark:bg-zinc-800">尚未创建</span>;
-}
-
-function StepHeader({ n, title }: { n: number; title: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-500 text-[11px] font-semibold text-white">
-        {n}
-      </span>
-      <h4 className="text-sm font-medium">{title}</h4>
-    </div>
-  );
 }
 
 function RawOutput({ title, text, accent }: { title: string; text: string; accent?: boolean }) {
