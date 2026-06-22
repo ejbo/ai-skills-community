@@ -93,8 +93,19 @@ function buildProviders(): Provider[] {
   return providers;
 }
 
+// Auth.js mounts its API at `<basePath>`. Under a Next.js subpath deploy the route
+// handler actually lives at `<NEXT_BASE_PATH>/api/auth/*`, and @auth/core matches the
+// incoming request path against `config.basePath` (`^<basePath>(.+)`) — so basePath
+// MUST include the Next basePath, not just "/api/auth". If left to default, @auth/core
+// derives it from AUTH_URL's pathname, which is an easy thing to get wrong (e.g.
+// AUTH_URL=.../ai-community yields "/ai-community", breaking the callback). Pin it to
+// the SAME build-time var the client `AuthProvider` and next.config use, so server and
+// client never drift. Empty NEXT_PUBLIC_BASE_PATH ⇒ "/api/auth" (root deploy, unchanged).
+const AUTH_BASE_PATH = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}/api/auth`;
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: env.AUTH_SECRET,
+  basePath: AUTH_BASE_PATH,
   session: { strategy: 'jwt' },
   providers: buildProviders(),
   pages: {

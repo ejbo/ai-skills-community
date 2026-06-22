@@ -14,6 +14,7 @@ const geistMono = JetBrains_Mono({
 });
 import { getLocale, getMessages } from 'next-intl/server';
 import { ThemeProvider } from '@/components/ThemeProvider';
+import { AuthProvider } from '@/components/AuthProvider';
 import { NavBar } from '@/components/NavBar';
 import { Toaster } from '@/components/Toaster';
 import { VisitTracker } from '@/components/VisitTracker';
@@ -45,12 +46,14 @@ export default async function RootLayout({
     >
       <body>
         <ThemeProvider>
-          <NextIntlClientProvider locale={locale} messages={messages}>
-            <NavBar session={session} />
-            <main className="min-h-[calc(100vh-64px)]">{children}</main>
-            <Toaster />
-            <VisitTracker enabled={Boolean(session?.user)} />
-          </NextIntlClientProvider>
+          <AuthProvider session={session}>
+            <NextIntlClientProvider locale={locale} messages={messages}>
+              <NavBar session={session} />
+              <main className="min-h-[calc(100vh-64px)]">{children}</main>
+              <Toaster />
+              <VisitTracker enabled={Boolean(session?.user)} />
+            </NextIntlClientProvider>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>
