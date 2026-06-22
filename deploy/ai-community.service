@@ -1,0 +1,31 @@
+# systemd unit for the AI Community (skills-community) Next.js app.
+# Install:  sudo cp deploy/ai-community.service /etc/systemd/system/ai-community.service
+#           sudo systemctl daemon-reload && sudo systemctl enable --now ai-community
+# Logs:     journalctl -u ai-community -f
+#
+# Adjust WorkingDirectory + the node/pnpm path (`which pnpm`, `which node`) to your box.
+[Unit]
+Description=AI Community (skills-community) Next.js app under /ai-community
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ai-community
+# Next.js auto-loads .env from WorkingDirectory → DATABASE_URL, AUTH_URL, AUTH_SECRET,
+# SSO_* all come from there. NEXT_BASE_PATH is set here too so basePath is correct at
+# `next start` as well as build time.
+Environment=NODE_ENV=production
+Environment=NEXT_BASE_PATH=/ai-community
+# If the box needs a CA bundle to trust uniportal's cert, uncomment (preferred over
+# NODE_TLS_REJECT_UNAUTHORIZED=0):
+# Environment=NODE_EXTRA_CA_CERTS=/etc/ssl/certs/huawei-ca-bundle.pem
+#
+# Use the ABSOLUTE pnpm path from `which pnpm` (or the node form on the next line).
+ExecStart=/usr/local/bin/pnpm start -- -p 3100 -H 127.0.0.1
+# Alternative without pnpm:
+# ExecStart=/usr/bin/node node_modules/next/dist/bin/next start -p 3100 -H 127.0.0.1
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
