@@ -20,10 +20,12 @@ Environment=NEXT_BASE_PATH=/ai-community
 # NODE_TLS_REJECT_UNAUTHORIZED=0):
 # Environment=NODE_EXTRA_CA_CERTS=/etc/ssl/certs/huawei-ca-bundle.pem
 #
-# Use the ABSOLUTE pnpm path from `which pnpm` (or the node form on the next line).
-ExecStart=/usr/local/bin/pnpm start -- -p 3100 -H 127.0.0.1
-# Alternative without pnpm:
-# ExecStart=/usr/bin/node node_modules/next/dist/bin/next start -p 3100 -H 127.0.0.1
+# Call next directly — robust under systemd and avoids pnpm's `--` arg forwarding
+# (`pnpm start -- -p 3100` leaks `--` into next, which then crashes on `-p`).
+# Adjust the node path to `which node` on your box.
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start -p 3100 -H 127.0.0.1
+# Alternative via pnpm (use the ABSOLUTE path from `which pnpm`):
+# ExecStart=/usr/local/bin/pnpm exec next start -p 3100 -H 127.0.0.1
 Restart=on-failure
 RestartSec=3
 

@@ -25,7 +25,7 @@ direct egress**. Ready-to-use artifacts:
 | Callback to register/confirm | `https://ai4news.rnd.huawei.com/ai-community/api/auth/callback/huawei` |
 | `client_id` / `secret` | reuse ai4news's (D2) |
 | `USE_PROXY` | `false` (direct) — `SSO_VERIFY_SSL=false` |
-| App upstream port | `127.0.0.1:3100` (any free port; must match nginx + `pnpm start -- -p`) |
+| App upstream port | `127.0.0.1:3100` (any free port; must match nginx + the `next start -p`) |
 
 **Steps**
 
@@ -43,7 +43,9 @@ direct egress**. Ready-to-use artifacts:
    pnpm install
    pnpm prisma migrate deploy
    NEXT_BASE_PATH=/ai-community pnpm build
-   NEXT_BASE_PATH=/ai-community pnpm start -- -p 3100
+   # NOTE: call next directly via `pnpm exec` — `pnpm start -- -p 3100` leaks the `--`
+   # into next on pnpm v8+, which then treats `-p` as a directory and crashes.
+   NEXT_BASE_PATH=/ai-community pnpm exec next start -p 3100 -H 127.0.0.1
    ```
 5. Visit `https://ai4news.rnd.huawei.com/ai-community/auth/login` → **both** the
    "Email & Password" card and the "Huawei W3 SSO" card show. Click W3 → uniportal →
@@ -159,7 +161,7 @@ location = /<SUBPATH> { return 301 /<SUBPATH>/; }
 pnpm install
 pnpm prisma migrate deploy          # the huaweiW3Id / authMethod columns already exist in the schema
 NEXT_BASE_PATH=/<SUBPATH> pnpm build
-NEXT_BASE_PATH=/<SUBPATH> pnpm start -- -p 3100
+NEXT_BASE_PATH=/<SUBPATH> pnpm exec next start -p 3100 -H 127.0.0.1   # NOT `pnpm start -- -p` (the `--` leaks into next)
 ```
 
 ## Step 5 — verify the round trip
