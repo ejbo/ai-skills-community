@@ -181,6 +181,8 @@ NEXT_BASE_PATH=/<SUBPATH> pnpm exec next start -p 3100 -H 127.0.0.1   # NOT `pnp
 | TLS / cert verification error reaching uniportal | Keep `SSO_VERIFY_SSL=false` (uses an undici verify-off agent). If undici isn't resolvable in your runtime, set `NODE_EXTRA_CA_CERTS=<huawei CA bundle>` (preferred) or `NODE_TLS_REJECT_UNAUTHORIZED=0` on the process. |
 | Assets 404 / login redirects to `/` instead of `/<SUBPATH>/` | `NEXT_BASE_PATH` / `AUTH_URL` / nginx `<SUBPATH>` disagree, or `proxy_pass` has a trailing slash. Make all four identical. |
 | Login/logout buttons hit `<origin>/api/auth/*` (404 / lands on the neighbour app) instead of `…/<SUBPATH>/api/auth/*` | The next-auth React client can't read `AUTH_URL` in the browser, so it must be told the basePath. `components/AuthProvider.tsx` sets `SessionProvider basePath = NEXT_PUBLIC_BASE_PATH + /api/auth`. Ensure `NEXT_PUBLIC_BASE_PATH` is present **at build time** (next.config derives it from `NEXT_BASE_PATH`). |
+| `UnknownAction: Cannot parse action at /api/auth/…` + "Bad request" on every login (W3 *and* password) | Next strips `NEXT_BASE_PATH` from inbound route-handler URLs, so @auth/core (basePath `<SUBPATH>/api/auth`) sees `/api/auth/…` and can't match. `lib/auth-handlers.ts` re-adds the basePath to inbound requests. If you see this, that wrapper is missing/edited — restore it. |
+| W3 login succeeds but lands on the host root (the neighbour app), not `…/<SUBPATH>/` | The W3 flow ends in a server redirect that Next does NOT auto-prefix. `HuaweiLoginButton` must pass a `withBasePath()`-prefixed `callbackUrl`. |
 | `AuthCode has been used` (`E_20003`) | A browser/proxy prefetched the callback and consumed the one-time code. The dedicated `/api/auth/callback/huawei` path avoids this; check no prefetcher hits it. |
 | userinfo only returns `uuid` | The registration's 用户信息申请 lacks the extra fields. D2 reuse of ai4news inherits them; for D1 tick `uid`/`displayNameCn`/`email`. |
 
@@ -196,5 +198,7 @@ NEXT_BASE_PATH=/<SUBPATH> pnpm exec next start -p 3100 -H 127.0.0.1   # NOT `pnp
 - `next.config.mjs` — env-driven `basePath` (+ exposes `NEXT_PUBLIC_BASE_PATH` to the client).
 - `components/AuthProvider.tsx` — wraps the app in `SessionProvider basePath=<NEXT_PUBLIC_BASE_PATH>/api/auth`
   so the browser-side `signIn()`/`signOut()` target this app's API under the subpath (not the origin root).
+- `lib/auth-handlers.ts` — re-adds the stripped `NEXT_BASE_PATH` to inbound auth requests so @auth/core
+  can parse the action (Next strips basePath from route-handler URLs; without this every login 400s).
 - Login page (`app/auth/login/page.tsx`) renders **both** the email/password form and the W3 card
   (`isSsoEnabled && …`); the W3 card only appears when `ENABLE_SSO=true` + client id/secret are set.
