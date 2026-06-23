@@ -72,7 +72,13 @@ export function UserMenu({ user }: { user: MenuUser }) {
               </MenuItem>
             )}
             <button
-              onClick={() => signOut({ redirectTo: withBasePath('/') })}
+              onClick={async () => {
+                // Clear the session, then navigate client-side. Letting next-auth build the
+                // post-logout redirect server-side resolved the host wrong behind the proxy
+                // (→ localhost:3100); navigating in the browser keeps us on the real origin.
+                await signOut({ redirect: false });
+                window.location.href = withBasePath('/');
+              }}
               className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
             >
               <LogOut className="h-4 w-4" />

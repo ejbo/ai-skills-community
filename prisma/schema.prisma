@@ -25,6 +25,10 @@ model User {
   displayName        String
   passwordHash       String?
   huaweiW3Id         String?    @unique
+  // Real/company name from Huawei W3, captured on first SSO login. IMMUTABLE — never
+  // editable by the user (displayName is the editable one); lets admins see who a
+  // person really is even after they rename their display name.
+  huaweiW3Name       String?
   authMethod         AuthMethod @default(password)
   avatarUrl          String?
   bio                String?

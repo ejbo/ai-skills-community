@@ -16,6 +16,7 @@ export default async function ProfileSettingsPage() {
       avatarUrl: true,
       authMethod: true,
       huaweiW3Id: true,
+      huaweiW3Name: true,
     },
   });
   if (!user) return null;

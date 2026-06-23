@@ -126,6 +126,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               huaweiW3Id: w3Id,
               authMethod: existing.passwordHash ? 'both' : 'huawei_sso',
               lastLoginAt: new Date(),
+              // Backfill the immutable W3 name for accounts created before this field
+              // existed — but only when empty, so it's set exactly once and never changes.
+              ...(existing.huaweiW3Name ? {} : { huaweiW3Name: user.name ?? null }),
             },
           });
         } else {
@@ -133,8 +136,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             data: {
               email: user.email!,
               handle: w3Id,
-              displayName: user.name ?? w3Id,
+              displayName: user.name ?? w3Id, // editable later by the user
               huaweiW3Id: w3Id,
+              huaweiW3Name: user.name ?? null, // immutable record of the W3 identity
               authMethod: 'huawei_sso',
               avatarUrl: (user as { image?: string }).image ?? null,
               lastLoginAt: new Date(),

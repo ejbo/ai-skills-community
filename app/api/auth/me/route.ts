@@ -28,7 +28,7 @@ export async function GET() {
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, email: true, handle: true, displayName: true, bio: true, avatarUrl: true, isAdmin: true },
+    select: { id: true, email: true, handle: true, displayName: true, bio: true, avatarUrl: true, isAdmin: true, huaweiW3Id: true, huaweiW3Name: true },
   });
   return NextResponse.json({ user });
 }

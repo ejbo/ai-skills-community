@@ -22,6 +22,7 @@ export default async function UsersListPage({
           { displayName: { contains: q, mode: 'insensitive' as const } },
           { handle: { contains: q, mode: 'insensitive' as const } },
           { huaweiW3Id: { contains: q, mode: 'insensitive' as const } },
+          { huaweiW3Name: { contains: q, mode: 'insensitive' as const } },
         ],
       }
     : {};
@@ -51,6 +52,7 @@ export default async function UsersListPage({
         lastLoginAt: true,
         createdAt: true,
         huaweiW3Id: true,
+        huaweiW3Name: true,
       },
     }),
     prisma.user.count({ where }),
@@ -69,7 +71,7 @@ export default async function UsersListPage({
         <input
           name="q"
           defaultValue={q}
-          placeholder="搜索 email / 用户名 / W3 工号…"
+          placeholder="搜索 email / 用户名 / W3 工号 / W3 姓名…"
           className="h-9 flex-1 rounded-lg border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
         />
         <select
@@ -91,6 +93,7 @@ export default async function UsersListPage({
           <thead>
             <tr>
               <th>用户</th>
+              <th>W3 姓名</th>
               <th>身份</th>
               <th>登录方式</th>
               <th>最近登录</th>
@@ -111,6 +114,13 @@ export default async function UsersListPage({
                       <span className="text-[11px] text-muted">{u.email}</span>
                     </div>
                   </Link>
+                </td>
+                <td className="text-[13px]">
+                  {u.huaweiW3Name ? (
+                    <span className="font-medium">{u.huaweiW3Name}</span>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
                 </td>
                 <td>
                   {u.isAdmin ? (

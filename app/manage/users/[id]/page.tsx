@@ -77,6 +77,12 @@ export default async function UserDetailPage({ params }: { params: { id: string 
                 {user.authMethod === 'both' ? '密码 + W3' : user.authMethod === 'huawei_sso' ? 'W3' : '密码'}
                 {user.huaweiW3Id && <span className="ml-1 text-xs text-muted">({user.huaweiW3Id})</span>}
               </Dd>
+              {user.huaweiW3Name && (
+                <>
+                  <Dt>W3 姓名（不可改）</Dt>
+                  <Dd className="font-medium">{user.huaweiW3Name}</Dd>
+                </>
+              )}
               <Dt>注册时间</Dt>
               <Dd>{format(user.createdAt, 'yyyy-MM-dd HH:mm')}</Dd>
               <Dt>最近登录</Dt>

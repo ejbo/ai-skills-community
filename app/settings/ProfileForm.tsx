@@ -15,6 +15,7 @@ interface User {
   avatarUrl: string | null;
   authMethod: 'password' | 'huawei_sso' | 'both';
   huaweiW3Id: string | null;
+  huaweiW3Name: string | null;
 }
 
 export function ProfileForm({ user }: { user: User }) {
@@ -94,6 +95,11 @@ export function ProfileForm({ user }: { user: User }) {
           className="input text-muted"
         />
       </Field>
+      {user.huaweiW3Name && (
+        <Field label="W3 姓名（不可改）">
+          <input value={user.huaweiW3Name} disabled className="input text-muted" />
+        </Field>
+      )}
       <Field label="显示名">
         <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="input" />
       </Field>
