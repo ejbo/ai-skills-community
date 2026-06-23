@@ -66,6 +66,12 @@ After `git pull` on the server: `NEXT_BASE_PATH=/ai-community pnpm build && sudo
 5. **nginx `^~ /ai-community/` block: NO trailing slash on `proxy_pass`** (preserve the
    prefix for Next's basePath — opposite of `/cari_dste/`). `^~` stops asset regexes from
    hijacking `/ai-community/_next/*`.
+6. **Redirect loop ("redirected you too many times") on `/ai-community`.** Do NOT
+   `return 301 /ai-community/` for the bare path — Next serves the basePath root WITHOUT a
+   trailing slash and 308-redirects `/ai-community/` → `/ai-community`, so the 301 fights it
+   forever. **Proxy** the bare path to the app instead (`location = /ai-community { proxy_pass … }`)
+   and let Next canonicalize. Don't "fix" it with `trailingSlash: true` in next.config — that
+   would add a slash to the OAuth callback path and break the W3 callback.
 
 ## Conventions
 
