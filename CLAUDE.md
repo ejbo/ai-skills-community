@@ -29,10 +29,10 @@ pnpm prisma migrate deploy
 NEXT_BASE_PATH=/ai-community pnpm build
 # Start (foreground test) — see pitfall #1, do NOT use `pnpm start -- -p`:
 NEXT_BASE_PATH=/ai-community pnpm exec next start -p 3100 -H 127.0.0.1
-# Production: install deploy/ai-community.service (systemd), then pull→build→restart.
+# Production: run as systemd — see docs/huawei-sso-deploy.md "Run it as a systemd service".
 ```
 
-After `git pull` on the server: `NEXT_BASE_PATH=/ai-community pnpm build && sudo systemctl restart ai-community`.
+systemd (production): `deploy/ai-community.service` is preset for this box (`WorkingDirectory=/opt/cari_projects/ai-skills-community`, `User=ai4news`, `NEXT_BASE_PATH=/ai-community`). `sudo cp` it, set `ExecStart`'s node to your `which node` (absolute — systemd ignores your nvm/conda PATH), `daemon-reload`, `enable --now`. After `git pull` on the server: `NEXT_BASE_PATH=/ai-community pnpm build && sudo systemctl restart ai-community`.
 
 ## Pitfalls (each one cost real time — read before deploying)
 
@@ -72,6 +72,17 @@ After `git pull` on the server: `NEXT_BASE_PATH=/ai-community pnpm build && sudo
    forever. **Proxy** the bare path to the app instead (`location = /ai-community { proxy_pass … }`)
    and let Next canonicalize. Don't "fix" it with `trailingSlash: true` in next.config — that
    would add a slash to the OAuth callback path and break the W3 callback.
+7. **systemd unit (`deploy/ai-community.service`).** systemd does NOT load your nvm/conda PATH,
+   so `ExecStart` needs the absolute `which node` and the FULL command
+   `<node> node_modules/next/dist/bin/next start -p 3100 -H 127.0.0.1` (a bare `<node> start`
+   fails). `status=200/CHDIR` ⇒ `WorkingDirectory` doesn't exist (usually a stale placeholder —
+   re-`cp` the unit after editing). Re-check the node path after `nvm install` (the nvm path
+   embeds the version). `.env` is auto-loaded by Next from `WorkingDirectory` — don't use
+   systemd `EnvironmentFile=` (its inline `#` comments would corrupt values).
+8. **`/manage` admin gate lives in `app/manage/layout.tsx` via `requireAdmin()` (server-side
+   `auth()` + isAdmin), NOT edge middleware.** `getToken()` in edge middleware can't see the
+   secure session cookie behind the proxy+subpath, so it false-negatives logged-in admins and
+   bounces them to a (wrong-host) login. There is intentionally no `middleware.ts`.
 
 ## Conventions
 

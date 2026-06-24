@@ -54,6 +54,49 @@ direct egress**. Ready-to-use artifacts:
 > External AWS deploy is untouched: it keeps `ENABLE_SSO=false` (or just omits the SSO
 > vars), so the W3 card never renders and it stays pure email/password.
 
+## Run it as a systemd service (production)
+
+Don't leave `next start` in a foreground terminal (it dies on logout). Use the unit shipped
+at `deploy/ai-community.service` (already set to `WorkingDirectory=/opt/cari_projects/ai-skills-community`,
+`User=ai4news`, `NEXT_BASE_PATH=/ai-community`).
+
+```bash
+cd /opt/cari_projects/ai-skills-community
+which node                                  # absolute node path — systemd does NOT load your shell/nvm/conda PATH
+NEXT_BASE_PATH=/ai-community pnpm build      # the service runs `next start`, which needs a build
+
+sudo cp deploy/ai-community.service /etc/systemd/system/ai-community.service
+# Make ExecStart's node path match `which node` (the repo default is this box's nvm node;
+# the nvm path contains the node VERSION, so re-check after any `nvm install`):
+NODEBIN="$(which node)"
+sudo sed -i "s#^ExecStart=.*#ExecStart=$NODEBIN node_modules/next/dist/bin/next start -p 3100 -H 127.0.0.1#" /etc/systemd/system/ai-community.service
+cat /etc/systemd/system/ai-community.service   # sanity-check WorkingDirectory + ExecStart
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now ai-community
+systemctl status ai-community --no-pager       # want: active (running)
+journalctl -u ai-community -f                  # want: ✓ Ready / Listening on 127.0.0.1:3100
+```
+
+Update flow afterwards: `git pull && NEXT_BASE_PATH=/ai-community pnpm build && sudo systemctl restart ai-community`
+(add `pnpm prisma migrate deploy` only when a migration was added).
+
+**systemd failure decoder** (`systemctl status` shows the code):
+
+| Symptom | Cause / fix |
+|---------|-------------|
+| `status=200/CHDIR` | `WorkingDirectory` doesn't exist or isn't traversable — usually a stale/placeholder path. Set it to the real dir and re-`cp`; `ls -ld` the path; `sudo -u ai4news test -d <dir> && echo ok`. |
+| `Invalid project directory … /-p` / `node start` does nothing | `ExecStart` is malformed — must be the FULL `<node> node_modules/next/dist/bin/next start -p 3100 -H 127.0.0.1` (a bare `<node> start`, or `pnpm start -- -p`, breaks). |
+| `Could not find a production build in '.next'` | Run `NEXT_BASE_PATH=/ai-community pnpm build` before starting. |
+| `node: command not found` / native lib error | `ExecStart` node path wrong, or nvm/conda libs missing — use the absolute `which node`, and add `Environment=PATH=…/bin:/usr/bin:/bin`. |
+| port already in use | a leftover foreground `next start` still holds 3100 — `sudo ss -ltnp 'sport = :3100'`, kill it. |
+| `EACCES` on `.next`/`storage` | files not owned by `ai4news` — `sudo chown -R ai4news:ai4news <dir>`. |
+
+> Don't put `.env` in systemd `EnvironmentFile=` — it has inline `#` comments that systemd
+> would swallow into values. Next auto-loads `.env` from `WorkingDirectory`; leave it to Next.
+> Don't "fix" a broken service with `systemctl restart nginx` — different service; nginx on
+> this box isn't even systemd-managed (see the nginx note below).
+
 Everything below is the **generic reference** (the `<SUBPATH>` form, registration rule,
 nginx rationale, troubleshooting, and what the code already does).
 
