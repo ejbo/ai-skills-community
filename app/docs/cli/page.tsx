@@ -26,9 +26,12 @@ npx <本站地址>/skills-cli.tgz --registry <本站地址> install pdf-form-sig
 \`\`\`bash
 npm i -g <本站地址>/skills-cli.tgz
 skills --version
-# 全局安装后，让 skills 默认连本站（否则连的是 CLI 烤入的默认服务器）：
-export SKILLS_REGISTRY=<本站地址>          # Windows PowerShell: $env:SKILLS_REGISTRY="<本站地址>"
+# 全局安装后，登录一次并用 --registry 把本站地址写进 ~/.skills/config.json；
+# 之后所有 skills 命令（login / list / install / update）都默认连本站，无需再带 --registry。
+skills login --registry <本站地址>
 \`\`\`
+
+> CLI 包里"烤入"的默认服务器可能是另一套部署（如 AWS）。\`skills login --registry <本站地址>\` 会把本站持久化到 \`~/.skills/config.json\`，**覆盖那个默认值**；只有在既没登录过、命令也没带 \`--registry\` 时才会回退到烤入的默认值。临时切换某一条命令用 \`skills <命令> --registry <地址>\`，或设环境变量 \`SKILLS_REGISTRY\`。
 
 > 下面三/四/五节里写的 \`skills <命令>\`，如果你没有全局安装，把它整体换成 \`npx <本站地址>/skills-cli.tgz --registry <本站地址> <命令>\` 即可。
 
