@@ -83,6 +83,12 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
    `auth()` + isAdmin), NOT edge middleware.** `getToken()` in edge middleware can't see the
    secure session cookie behind the proxy+subpath, so it false-negatives logged-in admins and
    bounces them to a (wrong-host) login. There is intentionally no `middleware.ts`.
+9. **Client `fetch('/api/...')` must carry the basePath.** Root-relative client fetches resolve
+   to `<origin>/api/...` (origin root → neighbour app/404), not `/ai-community/api/...`, so every
+   client-side write breaks under the subpath while RSC reads work. Fixed globally by
+   `lib/patch-fetch.ts` (`installApiBasePathFetch()`, installed in `components/AuthProvider.tsx`):
+   it patches `window.fetch` once to prepend the basePath to same-origin root-relative URLs.
+   No-op at root. So you can keep writing plain `fetch('/api/...')`; don't remove the shim.
 
 ## Conventions
 

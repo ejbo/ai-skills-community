@@ -2,6 +2,12 @@
 
 import { SessionProvider } from 'next-auth/react';
 import type { Session } from 'next-auth';
+import { installApiBasePathFetch } from '@/lib/patch-fetch';
+
+// Install the basePath fetch shim as early as a client module can run, so every
+// client-side fetch('/api/...') hits THIS app under the subpath, not the origin root.
+// No-op at root / on the server.
+installApiBasePathFetch();
 
 // next-auth's React client derives its API base from NEXTAUTH_URL, which is NOT
 // exposed to the browser (not a NEXT_PUBLIC_ var), so it falls back to "/api/auth"
