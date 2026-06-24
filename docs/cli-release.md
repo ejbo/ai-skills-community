@@ -36,6 +36,8 @@
 
 脚本会自动：bump 版本号 → 用该地址重新构建 → `npm pack` → 把 tarball 放进 `public/`（同时生成稳定别名 `skills-cli.tgz` 和带版本号的文件）→ 打印用户该敲的 `npx` 命令。
 
+> **自 v0.1.6 起**：CLI 支持全局 `--registry <url>`（等价于环境变量 `SKILLS_REGISTRY`，优先级高于烤入的默认值）。网页上的安装命令（skill 详情页、`/docs/cli`）已自动带上 `--registry <本站地址>`（含子路径 basePath），所以**同一个 tarball 能连任意一套部署**——用户从哪个站点拿到命令，就连那个站点。因此「换服务器必须重新构建」不再是唯一办法：烤入的默认值只是「没带 `--registry` 时的兜底」。**多套部署共用一个 `public/skills-cli.tgz`** 时，把默认值烤成主力那套（如 AWS），其余部署靠网页命令里的 `--registry` 自动指向自己（这正是当前内外网并存的做法）。
+
 跑完后提交并部署：
 
 ```bash

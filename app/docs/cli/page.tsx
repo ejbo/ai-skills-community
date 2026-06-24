@@ -13,9 +13,11 @@ const CONTENT = `
 
 \`\`\`bash
 # 下面命令里的地址已自动替换为本站地址，复制即可运行
-npx <本站地址>/skills-cli.tgz login          # 先登录一次（见第二节）
-npx <本站地址>/skills-cli.tgz install pdf-form-signer
+npx <本站地址>/skills-cli.tgz --registry <本站地址> login          # 先登录一次（见第二节）
+npx <本站地址>/skills-cli.tgz --registry <本站地址> install pdf-form-signer
 \`\`\`
+
+> \`--registry <本站地址>\` 让 CLI 连到**本站**（CLI 包里烤入的默认服务器可能是另一套部署）。每个 Skill 详情页的"安装"框已自动填好它，复制即用。
 
 > **下载所有 Skill 都需要先登录**（见第二节）。每个 Skill 详情页的"安装"框已经把完整命令填好了，复制即用。
 
@@ -24,9 +26,11 @@ npx <本站地址>/skills-cli.tgz install pdf-form-signer
 \`\`\`bash
 npm i -g <本站地址>/skills-cli.tgz
 skills --version
+# 全局安装后，让 skills 默认连本站（否则连的是 CLI 烤入的默认服务器）：
+export SKILLS_REGISTRY=<本站地址>          # Windows PowerShell: $env:SKILLS_REGISTRY="<本站地址>"
 \`\`\`
 
-> 下面三/四/五节里写的 \`skills <命令>\`，如果你没有全局安装，把它整体换成 \`npx <本站地址>/skills-cli.tgz <命令>\` 即可。
+> 下面三/四/五节里写的 \`skills <命令>\`，如果你没有全局安装，把它整体换成 \`npx <本站地址>/skills-cli.tgz --registry <本站地址> <命令>\` 即可。
 
 ## 二、登录（获取 CLI Token）
 
@@ -135,8 +139,10 @@ export default function CliDocsPage() {
   const h = headers();
   const host = h.get('host') ?? '';
   const proto = h.get('x-forwarded-proto') ?? 'http';
-  const origin = host ? `${proto}://${host}` : '<本站地址>';
-  const content = CONTENT.replaceAll('<本站地址>', origin);
+  // Include the deploy basePath (…/ai-community) — the tarball + API live under it on a subpath
+  // deploy. The commands also pass `--registry <base>` so the CLI targets THIS server.
+  const base = host ? `${proto}://${host}${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}` : '<本站地址>';
+  const content = CONTENT.replaceAll('<本站地址>', base);
 
   return (
     <div className="prose prose-zinc max-w-none dark:prose-invert">

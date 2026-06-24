@@ -23,37 +23,45 @@ export interface Config {
 const CONFIG_DIR = path.join(os.homedir(), '.skills');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 
-// Resolution order for the Skills server address:
-//   1. SKILLS_REGISTRY        — runtime override on the user's machine (read at run time)
-//   2. SKILLS_DEFAULT_REGISTRY — baked in at BUILD time by tsup (see tsup.config.ts)
-//   3. localhost fallback      — dev default when nothing was baked in
-const DEFAULT: Config = {
-  registry:
-    process.env.SKILLS_REGISTRY ??
-    process.env.SKILLS_DEFAULT_REGISTRY ??
-    'http://localhost:3000',
-  token: null,
-  defaultTarget: 'claude-code',
-  targets: [
-    {
-      name: 'claude-code',
-      path: path.join(os.homedir(), '.claude', 'skills'),
-      scopes: {
-        user: path.join(os.homedir(), '.claude', 'skills'), // global  (skills install -g)
-        project: '.claude/skills', // project (skills install, default) — relative to project root
+// Resolution order for the Skills server address (highest precedence first):
+//   1. SKILLS_REGISTRY        — runtime override; the global `--registry` flag sets this too
+//   2. registry saved in config.json (by a prior `skills login`)
+//   3. SKILLS_DEFAULT_REGISTRY — baked in at BUILD time by tsup (see tsup.config.ts)
+//   4. http://localhost:3000   — dev fallback
+// Resolved at loadConfig() CALL time (NOT module load) so the `--registry` flag — which the
+// preAction hook in index.ts turns into SKILLS_REGISTRY before the command runs — takes effect.
+function baseConfig(): Config {
+  return {
+    registry: process.env.SKILLS_DEFAULT_REGISTRY ?? 'http://localhost:3000',
+    token: null,
+    defaultTarget: 'claude-code',
+    targets: [
+      {
+        name: 'claude-code',
+        path: path.join(os.homedir(), '.claude', 'skills'),
+        scopes: {
+          user: path.join(os.homedir(), '.claude', 'skills'), // global  (skills install -g)
+          project: '.claude/skills', // project (skills install, default) — relative to project root
+        },
       },
-    },
-  ],
-};
+    ],
+  };
+}
 
 export async function loadConfig(): Promise<Config> {
+  let cfg = baseConfig();
   try {
-    const buf = await fs.readFile(CONFIG_PATH, 'utf8');
-    const parsed = JSON.parse(buf);
-    return { ...DEFAULT, ...parsed };
+    const parsed = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+    cfg = { ...cfg, ...parsed };
   } catch {
-    return DEFAULT;
+    // no saved config yet — use defaults
   }
+  // Runtime override (SKILLS_REGISTRY env, or the --registry flag that sets it) beats a
+  // registry persisted in config.json by an earlier `login` — so one CLI can target whichever
+  // server the install command came from, regardless of what was baked in or saved.
+  const runtime = process.env.SKILLS_REGISTRY?.replace(/\/$/, '');
+  if (runtime) cfg.registry = runtime;
+  return cfg;
 }
 
 export async function saveConfig(cfg: Config): Promise<void> {

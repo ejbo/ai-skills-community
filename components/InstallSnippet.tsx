@@ -16,10 +16,14 @@ export function InstallSnippet({ slug, version }: { slug: string; version?: stri
   useEffect(() => setOrigin(window.location.origin), []);
 
   const ref = version ? `${slug}@${version}` : slug;
-  const cmd = `npx ${origin}/skills-cli.tgz install ${ref}`;
+  // base = origin + deploy basePath. The basePath matters under a subpath deploy
+  // (…/ai-community/skills-cli.tgz, not …/skills-cli.tgz), and `--registry ${base}` points the
+  // CLI at THIS server — the tarball's baked-in default may belong to another deploy (AWS).
+  const base = origin ? `${origin}${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}` : '';
+  const cmd = `npx ${base}/skills-cli.tgz --registry ${base} install ${ref}`;
   // Until the origin is known (pre-hydration / SSR) show a neutral host
   // placeholder instead of a malformed "npx /skills-cli.tgz …".
-  const display = `npx ${origin || '…'}/skills-cli.tgz install ${ref}`;
+  const display = `npx ${base || '…'}/skills-cli.tgz --registry ${base || '…'} install ${ref}`;
 
   async function copy() {
     if (!origin) return;

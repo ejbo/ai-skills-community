@@ -14,7 +14,16 @@ const program = new Command();
 program
   .name('skills')
   .description('Skills Community CLI — install / update AI agent skills.')
-  .version('0.1.0');
+  .version('0.1.0')
+  // Global override for the Skills server. Lets ONE tarball target any server (the website's
+  // install command passes this so the CLI talks to the same host you downloaded it from,
+  // regardless of the address baked in at build). Equivalent to setting SKILLS_REGISTRY.
+  // Must appear BEFORE the subcommand: `skills --registry <url> install <slug>`.
+  .option('--registry <url>', '指向的 Skills 服务器地址（覆盖内置默认；等价于 SKILLS_REGISTRY 环境变量）')
+  .hook('preAction', (thisCommand) => {
+    const reg = thisCommand.opts().registry as string | undefined;
+    if (reg) process.env.SKILLS_REGISTRY = reg;
+  });
 
 program
   .command('login')
