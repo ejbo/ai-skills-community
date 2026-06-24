@@ -15,7 +15,8 @@ interface OpenAiChatResponse {
 }
 
 export interface OpenAiProviderOptions {
-  apiKey: string;
+  /** Optional — internal OpenAI-compatible servers (vLLM/SGLang) often need no key. */
+  apiKey?: string;
   baseUrl: string;
   model: string;
 }
@@ -25,7 +26,7 @@ const DEFAULT_MAX_TOKENS = 1024;
 export class OpenAiProvider implements LLMProvider {
   readonly id = 'openai-compatible' as const;
   readonly model: string;
-  private readonly apiKey: string;
+  private readonly apiKey: string | undefined;
   private readonly baseUrl: string;
 
   constructor(opts: OpenAiProviderOptions) {
@@ -48,12 +49,13 @@ export class OpenAiProvider implements LLMProvider {
   }
 
   private async post(opts: LLMCompleteOptions, stream: boolean): Promise<Response> {
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    // Only send Authorization when a key is configured — keyless internal servers can reject
+    // a bare "Bearer " header.
+    if (this.apiKey) headers.authorization = `Bearer ${this.apiKey}`;
     const res = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${this.apiKey}`,
-      },
+      headers,
       body: JSON.stringify(this.body(opts, stream)),
     });
     if (!res.ok || (stream && !res.body)) {

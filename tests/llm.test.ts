@@ -41,6 +41,19 @@ describe('resolveLLMConfig', () => {
     expect(c.apiKey).toBeUndefined();
   });
 
+  it('resolves a keyless internal openai-compatible model (base + model, no key)', () => {
+    // Internal vLLM/SGLang server with no auth — the common intranet case.
+    const c = resolveLLMConfig({
+      LLM_PROVIDER: 'openai-compatible',
+      LLM_BASE_URL: 'http://10.212.16.36:8001/v1',
+      LLM_MODEL: 'zai-org/GLM-5.1-FP8',
+    });
+    expect(c.provider).toBe('openai-compatible');
+    expect(c.baseUrl).toBe('http://10.212.16.36:8001/v1');
+    expect(c.model).toBe('zai-org/GLM-5.1-FP8');
+    expect(c.apiKey).toBeUndefined();
+  });
+
   it('lets LLM_MODEL override the anthropic default', () => {
     const c = resolveLLMConfig({ LLM_MODEL: 'claude-opus-4-8' });
     expect(c.model).toBe('claude-opus-4-8');
