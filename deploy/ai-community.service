@@ -1,16 +1,22 @@
-# systemd unit for the AI Community (skills-community) Next.js app.
-# Install:  sudo cp deploy/ai-community.service /etc/systemd/system/ai-community.service
-#           sudo systemctl daemon-reload && sudo systemctl enable --now ai-community
-# Logs:     journalctl -u ai-community -f
+# systemd unit for the AI Community (skills-community) Next.js app under /ai-community.
 #
-# Adjust WorkingDirectory + the node/pnpm path (`which pnpm`, `which node`) to your box.
+# Install:
+#   sudo cp deploy/ai-community.service /etc/systemd/system/ai-community.service
+#   # then edit the two BOX-SPECIFIC lines below: ExecStart node path (run `which node`)
+#   sudo systemctl daemon-reload && sudo systemctl enable --now ai-community
+# Logs:    journalctl -u ai-community -f
+# Status:  systemctl status ai-community
+#
+# Requires a prior build:  NEXT_BASE_PATH=/ai-community pnpm build
 [Unit]
 Description=AI Community (skills-community) Next.js app under /ai-community
 After=network.target postgresql.service
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/ai-community
+User=ai4news
+Group=ai4news
+WorkingDirectory=/opt/cari_projects/ai-skills-community
 # Next.js auto-loads .env from WorkingDirectory → DATABASE_URL, AUTH_URL, AUTH_SECRET,
 # SSO_* all come from there. NEXT_BASE_PATH is set here too so basePath is correct at
 # `next start` as well as build time.
@@ -20,12 +26,11 @@ Environment=NEXT_BASE_PATH=/ai-community
 # NODE_TLS_REJECT_UNAUTHORIZED=0):
 # Environment=NODE_EXTRA_CA_CERTS=/etc/ssl/certs/huawei-ca-bundle.pem
 #
-# Call next directly — robust under systemd and avoids pnpm's `--` arg forwarding
-# (`pnpm start -- -p 3100` leaks `--` into next, which then crashes on `-p`).
-# Adjust the node path to `which node` on your box.
-ExecStart=/usr/bin/node node_modules/next/dist/bin/next start -p 3100 -H 127.0.0.1
-# Alternative via pnpm (use the ABSOLUTE path from `which pnpm`):
-# ExecStart=/usr/local/bin/pnpm exec next start -p 3100 -H 127.0.0.1
+# Call node directly (robust; avoids pnpm's `--` arg forwarding). REPLACE the node path
+# with `which node` on your box — in a conda env it's typically /home/ai4news/miniconda3/bin/node,
+# not /usr/bin/node. If node loads but native libs fail, also add a PATH line, e.g.:
+#   Environment=PATH=/home/ai4news/miniconda3/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/ai4news/miniconda3/bin/node node_modules/next/dist/bin/next start -p 3100 -H 127.0.0.1
 Restart=on-failure
 RestartSec=3
 
