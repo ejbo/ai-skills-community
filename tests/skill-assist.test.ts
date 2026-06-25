@@ -27,6 +27,11 @@ describe('extractJsonObject', () => {
   it('handles braces inside strings', () => {
     expect(extractJsonObject('{"a":"to {b} or not"}')).toEqual({ a: 'to {b} or not' });
   });
+  it('strips a reasoning <think> block (local GLM/DeepSeek) before the JSON', () => {
+    // The think block contains a brace that would otherwise derail extraction.
+    const text = '<think>maybe {name} should be short…</think>\n{"name":"PDF Signer"}';
+    expect(extractJsonObject(text)).toEqual({ name: 'PDF Signer' });
+  });
   it('returns null when there is no object', () => {
     expect(extractJsonObject('no json here')).toBeNull();
   });

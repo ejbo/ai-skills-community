@@ -40,7 +40,7 @@ export function InstallSnippet({ slug, version }: { slug: string; version?: stri
     <div className="space-y-1.5">
       <div className="surface flex items-center gap-3 rounded-xl p-1 pl-4 shadow-[inset_0_0_0_1px_rgba(94,90,255,0.18)]">
         <span className="font-mono text-zinc-400 select-none">$</span>
-        <code className="flex-1 truncate font-mono text-sm text-zinc-800 dark:text-zinc-100">
+        <code className="min-w-0 flex-1 truncate font-mono text-sm text-zinc-800 dark:text-zinc-100">
           {display}
         </code>
         <button

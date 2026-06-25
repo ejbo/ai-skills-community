@@ -23,12 +23,13 @@ import { CompositionTab } from './CompositionTab';
 import { AccessRequestPanel, type RequestState } from './AccessRequestPanel';
 import { DownloadButton } from './DownloadButton';
 import { FilesTab } from './FilesTab';
+import { ManagePanel, coerceSection } from './manage/ManagePanel';
 
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: { slug: string };
-  searchParams: { tab?: string };
+  searchParams: { tab?: string; section?: string };
 }
 
 export default async function SkillDetailPage({ params, searchParams }: PageProps) {
@@ -39,6 +40,8 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
   const actor = session?.user
     ? { id: session.user.id, isAdmin: session.user.isAdmin, via: 'session' as const, scopes: null }
     : null;
+  // The "Manage" tab is for the skill's OWNER only (admins use the admin panel).
+  const isAuthor = actor?.id === skill.authorId;
 
   // Viewer's grant status for restricted skills.
   let grantStatus: string | null = null;
@@ -92,9 +95,11 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
   const hasPublishedComparison = comparison?.status === 'published';
   const showComparison = privileged || (hasPublishedComparison && !restrictedLocked);
 
-  // `manage` is now its own page (/skills/[slug]/manage); never render it inline.
+  // `manage` renders inline (the ManagePanel) for the author; everyone else falls to overview.
   const tab =
-    rawTab === 'manage' || (rawTab === 'comparison' && !showComparison) ? 'overview' : rawTab;
+    (rawTab === 'manage' && !isAuthor) || (rawTab === 'comparison' && !showComparison)
+      ? 'overview'
+      : rawTab;
 
   return (
     <div className="container py-8">
@@ -102,8 +107,8 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
         <BackButton label={t('back')} />
       </div>
 
-      {/* Hero */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_280px]">
+      {/* Hero — single column; author + stats moved in from the old right sidebar. */}
+      <section className="space-y-5">
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <SourceBadge source={skill.sourceType} />
@@ -162,11 +167,11 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
             canRemix={Boolean(session?.user)}
           />
         </div>
-        <aside className="space-y-3">
+        <div className="space-y-3">
           {/* Compact author — just identity; the stats sit right below it. */}
           <Link
             href={`/users/${skill.author.handle}`}
-            className="surface flex items-center gap-3 rounded-2xl p-3 transition hover:border-accent-500/40"
+            className="surface inline-flex max-w-full items-center gap-3 rounded-2xl p-3 transition hover:border-accent-500/40"
           >
             <Avatar name={skill.author.displayName} src={skill.author.avatarUrl} size="md" />
             <div className="min-w-0">
@@ -176,23 +181,29 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
           </Link>
 
           <div className="surface space-y-4 rounded-2xl p-4 text-sm">
-            <StatBlock label={t('downloads')} value={skill.downloadCount.toLocaleString()} icon={<TokenCostBadge tokens={skill.tokenCostEstimate} compact />} />
-            <StatBlock label={t('subscribers')} value={skill.subscriberCount.toLocaleString()} icon={<Bell className="h-3.5 w-3.5" />} />
-            <StatBlock label="点赞" value={skill.likeCount.toLocaleString()} icon={<Heart className="h-3.5 w-3.5" />} />
-            <StatBlock
-              label="评分"
-              value={skill.avgRating > 0 ? `${skill.avgRating.toFixed(1)} (${skill.reviewCount})` : '—'}
-              icon={<Star className="h-3.5 w-3.5" />}
-            />
-            <StatBlock
-              label={t('last_published')}
-              value={
-                skill.currentVersion?.publishedAt
-                  ? formatDistanceToNowStrict(skill.currentVersion.publishedAt, { addSuffix: true })
-                  : '—'
-              }
-              icon={<Calendar className="h-3.5 w-3.5" />}
-            />
+            {/* Stats flow horizontally now that this sits in the full-width main column. */}
+            <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
+              <StatBlock label={t('downloads')} value={skill.downloadCount.toLocaleString()} icon={<TokenCostBadge tokens={skill.tokenCostEstimate} compact />} />
+              <StatBlock label={t('subscribers')} value={skill.subscriberCount.toLocaleString()} icon={<Bell className="h-3.5 w-3.5" />} />
+              <StatBlock label="点赞" value={skill.likeCount.toLocaleString()} icon={<Heart className="h-3.5 w-3.5" />} />
+              <StatBlock
+                label="评分"
+                value={skill.avgRating > 0 ? `${skill.avgRating.toFixed(1)} (${skill.reviewCount})` : '—'}
+                icon={<Star className="h-3.5 w-3.5" />}
+              />
+              <StatBlock
+                label={t('last_published')}
+                value={
+                  skill.currentVersion?.publishedAt
+                    ? formatDistanceToNowStrict(skill.currentVersion.publishedAt, { addSuffix: true })
+                    : '—'
+                }
+                icon={<Calendar className="h-3.5 w-3.5" />}
+              />
+              {skill.license && (
+                <StatBlock label={t('license')} value={skill.license} icon={<span className="font-mono text-[10px]">©</span>} />
+              )}
+            </div>
             {skill.tags.length > 0 && (
               <div>
                 <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
@@ -211,9 +222,6 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
                   ))}
                 </div>
               </div>
-            )}
-            {skill.license && (
-              <StatBlock label={t('license')} value={skill.license} icon={<span className="font-mono text-[10px]">©</span>} />
             )}
             {skill.externalSourceUrl && (
               <a
@@ -243,7 +251,7 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
               </div>
             )}
           </div>
-        </aside>
+        </div>
       </section>
 
       {/* Tabs */}
@@ -253,7 +261,7 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
           current={tab}
           hasVersions={versionCount > 1}
           showComparison={showComparison}
-          showManage={privileged}
+          showManage={isAuthor}
           pendingCount={pendingCount}
         />
       </div>
@@ -283,6 +291,9 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
             />
           )}
           {tab === 'playground' && (restrictedLocked ? <LockedNote /> : <ChatPanel slug={skill.slug} />)}
+          {tab === 'manage' && isAuthor && (
+            <ManagePanel slug={skill.slug} section={coerceSection(searchParams.section)} inline />
+          )}
         </article>
       </div>
     </div>

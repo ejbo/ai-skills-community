@@ -89,6 +89,16 @@ export async function POST(req: Request) {
   }
 
   const result = parseAssistResult(action, text, context);
+  // `tokens` always yields a number (heuristic fallback); for the text actions an empty
+  // result means the model returned no parseable JSON (common with local/reasoning models
+  // that ignore the "JSON only" instruction). Surface it clearly + echo a snippet so it's
+  // debuggable, instead of returning a silent empty result the UI reads as a generic failure.
+  if (action !== 'tokens' && Object.keys(result).length === 0) {
+    return NextResponse.json(
+      { error: 'llm_no_result', reason: '模型未返回可用的 JSON 结果', raw: text.slice(0, 300) },
+      { status: 502 },
+    );
+  }
   return NextResponse.json(
     { ok: true, result },
     { headers: { 'x-ratelimit-remaining': String(gate.remaining) } },

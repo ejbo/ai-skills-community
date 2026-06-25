@@ -152,7 +152,13 @@ export function buildAssistPrompt(
 
 /** Strip code fences and extract the first balanced JSON object. */
 export function extractJsonObject(text: string): Record<string, unknown> | null {
-  const cleaned = text.replace(/```(?:json)?/gi, '').trim();
+  const cleaned = text
+    // Reasoning models (GLM, DeepSeek, Qwen-thinking, …) emit a <think>…</think> block
+    // before the answer; it can contain braces that derail JSON extraction. Drop it first.
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<\/?think>/gi, '')
+    .replace(/```(?:json)?/gi, '')
+    .trim();
   const start = cleaned.indexOf('{');
   if (start < 0) return null;
   let depth = 0;

@@ -20,10 +20,13 @@ export function ManageNav({
   slug,
   current,
   pendingCount = 0,
+  inline = false,
 }: {
   slug: string;
   current: ManageSection;
   pendingCount?: number;
+  /** true → links stay on the detail page's Manage tab; false → the standalone /manage page. */
+  inline?: boolean;
 }) {
   return (
     <div className="flex gap-1 overflow-x-auto border-b border-zinc-200 dark:border-zinc-800 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -32,7 +35,7 @@ export function ManageNav({
         return (
           <Link
             key={section}
-            href={`/skills/${slug}/manage?section=${section}`}
+            href={inline ? `/skills/${slug}?tab=manage&section=${section}` : `/skills/${slug}/manage?section=${section}`}
             className={`relative shrink-0 px-4 py-2.5 text-sm font-medium transition ${
               active ? 'text-zinc-900 dark:text-white' : 'text-muted hover:text-zinc-700 dark:hover:text-zinc-200'
             }`}
