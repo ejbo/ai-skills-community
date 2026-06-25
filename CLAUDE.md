@@ -89,6 +89,10 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
    `lib/patch-fetch.ts` (`installApiBasePathFetch()`, installed in `components/AuthProvider.tsx`):
    it patches `window.fetch` once to prepend the basePath to same-origin root-relative URLs.
    No-op at root. So you can keep writing plain `fetch('/api/...')`; don't remove the shim.
+   **But the shim does NOT cover `<img src>` / `<video src>`** (they're not `fetch`) — any element
+   rendering a stored root-relative media URL must wrap it in `withBasePath()` at render time.
+   `components/Avatar.tsx` and the video components do this; if you add a new `<img src={…url}>`,
+   wrap it or the image 404s under `/ai-community`.
 
 ## Conventions
 

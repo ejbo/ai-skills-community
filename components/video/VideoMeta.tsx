@@ -3,7 +3,7 @@ import { Calendar, Pencil, Tag as TagIcon } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { getTranslations } from 'next-intl/server';
 import type { VideoDetail } from '@/lib/video/queries';
-import { formatCount } from '@/lib/video/types';
+import { formatCount, withBasePath } from '@/lib/video/types';
 import { VideoEngagementBar } from './VideoEngagementBar';
 
 interface Props {
@@ -52,7 +52,7 @@ export async function VideoMeta({ video, privileged, initialLiked, initialFavori
         <div className="flex items-center gap-3">
           {uploader.avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={uploader.avatarUrl} alt="" className="h-10 w-10 rounded-full object-cover" />
+            <img src={withBasePath(uploader.avatarUrl)} alt="" className="h-10 w-10 rounded-full object-cover" />
           ) : (
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-200 text-sm font-semibold text-zinc-700 dark:bg-zinc-700 dark:text-zinc-100">
               {uploader.displayName.charAt(0)}

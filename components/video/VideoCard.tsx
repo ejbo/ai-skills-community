@@ -140,7 +140,7 @@ export function VideoCard({ video }: { video: VideoCardType }) {
           {avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={avatarUrl}
+              src={withBasePath(avatarUrl)}
               alt=""
               className="mt-0.5 h-8 w-8 shrink-0 rounded-full object-cover"
             />

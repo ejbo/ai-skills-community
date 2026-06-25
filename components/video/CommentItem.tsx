@@ -8,6 +8,7 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { withBasePath } from '@/lib/base-path';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { formatCount } from '@/lib/video/types';
 import type { VideoCommentView } from '@/lib/video/queries';
@@ -147,7 +148,7 @@ export function CommentItem({ slug, comment, currentUser, onChanged }: Props) {
     <div className="flex gap-3">
       {author.avatarUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={author.avatarUrl} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
+        <img src={withBasePath(author.avatarUrl)} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
       ) : (
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-xs font-semibold text-zinc-700 dark:bg-zinc-700 dark:text-zinc-100">
           {author.displayName.charAt(0)}

@@ -2,6 +2,8 @@
 // initial badge. Server-safe (no hooks) so it works in both server and client
 // components. Used in the navbar, comments, reviews, author bylines, cards, etc.
 
+import { withBasePath } from '@/lib/base-path';
+
 type Size = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
 const SIZE: Record<Size, string> = {
@@ -31,7 +33,7 @@ export function Avatar({
     // eslint-disable-next-line @next/next/no-img-element -- same-origin user upload, no Next Image config needed
     return (
       <img
-        src={src}
+        src={withBasePath(src)}
         alt={name}
         className={`${dims} shrink-0 rounded-full object-cover ${className}`}
       />
