@@ -1,25 +1,10 @@
 import { NextResponse } from 'next/server';
-import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { loadAccessContext } from '@/lib/access';
-import { parseComparisonExample } from '@/lib/comparison';
+import { comparisonPutSchema, parseComparisonExample } from '@/lib/comparison';
 
 export const dynamic = 'force-dynamic';
-
-const exampleSchema = z.object({
-  taskPrompt: z.string().min(1).max(4000),
-  withOutput: z.string().max(20000),
-  withoutOutput: z.string().max(20000),
-});
-
-const putSchema = z.object({
-  bodyMd: z.string().max(40000).optional(),
-  example: exampleSchema.nullable().optional(),
-  guidancePrompt: z.string().max(8000).optional(),
-  model: z.string().max(120).optional(),
-  status: z.enum(['draft', 'published']),
-});
 
 // GET — owner/admin get the full row (draft or published); visitors get the
 // published comparison only when they may access the skill's content.
@@ -61,7 +46,7 @@ export async function PUT(req: Request, { params }: { params: { slug: string } }
   if (!privileged) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   const body = await req.json().catch(() => null);
-  const parsed = putSchema.safeParse(body);
+  const parsed = comparisonPutSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
 
   const { bodyMd, example, guidancePrompt, model, status } = parsed.data;

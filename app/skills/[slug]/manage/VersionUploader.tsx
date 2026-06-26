@@ -68,15 +68,11 @@ export function VersionUploader({ slug, currentVersion }: { slug: string; curren
 
   return (
     <div className="space-y-3">
-      <div className="text-xs text-muted">
-        版本号读取 SKILL.md frontmatter 的 <code className="font-mono">version</code>
-        {currentVersion ? `，需 > v${currentVersion}` : ''}。
-        {detected && (
-          <span className="ml-1">
-            检测到：<span className="font-mono text-accent-600">v{detected}</span>
-          </span>
-        )}
-      </div>
+      {detected && (
+        <div className="text-xs text-muted">
+          检测到版本：<span className="font-mono text-accent-600">v{detected}</span>
+        </div>
+      )}
       <FileDropZone staged={staged} onChange={onChange} title="上传新版本" />
       <div>
         <label className="mb-1 block text-xs font-medium text-muted">Changelog（可选）</label>

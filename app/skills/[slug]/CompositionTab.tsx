@@ -40,9 +40,7 @@ export async function CompositionTab({ skillId }: { skillId: string }) {
   if (rows.length === 0) {
     return (
       <div className="surface rounded-2xl px-6 py-10 text-center">
-        <p className="text-sm text-muted">
-          这个 Skill 还没有足够的共同安装数据。等更多用户订阅后会自动生成"经常一起被装"的图谱。
-        </p>
+        <p className="text-sm text-muted">这个 Skill 还没有足够的共同安装数据。</p>
       </div>
     );
   }

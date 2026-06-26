@@ -24,7 +24,6 @@ export default async function ProfileSettingsPage() {
     <div className="space-y-6">
       <section>
         <h2 className="text-lg font-semibold">个人资料</h2>
-        <p className="mt-1 text-sm text-muted">这些信息会出现在你的公开主页上。</p>
         <div className="mt-4">
           <ProfileForm user={user} />
         </div>

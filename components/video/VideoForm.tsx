@@ -278,15 +278,12 @@ export function VideoForm({
             value={poster}
             onUploaded={(r) => setPoster({ url: r.url, key: r.pathname })}
           />
-          <div className="space-y-1">
-            <VideoUploadField
-              kind="preview"
-              label={t('manage.upload_preview')}
-              value={previewClip}
-              onUploaded={(r) => setPreviewClip({ url: r.url, key: r.pathname })}
-            />
-            <p className="text-[11px] leading-snug text-muted">{t('manage.upload_preview_hint')}</p>
-          </div>
+          <VideoUploadField
+            kind="preview"
+            label={t('manage.upload_preview')}
+            value={previewClip}
+            onUploaded={(r) => setPreviewClip({ url: r.url, key: r.pathname })}
+          />
         </section>
 
         <section className="surface space-y-4 rounded-xl p-4">

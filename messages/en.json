@@ -273,7 +273,6 @@
       "upload_video": "Upload video",
       "upload_poster": "Upload poster",
       "upload_preview": "Upload hover preview clip (optional)",
-      "upload_preview_hint": "Shown when visitors hover the card. Without one, the first 10 seconds of the video loop instead.",
       "uploading": "Uploading…",
       "save_draft": "Save draft",
       "publish": "Publish",

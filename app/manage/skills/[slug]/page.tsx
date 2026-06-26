@@ -135,7 +135,7 @@ export default async function AdminSkillDetailPage({ params }: { params: { slug:
           )}
         </h3>
         {access.pending.length === 0 && access.approved.length === 0 && access.past.length === 0 ? (
-          <p className="text-xs text-muted">暂无访问申请（仅「受限下载」Skill 会产生申请）。</p>
+          <p className="text-xs text-muted">暂无访问申请。</p>
         ) : (
           <table className="data">
             <thead>

@@ -56,7 +56,7 @@ export function ComparisonStudio({ slug, initial }: { slug: string; initial: Stu
       setExample(data.example);
       setModel(data.model ?? null);
       setMessages([]);
-      pushToast('success', '实测完成，已作为真实证据，重新生成时会用上');
+      pushToast('success', '实测完成');
     } catch (e) {
       pushToast('error', e instanceof Error ? e.message : '实测失败');
     } finally {
@@ -190,9 +190,7 @@ export function ComparisonStudio({ slug, initial }: { slug: string; initial: Stu
           <h3 className="text-sm font-semibold">用 AI 生成对比文案</h3>
           <p className="mt-1 text-xs text-muted">
             AI 会读取这个 skill 的完整内容，直接写出「装上 vs 不装」的结构化对比。
-            {example
-              ? '已附带下方实测结果，会作为真实证据一并参考。'
-              : '想更有说服力，可在下方「实测（可选）」跑一次真实 Before / After。'}
+            {!example && '想更有说服力，可在下方「实测（可选）」跑一次真实 Before / After。'}
           </p>
         </div>
 
@@ -355,9 +353,6 @@ export function ComparisonStudio({ slug, initial }: { slug: string; initial: Stu
             </button>
           )}
         </div>
-        <p className="text-[11px] text-muted">
-          发布后访客会在「对比」tab 看到这份内容（访客侧不触发任何模型调用）。受限/私有技能的对比同样遵守可见性。
-        </p>
       </section>
     </div>
   );

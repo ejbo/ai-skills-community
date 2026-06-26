@@ -308,7 +308,6 @@ export function SkillForm({
           <Field
             label="Overview / 公开简介"
             ai={aiBtn('overview', 'AI 生成')}
-            hint={readmeOverviewActive ? undefined : '对所有人公开（含未授权用户）。留空则展示一行描述。'}
           >
             {readmeOverviewActive ? (
               <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-muted dark:border-zinc-800 dark:bg-zinc-900">
@@ -489,11 +488,6 @@ export function SkillForm({
             <div className="mt-2 font-mono text-[11px] text-muted">{tags.join(' · ')}</div>
           )}
         </div>
-        {mode === 'create' && (
-          <p className="text-[11px] text-muted">
-            大的「SKILL.md 正文编辑框」已移除 —— 正文只从上传的文件读取。
-          </p>
-        )}
       </aside>
     </div>
   );

@@ -111,7 +111,7 @@ export function RemixEditor({ source, categories }: { source: Source; categories
             value={overview}
             onChange={(e) => setOverview(e.target.value)}
             rows={4}
-            placeholder="对所有人公开。受限技能请勿在此放置受保护内容。留空则展示一行描述。"
+            placeholder="介绍用途、关键能力、适用场景…"
             className="input font-mono text-[13px]"
           />
         </Field>
@@ -248,9 +248,6 @@ export function RemixEditor({ source, categories }: { source: Source; categories
           <div className="font-medium">{source.name}</div>
           <div className="mt-1 text-xs text-muted">{source.summary}</div>
         </div>
-        <p className="text-xs text-muted">
-          发布后会创建一个新的 Skill，归你所有；原 Skill 详情页会显示「被 Remix N 次」。
-        </p>
       </aside>
     </div>
   );

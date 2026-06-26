@@ -2,11 +2,37 @@
 // the AI fills, the workshop system prompt (skill + the two real runs), and
 // validation of the stored `example` artifact.
 
+import { z } from 'zod';
+
 export interface ComparisonExample {
   taskPrompt: string;
   withOutput: string;
   withoutOutput: string;
 }
+
+/** Shape of a real 装上/不装 dual-run, as sent from the studio. */
+export const comparisonExampleSchema = z.object({
+  taskPrompt: z.string().min(1).max(4000),
+  withOutput: z.string().max(20000),
+  withoutOutput: z.string().max(20000),
+});
+
+/**
+ * PUT body for saving/publishing a comparison. `bodyMd` / `guidancePrompt` /
+ * `model` mirror nullable DB columns and the studio sends whatever it currently
+ * holds in state — `model` in particular is `null` until a baseline/generation
+ * captures one. `.optional()` alone rejects an explicit `null`, which was 400-ing
+ * every publish that hadn't produced a model yet; allowing null lets an unset
+ * value round-trip. (Publishing still requires a non-empty body — enforced in the
+ * route, not here, so a draft can be saved empty.)
+ */
+export const comparisonPutSchema = z.object({
+  bodyMd: z.string().max(40000).nullable().optional(),
+  example: comparisonExampleSchema.nullable().optional(),
+  guidancePrompt: z.string().max(8000).nullable().optional(),
+  model: z.string().max(120).nullable().optional(),
+  status: z.enum(['draft', 'published']),
+});
 
 /** The fixed sections the analysis report fills, in order. */
 export const COMPARISON_SECTIONS = ['一句话价值', '关键能力', 'Before / After', '适用场景'] as const;

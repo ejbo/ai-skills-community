@@ -273,7 +273,6 @@
       "upload_video": "上传视频",
       "upload_poster": "上传封面",
       "upload_preview": "上传悬停预览片段（可选）",
-      "upload_preview_hint": "访客悬停卡片时播放。不上传则循环播放正片前 10 秒。",
       "uploading": "上传中…",
       "save_draft": "存草稿",
       "publish": "发布",

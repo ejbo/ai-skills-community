@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildComparisonSystemPrompt,
+  comparisonPutSchema,
   parseComparisonExample,
   COMPARISON_SECTIONS,
   type ComparisonExample,
@@ -57,6 +58,43 @@ describe('buildComparisonSystemPrompt without a baseline (实测 optional)', () 
 
   it('still steers toward value/difference analysis', () => {
     expect(prompt).toMatch(/价值|差别|差异/);
+  });
+});
+
+describe('comparisonPutSchema', () => {
+  // Regression: publishing before any baseline/generation sends model: null (and
+  // possibly null bodyMd/guidancePrompt). `.optional()` alone rejected null and
+  // 400-ed every such publish.
+  it('accepts null for the nullable columns (publish before a model is captured)', () => {
+    const r = comparisonPutSchema.safeParse({
+      bodyMd: '# 对比',
+      example: null,
+      guidancePrompt: null,
+      model: null,
+      status: 'published',
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('accepts a fully omitted optional set with just a status', () => {
+    expect(comparisonPutSchema.safeParse({ status: 'draft' }).success).toBe(true);
+  });
+
+  it('accepts a well-formed example', () => {
+    const r = comparisonPutSchema.safeParse({ bodyMd: 'x', example, model: 'glm', status: 'published' });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects an unknown status', () => {
+    expect(comparisonPutSchema.safeParse({ status: 'live' }).success).toBe(false);
+  });
+
+  it('rejects a malformed example (empty taskPrompt)', () => {
+    const r = comparisonPutSchema.safeParse({
+      example: { taskPrompt: '', withOutput: 'a', withoutOutput: 'b' },
+      status: 'draft',
+    });
+    expect(r.success).toBe(false);
   });
 });
 
