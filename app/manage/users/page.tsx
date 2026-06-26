@@ -13,7 +13,7 @@ export default async function UsersListPage({
 }) {
   const page = Math.max(1, Number(searchParams.page ?? 1));
   const q = (searchParams.q ?? '').trim();
-  const sort = (searchParams.sort ?? 'last_login') as 'last_login' | 'created' | 'email';
+  const sort = (searchParams.sort ?? 'last_seen') as 'last_seen' | 'created' | 'email';
 
   const where = q
     ? {
@@ -32,7 +32,7 @@ export default async function UsersListPage({
       ? { createdAt: 'desc' as const }
       : sort === 'email'
         ? { email: 'asc' as const }
-        : { lastLoginAt: 'desc' as const };
+        : { lastSeenAt: { sort: 'desc' as const, nulls: 'last' as const } };
 
   const [users, total] = await Promise.all([
     prisma.user.findMany({
@@ -49,7 +49,7 @@ export default async function UsersListPage({
         isAdmin: true,
         isActive: true,
         authMethod: true,
-        lastLoginAt: true,
+        lastSeenAt: true,
         createdAt: true,
         huaweiW3Id: true,
         huaweiW3Name: true,
@@ -79,7 +79,7 @@ export default async function UsersListPage({
           defaultValue={sort}
           className="h-9 rounded-lg border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
         >
-          <option value="last_login">按最近登录</option>
+          <option value="last_seen">按最近在线</option>
           <option value="created">按注册时间</option>
           <option value="email">按邮箱字母</option>
         </select>
@@ -88,15 +88,17 @@ export default async function UsersListPage({
         </button>
       </form>
 
-      <div className="surface overflow-hidden rounded-xl">
+      <div className="surface overflow-x-auto rounded-xl">
         <table className="data">
           <thead>
             <tr>
               <th>用户</th>
               <th>W3 姓名</th>
+              <th>工号</th>
+              <th>Email</th>
               <th>身份</th>
               <th>登录方式</th>
-              <th>最近登录</th>
+              <th>最近在线</th>
               <th>注册时间</th>
               <th>状态</th>
             </tr>
@@ -109,10 +111,7 @@ export default async function UsersListPage({
                     <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-500 text-xs font-semibold text-white">
                       {u.displayName.charAt(0)}
                     </span>
-                    <div className="flex flex-col">
-                      <span className="font-medium">{u.displayName}</span>
-                      <span className="text-[11px] text-muted">{u.email}</span>
-                    </div>
+                    <span className="font-medium">{u.displayName}</span>
                   </Link>
                 </td>
                 <td className="text-[13px]">
@@ -122,6 +121,10 @@ export default async function UsersListPage({
                     <span className="text-muted">—</span>
                   )}
                 </td>
+                <td className="font-mono text-[12px]">
+                  {u.huaweiW3Id ? u.huaweiW3Id : <span className="font-sans text-muted">—</span>}
+                </td>
+                <td className="text-[12px] text-muted">{u.email}</td>
                 <td>
                   {u.isAdmin ? (
                     <span className="badge" style={{ background: '#EEF0FF', color: '#3833A8' }}>
@@ -135,10 +138,9 @@ export default async function UsersListPage({
                 </td>
                 <td className="text-[12px]">
                   {u.authMethod === 'both' ? '密码 + W3' : u.authMethod === 'huawei_sso' ? 'W3' : '密码'}
-                  {u.huaweiW3Id && <span className="ml-1 text-[10px] text-muted">({u.huaweiW3Id})</span>}
                 </td>
                 <td className="font-mono text-[11px] tabular-nums">
-                  {u.lastLoginAt ? formatDistanceToNowStrict(u.lastLoginAt, { addSuffix: true }) : '—'}
+                  {u.lastSeenAt ? formatDistanceToNowStrict(u.lastSeenAt, { addSuffix: true }) : '—'}
                 </td>
                 <td className="font-mono text-[11px] tabular-nums">
                   {formatDistanceToNowStrict(u.createdAt, { addSuffix: true })}

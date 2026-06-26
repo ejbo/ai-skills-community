@@ -98,7 +98,9 @@
       "starter1": "What does this skill do?",
       "starter2": "Give me a usage example",
       "starter3": "Which files does it rely on?",
-      "thinking": "Thinking…"
+      "thinking": "Thinking…",
+      "saved_hint": "Saved automatically — your chat is here when you come back",
+      "clear": "Clear"
     },
     "downloads": "Downloads",
     "subscribers": "Subscribers",

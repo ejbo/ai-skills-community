@@ -13,11 +13,13 @@ export async function streamChat(
   url: string,
   payload: unknown,
   onDelta: (delta: string) => void,
+  signal?: AbortSignal,
 ): Promise<StreamChatResult> {
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
+    signal,
   });
   if (!res.ok || !res.body) {
     const data = await res.json().catch(() => ({}));

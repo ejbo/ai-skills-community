@@ -1,61 +1,53 @@
 'use client';
 
-import { useRef, useState } from 'react';
-import { Loader2, Send } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Loader2, Send, Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useTranslations } from 'next-intl';
-import { streamChat } from './streamChat';
+import { clearChat, getState, sendMessage, subscribe, type ChatState } from './chatStore';
 
-interface Msg {
-  role: 'user' | 'assistant';
-  content: string;
-}
+const EMPTY: ChatState = { messages: [], pending: false, error: null };
 
 export function ChatPanel({ slug }: { slug: string }) {
   const t = useTranslations('detail.chat');
-  const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  async function send(text: string) {
-    const trimmed = text.trim();
-    if (!trimmed || pending) return;
-    setError(null);
-    const history: Msg[] = [...messages, { role: 'user', content: trimmed }];
-    setMessages([...history, { role: 'assistant', content: '' }]);
-    setInput('');
-    setPending(true);
+  // Bind the external store to this slug. The session lives at module scope, so
+  // its history + any in-flight generation survive client-side navigation and
+  // reloads (see chatStore.ts).
+  const subscribeSlug = useCallback((listener: () => void) => subscribe(slug, listener), [slug]);
+  const getSnapshot = useCallback(() => getState(slug), [slug]);
+  const { messages, pending, error } = useSyncExternalStore(subscribeSlug, getSnapshot, () => EMPTY);
 
-    try {
-      const result = await streamChat(`/api/skills/${slug}/chat`, { messages: history }, (delta) => {
-        setMessages((prev) => {
-          const next = [...prev];
-          next[next.length - 1] = {
-            role: 'assistant',
-            content: next[next.length - 1].content + delta,
-          };
-          return next;
-        });
-        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-      });
-      if (!result.ok) {
-        setError(result.error ?? '请求失败');
-        setMessages((prev) => (prev[prev.length - 1]?.content ? prev : prev.slice(0, -1)));
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '未知错误');
-      setMessages((prev) => prev.slice(0, -1));
-    } finally {
-      setPending(false);
-    }
+  // Keep the transcript pinned to the latest message as it streams in.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+  }, [messages]);
+
+  function send(text: string) {
+    if (!text.trim() || pending) return;
+    setInput('');
+    void sendMessage(slug, text, `/api/skills/${slug}/chat`);
   }
 
   const starters = [t('starter1'), t('starter2'), t('starter3')];
 
   return (
     <div className="surface flex h-[60vh] flex-col rounded-2xl">
+      {messages.length > 0 && (
+        <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-2 dark:border-zinc-800">
+          <span className="text-xs text-muted">{t('saved_hint')}</span>
+          <button
+            onClick={() => clearChat(slug)}
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted transition hover:bg-danger/10 hover:text-danger"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            {t('clear')}
+          </button>
+        </div>
+      )}
+
       <div ref={scrollRef} className="flex-1 space-y-4 overflow-auto p-4">
         {messages.length === 0 ? (
           <div className="space-y-3">

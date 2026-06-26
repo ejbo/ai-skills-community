@@ -98,7 +98,9 @@
       "starter1": "这个 skill 是做什么的？",
       "starter2": "给我一个使用示例",
       "starter3": "它依赖哪些文件？",
-      "thinking": "思考中…"
+      "thinking": "思考中…",
+      "saved_hint": "对话已自动保存，离开页面后回来仍可查看",
+      "clear": "清空"
     },
     "downloads": "下载",
     "subscribers": "订阅者",

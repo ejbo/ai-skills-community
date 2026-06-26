@@ -167,23 +167,26 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
             canRemix={Boolean(session?.user)}
           />
         </div>
-        <div className="space-y-3">
-          {/* Compact author — just identity; the stats sit right below it. */}
-          <Link
-            href={`/users/${skill.author.handle}`}
-            className="surface inline-flex max-w-full items-center gap-3 rounded-2xl p-3 transition hover:border-accent-500/40"
-          >
-            <Avatar name={skill.author.displayName} src={skill.author.avatarUrl} size="md" />
-            <div className="min-w-0">
-              <div className="truncate text-sm font-medium">{skill.author.displayName}</div>
-              <div className="truncate text-xs text-muted">@{skill.author.handle}</div>
+        <div className="surface space-y-4 rounded-2xl p-4 text-sm">
+          {/* Author identity + stats share one horizontal row; author pinned far-left. */}
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
+            <Link
+              href={`/users/${skill.author.handle}`}
+              className="flex min-w-0 items-center gap-2.5 border-zinc-200 pr-6 transition hover:opacity-80 dark:border-zinc-800 sm:border-r"
+            >
+              <Avatar name={skill.author.displayName} src={skill.author.avatarUrl} size="md" />
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">{skill.author.displayName}</div>
+                <div className="truncate text-xs text-muted">@{skill.author.handle}</div>
+              </div>
+            </Link>
+            <StatBlock label={t('downloads')} value={skill.downloadCount.toLocaleString()} icon={<Download className="h-3.5 w-3.5" />} />
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">Token</div>
+              <div className="mt-0.5">
+                <TokenCostBadge tokens={skill.tokenCostEstimate} compact />
+              </div>
             </div>
-          </Link>
-
-          <div className="surface space-y-4 rounded-2xl p-4 text-sm">
-            {/* Stats flow horizontally now that this sits in the full-width main column. */}
-            <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
-              <StatBlock label={t('downloads')} value={skill.downloadCount.toLocaleString()} icon={<TokenCostBadge tokens={skill.tokenCostEstimate} compact />} />
               <StatBlock label={t('subscribers')} value={skill.subscriberCount.toLocaleString()} icon={<Bell className="h-3.5 w-3.5" />} />
               <StatBlock label="点赞" value={skill.likeCount.toLocaleString()} icon={<Heart className="h-3.5 w-3.5" />} />
               <StatBlock
@@ -251,8 +254,7 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
               </div>
             )}
           </div>
-        </div>
-      </section>
+        </section>
 
       {/* Tabs */}
       <div className="mt-8">
