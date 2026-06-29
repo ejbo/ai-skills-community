@@ -10,6 +10,7 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { nanoid } from 'nanoid';
 import { env } from '@/lib/env';
 
@@ -159,4 +160,68 @@ export async function deleteVideoFile(key: string | null | undefined): Promise<v
   const full = videoFileAbsPath(key);
   if (!full) return;
   await fsp.unlink(full).catch(() => undefined);
+}
+
+// ─── faststart remux (MP4/MOV moov-atom relocation) ─────────────────────────
+
+// Above this size we skip the inline remux — a stream-copy of a multi-GB file
+// would hold the upload request too long. Typical talk/share videos are well under.
+const FASTSTART_MAX_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
+
+let ffmpegProbe: Promise<boolean> | null = null;
+/** Detect ffmpeg once (cached). When absent, faststart is a no-op. */
+function hasFfmpeg(): Promise<boolean> {
+  if (!ffmpegProbe) {
+    ffmpegProbe = new Promise<boolean>((resolve) => {
+      try {
+        const p = spawn('ffmpeg', ['-version'], { stdio: 'ignore' });
+        p.on('error', () => resolve(false)); // ENOENT — not installed
+        p.on('close', (code) => resolve(code === 0));
+      } catch {
+        resolve(false);
+      }
+    });
+  }
+  return ffmpegProbe;
+}
+
+function runFfmpeg(args: string[]): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const p = spawn('ffmpeg', args, { stdio: 'ignore' });
+    p.on('error', () => resolve(false));
+    p.on('close', (code) => resolve(code === 0));
+  });
+}
+
+/**
+ * Rewrite an MP4/MOV in place with the `moov` atom moved to the FRONT
+ * (`-movflags +faststart`), so the browser can begin playback before the whole
+ * file is downloaded. This is a STREAM COPY (`-c copy`): no re-encode, so it's
+ * fast (~disk-copy speed), lossless, and ~same size — it only relocates metadata.
+ *
+ * Best-effort by contract: returns false (and leaves the original untouched) when
+ * ffmpeg is missing, the file is too large, or anything fails. NEVER throws, so a
+ * missing ffmpeg on the box can't break uploads.
+ */
+export async function faststartRemux(key: string, size: number): Promise<boolean> {
+  const ext = key.split('.').pop()?.toLowerCase() ?? '';
+  if (ext !== 'mp4' && ext !== 'mov') return false;
+  if (size > FASTSTART_MAX_BYTES) return false;
+  const full = videoFileAbsPath(key);
+  if (!full) return false;
+  if (!(await hasFfmpeg())) return false;
+
+  const tmp = `${full}.tmp.${ext}`; // matching ext ⇒ ffmpeg keeps the same container
+  const ok = await runFfmpeg(['-y', '-i', full, '-map', '0', '-c', 'copy', '-movflags', '+faststart', tmp]);
+  if (!ok) {
+    await fsp.unlink(tmp).catch(() => undefined);
+    return false;
+  }
+  try {
+    await fsp.rename(tmp, full); // atomic replace on the same filesystem
+    return true;
+  } catch {
+    await fsp.unlink(tmp).catch(() => undefined);
+    return false;
+  }
 }

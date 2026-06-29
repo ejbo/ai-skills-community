@@ -153,8 +153,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       return true;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
       if (user) {
+        // Sign-in: seed the token with everything the app reads from the session,
+        // including the mutable profile fields (avatar / display name).
         const dbUser = await prisma.user.findUnique({ where: { email: user.email! } });
         if (dbUser) {
           token.uid = dbUser.id;
@@ -162,32 +164,36 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.isAdmin = dbUser.isAdmin;
           token.authMethod = dbUser.authMethod;
           token.displayName = dbUser.displayName;
+          token.avatarUrl = dbUser.avatarUrl;
+        }
+      } else if (trigger === 'update' && token.uid) {
+        // The user changed their profile and the client called `useSession().update()`.
+        // Refresh the mutable fields ONCE here, so the per-request session() callback
+        // below never has to touch the DB. This is the whole point of the change:
+        // the old code re-queried Postgres on *every* request (incl. every video
+        // range/seek) just to keep the avatar fresh.
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.uid as string },
+          select: { displayName: true, avatarUrl: true, isAdmin: true },
+        });
+        if (dbUser) {
+          token.displayName = dbUser.displayName;
+          token.avatarUrl = dbUser.avatarUrl;
+          token.isAdmin = dbUser.isAdmin;
         }
       }
       return token;
     },
     async session({ session, token }) {
+      // Read everything from the JWT — NO database query per request.
       if (token && session.user) {
         session.user.id = token.uid as string;
         session.user.handle = token.handle as string;
         session.user.isAdmin = Boolean(token.isAdmin);
         session.user.authMethod = (token.authMethod as 'password' | 'huawei_sso' | 'both') ?? 'password';
         session.user.displayName = (token.displayName as string) ?? session.user.name ?? '';
-        session.user.avatarUrl = null;
-        // Freshen mutable profile fields from the DB so an avatar / display-name
-        // change shows immediately (the navbar reads `session.user.avatarUrl`),
-        // without forcing a re-login — the JWT alone would be stale.
-        if (token.uid) {
-          const dbUser = await prisma.user.findUnique({
-            where: { id: token.uid as string },
-            select: { avatarUrl: true, displayName: true },
-          });
-          if (dbUser) {
-            session.user.avatarUrl = dbUser.avatarUrl;
-            session.user.image = dbUser.avatarUrl;
-            session.user.displayName = dbUser.displayName;
-          }
-        }
+        session.user.avatarUrl = (token.avatarUrl as string | null) ?? null;
+        session.user.image = (token.avatarUrl as string | null) ?? null;
       }
       return session;
     },

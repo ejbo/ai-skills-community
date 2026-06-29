@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { Loader2, Upload, X } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
@@ -20,6 +21,7 @@ interface User {
 
 export function ProfileForm({ user }: { user: User }) {
   const router = useRouter();
+  const { update } = useSession();
   const [displayName, setDisplayName] = useState(user.displayName);
   const [bio, setBio] = useState(user.bio ?? '');
   const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl ?? '');
@@ -65,6 +67,10 @@ export function ProfileForm({ user }: { user: User }) {
         return;
       }
       pushToast('success', '已保存');
+      // Refresh the JWT so the new avatar/name shows immediately. The session
+      // callback no longer re-reads the DB every request, so this explicit update
+      // is what propagates a profile change to the navbar.
+      await update();
       router.refresh();
     });
   }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import {
   extFor,
+  faststartRemux,
   isAllowedImageType,
   isAllowedVideoType,
   newVideoKey,
@@ -46,6 +47,11 @@ export async function POST(req: Request) {
 
   try {
     const size = await saveVideoStream(key, req.body, max);
+    // Relocate the MP4/MOV moov atom to the front so playback starts immediately
+    // (best-effort; no-op without ffmpeg or for very large files). Posters skip it.
+    if (kind !== 'poster') {
+      await faststartRemux(key, size);
+    }
     return NextResponse.json({ key, url: videoPublicUrl(key), size });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'upload_failed';
