@@ -25,10 +25,12 @@ export function VideoCard({ video }: { video: VideoCardType }) {
   const uploaderName = video.uploader?.displayName ?? video.intervieweeName ?? '';
   const avatarUrl = video.uploader?.avatarUrl ?? null;
 
-  // Dedicated hover clip wins; otherwise fall back to the source video, capped
-  // to its first FALLBACK_PREVIEW_SEC seconds (see onTimeUpdate below).
-  const previewSrc = video.previewUrl ?? video.videoUrl;
-  const isFallbackPreview = !video.previewUrl;
+  // Hover preview uses ONLY the dedicated short clip — never the full source.
+  // Falling back to video.videoUrl meant hovering a grid of cards could kick off
+  // several multi-GB source downloads at once (a real load/bandwidth hit under
+  // concurrency). No clip ⇒ poster only, no hover video.
+  const previewSrc = video.previewUrl ?? null;
+  const isFallbackPreview = false;
 
   function clearTimer() {
     if (timerRef.current) {

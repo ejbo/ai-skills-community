@@ -1,7 +1,8 @@
 import { Readable } from 'node:stream';
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { openVideoRange, statVideoFile } from '@/lib/video/storage';
+import { env } from '@/lib/env';
+import { openVideoRange, statVideoFileAsync, videoXAccelUri } from '@/lib/video/storage';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,7 +15,7 @@ export async function GET(req: Request, { params }: { params: { key: string[] } 
   if (!session?.user) return new NextResponse('Unauthorized', { status: 401 });
 
   const key = params.key.map(decodeURIComponent).join('/');
-  const stat = statVideoFile(key);
+  const stat = await statVideoFileAsync(key);
   if (!stat) return new NextResponse('Not found', { status: 404 });
 
   const { size, contentType } = stat;
@@ -23,6 +24,21 @@ export async function GET(req: Request, { params }: { params: { key: string[] } 
   // safe to let the browser cache aggressively (private: the board is login-walled).
   // Without this every page showing posters re-downloads them through this route.
   const cacheControl = 'private, max-age=31536000, immutable';
+
+  // Offload the actual bytes to nginx (kernel sendfile) once we've authorized —
+  // Node stops being in the data path, so concurrent viewers/seeks scale on nginx
+  // instead of the single JS thread. nginx handles Range/206/416 itself. Gated:
+  // only safe when the internal `/_video/` location exists (see deploy conf).
+  if (env.VIDEO_X_ACCEL_REDIRECT) {
+    return new NextResponse(null, {
+      status: 200,
+      headers: {
+        'X-Accel-Redirect': videoXAccelUri(key),
+        'content-type': contentType,
+        'cache-control': cacheControl,
+      },
+    });
+  }
 
   if (range) {
     const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());

@@ -28,6 +28,14 @@ const schema = z.object({
   STORAGE_DRIVER: z.enum(['local', 'blob']).default('local'),
   LOCAL_STORAGE_DIR: z.string().default('./storage'),
   BLOB_READ_WRITE_TOKEN: z.string().optional(),
+  // When true, the video file route hands byte-serving to nginx via
+  // X-Accel-Redirect (kernel sendfile) after auth — far better under concurrency.
+  // Requires the internal `/_video/` nginx location (see deploy conf). Keep OFF
+  // until that's wired, or videos return an empty body.
+  VIDEO_X_ACCEL_REDIRECT: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
 
   ENABLE_SSO: z
     .string()

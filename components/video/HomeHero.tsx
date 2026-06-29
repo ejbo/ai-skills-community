@@ -29,7 +29,9 @@ export function HomeHero({ videos }: { videos: HeroVideo[] }) {
     return () => clearInterval(id);
   }, [index, items.length, modalOpen]);
 
-  const previewSrc = active ? active.previewUrl ?? active.videoUrl : null;
+  // Only the dedicated preview clip plays in the hero background — never the full
+  // source (which would autoplay-download a multi-GB file on every homepage load).
+  const previewSrc = active ? active.previewUrl ?? null : null;
 
   // Restart the background preview whenever the active item changes.
   useEffect(() => {

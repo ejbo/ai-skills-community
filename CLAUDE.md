@@ -114,3 +114,10 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
 - New Prisma migrations ship as committed SQL under `prisma/migrations/`; apply on the server
   with `pnpm prisma migrate deploy` (the `Notification`/`Announcement`/`NotificationPreference`
   tables are added by `20260629000000_add_notifications_announcements`).
+- **Video delivery**: the file route (`app/api/videos/file/[...key]`) streams from local disk with
+  HTTP Range. Under concurrency the bottleneck is that bytes flow through Node — set
+  `VIDEO_X_ACCEL_REDIRECT=true` + add the internal `/_video/` nginx location (see deploy conf)
+  to offload byte-serving to nginx `sendfile` (Node only does `auth()` then returns the header).
+  Card/hero hover previews use ONLY the dedicated short `preview` clip (never the full source) —
+  don't reintroduce a `?? videoUrl` fallback. Not yet done (needs ffmpeg on the box): `+faststart`
+  remux on upload (fixes tail-`moov` first-frame delay) and HLS/adaptive transcoding.

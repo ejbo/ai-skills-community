@@ -129,6 +129,24 @@ export function statVideoFile(key: string): VideoFileStat | null {
   }
 }
 
+/** Async variant — avoids a blocking statSync on the event loop per request. */
+export async function statVideoFileAsync(key: string): Promise<VideoFileStat | null> {
+  const full = videoFileAbsPath(key);
+  if (!full) return null;
+  try {
+    const st = await fsp.stat(full);
+    if (!st.isFile()) return null;
+    return { size: st.size, contentType: contentTypeForKey(key) };
+  } catch {
+    return null;
+  }
+}
+
+/** nginx internal URI for X-Accel-Redirect offload (paired with `location /_video/`). */
+export function videoXAccelUri(key: string): string {
+  return `/_video/${key.split('/').map(encodeURIComponent).join('/')}`;
+}
+
 /** A Node read stream for a (possibly partial) byte range of a stored file. */
 export function openVideoRange(key: string, start: number, end: number): fs.ReadStream | null {
   const full = videoFileAbsPath(key);
