@@ -276,3 +276,29 @@ grep -rl '"registry": "http://localhost:3000"' ~/.claude/skills .claude/skills 2
 cat ~/.skills/config.json        # registry 应为服务器地址
 skills list -a                   # 确认装的东西和来源
 ```
+
+---
+
+## 8. 安装 / 更新内部机制（原 `/docs/cli`「原理」，搬到本地自用）
+
+> 面向用户的 `/docs/cli` 已精简成四步（装 Node/npm → `npm i -g …skills-cli.tgz` → `skills login --registry <本站>` → `skills install <slug>`），不再讲原理、不再出现 npx。原理挪到这里供自己参考 / 汇报。
+
+每个本地 Skill 目录下有一个 `.skills-meta.json`：
+
+```json
+{
+  "slug": "pdf-form-signer",
+  "installed_version": "1.2.0",
+  "subscribed": true,
+  "source_url": "https://.../api/skills/pdf-form-signer/raw?version=1.2.0",
+  "registry": "https://your-skills-server.com"
+}
+```
+
+`skills update` 扫所有这个文件 → 批量调 `/api/skills/check-updates` 比对版本 → 对每个落后的 skill 原子地下载新版本（先下到临时目录，再 rename 替换，旧版本备份到 `<slug>.bak/`）。失败回滚为一行 `mv`，永远不会让你装到一半。没有后台自动更新进程，`skills update` 是手动命令；想"自动"就挂到 cron / CI（例如每天 `skills update -a -s`）。
+
+### 网页里现在展示的安装命令
+
+- 详情页「安装」框：`skills install <slug>`（**不再带 `--registry`**，靠登录时 `skills login --registry <本站>` 持久化到 `~/.skills/config.json` 的默认值连本站）。
+- 「经常一起安装」Stack 框：`skills install <slug1> <slug2> …`。
+- 前提：用户已 ① `npm i -g <本站>/skills-cli.tgz` ② `skills login --registry <本站>`。npx「免安装」那条路径仍可用（tgz 没变），只是产品里不再宣传——见本文件 §3「方式 B」。

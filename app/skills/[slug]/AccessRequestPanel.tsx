@@ -57,7 +57,7 @@ export function AccessRequestPanel({
           此 Skill 为「受限下载」
         </div>
         <p className="mt-1.5 text-sm text-muted">
-          查看文件、手动下载与 <code className="rounded bg-zinc-100 px-1 font-mono text-[12px] dark:bg-zinc-800">npx</code> 安装都需要作者批准，请先登录后申请。
+          查看文件、手动下载与 <code className="rounded bg-zinc-100 px-1 font-mono text-[12px] dark:bg-zinc-800">skills install</code> 安装都需要作者批准，请先登录后申请。
         </p>
         <button
           onClick={() => router.push(`/auth/login?callbackUrl=/skills/${slug}`)}
@@ -88,7 +88,7 @@ export function AccessRequestPanel({
         此 Skill 为「受限下载」
       </div>
       <p className="mt-1.5 text-sm text-muted">
-        查看文件、手动下载与 <code className="rounded bg-zinc-100 px-1 font-mono text-[12px] dark:bg-zinc-800">npx</code> 安装都需要作者批准。
+        查看文件、手动下载与 <code className="rounded bg-zinc-100 px-1 font-mono text-[12px] dark:bg-zinc-800">skills install</code> 安装都需要作者批准。
         {state === 'rejected' && '上次申请未通过，你可以重新申请。'}
         {state === 'revoked' && '你的访问权限已被撤销，你可以重新申请。'}
       </p>

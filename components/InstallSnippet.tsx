@@ -1,8 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { Check, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { pushToast } from './Toaster';
 import { copyText } from '@/lib/clipboard';
@@ -10,23 +11,11 @@ import { copyText } from '@/lib/clipboard';
 export function InstallSnippet({ slug, version }: { slug: string; version?: string }) {
   const t = useTranslations('common');
   const [copied, setCopied] = useState(false);
-  // The CLI is served as a tarball from this same server, so the install command
-  // tracks whatever host the site is on (AWS now, intranet later) with no edits.
-  const [origin, setOrigin] = useState('');
-  useEffect(() => setOrigin(window.location.origin), []);
 
   const ref = version ? `${slug}@${version}` : slug;
-  // base = origin + deploy basePath. The basePath matters under a subpath deploy
-  // (…/ai-community/skills-cli.tgz, not …/skills-cli.tgz), and `--registry ${base}` points the
-  // CLI at THIS server — the tarball's baked-in default may belong to another deploy (AWS).
-  const base = origin ? `${origin}${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}` : '';
-  const cmd = `npx ${base}/skills-cli.tgz --registry ${base} install ${ref}`;
-  // Until the origin is known (pre-hydration / SSR) show a neutral host
-  // placeholder instead of a malformed "npx /skills-cli.tgz …".
-  const display = `npx ${base || '…'}/skills-cli.tgz --registry ${base || '…'} install ${ref}`;
+  const cmd = `skills install ${ref}`;
 
   async function copy() {
-    if (!origin) return;
     if (await copyText(cmd)) {
       setCopied(true);
       pushToast('success', t('copied_hint'));
@@ -41,7 +30,7 @@ export function InstallSnippet({ slug, version }: { slug: string; version?: stri
       <div className="surface flex items-center gap-3 rounded-xl p-1 pl-4 shadow-[inset_0_0_0_1px_rgba(94,90,255,0.18)]">
         <span className="font-mono text-zinc-400 select-none">$</span>
         <code className="min-w-0 flex-1 truncate font-mono text-sm text-zinc-800 dark:text-zinc-100">
-          {display}
+          {cmd}
         </code>
         <button
           onClick={copy}
@@ -78,8 +67,11 @@ export function InstallSnippet({ slug, version }: { slug: string; version?: stri
         </button>
       </div>
       <p className="text-[11px] text-muted">
-        首次使用需先登录：<code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">skills login</code>
-        （在 <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">/settings/tokens</code> 创建 token）。
+        首次使用需先安装 CLI 并登录，见{' '}
+        <Link href="/docs/cli" className="underline hover:text-accent-600">
+          CLI 快速开始
+        </Link>
+        。
       </p>
     </div>
   );
