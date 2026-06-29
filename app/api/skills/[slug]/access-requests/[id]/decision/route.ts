@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { resolveActor } from '@/lib/auth/either';
 import { logAdmin } from '@/lib/audit';
-import { notifyApplicantOfDecision } from '@/lib/email';
+import { notifyAccessDecision } from '@/lib/notifications';
 
 const schema = z.object({
   action: z.enum(['approve', 'reject', 'revoke']),
@@ -58,8 +58,10 @@ export async function POST(req: Request, { params }: { params: { slug: string; i
     });
   }
 
-  notifyApplicantOfDecision({
+  await notifyAccessDecision({
+    applicantId: reqRow.userId,
     applicantEmail: reqRow.user.email,
+    actorId: actor.id,
     skillName: reqRow.skill.name,
     slug: reqRow.skill.slug,
     action: parsed.data.action,

@@ -100,3 +100,17 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   so content stays portable across root vs `/ai-community` deploys.
 - Env is validated by `lib/env.ts` (zod). Read config via `env`, not `process.env`
   (except `NEXT_PUBLIC_*`, which are build-time inlined).
+- **Notifications** (`lib/notifications.ts`): in-app `Notification` rows + best-effort email,
+  both gated per-user by `NotificationPreference` (Settings → 通知). Emit from the mutation
+  site (comment reply, access request/decision, announcement fan-out) — never let a
+  notification failure break the underlying write. The bell (`components/NotificationBell.tsx`)
+  polls `/api/notifications`; a click deep-links to `/videos/<slug>?focus=<id>` (scroll +
+  highlight, auto-expand thread) or `/announcements/<id>`. Admins publish via `/manage/announcements`.
+- **SMTP** (`lib/email.ts`): sends only when `SMTP_HOST` **and** `SMTP_FROM` are set. The intranet
+  relay (`email-ca.huawei.com:25`, the one the `news` app uses) is **plaintext** — set
+  `SMTP_PORT=25 SMTP_SECURE=false SMTP_IGNORE_TLS=true`; the transport already sets
+  `tls.rejectUnauthorized:false` + timeouts. Diagnose live at 管理后台 → 公告 → "邮件 (SMTP) 诊断"
+  (it calls `sendMailRaw`, which throws the real error instead of swallowing it).
+- New Prisma migrations ship as committed SQL under `prisma/migrations/`; apply on the server
+  with `pnpm prisma migrate deploy` (the `Notification`/`Announcement`/`NotificationPreference`
+  tables are added by `20260629000000_add_notifications_announcements`).

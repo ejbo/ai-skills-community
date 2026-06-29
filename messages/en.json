@@ -1,4 +1,9 @@
 {
+  "notifications": {
+    "title": "Notifications",
+    "mark_all_read": "Mark all read",
+    "empty": "No notifications yet"
+  },
   "nav": {
     "browse": "Skills Center",
     "videos": "Geek Hub",

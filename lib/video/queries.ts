@@ -279,3 +279,14 @@ export async function listReplies(parentId: string, actorId: string | null) {
   });
   return annotateLikes(rows, actorId);
 }
+
+/** Single comment by id — used to hydrate a deep-linked comment not on the first page. */
+export async function getComment(id: string, actorId: string | null): Promise<VideoCommentView | null> {
+  const row = await prisma.videoComment.findFirst({
+    where: { id, status: { not: 'hidden' } },
+    select: COMMENT_SELECT,
+  });
+  if (!row) return null;
+  const [annotated] = await annotateLikes([row], actorId);
+  return annotated;
+}

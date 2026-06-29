@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ChevronDown, ChevronUp, Heart, Loader2, MessageSquare, Pencil, Trash2 } from 'lucide-react';
@@ -13,15 +13,19 @@ import { RichTextEditor } from '@/components/RichTextEditor';
 import { formatCount } from '@/lib/video/types';
 import type { VideoCommentView } from '@/lib/video/queries';
 import { CommentComposer } from './CommentComposer';
+import { useCommentFocus } from './CommentFocusContext';
 
 interface Props {
   slug: string;
   comment: VideoCommentView;
   currentUser: { id: string; isAdmin: boolean; handle?: string } | null;
   onChanged: () => void;
+  // For a reply, lets the composed reply-to-reply be appended to the TOP-level
+  // thread's flat reply list (DB threading is 2 levels deep).
+  onAddSibling?: (c: VideoCommentView) => void;
 }
 
-export function CommentItem({ slug, comment, currentUser, onChanged }: Props) {
+export function CommentItem({ slug, comment, currentUser, onChanged, onAddSibling }: Props) {
   const t = useTranslations('video');
   const router = useRouter();
 
@@ -49,6 +53,25 @@ export function CommentItem({ slug, comment, currentUser, onChanged }: Props) {
   // re-authorizes every mutation by id regardless, so this is purely a UI hint.
   const isOwn = Boolean(currentUser?.handle && currentUser.handle === comment.author.handle);
   const canDelete = isOwn || Boolean(currentUser?.isAdmin);
+
+  // Deep-link focus (from a notification): scroll to + highlight this comment, or
+  // — if this is the thread root of a nested target — open replies so it mounts.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [highlighted, setHighlighted] = useState(false);
+  const { focusId, openRootId } = useCommentFocus();
+  useEffect(() => {
+    if (!focusId) return;
+    if (focusId === comment.id) {
+      rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlighted(true);
+      const tm = setTimeout(() => setHighlighted(false), 2500);
+      return () => clearTimeout(tm);
+    }
+    if (!comment.parentId && openRootId === comment.id && !showReplies && !loadingReplies) {
+      void toggleReplies();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusId, openRootId]);
 
   function pushReply(c: VideoCommentView) {
     setReplies((prev) => (prev ? [...prev, c] : [c]));
@@ -145,7 +168,13 @@ export function CommentItem({ slug, comment, currentUser, onChanged }: Props) {
   const author = comment.author;
 
   return (
-    <div className="flex gap-3">
+    <div
+      ref={rootRef}
+      id={`comment-${comment.id}`}
+      className={`flex scroll-mt-24 gap-3 rounded-xl transition-colors ${
+        highlighted ? 'bg-accent-500/10 ring-2 ring-accent-500/40' : ''
+      }`}
+    >
       {author.avatarUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={withBasePath(author.avatarUrl)} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
@@ -219,15 +248,13 @@ export function CommentItem({ slug, comment, currentUser, onChanged }: Props) {
               {likeCount > 0 && <span className="font-mono tabular-nums">{formatCount(likeCount)}</span>}
             </motion.button>
 
-            {!comment.parentId && (
-              <button
-                onClick={() => setReplying((v) => !v)}
-                className="flex items-center gap-1 transition hover:text-zinc-700 dark:hover:text-zinc-200"
-              >
-                <MessageSquare className="h-3.5 w-3.5" />
-                {t('comments.reply')}
-              </button>
-            )}
+            <button
+              onClick={() => setReplying((v) => !v)}
+              className="flex items-center gap-1 transition hover:text-zinc-700 dark:hover:text-zinc-200"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              {t('comments.reply')}
+            </button>
 
             {isOwn && (
               <button
@@ -253,7 +280,22 @@ export function CommentItem({ slug, comment, currentUser, onChanged }: Props) {
 
         {replying && (
           <div className="mt-3">
-            <CommentComposer slug={slug} parentId={comment.id} onPosted={pushReply} autoFocus />
+            <CommentComposer
+              slug={slug}
+              parentId={comment.parentId ?? comment.id}
+              replyToId={comment.id}
+              onPosted={(c) => {
+                // A reply to a reply belongs to the top-level thread's flat list,
+                // so bubble it up; a reply to the top comment stays here.
+                if (comment.parentId) {
+                  onAddSibling?.(c);
+                  setReplying(false);
+                } else {
+                  pushReply(c);
+                }
+              }}
+              autoFocus
+            />
           </div>
         )}
 
@@ -284,6 +326,10 @@ export function CommentItem({ slug, comment, currentUser, onChanged }: Props) {
                 onChanged={() => {
                   setReplies((prev) => (prev ? prev.filter((r) => r.id !== reply.id) : prev));
                   setReplyCount((n) => Math.max(0, n - 1));
+                }}
+                onAddSibling={(c) => {
+                  setReplies((prev) => (prev ? [...prev, c] : [c]));
+                  setReplyCount((n) => n + 1);
                 }}
               />
             ))}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Loader2, MessageSquare } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
@@ -8,6 +8,7 @@ import type { CommentSort } from '@/lib/video/types';
 import type { VideoCommentView } from '@/lib/video/queries';
 import { CommentComposer } from './CommentComposer';
 import { CommentItem } from './CommentItem';
+import { CommentFocusContext, type CommentFocus } from './CommentFocusContext';
 
 interface Props {
   slug: string;
@@ -23,6 +24,33 @@ export function CommentSection({ slug, initialComments, initialCursor, currentUs
   const [sort, setSort] = useState<CommentSort>('top');
   const [loading, setLoading] = useState(false);
   const [reloading, setReloading] = useState(false);
+  const [focus, setFocus] = useState<CommentFocus>({ focusId: null, openRootId: null });
+
+  // Deep-link: a notification links to /videos/<slug>?focus=<commentId>. Resolve
+  // it to its thread root, make sure that root is loaded (it may be on a later
+  // page), then drive the highlight/auto-expand through context.
+  useEffect(() => {
+    const focusId = new URLSearchParams(window.location.search).get('focus');
+    if (!focusId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/videos/${slug}/comments/${focusId}/context`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled || !data.exists) return;
+        if (data.root) {
+          setComments((prev) => (prev.some((c) => c.id === data.rootId) ? prev : [data.root as VideoCommentView, ...prev]));
+        }
+        setFocus({ focusId, openRootId: data.isReply ? data.rootId : null });
+      } catch {
+        /* deep-link is best-effort */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
 
   const reload = useCallback(
     async (nextSort: CommentSort) => {
@@ -113,17 +141,19 @@ export function CommentSection({ slug, initialComments, initialCursor, currentUs
       ) : comments.length === 0 ? (
         <p className="py-8 text-center text-sm text-muted">{t('comments.empty')}</p>
       ) : (
-        <div className="space-y-6">
-          {comments.map((comment) => (
-            <CommentItem
-              key={comment.id}
-              slug={slug}
-              comment={comment}
-              currentUser={currentUser}
-              onChanged={() => removeComment(comment.id)}
-            />
-          ))}
-        </div>
+        <CommentFocusContext.Provider value={focus}>
+          <div className="space-y-6">
+            {comments.map((comment) => (
+              <CommentItem
+                key={comment.id}
+                slug={slug}
+                comment={comment}
+                currentUser={currentUser}
+                onChanged={() => removeComment(comment.id)}
+              />
+            ))}
+          </div>
+        </CommentFocusContext.Provider>
       )}
 
       {cursor && !reloading && (

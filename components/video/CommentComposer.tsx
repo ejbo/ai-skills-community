@@ -11,11 +11,15 @@ import type { VideoCommentView } from '@/lib/video/queries';
 interface Props {
   slug: string;
   parentId?: string;
+  // The specific comment being answered (used when replying to a reply, so the
+  // right person gets the "your reply was replied to" notification). DB threading
+  // stays flat — parentId is always the thread root.
+  replyToId?: string;
   onPosted: (comment: VideoCommentView) => void;
   autoFocus?: boolean;
 }
 
-export function CommentComposer({ slug, parentId, onPosted, autoFocus }: Props) {
+export function CommentComposer({ slug, parentId, replyToId, onPosted, autoFocus }: Props) {
   const t = useTranslations('video');
   const router = useRouter();
   const [body, setBody] = useState('');
@@ -29,7 +33,11 @@ export function CommentComposer({ slug, parentId, onPosted, autoFocus }: Props) 
       const res = await fetch(`/api/videos/${slug}/comments`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ bodyMd: trimmed, ...(parentId ? { parentId } : {}) }),
+        body: JSON.stringify({
+          bodyMd: trimmed,
+          ...(parentId ? { parentId } : {}),
+          ...(replyToId ? { replyToId } : {}),
+        }),
       });
       if (!res.ok) {
         if (res.status === 401) {

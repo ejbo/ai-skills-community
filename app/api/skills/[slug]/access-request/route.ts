@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { resolveActor } from '@/lib/auth/either';
-import { notifyAuthorOfRequest } from '@/lib/email';
+import { notifyAccessRequest } from '@/lib/notifications';
 
 const schema = z.object({ message: z.string().max(500).optional() });
 
@@ -63,12 +63,14 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
     },
   });
 
-  notifyAuthorOfRequest({
+  await notifyAccessRequest({
+    authorId: skill.authorId,
     authorEmail: skill.author.email,
-    skillName: skill.name,
-    slug: skill.slug,
+    actorId: actor.id,
     applicantName: actor.displayName,
     applicantEmail: actor.email,
+    skillName: skill.name,
+    slug: skill.slug,
     message: parsed.data.message,
   });
 

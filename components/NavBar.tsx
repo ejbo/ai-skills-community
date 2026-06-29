@@ -5,6 +5,7 @@ import { UserMenu } from './UserMenu';
 import { SearchTrigger } from './SearchTrigger';
 import { NavLink } from './NavLink';
 import { NavBarShell } from './NavBarShell';
+import { NotificationBell } from './NotificationBell';
 import { getTranslations } from 'next-intl/server';
 import { withBasePath } from '@/lib/base-path';
 
@@ -26,6 +27,7 @@ export async function NavBar({ session }: { session: Session | null }) {
         <div className="flex flex-1 items-center justify-end gap-2">
           <SearchTrigger />
           <ThemeToggle />
+          {session?.user && <NotificationBell />}
           {session?.user ? (
             <UserMenu user={session.user} />
           ) : (

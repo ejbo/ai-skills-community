@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { User, Key, Lock } from 'lucide-react';
+import { User, Key, Lock, Bell } from 'lucide-react';
 import { auth } from '@/lib/auth';
 
 export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
@@ -9,6 +9,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
 
   const links = [
     { href: '/settings', label: '个人资料', icon: <User className="h-4 w-4" /> },
+    { href: '/settings/notifications', label: '通知', icon: <Bell className="h-4 w-4" /> },
     { href: '/settings/tokens', label: 'CLI Token', icon: <Key className="h-4 w-4" /> },
     { href: '/settings/security', label: '安全', icon: <Lock className="h-4 w-4" /> },
   ];

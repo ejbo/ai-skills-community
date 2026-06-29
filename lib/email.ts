@@ -11,8 +11,21 @@ type Mail = { to: string; subject: string; text: string; html?: string };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let transporterPromise: Promise<any> | null = null;
 
-function smtpConfigured(): boolean {
+export function smtpConfigured(): boolean {
   return Boolean(env.SMTP_HOST && env.SMTP_FROM);
+}
+
+/** Surface the active SMTP config (no secrets) for the admin diagnostics UI. */
+export function smtpStatus() {
+  return {
+    configured: smtpConfigured(),
+    host: env.SMTP_HOST ?? null,
+    port: env.SMTP_PORT ? Number(env.SMTP_PORT) : 587,
+    secure: env.SMTP_SECURE,
+    ignoreTLS: env.SMTP_IGNORE_TLS,
+    from: env.SMTP_FROM ?? null,
+    hasAuth: Boolean(env.SMTP_USER),
+  };
 }
 
 async function getTransporter() {
@@ -23,12 +36,36 @@ async function getTransporter() {
       return nodemailer.createTransport({
         host: env.SMTP_HOST,
         port: env.SMTP_PORT ? Number(env.SMTP_PORT) : 587,
-        secure: env.SMTP_SECURE,
+        secure: env.SMTP_SECURE, // true ⇒ implicit TLS (port 465)
         auth: env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASS } : undefined,
+        // Intranet/corporate relays (e.g. the Huawei email-ca.huawei.com:25 relay the
+        // sibling `news` app sends through) speak plaintext and present internal/self-
+        // signed certs. The previous default — port 587, opportunistic STARTTLS, strict
+        // cert check — silently failed against such a relay. Mirror the working setup:
+        // never reject the cert, and (when SMTP_IGNORE_TLS=true) skip the STARTTLS
+        // upgrade so the send doesn't hang on a handshake the relay doesn't support.
+        ignoreTLS: env.SMTP_IGNORE_TLS,
+        requireTLS: false,
+        tls: { rejectUnauthorized: false },
+        connectionTimeout: 10_000,
+        greetingTimeout: 10_000,
+        socketTimeout: 15_000,
       });
     })();
   }
   return transporterPromise;
+}
+
+/**
+ * Send and THROW on failure (or when SMTP is unconfigured). Used by the admin
+ * "send test email" diagnostics so the real error is surfaced instead of swallowed.
+ */
+export async function sendMailRaw(mail: Mail): Promise<void> {
+  if (!smtpConfigured()) {
+    throw new Error('SMTP 未配置：需要同时设置 SMTP_HOST 和 SMTP_FROM');
+  }
+  const t = await getTransporter();
+  await t.sendMail({ from: env.SMTP_FROM, ...mail });
 }
 
 export async function sendMail(mail: Mail): Promise<void> {
@@ -37,8 +74,7 @@ export async function sendMail(mail: Mail): Promise<void> {
     return;
   }
   try {
-    const t = await getTransporter();
-    await t.sendMail({ from: env.SMTP_FROM, ...mail });
+    await sendMailRaw(mail);
   } catch (e) {
     console.error('[email] send failed:', e);
   }
@@ -54,7 +90,7 @@ export function appUrl(path = ''): string {
   return `${base}${path}`;
 }
 
-function esc(s: string): string {
+export function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 }
 
@@ -110,5 +146,44 @@ export function notifyApplicantOfDecision(opts: {
       `<p>${esc(lead)}</p>` +
       (opts.note ? `<p>备注：${esc(opts.note)}</p>` : '') +
       `<p><a href="${skillUrl}">查看 Skill →</a></p>`,
+  });
+}
+
+/** Notify a user that their comment/reply was replied to. `link` is absolute. */
+export function notifyCommentReplyEmail(opts: {
+  to: string;
+  actorName: string;
+  videoTitle: string;
+  link: string;
+  snippet: string;
+  isReplyToReply: boolean;
+}): void {
+  const what = opts.isReplyToReply ? '回复' : '评论';
+  sendMailAsync({
+    to: opts.to,
+    subject: `【Geek Hub】${opts.actorName} 回复了你的${what}`,
+    text: `${opts.actorName} 在《${opts.videoTitle}》下回复了你的${what}：\n\n${opts.snippet}\n\n查看：${opts.link}`,
+    html:
+      `<p><strong>${esc(opts.actorName)}</strong> 在《${esc(opts.videoTitle)}》下回复了你的${what}：</p>` +
+      `<blockquote>${esc(opts.snippet)}</blockquote>` +
+      `<p><a href="${opts.link}">查看对话 →</a></p>`,
+  });
+}
+
+/** Notify a user of a published announcement. `link` is absolute. */
+export function notifyAnnouncementEmail(opts: {
+  to: string;
+  title: string;
+  summary: string;
+  link: string;
+}): void {
+  sendMailAsync({
+    to: opts.to,
+    subject: `【公告】${opts.title}`,
+    text: `${opts.title}\n\n${opts.summary}\n\n查看全文：${opts.link}`,
+    html:
+      `<p><strong>${esc(opts.title)}</strong></p>` +
+      `<p>${esc(opts.summary)}</p>` +
+      `<p><a href="${opts.link}">查看全文 →</a></p>`,
   });
 }

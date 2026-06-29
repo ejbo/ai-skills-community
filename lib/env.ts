@@ -17,6 +17,13 @@ const schema = z.object({
     .string()
     .default('false')
     .transform((v) => v === 'true' || v === '1'),
+  // Plaintext corporate relays (e.g. Huawei email-ca.huawei.com:25, which the
+  // sibling `news` app uses) don't support STARTTLS. Set true to skip the TLS
+  // upgrade entirely so the send doesn't hang/fail on a handshake.
+  SMTP_IGNORE_TLS: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
 
   STORAGE_DRIVER: z.enum(['local', 'blob']).default('local'),
   LOCAL_STORAGE_DIR: z.string().default('./storage'),

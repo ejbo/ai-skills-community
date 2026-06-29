@@ -5,6 +5,7 @@ import { auth } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
 import { parseCommentSort } from '@/lib/video/types';
 import { listReplies, listTopComments, type VideoCommentView } from '@/lib/video/queries';
+import { notifyCommentReply } from '@/lib/notifications';
 
 // GET /api/videos/[slug]/comments?sort=&cursor=&parentId= (login)
 export async function GET(req: Request, { params }: { params: { slug: string } }) {
@@ -32,6 +33,10 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
 const createSchema = z.object({
   bodyMd: z.string().min(1).max(2000),
   parentId: z.string().optional(),
+  // The specific comment being answered (a reply, when replying within a thread).
+  // DB threading stays flat (parentId = the top comment); replyToId only steers
+  // who gets the "your reply was replied to" notification.
+  replyToId: z.string().optional(),
 });
 
 const MINUTE_MS = 60 * 1000;
@@ -49,9 +54,12 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
   const body = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
-  const { bodyMd, parentId } = parsed.data;
+  const { bodyMd, parentId, replyToId } = parsed.data;
 
-  const video = await prisma.video.findUnique({ where: { slug: params.slug }, select: { id: true, deletedAt: true } });
+  const video = await prisma.video.findUnique({
+    where: { slug: params.slug },
+    select: { id: true, deletedAt: true, title: true },
+  });
   if (!video || video.deletedAt) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   // Replies must target a top-level comment on the same video.
@@ -92,6 +100,30 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
     }
     return comment;
   });
+
+  // Notify the author of the comment being answered (the specific reply when
+  // replyToId is given, otherwise the top-level comment). Best-effort; never
+  // blocks or fails the reply itself.
+  if (parentId) {
+    const targetId = replyToId ?? parentId;
+    const target = await prisma.videoComment.findUnique({
+      where: { id: targetId },
+      select: { authorId: true, parentId: true, videoId: true, author: { select: { email: true } } },
+    });
+    if (target && target.videoId === video.id && target.authorId !== session.user.id) {
+      await notifyCommentReply({
+        recipientId: target.authorId,
+        recipientEmail: target.author.email,
+        actorId: session.user.id,
+        actorName: created.author.displayName,
+        videoTitle: video.title,
+        videoSlug: params.slug,
+        focusId: created.id,
+        bodyMd,
+        isReplyToReply: target.parentId !== null,
+      });
+    }
+  }
 
   const comment: VideoCommentView = { ...created, likedByMe: false };
   return NextResponse.json({ ok: true, comment });
