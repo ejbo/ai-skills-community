@@ -4,6 +4,7 @@
 // a notification failure must never break the comment/access/announcement write
 // that triggered it, so every entry point swallows its own errors.
 
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import {
   appUrl,
@@ -28,8 +29,25 @@ const DEFAULT_PREF = {
 type Pref = typeof DEFAULT_PREF;
 
 async function getPref(userId: string): Promise<Pref> {
-  const row = await prisma.notificationPreference.findUnique({ where: { userId } });
-  return row ? { ...DEFAULT_PREF, ...stripMeta(row) } : DEFAULT_PREF;
+  try {
+    const row = await prisma.notificationPreference.findUnique({ where: { userId } });
+    return row ? { ...DEFAULT_PREF, ...stripMeta(row) } : DEFAULT_PREF;
+  } catch (e) {
+    // e.g. the migration hasn't been applied yet — fall back to defaults so the
+    // email side still fires instead of being skipped by a thrown query.
+    console.error('[notify] getPref failed, using defaults:', e);
+    return DEFAULT_PREF;
+  }
+}
+
+// In-app creation is isolated so a missing/erroring Notification table can NEVER
+// block the (independent) email send below it. Best-effort by design.
+async function createInApp(data: Prisma.NotificationUncheckedCreateInput): Promise<void> {
+  try {
+    await prisma.notification.create({ data });
+  } catch (e) {
+    console.error('[notify] in-app create failed (is the migration applied?):', e);
+  }
 }
 
 // Keep only the boolean toggle fields (drop id/userId/timestamps) when merging.
@@ -66,15 +84,13 @@ export async function notifyCommentReply(opts: {
     const what = opts.isReplyToReply ? '回复' : '评论';
     const link = `/videos/${opts.videoSlug}?focus=${opts.focusId}`;
     if (pref.inAppCommentReply) {
-      await prisma.notification.create({
-        data: {
-          recipientId: opts.recipientId,
-          actorId: opts.actorId,
-          type: opts.isReplyToReply ? 'reply_reply' : 'comment_reply',
-          title: `${opts.actorName} 回复了你的${what}`,
-          body: snippet,
-          link,
-        },
+      await createInApp({
+        recipientId: opts.recipientId,
+        actorId: opts.actorId,
+        type: opts.isReplyToReply ? 'reply_reply' : 'comment_reply',
+        title: `${opts.actorName} 回复了你的${what}`,
+        body: snippet,
+        link,
       });
     }
     if (pref.emailCommentReply) {
@@ -107,15 +123,13 @@ export async function notifyAccessRequest(opts: {
   try {
     const pref = await getPref(opts.authorId);
     if (pref.inAppAccessRequest) {
-      await prisma.notification.create({
-        data: {
-          recipientId: opts.authorId,
-          actorId: opts.actorId,
-          type: 'access_request',
-          title: `${opts.applicantName} 申请下载你的 Skill`,
-          body: `「${opts.skillName}」${opts.message ? `：${truncate(opts.message)}` : ''}`,
-          link: `/skills/${opts.slug}?tab=manage&section=access`,
-        },
+      await createInApp({
+        recipientId: opts.authorId,
+        actorId: opts.actorId,
+        type: 'access_request',
+        title: `${opts.applicantName} 申请下载你的 Skill`,
+        body: `「${opts.skillName}」${opts.message ? `：${truncate(opts.message)}` : ''}`,
+        link: `/skills/${opts.slug}?tab=manage&section=access`,
       });
     }
     if (pref.emailAccessRequest) {
@@ -148,15 +162,13 @@ export async function notifyAccessDecision(opts: {
     const pref = await getPref(opts.applicantId);
     const label = opts.action === 'approve' ? '已通过' : opts.action === 'reject' ? '未通过' : '已被撤销';
     if (pref.inAppAccessDecision) {
-      await prisma.notification.create({
-        data: {
-          recipientId: opts.applicantId,
-          actorId: opts.actorId,
-          type: 'access_decision',
-          title: `你对「${opts.skillName}」的下载申请${label}`,
-          body: opts.note ? truncate(opts.note) : null,
-          link: `/skills/${opts.slug}`,
-        },
+      await createInApp({
+        recipientId: opts.applicantId,
+        actorId: opts.actorId,
+        type: 'access_decision',
+        title: `你对「${opts.skillName}」的下载申请${label}`,
+        body: opts.note ? truncate(opts.note) : null,
+        link: `/skills/${opts.slug}`,
       });
     }
     if (pref.emailAccessDecision) {
