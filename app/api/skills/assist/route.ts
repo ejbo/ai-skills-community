@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
 import { getProvider, LLMConfigError } from '@/lib/llm';
 import {
+  assistInputSchema,
   buildAssistContext,
   buildAssistPrompt,
   parseAssistResult,
@@ -11,25 +11,6 @@ import {
 } from '@/lib/skill-assist';
 
 export const dynamic = 'force-dynamic';
-
-const schema = z.object({
-  action: z.string().refine(isAssistAction, 'unknown action'),
-  skillMd: z.string().min(1).max(200_000),
-  readme: z.string().max(200_000).optional().nullable(),
-  files: z
-    .array(z.object({ path: z.string().max(400), content: z.string().max(200_000) }))
-    .max(50)
-    .optional(),
-  current: z
-    .object({
-      name: z.string().optional(),
-      summary: z.string().optional(),
-      descriptionMd: z.string().optional(),
-      tags: z.array(z.string()).optional(),
-      triggers: z.array(z.string()).optional(),
-    })
-    .optional(),
-});
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -51,9 +32,15 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json().catch(() => null);
-  const parsed = schema.safeParse(body);
+  const parsed = assistInputSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: 'invalid_input', issues: parsed.error.flatten() }, { status: 400 });
+    // Surface the first failing field so the client shows WHY (not a bare "invalid_input").
+    const flat = parsed.error.flatten();
+    const [firstField, firstErrors] = Object.entries(flat.fieldErrors)[0] ?? [];
+    const reason = firstField
+      ? `字段「${firstField}」无效：${firstErrors?.[0] ?? ''}`
+      : '请求参数无效';
+    return NextResponse.json({ error: 'invalid_input', reason, issues: flat }, { status: 400 });
   }
   const { action, skillMd, readme, files, current } = parsed.data;
   if (!isAssistAction(action)) {

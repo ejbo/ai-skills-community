@@ -3,6 +3,7 @@
 // model's JSON reply. No DB/env/LLM coupling, so it is trivially unit-testable.
 // All LLM calls go through the same provider as Chat/Comparison (see lib/llm).
 
+import { z } from 'zod';
 import { estimateTokenCost } from '@/lib/skill-parser';
 
 export const ASSIST_ACTIONS = [
@@ -20,6 +21,31 @@ export type AssistAction = (typeof ASSIST_ACTIONS)[number];
 export function isAssistAction(v: unknown): v is AssistAction {
   return typeof v === 'string' && (ASSIST_ACTIONS as readonly string[]).includes(v);
 }
+
+/**
+ * Validation for the POST /api/skills/assist body. Defined here (not inline in the
+ * route) so it stays pure + unit-testable. NO size caps on the skill text (internal
+ * deploy — intentionally unrestricted): anything the upload/edit pipeline stored must
+ * pass here. The only budget is the LLM context slice in buildAssistContext, which
+ * truncates rather than rejects — so large skills work instead of 400'ing.
+ */
+export const assistInputSchema = z.object({
+  action: z.string().refine(isAssistAction, 'unknown action'),
+  skillMd: z.string().min(1),
+  readme: z.string().optional().nullable(),
+  files: z.array(z.object({ path: z.string(), content: z.string() })).optional(),
+  current: z
+    .object({
+      name: z.string().optional(),
+      summary: z.string().optional(),
+      descriptionMd: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      triggers: z.array(z.string()).optional(),
+    })
+    .optional(),
+});
+
+export type AssistInput = z.infer<typeof assistInputSchema>;
 
 export interface AssistContextInput {
   skillMd: string;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assistInputSchema,
   buildAssistContext,
   buildAssistPrompt,
   extractJsonObject,
@@ -80,6 +81,27 @@ describe('parseAssistResult', () => {
 
   it('caps an absurd token estimate at 50000', () => {
     expect(parseAssistResult('tokens', '{"tokenCost": 999999}', 'ctx').tokenCost).toBe(50000);
+  });
+});
+
+describe('assistInputSchema', () => {
+  // Regression guard: assist had a 200KB cap while the uploader accepted 256KB, so
+  // every AI call on a large skill 400'd ("invalid input"). Caps are now removed
+  // (internal deploy) — any size the pipeline stored must pass; buildAssistContext
+  // slices for the LLM rather than rejecting.
+  it('accepts an arbitrarily large skillMd / readme / many files (no size cap)', () => {
+    const r = assistInputSchema.safeParse({
+      action: 'autofill',
+      skillMd: 'a'.repeat(1_000_000),
+      readme: 'r'.repeat(1_000_000),
+      files: Array.from({ length: 300 }, (_, i) => ({ path: `f${i}.md`, content: 'c' })),
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('still rejects empty skillMd and unknown actions', () => {
+    expect(assistInputSchema.safeParse({ action: 'tags', skillMd: '' }).success).toBe(false);
+    expect(assistInputSchema.safeParse({ action: 'nope', skillMd: 'x' }).success).toBe(false);
   });
 });
 
