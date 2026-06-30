@@ -22,3 +22,6 @@ next-env.d.ts
 # Local-only CLI operator/原理 reference (kept on disk, not pushed)
 docs/cli-release.md
 docs/skills-cli-usage.md
+
+# Local-only learning / reporting notes (kept on disk, not pushed)
+docs/video-performance-notes.md
