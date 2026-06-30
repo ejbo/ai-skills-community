@@ -33,9 +33,17 @@ export function MarkdownRenderer({ content, compact = false }: { content: string
           // Apply the deploy basePath to root-relative media (e.g. editor-uploaded
           // images stored as "/api/uploads/...") so they resolve under subpath
           // deploys. Absolute/data/blob URLs pass through unchanged.
-          img: ({ node, src, alt, ...props }) => (
+          img: ({ node, src, alt, style, ...props }) => (
+            // Author-set width (HTML <img width=…> from the editor) is honored; keep
+            // images responsive + aspect-correct so a wide width never overflows.
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={withBasePath(typeof src === 'string' ? src : '')} alt={alt ?? ''} loading="lazy" {...props} />
+            <img
+              src={withBasePath(typeof src === 'string' ? src : '')}
+              alt={alt ?? ''}
+              loading="lazy"
+              style={{ maxWidth: '100%', height: 'auto', ...(style as object) }}
+              {...props}
+            />
           ),
           // External links open in a new tab and ALWAYS get a safe rel (closes
           // reverse-tabnabbing — the sanitize schema permits target/rel, and any

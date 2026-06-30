@@ -55,13 +55,135 @@ export interface RichTextEditorProps {
   autoFocus?: boolean;
 }
 
-// Image node that applies the deploy basePath to the DISPLAYED src only. Node
-// attrs (and therefore getMarkdown() output) stay root-relative and portable.
+// Image node with: (1) basePath applied to the DISPLAYED src only (stored attrs
+// stay root-relative + portable), (2) a `width` attribute, (3) drag-to-resize via
+// a corner handle when selected, (4) markdown that persists width as an HTML
+// <img> — plain `![](…)` can't carry a size, and MarkdownRenderer already renders
+// <img width> (sanitizeSchema allows it). Without a width it stays normal markdown.
+const escAttr = (s: unknown) =>
+  String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
 const BasePathImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        parseHTML: (el: HTMLElement) => {
+          const raw = el.getAttribute('width') || el.style.width || '';
+          const n = parseInt(String(raw), 10);
+          return Number.isFinite(n) && n > 0 ? n : null;
+        },
+        renderHTML: (attrs: { width?: number | null }) => (attrs.width ? { width: attrs.width } : {}),
+      },
+    };
+  },
   renderHTML({ HTMLAttributes }) {
     const attrs: Record<string, unknown> = { ...HTMLAttributes };
     if (typeof attrs.src === 'string') attrs.src = withBasePath(attrs.src);
     return ['img', mergeAttributes(this.options.HTMLAttributes, attrs)];
+  },
+  addStorage() {
+    return {
+      markdown: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        serialize(state: any, node: any) {
+          const { src, alt, title, width } = node.attrs;
+          if (width) {
+            state.write(
+              `<img src="${escAttr(src)}" alt="${escAttr(alt)}"${
+                title ? ` title="${escAttr(title)}"` : ''
+              } width="${width}">`,
+            );
+          } else {
+            state.write(
+              '![' +
+                state.esc(alt || '') +
+                '](' +
+                String(src ?? '').replace(/[()]/g, '\\$&') +
+                (title ? ' "' + String(title).replace(/"/g, '\\"') + '"' : '') +
+                ')',
+            );
+          }
+        },
+      },
+    };
+  },
+  addNodeView() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return ((props: any) => {
+      const { editor, getPos } = props;
+      let node = props.node;
+
+      const wrap = document.createElement('span');
+      wrap.className = 'rte-img';
+
+      const img = document.createElement('img');
+      img.draggable = false;
+      const sync = (n: { attrs: Record<string, unknown> }) => {
+        img.src = withBasePath(typeof n.attrs.src === 'string' ? n.attrs.src : '');
+        img.alt = typeof n.attrs.alt === 'string' ? n.attrs.alt : '';
+        if (typeof n.attrs.title === 'string') img.title = n.attrs.title;
+        else img.removeAttribute('title');
+        img.style.width = n.attrs.width ? `${n.attrs.width}px` : '';
+      };
+      sync(node);
+
+      const handle = document.createElement('span');
+      handle.className = 'rte-img-handle';
+      handle.contentEditable = 'false';
+
+      let startX = 0;
+      let startW = 0;
+      let dragging = false;
+      const onMove = (e: MouseEvent) => {
+        if (!dragging) return;
+        img.style.width = `${Math.max(40, Math.round(startW + (e.clientX - startX)))}px`;
+      };
+      const onUp = () => {
+        if (!dragging) return;
+        dragging = false;
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        if (typeof getPos !== 'function') return;
+        const pos = getPos();
+        const width = Math.round(img.getBoundingClientRect().width);
+        const attrs = { ...(editor.view.state.doc.nodeAt(pos)?.attrs ?? {}), width };
+        editor.view.dispatch(editor.view.state.tr.setNodeMarkup(pos, undefined, attrs));
+      };
+      const onDown = (e: MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragging = true;
+        startX = e.clientX;
+        startW = img.getBoundingClientRect().width;
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      };
+      handle.addEventListener('mousedown', onDown);
+
+      wrap.appendChild(img);
+      wrap.appendChild(handle);
+
+      return {
+        dom: wrap,
+        update: (updated: { type: unknown; attrs: Record<string, unknown> }) => {
+          if (updated.type !== node.type) return false;
+          node = updated;
+          sync(updated);
+          return true;
+        },
+        selectNode: () => wrap.classList.add('is-selected'),
+        deselectNode: () => wrap.classList.remove('is-selected'),
+        ignoreMutation: () => true,
+        destroy: () => {
+          handle.removeEventListener('mousedown', onDown);
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+        },
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    }) as any;
   },
 });
 
@@ -369,8 +491,30 @@ export function RichTextEditor({
           height: auto;
           border-radius: 0.5rem;
         }
+        .rte .rte-img {
+          position: relative;
+          display: inline-block;
+          max-width: 100%;
+          line-height: 0;
+        }
+        .rte .rte-img.is-selected img,
         .rte .ProseMirror img.ProseMirror-selectednode {
           outline: 2px solid rgb(var(--accent));
+        }
+        .rte .rte-img-handle {
+          display: none;
+          position: absolute;
+          right: -6px;
+          bottom: -6px;
+          height: 12px;
+          width: 12px;
+          border-radius: 9999px;
+          border: 2px solid white;
+          background: rgb(var(--accent));
+          cursor: nwse-resize;
+        }
+        .rte .rte-img.is-selected .rte-img-handle {
+          display: block;
         }
         .rte .ProseMirror a {
           color: rgb(var(--accent));
