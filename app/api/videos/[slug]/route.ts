@@ -9,7 +9,7 @@ const updateSchema = z.object({
   title: z.string().min(1).max(300).optional(),
   slug: z.string().max(120).optional(),
   summary: z.string().max(2000).optional(),
-  descriptionMd: z.string().max(50000).optional(),
+  descriptionMd: z.string().optional(),
   categorySlug: z.string().nullable().optional(),
   videoUrl: z.string().max(2000).optional(),
   videoKey: z.string().optional(),

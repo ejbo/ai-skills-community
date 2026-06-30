@@ -27,7 +27,7 @@ const createSchema = z.object({
   title: z.string().min(1).max(300),
   slug: z.string().max(120).optional(),
   summary: z.string().max(2000).optional(),
-  descriptionMd: z.string().max(50000).optional(),
+  descriptionMd: z.string().optional(),
   categorySlug: z.string().optional(),
   videoUrl: z.string().min(1).max(2000),
   videoKey: z.string().optional(),

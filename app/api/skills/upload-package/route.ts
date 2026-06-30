@@ -5,7 +5,7 @@ import { storage, skillBundleKey } from '@/lib/storage';
 import { parseSkillBundle } from '@/lib/skill-parser';
 import { selectReadme } from '@/lib/skill-context';
 
-const MAX_BYTES = 5 * 1024 * 1024;
+const MAX_BYTES = 512 * 1024 * 1024; // 512MB (internal deploy; nginx caps the rest)
 
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);

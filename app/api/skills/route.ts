@@ -9,7 +9,7 @@ const createSchema = z.object({
   name: z.string().min(2).max(120),
   summary: z.string().min(1).max(200),
   // Public overview (shown to everyone, incl. anonymous on restricted skills).
-  descriptionMd: z.string().max(50000).default(''),
+  descriptionMd: z.string().default(''),
   // The SKILL.md body — gated content for restricted skills (never public).
   bodyMd: z.string().default(''),
   categoryId: z.string().nullable().optional(),

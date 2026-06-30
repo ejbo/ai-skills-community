@@ -317,7 +317,6 @@ export function SkillForm({
               <RichTextEditor
                 value={overview}
                 onChange={setOverview}
-                maxLength={50000}
                 placeholder="介绍用途、关键能力、适用场景…"
                 ariaLabel="Overview"
               />

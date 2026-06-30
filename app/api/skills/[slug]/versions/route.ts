@@ -5,7 +5,7 @@ import { storage, skillBundleKey } from '@/lib/storage';
 import { parseSkillBundle } from '@/lib/skill-parser';
 import { parseSemver, compareSemver, formatSemver, type Semver } from '@/lib/version';
 
-const MAX_BYTES = 5 * 1024 * 1024;
+const MAX_BYTES = 512 * 1024 * 1024; // 512MB (internal deploy; nginx caps the rest)
 
 function str(form: FormData, key: string): string | undefined {
   const v = form.get(key);

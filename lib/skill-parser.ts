@@ -2,7 +2,9 @@ import yauzl from 'yauzl';
 import yaml from 'js-yaml';
 import crypto from 'node:crypto';
 
-export const MAX_TEXT_FILE_CHARS = 256 * 1024;
+// Internal deploy — intentionally generous (was 256KB). Bounds in-DB text size
+// without rejecting any realistic skill doc.
+export const MAX_TEXT_FILE_CHARS = 8 * 1024 * 1024;
 
 const TEXT_EXTENSIONS = new Set([
   'md', 'markdown', 'txt', 'text', 'rst', 'py', 'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs',

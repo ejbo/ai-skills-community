@@ -12,7 +12,7 @@ export interface StagedFile {
   bytes?: Uint8Array; // content for entries extracted from a dropped .zip
 }
 
-export const MAX_PACKAGE_BYTES = 5 * 1024 * 1024;
+export const MAX_PACKAGE_BYTES = 512 * 1024 * 1024; // 512MB (internal deploy)
 
 const TEXT_EXT = new Set([
   'md', 'markdown', 'txt', 'rst', 'py', 'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'json', 'yaml',
@@ -147,7 +147,7 @@ export interface StagedText {
   files: { path: string; content: string }[];
 }
 
-const MAX_READ_BYTES = 96 * 1024;
+const MAX_READ_BYTES = 8 * 1024 * 1024;
 
 /** Read text content from staged files for AI context + frontmatter parsing. */
 export async function readStagedText(staged: StagedFile[]): Promise<StagedText> {

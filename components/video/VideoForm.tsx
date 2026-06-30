@@ -204,7 +204,6 @@ export function VideoForm({
             <RichTextEditor
               value={descriptionMd}
               onChange={setDescriptionMd}
-              maxLength={50000}
               ariaLabel={t('manage.f_description')}
             />
           </Field>
