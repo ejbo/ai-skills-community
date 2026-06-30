@@ -37,6 +37,7 @@ export function DetailTabs({
           <Link
             key={tab}
             href={href}
+            scroll={false}
             className={`relative shrink-0 px-4 py-2.5 text-sm font-medium transition ${
               active ? 'text-zinc-900 dark:text-white' : 'text-muted hover:text-zinc-700 dark:hover:text-zinc-200'
             }`}
