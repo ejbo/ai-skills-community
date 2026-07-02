@@ -11,6 +11,7 @@ import {
   notifyAuthorOfRequest,
   notifyApplicantOfDecision,
   notifyCommentReplyEmail,
+  notifyFeedbackReplyEmail,
   notifyAnnouncementEmail,
 } from '@/lib/email';
 
@@ -105,6 +106,53 @@ export async function notifyCommentReply(opts: {
     }
   } catch (e) {
     console.error('[notify] comment reply failed:', e);
+  }
+}
+
+/**
+ * Reply landed on someone's feedback post or feedback comment. Reuses the
+ * comment_reply/reply_reply types + preference pair — semantically identical
+ * ("someone replied to you"), so no enum/preference migration is needed.
+ */
+export async function notifyFeedbackReply(opts: {
+  recipientId: string;
+  recipientEmail: string;
+  actorId: string;
+  actorName: string;
+  feedbackId: string;
+  feedbackTitle: string;
+  focusId: string; // the new comment's id (deep-link target)
+  bodyMd: string;
+  isReplyToComment: boolean; // false = top-level comment on the feedback post
+}): Promise<void> {
+  if (opts.recipientId === opts.actorId) return; // never notify yourself
+  try {
+    const pref = await getPref(opts.recipientId);
+    const snippet = truncate(opts.bodyMd);
+    const what = opts.isReplyToComment ? '评论' : '反馈';
+    const link = `/feedback/${opts.feedbackId}?focus=${opts.focusId}`;
+    if (pref.inAppCommentReply) {
+      await createInApp({
+        recipientId: opts.recipientId,
+        actorId: opts.actorId,
+        type: opts.isReplyToComment ? 'reply_reply' : 'comment_reply',
+        title: `${opts.actorName} 回复了你的${what}`,
+        body: snippet,
+        link,
+      });
+    }
+    if (pref.emailCommentReply) {
+      notifyFeedbackReplyEmail({
+        to: opts.recipientEmail,
+        actorName: opts.actorName,
+        feedbackTitle: opts.feedbackTitle,
+        link: appUrl(link),
+        snippet,
+        isReplyToComment: opts.isReplyToComment,
+      });
+    }
+  } catch (e) {
+    console.error('[notify] feedback reply failed:', e);
   }
 }
 

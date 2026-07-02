@@ -170,6 +170,27 @@ export function notifyCommentReplyEmail(opts: {
   });
 }
 
+/** Notify a user that their feedback/comment got a reply. `link` is absolute. */
+export function notifyFeedbackReplyEmail(opts: {
+  to: string;
+  actorName: string;
+  feedbackTitle: string;
+  link: string;
+  snippet: string;
+  isReplyToComment: boolean;
+}): void {
+  const what = opts.isReplyToComment ? '评论' : '反馈';
+  sendMailAsync({
+    to: opts.to,
+    subject: `【意见反馈】${opts.actorName} 回复了你的${what}`,
+    text: `${opts.actorName} 在「${opts.feedbackTitle}」下回复了你的${what}：\n\n${opts.snippet}\n\n查看：${opts.link}`,
+    html:
+      `<p><strong>${esc(opts.actorName)}</strong> 在「${esc(opts.feedbackTitle)}」下回复了你的${what}：</p>` +
+      `<blockquote>${esc(opts.snippet)}</blockquote>` +
+      `<p><a href="${opts.link}">查看对话 →</a></p>`,
+  });
+}
+
 /** Notify a user of a published announcement. `link` is absolute. */
 export function notifyAnnouncementEmail(opts: {
   to: string;

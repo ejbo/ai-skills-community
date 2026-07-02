@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { Session } from 'next-auth';
+import { MessageSquarePlus } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { UserMenu } from './UserMenu';
 import { SearchTrigger } from './SearchTrigger';
@@ -27,6 +28,14 @@ export async function NavBar({ session }: { session: Session | null }) {
         <div className="flex flex-1 items-center justify-end gap-2">
           <SearchTrigger />
           <ThemeToggle />
+          <Link
+            href="/feedback"
+            aria-label={t('feedback')}
+            title={t('feedback')}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          >
+            <MessageSquarePlus className="h-4 w-4" />
+          </Link>
           {session?.user && <NotificationBell />}
           {session?.user ? (
             <UserMenu user={session.user} />
