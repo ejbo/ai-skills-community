@@ -56,7 +56,9 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
 
-  const context = await buildContextFromSkill(skill);
+  // Writing comparison copy doesn't need the whole skill — a 32KB slice keeps
+  // generation fast on large skills (SKILL.md head + highest-ranked files).
+  const context = await buildContextFromSkill(skill, 32 * 1024);
   if (context === null) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   let provider;

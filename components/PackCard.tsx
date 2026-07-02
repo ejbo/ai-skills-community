@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { Boxes, Download, Layers } from 'lucide-react';
+import { withBasePath } from '@/lib/base-path';
+import { isIconImage } from '@/lib/pack-icon';
 
 export interface PackCardProps {
   slug: string;
@@ -24,8 +26,15 @@ export function PackCard(props: PackCardProps) {
       className="card-hover surface group flex flex-col gap-3 rounded-xl p-4"
     >
       <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent-50 text-xl dark:bg-accent-500/15">
-          {props.icon ? props.icon : <Boxes className="h-5 w-5 text-accent-500" />}
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-accent-50 text-xl dark:bg-accent-500/15">
+          {props.icon && isIconImage(props.icon) ? (
+            // <img> is outside the fetch shim — basePath must be applied here.
+            <img src={withBasePath(props.icon)} alt="" className="h-10 w-10 object-cover" />
+          ) : props.icon ? (
+            props.icon
+          ) : (
+            <Boxes className="h-5 w-5 text-accent-500" />
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-base font-semibold tracking-tight group-hover:text-accent-600">

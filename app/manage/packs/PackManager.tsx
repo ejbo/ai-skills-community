@@ -7,6 +7,7 @@ import {
   ArrowDown,
   ArrowUp,
   ExternalLink,
+  ImagePlus,
   Loader2,
   Plus,
   Search,
@@ -19,6 +20,8 @@ import { pushToast } from '@/components/Toaster';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { AiFieldButton } from '@/app/skills/_components/AiButton';
 import { requestAssist, type AssistError } from '@/app/skills/_components/assist-client';
+import { withBasePath } from '@/lib/base-path';
+import { isIconImage } from '@/lib/pack-icon';
 
 interface PackSkillRow {
   id: string;
@@ -176,7 +179,16 @@ export function PackManager({ packs, aiEnabled }: { packs: PackRow[]; aiEnabled:
                 <tr key={p.id}>
                   <td>
                     <span className="flex items-center gap-1.5">
-                      {p.icon && <span>{p.icon}</span>}
+                      {p.icon &&
+                        (isIconImage(p.icon) ? (
+                          <img
+                            src={withBasePath(p.icon)}
+                            alt=""
+                            className="h-5 w-5 rounded object-cover"
+                          />
+                        ) : (
+                          <span>{p.icon}</span>
+                        ))}
                       <span className="font-medium">{p.name}</span>
                     </span>
                   </td>
@@ -266,6 +278,8 @@ function PackEditor({
   const [saving, startSaving] = useTransition();
   const savingRef = useRef(false); // useTransition's flag doesn't span the await
   const [aiLoading, setAiLoading] = useState(false);
+  const [iconUploading, setIconUploading] = useState(false);
+  const iconFileRef = useRef<HTMLInputElement>(null);
 
   const creating = draft.id === null;
   const brokenMembers = draft.skills.filter((s) => !s.eligible);
@@ -295,6 +309,30 @@ function PackEditor({
       [next[index], next[j]] = [next[j], next[index]];
       return { ...d, skills: next };
     });
+  }
+
+  async function uploadIcon(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setIconUploading(true);
+    try {
+      const res = await fetch('/api/uploads/image', {
+        method: 'POST',
+        headers: { 'content-type': file.type, 'x-filename': encodeURIComponent(file.name) },
+        body: file,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) {
+        pushToast('error', data.error === 'file_too_large' ? '图片太大' : '上传失败');
+        return;
+      }
+      set('icon', data.url as string);
+    } catch {
+      pushToast('error', '上传失败，请重试');
+    } finally {
+      setIconUploading(false);
+    }
   }
 
   async function generateIntro() {
@@ -380,42 +418,84 @@ function PackEditor({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-2 md:grid-cols-[2fr_2fr_80px_100px]">
-        <input
-          placeholder="名称（例如：办公自动化全家桶）"
-          value={draft.name}
-          maxLength={80}
-          onChange={(e) => {
-            set('name', e.target.value);
-            if (creating && !slugTouched) set('slug', slugify(e.target.value));
-          }}
-          className="h-9 rounded-lg border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
-        />
-        <input
-          placeholder="slug（安装命令用，如 office-suite）"
-          title={creating ? undefined : 'slug 创建后不可修改：它已写进用户的 skills install pack:<slug> 命令'}
-          value={draft.slug}
-          disabled={!creating}
-          onChange={(e) => {
-            setSlugTouched(true);
-            set('slug', slugify(e.target.value));
-          }}
-          className="h-9 rounded-lg border border-zinc-200 bg-white px-3 font-mono text-xs disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-900"
-        />
-        <input
-          placeholder="图标"
-          title="可选 emoji，如 📦"
-          value={draft.icon}
-          onChange={(e) => set('icon', e.target.value.slice(0, 16))}
-          className="h-9 rounded-lg border border-zinc-200 bg-white px-3 text-center text-sm dark:border-zinc-800 dark:bg-zinc-900"
-        />
-        <input
-          type="number"
-          title="排序（小的在前）"
-          value={draft.sortOrder}
-          onChange={(e) => set('sortOrder', Number(e.target.value) || 0)}
-          className="h-9 rounded-lg border border-zinc-200 bg-white px-3 text-right font-mono text-xs tabular-nums dark:border-zinc-800 dark:bg-zinc-900"
-        />
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-muted">名称</label>
+          <input
+            placeholder="例如：办公自动化全家桶"
+            value={draft.name}
+            maxLength={80}
+            onChange={(e) => {
+              set('name', e.target.value);
+              if (creating && !slugTouched) set('slug', slugify(e.target.value));
+            }}
+            className="h-9 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
+          />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-muted">
+            slug（安装命令 pack:&lt;slug&gt; 用，创建后不可改）
+          </label>
+          <input
+            placeholder="如 office-suite"
+            value={draft.slug}
+            disabled={!creating}
+            onChange={(e) => {
+              setSlugTouched(true);
+              set('slug', slugify(e.target.value));
+            }}
+            className="h-9 w-full rounded-lg border border-zinc-200 bg-white px-3 font-mono text-xs disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-900"
+          />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-muted">
+            图标（emoji 或上传图片，可选）
+          </label>
+          <div className="flex items-center gap-2">
+            {isIconImage(draft.icon) ? (
+              <>
+                <img
+                  src={withBasePath(draft.icon)}
+                  alt="图标预览"
+                  className="h-9 w-9 rounded-lg border border-zinc-200 object-cover dark:border-zinc-800"
+                />
+                <button
+                  onClick={() => set('icon', '')}
+                  className="h-9 rounded-lg border border-zinc-200 px-3 text-xs text-muted hover:border-danger hover:text-danger dark:border-zinc-700"
+                >
+                  移除
+                </button>
+              </>
+            ) : (
+              <input
+                placeholder="📦"
+                value={draft.icon}
+                onChange={(e) => set('icon', e.target.value.slice(0, 16))}
+                className="h-9 w-20 rounded-lg border border-zinc-200 bg-white px-3 text-center text-sm dark:border-zinc-800 dark:bg-zinc-900"
+              />
+            )}
+            <button
+              onClick={() => iconFileRef.current?.click()}
+              disabled={iconUploading}
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-xs hover:border-accent-500 hover:text-accent-600 disabled:opacity-60 dark:border-zinc-700"
+            >
+              {iconUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
+              上传图片
+            </button>
+            <input ref={iconFileRef} type="file" accept="image/*" className="hidden" onChange={uploadIcon} />
+          </div>
+        </div>
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-muted">
+            排序（列表展示顺序，数字小的靠前）
+          </label>
+          <input
+            type="number"
+            value={draft.sortOrder}
+            onChange={(e) => set('sortOrder', Number(e.target.value) || 0)}
+            className="h-9 w-28 rounded-lg border border-zinc-200 bg-white px-3 text-right font-mono text-xs tabular-nums dark:border-zinc-800 dark:bg-zinc-900"
+          />
+        </div>
       </div>
 
       <SkillPicker

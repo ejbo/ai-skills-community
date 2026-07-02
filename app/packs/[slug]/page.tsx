@@ -5,6 +5,8 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import { auth } from '@/lib/auth';
 import { getPackBySlug } from '@/lib/pack-queries';
 import { InstallSnippet } from '@/components/InstallSnippet';
+import { withBasePath } from '@/lib/base-path';
+import { isIconImage } from '@/lib/pack-icon';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { BackButton } from '@/components/BackButton';
 import { SkillCard } from '@/components/SkillCard';
@@ -56,7 +58,16 @@ export default async function PackDetailPage({ params }: { params: { slug: strin
           </div>
 
           <div className="flex items-center gap-3">
-            {pack.icon && <span className="shrink-0 text-4xl leading-none">{pack.icon}</span>}
+            {pack.icon &&
+              (isIconImage(pack.icon) ? (
+                <img
+                  src={withBasePath(pack.icon)}
+                  alt=""
+                  className="h-12 w-12 shrink-0 rounded-xl object-cover"
+                />
+              ) : (
+                <span className="shrink-0 text-4xl leading-none">{pack.icon}</span>
+              ))}
             <h1 className="min-w-0 break-words text-3xl font-semibold tracking-tight md:text-4xl">
               {pack.name}
             </h1>

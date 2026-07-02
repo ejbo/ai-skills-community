@@ -89,25 +89,62 @@ export interface AssistCurrent {
 
 const MAX_CONTEXT_CHARS = 120 * 1024;
 
-/** Assemble the model-readable skill content from client-provided text. */
-export function buildAssistContext(input: AssistContextInput): string {
+/**
+ * Per-action context budget (chars). Metadata actions read a small head of the
+ * skill — a name/summary/tags proposal doesn't change past the first pages, and
+ * a small prompt keeps generation fast on large skills. `tokens` isn't listed:
+ * it is computed deterministically without an LLM call (see the assist route).
+ */
+export const ASSIST_CONTEXT_CHARS: Partial<Record<AssistAction, number>> = {
+  name: 12 * 1024,
+  summary: 16 * 1024,
+  tags: 12 * 1024,
+  triggers: 16 * 1024,
+  overview: 32 * 1024,
+  autofill: 32 * 1024,
+  pack: 16 * 1024,
+};
+
+/**
+ * Assemble the model-readable skill content from client-provided text. When the
+ * budget cuts anything, a note states the full size so the model knows it saw
+ * a slice (and never claims the skill "ends" where the cut happened).
+ */
+export function buildAssistContext(
+  input: AssistContextInput,
+  maxChars: number = MAX_CONTEXT_CHARS,
+): string {
+  const skillMd = input.skillMd ?? '';
   const parts: string[] = [];
-  parts.push(`# SKILL.md\n${(input.skillMd ?? '').slice(0, MAX_CONTEXT_CHARS)}`);
+  parts.push(`# SKILL.md\n${skillMd.slice(0, maxChars)}`);
   let used = parts[0].length;
+  let truncated = skillMd.length > maxChars;
   if (input.readme && input.readme.trim()) {
     const block = `\n\n# README\n${input.readme}`;
-    if (used + block.length <= MAX_CONTEXT_CHARS) {
+    if (used + block.length <= maxChars) {
       parts.push(block);
       used += block.length;
+    } else {
+      truncated = true;
     }
   }
   for (const f of input.files ?? []) {
     if (!f.content || !f.content.trim()) continue;
     if (/(^|\/)skill\.md$/i.test(f.path) || /(^|\/)readme/i.test(f.path)) continue;
     const block = `\n\n# FILE: ${f.path}\n${f.content}`;
-    if (used + block.length > MAX_CONTEXT_CHARS) break;
+    if (used + block.length > maxChars) {
+      truncated = true;
+      break;
+    }
     parts.push(block);
     used += block.length;
+  }
+  if (truncated) {
+    const totalChars =
+      skillMd.length +
+      (input.readme?.length ?? 0) +
+      (input.files ?? []).reduce((n, f) => n + (f.content?.length ?? 0), 0);
+    parts.push(`\n\n[注意：内容过长已截断，以上为节选；完整内容共约 ${totalChars} 字符]`);
   }
   return parts.join('');
 }
@@ -123,15 +160,20 @@ export interface PackSkillInput {
   descriptionMd?: string | null;
 }
 
-/** Assemble the model-readable member list for the `pack` action. */
+/**
+ * Assemble the model-readable member list for the `pack` action. Deliberately
+ * light: name + one-liner (+ optionally a slice of the overview) per member —
+ * never the member skills' full bodies.
+ */
 export function buildPackAssistContext(skills: PackSkillInput[]): string {
+  const budget = ASSIST_CONTEXT_CHARS.pack ?? MAX_CONTEXT_CHARS;
   const parts: string[] = [];
   let used = 0;
   for (const s of skills) {
     const summary = (s.summary ?? '').trim();
     const desc = (s.descriptionMd ?? '').trim().slice(0, 600);
     const block = `## ${s.name}${summary ? `\n一句话：${summary}` : ''}${desc ? `\n简介：${desc}` : ''}`;
-    if (used + block.length > MAX_CONTEXT_CHARS) break;
+    if (used + block.length > budget) break;
     parts.push(block);
     used += block.length;
   }

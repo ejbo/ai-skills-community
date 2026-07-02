@@ -39,7 +39,9 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
 
-  const context = await buildContextFromSkill(skill);
+  // The 实测 dual-run emulates having the skill installed; keep more of it than
+  // the copywriting call, but still cap it so big skills don't stall the run.
+  const context = await buildContextFromSkill(skill, 64 * 1024);
   if (context === null) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   let provider;

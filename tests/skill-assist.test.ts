@@ -40,6 +40,21 @@ describe('extractJsonObject', () => {
 });
 
 describe('buildAssistContext', () => {
+  it('respects a per-action budget and appends a truncation note with the full size', () => {
+    const ctx = buildAssistContext(
+      { skillMd: 'x'.repeat(50_000), readme: 'r'.repeat(10_000) },
+      8 * 1024,
+    );
+    expect(ctx.length).toBeLessThan(9 * 1024);
+    expect(ctx).toContain('已截断');
+    expect(ctx).toContain('60000'); // 50k SKILL.md + 10k README
+  });
+
+  it('adds no truncation note when everything fits', () => {
+    const ctx = buildAssistContext({ skillMd: 'short body' });
+    expect(ctx).not.toContain('已截断');
+  });
+
   it('includes SKILL.md, README and extra files but skips skill/readme dupes', () => {
     const ctx = buildAssistContext({
       skillMd: 'BODY',

@@ -66,7 +66,7 @@ export function FeedbackComposer({ loggedIn }: { loggedIn: boolean }) {
     return (
       <button
         onClick={openForm}
-        className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600"
+        className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-4 text-sm font-medium text-zinc-800 transition hover:border-accent-500 hover:text-accent-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-accent-400 dark:hover:text-accent-300"
       >
         <MessageSquarePlus className="h-4 w-4" />
         提交反馈

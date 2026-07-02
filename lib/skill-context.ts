@@ -41,10 +41,18 @@ export function assembleSkillContext(
   files: ContextFile[],
   maxChars: number = DEFAULT_MAX_CONTEXT_CHARS,
 ): string {
+  // SKILL.md itself must respect the budget too — an oversized body would
+  // otherwise blow straight past maxChars in the header.
+  const mdBudget = Math.max(2000, Math.floor(maxChars * 0.7));
+  const mdTruncated = skillMd.length > mdBudget;
+  const md = mdTruncated
+    ? `${skillMd.slice(0, mdBudget)}\n…\n(SKILL.md truncated: showing ${mdBudget} of ${skillMd.length} chars)`
+    : skillMd;
+
   const header =
     `You have the following skill installed. Its files are provided below. ` +
     `Use it whenever relevant to the user's request, and you can answer questions about how to use it.\n\n` +
-    `--- SKILL: ${meta.name} ---\n${meta.summary}\n\n# SKILL.md\n${skillMd}\n`;
+    `--- SKILL: ${meta.name} ---\n${meta.summary}\n\n# SKILL.md\n${md}\n`;
 
   const parts: string[] = [header];
   const omitted: string[] = [];

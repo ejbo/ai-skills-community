@@ -10,7 +10,8 @@ export const packInputSchema = z.object({
   name: z.string().min(1).max(80),
   summary: z.string().max(200).default(''),
   descriptionMd: z.string().default(''),
-  icon: z.string().max(16).default(''),
+  // Emoji ("📦") or an uploaded image URL ("/api/uploads/…") — see PackManager.
+  icon: z.string().max(300).default(''),
   isPublished: z.boolean().default(false),
   sortOrder: z.number().int().default(0),
   skillIds: z.array(z.string().min(1)).max(200).default([]),

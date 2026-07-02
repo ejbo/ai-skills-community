@@ -47,36 +47,35 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
 
   return (
     <div className="container max-w-4xl py-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">意见反馈</h1>
-          <p className="mt-1 text-sm text-muted">
-            提建议、报问题，大家一起讨论；+1 帮我们排优先级。
-          </p>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="text-3xl font-semibold tracking-tight">意见反馈</h1>
         <FeedbackComposer loggedIn={Boolean(session?.user)} />
       </div>
 
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-1.5">
+      {/* Same underline-tab pattern as the skills page (SourceTabs) — no filled pills. */}
+      <div className="mt-5 flex flex-wrap items-end justify-between gap-3 border-b border-zinc-200 dark:border-zinc-800">
+        <div className="flex overflow-x-auto">
           {statusChips.map((chip) => {
             const active = chip.key === (status ?? 'all');
             return (
               <Link
                 key={chip.key}
                 href={pageHref(searchParams, { status: chip.key, page: '1' })}
-                className={`rounded-full px-3 py-1 text-xs transition ${
+                className={`relative shrink-0 whitespace-nowrap px-3 py-2 text-sm font-medium transition ${
                   active
-                    ? 'bg-accent-500 font-medium text-white'
-                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
+                    ? 'text-zinc-900 dark:text-white'
+                    : 'text-muted hover:text-zinc-700 dark:hover:text-zinc-200'
                 }`}
               >
                 {chip.label}
+                {active && (
+                  <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-accent-500" />
+                )}
               </Link>
             );
           })}
         </div>
-        <div className="flex items-center gap-1 text-xs">
+        <div className="flex items-center gap-3 pb-2 text-xs">
           {(
             [
               { key: 'newest', label: '最新' },
@@ -88,11 +87,11 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
               <Link
                 key={s.key}
                 href={pageHref(searchParams, { sort: s.key === 'newest' ? '' : s.key, page: '1' })}
-                className={`rounded-lg px-2.5 py-1 transition ${
+                className={
                   active
-                    ? 'bg-zinc-900 font-medium text-white dark:bg-white dark:text-zinc-900'
-                    : 'text-muted hover:text-zinc-800 dark:hover:text-zinc-200'
-                }`}
+                    ? 'font-medium text-zinc-900 dark:text-white'
+                    : 'text-muted transition hover:text-zinc-700 dark:hover:text-zinc-200'
+                }
               >
                 {s.label}
               </Link>
@@ -104,14 +103,9 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
       <div className="mt-4">
         {items.length === 0 ? (
           <EmptyState
-            title={status ? '该状态下暂无反馈' : '还没有反馈'}
-            description={
-              status
-                ? `还没有「${STATUS_META[status].label}」状态的反馈，换个筛选看看`
-                : '第一个提出想法或问题的人就是你了'
-            }
-            actionLabel="查看全部"
-            actionHref="/feedback"
+            title={status ? `暂无「${STATUS_META[status].label}」的反馈` : '暂无反馈'}
+            actionLabel={status ? '查看全部' : undefined}
+            actionHref={status ? '/feedback' : undefined}
           />
         ) : (
           <ul className="surface divide-y divide-zinc-100 overflow-hidden rounded-2xl dark:divide-zinc-800/60">

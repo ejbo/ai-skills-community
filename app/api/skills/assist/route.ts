@@ -9,7 +9,9 @@ import {
   buildAssistPrompt,
   parseAssistResult,
   isAssistAction,
+  ASSIST_CONTEXT_CHARS,
 } from '@/lib/skill-assist';
+import { estimateTokenCost } from '@/lib/skill-parser';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,6 +50,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
   }
 
+  // Token-cost estimation is a size computation (≈4 chars/token) — answering it
+  // with an LLM round-trip over the full skill was the slowest assist action for
+  // zero accuracy gain. Compute it deterministically and return instantly.
+  if (action === 'tokens') {
+    const fullContext = buildAssistContext({ skillMd: skillMd ?? '', readme, files });
+    return NextResponse.json(
+      { ok: true, result: { tokenCost: estimateTokenCost(fullContext) } },
+      { headers: { 'x-ratelimit-remaining': String(gate.remaining) } },
+    );
+  }
+
   let provider;
   try {
     provider = getProvider();
@@ -58,11 +71,13 @@ export async function POST(req: Request) {
     throw e;
   }
 
-  // `pack` reads the member-skill list; every other action reads the skill text.
+  // `pack` reads the member-skill list; every other action reads only a
+  // per-action slice of the skill (ASSIST_CONTEXT_CHARS) so generation stays
+  // fast on large skills — metadata never needs the whole bundle.
   const context =
     action === 'pack'
       ? buildPackAssistContext(packSkills ?? [])
-      : buildAssistContext({ skillMd: skillMd ?? '', readme, files });
+      : buildAssistContext({ skillMd: skillMd ?? '', readme, files }, ASSIST_CONTEXT_CHARS[action]);
   const prompt = buildAssistPrompt(action, context, current ?? {});
 
   let text: string;
@@ -81,11 +96,12 @@ export async function POST(req: Request) {
   }
 
   const result = parseAssistResult(action, text, context);
-  // `tokens` always yields a number (heuristic fallback); for the text actions an empty
-  // result means the model returned no parseable JSON (common with local/reasoning models
-  // that ignore the "JSON only" instruction). Surface it clearly + echo a snippet so it's
-  // debuggable, instead of returning a silent empty result the UI reads as a generic failure.
-  if (action !== 'tokens' && Object.keys(result).length === 0) {
+  // An empty result means the model returned no parseable JSON (common with
+  // local/reasoning models that ignore the "JSON only" instruction). Surface it
+  // clearly + echo a snippet so it's debuggable, instead of returning a silent
+  // empty result the UI reads as a generic failure. (`tokens` never gets here —
+  // it short-circuits above without an LLM call.)
+  if (Object.keys(result).length === 0) {
     return NextResponse.json(
       { error: 'llm_no_result', reason: '模型未返回可用的 JSON 结果', raw: text.slice(0, 300) },
       { status: 502 },

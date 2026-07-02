@@ -116,8 +116,13 @@ export async function getSkillFileContent(skill: LoadedSkill, path: string): Pro
 }
 
 // Assemble the full-skill AI context (SKILL.md + supporting text files) from an
-// already-loaded skill. Caller is responsible for access control.
-export async function buildContextFromSkill(skill: LoadedSkill): Promise<string | null> {
+// already-loaded skill. Caller is responsible for access control. `maxChars`
+// lets latency-sensitive callers (comparison workshop) take a smaller slice;
+// interactive chat keeps the full default.
+export async function buildContextFromSkill(
+  skill: LoadedSkill,
+  maxChars?: number,
+): Promise<string | null> {
   if (!skill.currentVersion) return null;
   const version = skill.currentVersion;
   const skillMd = version.contentInline ?? skill.descriptionMd ?? '';
@@ -137,5 +142,5 @@ export async function buildContextFromSkill(skill: LoadedSkill): Promise<string 
     }
     files = rows;
   }
-  return assembleSkillContext({ name: skill.name, summary: skill.summary }, skillMd, files);
+  return assembleSkillContext({ name: skill.name, summary: skill.summary }, skillMd, files, maxChars);
 }
