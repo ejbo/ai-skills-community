@@ -2,8 +2,8 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, ChevronRight } from 'lucide-react';
-import type { SkillVisibility, SkillStatus } from '@prisma/client';
+import { Loader2, ChevronRight, Maximize2 } from 'lucide-react';
+import type { SkillVisibility, SkillStatus, SourceType } from '@prisma/client';
 import { pushToast } from '@/components/Toaster';
 import { TokenCostBadge } from '@/components/TokenCostBadge';
 import { RichTextEditor } from '@/components/RichTextEditor';
@@ -37,6 +37,7 @@ export interface SkillFormInitial {
   descriptionMd: string;
   categoryId: string | null;
   license: string;
+  sourceType: SourceType;
   status: SkillStatus;
   visibility: SkillVisibility;
   tokenCostEstimate: number;
@@ -46,6 +47,14 @@ export interface SkillFormInitial {
 }
 
 const LICENSES = ['MIT', 'Apache-2.0', 'BSD-3-Clause', 'GPL-3.0', 'Proprietary'];
+
+// Author-selectable source category — no permission gate, but a create-form must
+// pick one explicitly (no pre-selection).
+const SOURCE_OPTIONS: { value: SourceType; label: string }[] = [
+  { value: 'external', label: '外部' },
+  { value: 'curated', label: '官方搬运' },
+  { value: 'internal', label: '内部' },
+];
 
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
@@ -69,6 +78,7 @@ export function SkillForm({
   const [summary, setSummary] = useState(initial?.summary ?? '');
   const [overview, setOverview] = useState(initial?.descriptionMd ?? '');
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? '');
+  const [sourceType, setSourceType] = useState<SourceType | ''>(initial?.sourceType ?? '');
   const [tags, setTags] = useState<string[]>(initial?.tags ?? []);
   const [triggers, setTriggers] = useState<string[]>(initial?.triggers ?? []);
   const [license, setLicense] = useState(initial?.license ?? 'MIT');
@@ -79,6 +89,7 @@ export function SkillForm({
   const [staged, setStaged] = useState<StagedFile[]>([]);
   const [useReadme, setUseReadme] = useState(true);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [overviewExpanded, setOverviewExpanded] = useState(false);
 
   const [assisting, setAssisting] = useState<AssistAction | null>(null);
   const [pending, startTransition] = useTransition();
@@ -182,6 +193,10 @@ export function SkillForm({
       pushToast('error', '请填写名称和一行描述');
       return;
     }
+    if (!sourceType) {
+      pushToast('error', '请选择来源分类（外部 / 官方搬运 / 内部）');
+      return;
+    }
     startTransition(async () => {
       const zip = await buildZip(staged);
       if (zip.size > MAX_PACKAGE_BYTES) {
@@ -195,6 +210,7 @@ export function SkillForm({
       form.set('slug', slug || slugify(name));
       form.set('license', license);
       form.set('visibility', visibility);
+      form.set('sourceType', sourceType);
       // Only override the server's automatic heuristic when the author set a value.
       if (tokenCost > 0) form.set('tokenCostEstimate', String(tokenCost));
       if (categoryId) form.set('categoryId', categoryId);
@@ -242,6 +258,7 @@ export function SkillForm({
           descriptionMd: overview,
           categoryId: categoryId || null,
           license,
+          sourceType: sourceType || undefined,
           status,
           visibility,
           tokenCostEstimate: tokenCost,
@@ -295,6 +312,25 @@ export function SkillForm({
             </Field>
           </div>
 
+          <Field label="来源分类" hint={mode === 'create' ? '发布前必选一项' : undefined}>
+            <div className="flex gap-2">
+              {SOURCE_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => setSourceType(o.value)}
+                  className={`flex-1 rounded-lg border px-3 py-1.5 text-sm transition ${
+                    sourceType === o.value
+                      ? 'border-accent-500 bg-accent-500/10 text-accent-700 dark:text-accent-300'
+                      : 'border-zinc-300 hover:border-zinc-400 dark:border-zinc-700'
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+
           <Field label="一行描述" ai={aiBtn('summary')}>
             <input
               value={summary}
@@ -307,7 +343,21 @@ export function SkillForm({
 
           <Field
             label="Overview / 公开简介"
-            ai={aiBtn('overview', 'AI 生成')}
+            ai={
+              <span className="flex items-center gap-1.5">
+                {!readmeOverviewActive && (
+                  <button
+                    type="button"
+                    onClick={() => setOverviewExpanded(true)}
+                    className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted transition hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                  >
+                    <Maximize2 className="h-3 w-3" />
+                    全屏编辑
+                  </button>
+                )}
+                {aiBtn('overview', 'AI 生成')}
+              </span>
+            }
           >
             {readmeOverviewActive ? (
               <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-muted dark:border-zinc-800 dark:bg-zinc-900">
@@ -319,6 +369,7 @@ export function SkillForm({
                 onChange={setOverview}
                 placeholder="介绍用途、关键能力、适用场景…"
                 ariaLabel="Overview"
+                maxHeight={320}
               />
             )}
             {mode === 'create' && readme && (
@@ -414,9 +465,8 @@ export function SkillForm({
           )}
         </div>
 
-        {/* Upload area — create only (new versions are uploaded from the 版本 tab). */}
-        {mode === 'create' && <FileDropZone staged={staged} onChange={onStagedChange} />}
-
+        {/* Actions live ABOVE the upload area so a long staged-file list never
+            pushes 发布/存为草稿 out of view. */}
         <div className="flex items-center justify-end gap-2 pt-1">
           {mode === 'create' ? (
             <>
@@ -450,6 +500,10 @@ export function SkillForm({
             </button>
           )}
         </div>
+
+        {/* Upload area — create only (new versions are uploaded from the 版本 tab).
+            Kept at the very bottom: the staged-file list can get long. */}
+        {mode === 'create' && <FileDropZone staged={staged} onChange={onStagedChange} />}
 
         <style jsx>{`
           .input {
@@ -488,6 +542,42 @@ export function SkillForm({
           )}
         </div>
       </aside>
+
+      {/* Fullscreen overview editor — same controlled `overview` state, so edits
+          stay in sync with the inline editor. */}
+      {overviewExpanded && !readmeOverviewActive && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setOverviewExpanded(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setOverviewExpanded(false)}
+        >
+          <div
+            className="surface flex h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+              <span className="text-sm font-semibold">编辑 Overview / 公开简介</span>
+              <button
+                type="button"
+                onClick={() => setOverviewExpanded(false)}
+                className="rounded-lg bg-accent-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-accent-600"
+              >
+                完成
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden p-4">
+              <RichTextEditor
+                value={overview}
+                onChange={setOverview}
+                placeholder="介绍用途、关键能力、适用场景…"
+                ariaLabel="Overview 全屏编辑"
+                maxHeight="calc(85vh - 10rem)"
+                autoFocus
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

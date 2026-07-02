@@ -10,7 +10,7 @@ export interface SkillCardProps {
   slug: string;
   name: string;
   summary: string;
-  sourceType: 'internal' | 'user_uploaded' | 'external_curated';
+  sourceType: 'internal' | 'external' | 'curated';
   visibility?: SkillVisibility;
   author: { handle: string; displayName: string; avatarUrl?: string | null };
   updatedAt: Date | string;

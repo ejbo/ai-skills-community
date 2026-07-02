@@ -1,7 +1,7 @@
 import { Lock, Leaf, ExternalLink } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-type Source = 'internal' | 'user_uploaded' | 'external_curated';
+type Source = 'internal' | 'external' | 'curated';
 
 const STYLES: Record<Source, { color: string; bg: string; icon: React.ReactNode; tKey: string }> = {
   internal: {
@@ -10,13 +10,13 @@ const STYLES: Record<Source, { color: string; bg: string; icon: React.ReactNode;
     icon: <Lock className="h-3 w-3" />,
     tKey: 'internal',
   },
-  user_uploaded: {
-    color: 'text-source-community',
-    bg: 'bg-source-community/10',
+  external: {
+    color: 'text-source-external',
+    bg: 'bg-source-external/10',
     icon: <Leaf className="h-3 w-3" />,
-    tKey: 'community',
+    tKey: 'external',
   },
-  external_curated: {
+  curated: {
     color: 'text-source-curated',
     bg: 'bg-source-curated/10',
     icon: <ExternalLink className="h-3 w-3" />,

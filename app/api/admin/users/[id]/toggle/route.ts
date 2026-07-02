@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { logAdmin } from '@/lib/audit';
 
-const BOOL_FIELDS = ['isAdmin', 'isActive', 'canPublishSkills', 'canPublishInternal', 'canRemix', 'canUseCli'] as const;
+const BOOL_FIELDS = ['isAdmin', 'isActive', 'canPublishSkills', 'canRemix', 'canUseCli'] as const;
 const NUM_FIELDS = ['dailyDownloadLimit', 'dailyPublishLimit'] as const;
 type BoolField = (typeof BOOL_FIELDS)[number];
 type NumField = (typeof NUM_FIELDS)[number];

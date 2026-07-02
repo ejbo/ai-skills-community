@@ -45,7 +45,7 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
         descriptionMd: input.descriptionMd,
         authorId: session.user.id,
         categoryId: input.categoryId ?? source.categoryId,
-        sourceType: 'user_uploaded',
+        sourceType: 'external',
         skillFormat: 'structured',
         status: input.publish ? 'published' : 'draft',
         tokenCostEstimate: input.tokenCostEstimate,

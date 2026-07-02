@@ -16,7 +16,7 @@ const createSchema = z.object({
   tags: z.array(z.string()).default([]),
   triggers: z.array(z.string()).default([]),
   license: z.string().default('MIT'),
-  sourceType: z.enum(['internal', 'user_uploaded']).default('user_uploaded'),
+  sourceType: z.enum(['internal', 'external', 'curated']).default('external'),
   skillFormat: z.enum(['bundle', 'structured']).default('structured'),
   visibility: z.enum(['public', 'restricted', 'private']).default('public'),
   tokenCostEstimate: z.number().int().min(0).max(50000).default(0),
@@ -30,7 +30,7 @@ export async function GET(req: Request) {
     q: sp.get('q') ?? undefined,
     category: sp.get('category') ?? undefined,
     tag: sp.get('tag') ?? undefined,
-    source: (sp.get('source') as 'internal' | 'user_uploaded' | 'external_curated' | 'all' | null) ?? 'all',
+    source: (sp.get('source') as 'internal' | 'external' | 'curated' | 'all' | null) ?? 'all',
     sort: (sp.get('sort') as 'trending' | 'downloads' | 'newest' | 'top_rated' | null) ?? 'trending',
     page: Number(sp.get('page') ?? 1),
     pageSize: Number(sp.get('pageSize') ?? 24),
@@ -52,10 +52,6 @@ export async function POST(req: Request) {
     );
   }
   const input = parsed.data;
-
-  if (input.sourceType === 'internal' && !session.user.isAdmin) {
-    return NextResponse.json({ error: 'forbidden_internal' }, { status: 403 });
-  }
 
   const existing = await prisma.skill.findUnique({ where: { slug: input.slug } });
   if (existing) {

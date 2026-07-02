@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { pushToast } from '@/components/Toaster';
 
 type Status = 'draft' | 'published' | 'archived';
-type Source = 'internal' | 'user_uploaded' | 'external_curated';
+type Source = 'internal' | 'external' | 'curated';
 type Visibility = 'public' | 'restricted' | 'private';
 
 export function SkillStatusActions({
@@ -95,9 +95,9 @@ export function SkillStatusActions({
         onChange={(e) => setSourceType(e.target.value as Source)}
         className="h-6 rounded border border-zinc-200 bg-white px-1 text-[11px] dark:border-zinc-800 dark:bg-zinc-900"
       >
-        <option value="user_uploaded">社区</option>
+        <option value="external">外部</option>
         <option value="internal">内部</option>
-        <option value="external_curated">搬运</option>
+        <option value="curated">搬运</option>
       </select>
       <select
         value={vis}

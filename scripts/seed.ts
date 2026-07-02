@@ -28,7 +28,7 @@ const SAMPLE_SKILLS = [
     body: `# PDF Form Signer\n\n## What it does\nDetects fillable fields in a PDF form, fills them based on context, and places a signature image at the right location.\n\n## Triggers\n- "sign this pdf"\n- "fill out form"\n\n## Typical workflow\n1. Open the PDF.\n2. Map fields → user data.\n3. Render & overlay signature.\n4. Return signed PDF.\n`,
     category: 'pdf',
     tags: ['pdf', 'signing', 'forms'],
-    sourceType: 'user_uploaded' as const,
+    sourceType: 'external' as const,
   },
   {
     slug: 'schema-aware-sql',
@@ -37,7 +37,7 @@ const SAMPLE_SKILLS = [
     body: `# Schema-Aware SQL\n\n## What it does\nInspects the target database's schema before composing SQL so it never hallucinates table or column names.\n\n## Triggers\n- "write a SQL"\n- "query the database"\n`,
     category: 'data',
     tags: ['sql', 'data', 'database'],
-    sourceType: 'user_uploaded' as const,
+    sourceType: 'external' as const,
   },
   {
     slug: 'changelog-from-commits',
@@ -46,7 +46,7 @@ const SAMPLE_SKILLS = [
     body: `# Changelog from Commits\n\n## What it does\nReads recent commits and writes a Keep-a-Changelog-style entry, grouped by type.\n`,
     category: 'docs',
     tags: ['git', 'changelog', 'docs'],
-    sourceType: 'external_curated' as const,
+    sourceType: 'curated' as const,
     externalUrl: 'https://github.com/anthropics/skills',
   },
   {
@@ -56,7 +56,7 @@ const SAMPLE_SKILLS = [
     body: `# Meeting Summarizer\n\nExtracts action items, decisions, and discussion topics from a transcript.\n`,
     category: 'writing',
     tags: ['meetings', 'summary'],
-    sourceType: 'user_uploaded' as const,
+    sourceType: 'external' as const,
   },
   {
     slug: 'huawei-w3-helper',
@@ -74,7 +74,7 @@ const SAMPLE_SKILLS = [
     body: `# React Component Scaffolder\n\nScaffolds a TSX component matching the conventions of the current project.\n`,
     category: 'coding',
     tags: ['react', 'scaffolding', 'frontend'],
-    sourceType: 'external_curated' as const,
+    sourceType: 'curated' as const,
     externalUrl: 'https://github.com/anthropics/skills',
   },
 ];
@@ -101,7 +101,6 @@ async function ensureAdmin() {
       passwordHash,
       authMethod: 'password',
       isAdmin: true,
-      canPublishInternal: true,
     },
   });
   console.log(`✓ Created admin user ${email} / ${password}`);
@@ -143,7 +142,7 @@ async function seedSkills(adminId: string, curatorId: string) {
     if (exists) continue;
 
     const category = await prisma.category.findUnique({ where: { slug: s.category } });
-    const authorId = s.sourceType === 'external_curated' ? curatorId : adminId;
+    const authorId = s.sourceType === 'curated' ? curatorId : adminId;
     const tokenCost = Math.ceil(s.body.length / 4);
 
     const skill = await prisma.skill.create({

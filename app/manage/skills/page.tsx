@@ -18,8 +18,8 @@ export default async function AdminSkillsPage({
   const statusFilter = searchParams.status as 'draft' | 'published' | 'archived' | undefined;
   const sourceFilter = searchParams.source as
     | 'internal'
-    | 'user_uploaded'
-    | 'external_curated'
+    | 'external'
+    | 'curated'
     | undefined;
   const visibilityFilter = searchParams.visibility as 'public' | 'restricted' | 'private' | undefined;
 
@@ -81,9 +81,9 @@ export default async function AdminSkillsPage({
           className="h-9 rounded-lg border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
         >
           <option value="">所有来源</option>
-          <option value="internal">内部专用</option>
-          <option value="user_uploaded">社区上传</option>
-          <option value="external_curated">官方搬运</option>
+          <option value="internal">内部</option>
+          <option value="external">外部</option>
+          <option value="curated">官方搬运</option>
         </select>
         <select
           name="visibility"
@@ -137,7 +137,7 @@ export default async function AdminSkillsPage({
                   </Link>
                 </td>
                 <td className="text-[11px]">
-                  {s.sourceType === 'internal' ? '内部' : s.sourceType === 'user_uploaded' ? '社区' : '搬运'}
+                  {s.sourceType === 'internal' ? '内部' : s.sourceType === 'external' ? '外部' : '搬运'}
                 </td>
                 <td>
                   <VisibilityBadge visibility={s.visibility} showPublic />

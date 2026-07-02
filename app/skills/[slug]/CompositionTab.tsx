@@ -7,7 +7,7 @@ interface CoInstallRow {
   slug: string;
   name: string;
   summary: string;
-  sourceType: 'internal' | 'user_uploaded' | 'external_curated';
+  sourceType: 'internal' | 'external' | 'curated';
   coCount: bigint;
 }
 

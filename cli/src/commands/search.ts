@@ -14,9 +14,9 @@ export async function searchCommand(query: string) {
     const src =
       s.sourceType === 'internal'
         ? kleur.blue('内部')
-        : s.sourceType === 'external_curated'
+        : s.sourceType === 'curated'
           ? kleur.magenta('搬运')
-          : kleur.green('社区');
+          : kleur.green('外部');
     const dl = kleur.dim(`⬇ ${s.downloadCount}`);
     const rating = s.avgRating > 0 ? kleur.yellow(`★ ${s.avgRating.toFixed(1)}`) : kleur.dim('★ —');
     console.log(`  ${kleur.bold(s.slug)}  ${src}  ${dl}  ${rating}`);

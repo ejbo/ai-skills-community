@@ -55,7 +55,7 @@
   "browse": {
     "title": "Browse Skills",
     "all": "All",
-    "community": "Community",
+    "external": "External",
     "curated": "Curated",
     "internal": "Internal",
     "packs": "Packs",
@@ -194,7 +194,7 @@
   },
   "source": {
     "internal": "Internal",
-    "community": "Community",
+    "external": "External",
     "curated": "Curated"
   },
   "video": {

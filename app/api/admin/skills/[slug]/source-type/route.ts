@@ -5,7 +5,7 @@ import { auth } from '@/lib/auth';
 import { logAdmin } from '@/lib/audit';
 
 const schema = z.object({
-  sourceType: z.enum(['internal', 'user_uploaded', 'external_curated']),
+  sourceType: z.enum(['internal', 'external', 'curated']),
 });
 
 export async function POST(req: Request, { params }: { params: { slug: string } }) {

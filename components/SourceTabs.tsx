@@ -4,7 +4,7 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { motion } from 'framer-motion';
 
-type Source = 'all' | 'user_uploaded' | 'external_curated' | 'internal' | 'packs';
+type Source = 'all' | 'external' | 'curated' | 'internal' | 'packs';
 
 export function SourceTabs() {
   const t = useTranslations('browse');
@@ -15,8 +15,8 @@ export function SourceTabs() {
 
   const tabs: { key: Source; label: string }[] = [
     { key: 'all', label: t('all') },
-    { key: 'user_uploaded', label: t('community') },
-    { key: 'external_curated', label: t('curated') },
+    { key: 'external', label: t('external') },
+    { key: 'curated', label: t('curated') },
     { key: 'internal', label: t('internal') },
     // Not a SourceType — flips the browse page into the skill-pack grid.
     { key: 'packs', label: t('packs') },

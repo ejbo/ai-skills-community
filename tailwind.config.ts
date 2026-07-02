@@ -46,7 +46,7 @@ const config: Config = {
         },
         source: {
           internal: '#4A6FA5',
-          community: '#3FA577',
+          external: '#3FA577',
           curated: '#8A6FD9',
         },
         ok: '#2F8F65',

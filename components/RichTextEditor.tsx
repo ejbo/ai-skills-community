@@ -49,6 +49,8 @@ export interface RichTextEditorProps {
   variant?: RichTextVariant;
   /** Soft character limit on the markdown string; shows a counter (no hard block). */
   maxLength?: number;
+  /** Cap the editable area's height; content scrolls internally beyond it. */
+  maxHeight?: number | string;
   disabled?: boolean;
   className?: string;
   ariaLabel?: string;
@@ -346,6 +348,7 @@ export function RichTextEditor({
   placeholder,
   variant = 'full',
   maxLength,
+  maxHeight,
   disabled = false,
   className,
   ariaLabel,
@@ -463,7 +466,7 @@ export function RichTextEditor({
   return (
     <div className={`rte surface overflow-hidden rounded-lg ${disabled ? 'opacity-60' : ''} ${className ?? ''}`}>
       <Toolbar editor={editor} variant={variant} uploading={uploading} onPickImage={onPickImage} />
-      <EditorContent editor={editor} />
+      <EditorContent editor={editor} style={maxHeight ? { maxHeight, overflowY: 'auto' } : undefined} />
       <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={onFileChange} />
       {maxLength != null && (
         <div className={`px-3 pb-1.5 text-right text-[11px] ${over ? 'text-danger' : 'text-muted'}`}>

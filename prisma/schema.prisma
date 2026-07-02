@@ -35,7 +35,6 @@ model User {
   isAdmin            Boolean    @default(false)
   isActive           Boolean    @default(true)
   canPublishSkills   Boolean    @default(true)
-  canPublishInternal Boolean    @default(false)
   canRemix           Boolean    @default(true)
   canUseCli          Boolean    @default(true)
   dailyDownloadLimit Int?
@@ -182,8 +181,8 @@ model SkillTag {
 
 enum SourceType {
   internal
-  user_uploaded
-  external_curated
+  external
+  curated
 }
 
 enum SkillFormat {
@@ -218,7 +217,7 @@ model Skill {
   descriptionMd     String          @default("")
   authorId          String
   categoryId        String?
-  sourceType        SourceType      @default(user_uploaded)
+  sourceType        SourceType      @default(external)
   skillFormat       SkillFormat     @default(bundle)
   status            SkillStatus     @default(draft)
   visibility        SkillVisibility @default(public)

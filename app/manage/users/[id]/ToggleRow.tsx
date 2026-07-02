@@ -7,7 +7,6 @@ type Field =
   | 'isAdmin'
   | 'isActive'
   | 'canPublishSkills'
-  | 'canPublishInternal'
   | 'canRemix'
   | 'canUseCli';
 

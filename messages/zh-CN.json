@@ -55,9 +55,9 @@
   "browse": {
     "title": "浏览 Skills",
     "all": "全部",
-    "community": "社区",
+    "external": "外部",
     "curated": "官方搬运",
-    "internal": "内部专用",
+    "internal": "内部",
     "packs": "合集包",
     "no_packs": "没有匹配的合集包",
     "no_packs_hint": "管理员还没有发布合集包，或试试换个关键词",
@@ -193,8 +193,8 @@
     "dismiss": "关闭"
   },
   "source": {
-    "internal": "内部专用",
-    "community": "社区上传",
+    "internal": "内部",
+    "external": "外部",
     "curated": "官方搬运"
   },
   "video": {

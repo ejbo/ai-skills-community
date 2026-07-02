@@ -168,9 +168,9 @@ export function DashboardCharts(props: Props) {
 }
 
 function labelForType(t: string): string {
-  if (t === 'internal') return '内部专用';
-  if (t === 'user_uploaded') return '社区上传';
-  if (t === 'external_curated') return '官方搬运';
+  if (t === 'internal') return '内部';
+  if (t === 'external') return '外部';
+  if (t === 'curated') return '官方搬运';
   return t;
 }
 

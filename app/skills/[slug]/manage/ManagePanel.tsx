@@ -172,6 +172,7 @@ async function EditSection({
     descriptionMd: string;
     categoryId: string | null;
     license: string | null;
+    sourceType: 'internal' | 'external' | 'curated';
     status: 'draft' | 'published' | 'archived';
     visibility: 'public' | 'restricted' | 'private';
     tokenCostEstimate: number;
@@ -196,6 +197,7 @@ async function EditSection({
         descriptionMd: skill.descriptionMd,
         categoryId: skill.categoryId,
         license: skill.license ?? 'MIT',
+        sourceType: skill.sourceType,
         status: skill.status,
         visibility: skill.visibility,
         tokenCostEstimate: skill.tokenCostEstimate,

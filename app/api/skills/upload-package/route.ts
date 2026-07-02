@@ -41,6 +41,10 @@ export async function POST(req: Request) {
   const visibilityField = form.get('visibility');
   const visibility =
     visibilityField === 'restricted' || visibilityField === 'private' ? visibilityField : 'public';
+  // Author-selected source category (外部 / 官方搬运 / 内部) — no permission gate.
+  const sourceTypeField = form.get('sourceType');
+  const sourceType =
+    sourceTypeField === 'internal' || sourceTypeField === 'curated' ? sourceTypeField : 'external';
 
   // Author-supplied metadata overrides (from the unified upload form). When a
   // field is absent we derive it from the SKILL.md manifest / README instead.
@@ -119,7 +123,7 @@ export async function POST(req: Request) {
           overviewSource === 'custom' ? customOverview : selectReadme(parsed.files) ?? '',
         authorId: session.user.id,
         categoryId: categoryId ?? null,
-        sourceType: 'user_uploaded',
+        sourceType,
         skillFormat: 'bundle',
         status: publish ? 'published' : 'draft',
         visibility,

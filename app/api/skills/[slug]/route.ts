@@ -15,6 +15,7 @@ const updateSchema = z.object({
   bodyMd: z.string().optional(),
   categoryId: z.string().nullable().optional(),
   license: z.string().optional(),
+  sourceType: z.enum(['internal', 'external', 'curated']).optional(),
   status: z.enum(['draft', 'published', 'archived']).optional(),
   visibility: z.enum(['public', 'restricted', 'private']).optional(),
   tokenCostEstimate: z.number().int().min(0).max(50000).optional(),
