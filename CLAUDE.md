@@ -113,7 +113,24 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   (it calls `sendMailRaw`, which throws the real error instead of swallowing it).
 - New Prisma migrations ship as committed SQL under `prisma/migrations/`; apply on the server
   with `pnpm prisma migrate deploy` (the `Notification`/`Announcement`/`NotificationPreference`
-  tables are added by `20260629000000_add_notifications_announcements`).
+  tables are added by `20260629000000_add_notifications_announcements`; `SkillPack`/`SkillPackItem`
+  by `20260701000000_add_skill_packs`).
+- **合集包 (Skill Packs)**: admin-curated bundles (`SkillPack`/`SkillPackItem`; a skill can be in
+  many packs). Browse tab `?source=packs`, detail `/packs/<slug>`, CLI `skills install pack:<slug>`
+  (variadic install too) resolves `GET /api/packs/<slug>/manifest`. Admin CRUD at `/manage/packs`
+  (+ AI `pack` assist action). Members must satisfy `INSTALLABLE_SKILL_WHERE` (lib/pack-queries.ts):
+  published, not deleted, not private — enforced again in `lib/pack-admin.ts` on save.
+- **Download caps**: `lib/download-limit.ts` (rolling 24h vs `User.dailyDownloadLimit`) is shared by
+  `/raw` AND the `/api/storage` proxy — any new byte-serving route must call it. Never trust a
+  `?via=` query value beyond `install|update` (`via=try` is server-side only; a client-supplied one
+  would dodge the cap). `canUseCli=false` invalidates PATs in `lib/auth/cli.ts`.
+- **意见反馈 (Feedback)**: GitHub-issue-style board at `/feedback` (NavBar icon entry).
+  `Feedback`/`FeedbackUpvote`/`FeedbackComment` — comments reuse the video board's 2-level flat
+  thread contract (`parentId` = thread root; transient `replyToId` for notification routing,
+  validated to stay inside the thread; tombstone when replies exist). Counter updates use guarded
+  writes inside interactive transactions (see the comment DELETE route) — copy that pattern, not
+  the naive check-then-act. Admin moderation is inline on the detail page (status PATCH + delete,
+  logAdmin'd); notifications reuse `comment_reply`/`reply_reply` types via `notifyFeedbackReply`.
 - **Video delivery**: the file route (`app/api/videos/file/[...key]`) streams from local disk with
   HTTP Range. Under concurrency the bottleneck is that bytes flow through Node — set
   `VIDEO_X_ACCEL_REDIRECT=true` + add the internal `/_video/` nginx location (see deploy conf)

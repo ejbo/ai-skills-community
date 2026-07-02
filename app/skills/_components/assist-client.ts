@@ -1,4 +1,4 @@
-import type { AssistAction, AssistResult, AssistCurrent } from '@/lib/skill-assist';
+import type { AssistAction, AssistResult, AssistCurrent, PackSkillInput } from '@/lib/skill-assist';
 
 export interface AssistError {
   kind: 'unconfigured' | 'rate_limited' | 'error' | 'no_content';
@@ -7,15 +7,22 @@ export interface AssistError {
 
 export interface AssistPayload {
   action: AssistAction;
-  skillMd: string;
+  /** Skill text — required for every action except `pack`. */
+  skillMd?: string;
   readme?: string | null;
   files?: { path: string; content: string }[];
+  /** Member skills — the `pack` action reads these instead of skillMd. */
+  packSkills?: PackSkillInput[];
   current?: AssistCurrent;
 }
 
 /** Call the unified AI assist endpoint. Throws a typed AssistError on failure. */
 export async function requestAssist(payload: AssistPayload): Promise<AssistResult> {
-  if (!payload.skillMd.trim()) {
+  if (payload.action === 'pack') {
+    if (!payload.packSkills?.length) {
+      throw { kind: 'no_content', message: '先给合集包添加至少一个 skill，AI 才能生成介绍。' } as AssistError;
+    }
+  } else if (!payload.skillMd?.trim()) {
     throw { kind: 'no_content', message: '先添加 SKILL.md 内容，AI 才能读取生成。' } as AssistError;
   }
   let res: Response;

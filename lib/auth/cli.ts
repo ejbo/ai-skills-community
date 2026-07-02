@@ -20,10 +20,12 @@ export async function verifyCliToken(authHeader: string | null): Promise<{ userI
   const prefix = raw.slice(0, 12);
   const candidates = await prisma.cliToken.findMany({
     where: { tokenPrefix: prefix, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
-    include: { user: { select: { id: true, isActive: true } } },
+    include: { user: { select: { id: true, isActive: true, canUseCli: true } } },
   });
   for (const c of candidates) {
-    if (!c.user.isActive) continue;
+    // canUseCli is the admin kill-switch (/manage/users → 允许使用 CLI):
+    // flipping it off invalidates every PAT the user holds.
+    if (!c.user.isActive || !c.user.canUseCli) continue;
     if (await bcrypt.compare(raw, c.tokenHash)) {
       await prisma.cliToken.update({ where: { id: c.id }, data: { lastUsedAt: new Date() } });
       return { userId: c.user.id, scopes: c.scopes };

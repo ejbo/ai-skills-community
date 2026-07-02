@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assistInputSchema,
   buildAssistContext,
+  buildPackAssistContext,
   buildAssistPrompt,
   extractJsonObject,
   parseAssistResult,
@@ -102,6 +103,47 @@ describe('assistInputSchema', () => {
   it('still rejects empty skillMd and unknown actions', () => {
     expect(assistInputSchema.safeParse({ action: 'tags', skillMd: '' }).success).toBe(false);
     expect(assistInputSchema.safeParse({ action: 'nope', skillMd: 'x' }).success).toBe(false);
+  });
+
+  it('pack needs packSkills instead of skillMd', () => {
+    expect(
+      assistInputSchema.safeParse({ action: 'pack', packSkills: [{ name: 'pdf 签署' }] }).success,
+    ).toBe(true);
+    expect(assistInputSchema.safeParse({ action: 'pack' }).success).toBe(false);
+    expect(assistInputSchema.safeParse({ action: 'pack', packSkills: [] }).success).toBe(false);
+  });
+});
+
+describe('pack assist', () => {
+  it('buildPackAssistContext lists members with summary and truncated description', () => {
+    const ctx = buildPackAssistContext([
+      { name: 'PDF 签署', summary: '签 PDF', descriptionMd: 'x'.repeat(1000) },
+      { name: 'Excel 转换' },
+    ]);
+    expect(ctx).toContain('## PDF 签署');
+    expect(ctx).toContain('一句话：签 PDF');
+    expect(ctx).toContain('## Excel 转换');
+    expect(ctx).not.toContain('x'.repeat(601)); // description capped at 600 chars
+  });
+
+  it('pack prompt asks for a name only when the pack has none yet', () => {
+    const named = buildAssistPrompt('pack', 'CTX', { name: '办公套件' });
+    expect(named.user).toContain('办公套件');
+    expect(named.user).not.toContain('"name"');
+    const unnamed = buildAssistPrompt('pack', 'CTX', {});
+    expect(unnamed.user).toContain('"name"');
+  });
+
+  it('parseAssistResult maps pack fields', () => {
+    const r = parseAssistResult(
+      'pack',
+      '{"name":"办公套件","summary":"一站式办公自动化","descriptionMd":"### 包含内容","tags":["ignored"]}',
+      'ctx',
+    );
+    expect(r.name).toBe('办公套件');
+    expect(r.summary).toBe('一站式办公自动化');
+    expect(r.descriptionMd).toBe('### 包含内容');
+    expect(r.tags).toBeUndefined();
   });
 });
 

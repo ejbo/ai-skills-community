@@ -88,6 +88,18 @@ export class ApiClient {
     return res;
   }
 
+  /** Resolve a skill pack (`skills install pack:<slug>`) into its member slugs. */
+  packManifest(slug: string): Promise<{
+    slug: string;
+    name: string;
+    summary: string;
+    skills: Array<{ slug: string; name: string; version: string | null }>;
+  }> {
+    // via=install bumps the pack's install counter server-side (once per run);
+    // the per-skill download counts still land on each /raw fetch.
+    return this.call(`/api/packs/${slug}/manifest?via=install`) as Promise<never>;
+  }
+
   checkUpdates(installed: Array<{ slug: string; installed_version?: string }>): Promise<{
     results: Array<{
       slug: string;

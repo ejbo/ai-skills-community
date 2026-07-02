@@ -73,6 +73,12 @@ model User {
   notificationsActed     Notification[]          @relation("NotifActor")
   authoredAnnouncements  Announcement[]          @relation("AuthoredAnnouncements")
   notificationPreference NotificationPreference?
+  createdPacks           SkillPack[]             @relation("CreatedPacks")
+
+  // ── Feedback back-relations (virtual; no SQL columns on User) ──
+  feedbacks        Feedback[]
+  feedbackUpvotes  FeedbackUpvote[]
+  feedbackComments FeedbackComment[]
 
   @@index([handle])
   @@index([email])
@@ -252,6 +258,7 @@ model Skill {
   subscriptions  Subscription[]
   accessRequests SkillAccessRequest[]
   comparison     SkillComparison?
+  packItems      SkillPackItem[]
 
   @@index([status, sourceType])
   @@index([visibility, status])
@@ -356,6 +363,120 @@ model SkillFile {
 
   @@unique([versionId, path])
   @@index([versionId])
+}
+
+// ─── Skill Packs（合集包）──────────────────────────────────────────────────
+// Admin-curated bundles of skills installable with one CLI command
+// (`skills install pack:<slug>`). A skill can belong to many packs.
+
+model SkillPack {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  name          String
+  summary       String   @default("")
+  descriptionMd String   @default("")
+  icon          String   @default("")
+  isPublished   Boolean  @default(false)
+  sortOrder     Int      @default(0)
+  installCount  Int      @default(0)
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  createdBy User?           @relation("CreatedPacks", fields: [createdById], references: [id], onDelete: SetNull)
+  items     SkillPackItem[]
+
+  @@index([isPublished, sortOrder])
+}
+
+model SkillPackItem {
+  id        String @id @default(cuid())
+  packId    String
+  skillId   String
+  sortOrder Int    @default(0)
+
+  pack  SkillPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+  skill Skill     @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([packId, skillId])
+  @@index([skillId])
+}
+
+// ─── Feedback（意见反馈）──────────────────────────────────────────────────
+// GitHub-issue-style feedback: users post, everyone comments (2-level flat
+// threads, same shape as VideoComment) and upvotes; admins set the status.
+
+enum FeedbackCategory {
+  feature // 功能建议
+  bug // 问题反馈
+  other // 其他
+}
+
+enum FeedbackStatus {
+  open // 待处理
+  planned // 已计划
+  in_progress // 处理中
+  done // 已完成
+  declined // 不采纳
+}
+
+enum FeedbackCommentStatus {
+  visible
+  deleted // tombstone: kept to preserve thread shape, body wiped
+}
+
+model Feedback {
+  id           String           @id @default(cuid())
+  authorId     String
+  title        String
+  bodyMd       String           @default("")
+  category     FeedbackCategory @default(other)
+  status       FeedbackStatus   @default(open)
+  upvoteCount  Int              @default(0)
+  commentCount Int              @default(0)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  author   User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  upvotes  FeedbackUpvote[]
+  comments FeedbackComment[]
+
+  @@index([status, createdAt])
+  @@index([upvoteCount])
+  @@index([authorId])
+}
+
+model FeedbackUpvote {
+  userId     String
+  feedbackId String
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feedback Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+
+  @@id([userId, feedbackId])
+  @@index([feedbackId])
+}
+
+model FeedbackComment {
+  id         String                @id @default(cuid())
+  feedbackId String
+  authorId   String
+  // Always points at a TOP-LEVEL comment (2-level flat threads); reply-to-reply
+  // routing uses a transient replyToId in the API, never stored.
+  parentId   String?
+  bodyMd     String
+  status     FeedbackCommentStatus @default(visible)
+  replyCount Int                   @default(0)
+  createdAt  DateTime              @default(now())
+
+  feedback Feedback          @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  author   User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent   FeedbackComment?  @relation("FeedbackCommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  FeedbackComment[] @relation("FeedbackCommentThread")
+
+  @@index([feedbackId, createdAt])
+  @@index([parentId])
 }
 
 // ─── Social ──────────────────────────────────────────────────────────────

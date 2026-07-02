@@ -4,7 +4,7 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { motion } from 'framer-motion';
 
-type Source = 'all' | 'user_uploaded' | 'external_curated' | 'internal';
+type Source = 'all' | 'user_uploaded' | 'external_curated' | 'internal' | 'packs';
 
 export function SourceTabs() {
   const t = useTranslations('browse');
@@ -18,6 +18,8 @@ export function SourceTabs() {
     { key: 'user_uploaded', label: t('community') },
     { key: 'external_curated', label: t('curated') },
     { key: 'internal', label: t('internal') },
+    // Not a SourceType — flips the browse page into the skill-pack grid.
+    { key: 'packs', label: t('packs') },
   ];
 
   function select(key: Source) {
@@ -29,14 +31,14 @@ export function SourceTabs() {
   }
 
   return (
-    <div className="flex gap-1 border-b border-zinc-200 dark:border-zinc-800">
+    <div className="flex gap-1 overflow-x-auto border-b border-zinc-200 dark:border-zinc-800">
       {tabs.map((tab) => {
         const active = tab.key === current;
         return (
           <button
             key={tab.key}
             onClick={() => select(tab.key)}
-            className={`relative px-4 py-2 text-sm font-medium transition ${
+            className={`relative shrink-0 whitespace-nowrap px-4 py-2 text-sm font-medium transition ${
               active ? 'text-zinc-900 dark:text-white' : 'text-muted hover:text-zinc-700 dark:hover:text-zinc-200'
             }`}
           >

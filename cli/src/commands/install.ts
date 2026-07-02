@@ -13,6 +13,89 @@ interface InstallOptions {
   global?: boolean;
 }
 
+/**
+ * Entry point for `skills install <specs...>`. Each spec is a `slug[@version]`
+ * or `pack:<slug>` (a server-side skill pack, expanded into its member slugs).
+ * Members install one by one; a single failure (e.g. a restricted skill the
+ * user hasn't been granted) doesn't abort the rest.
+ */
+export async function installMany(specs: string[], opts: InstallOptions) {
+  const cfg = await loadConfig();
+  const api = new ApiClient(cfg);
+
+  const queue: string[] = [];
+  const resolvedPacks = new Set<string>();
+  for (const spec of specs) {
+    if (spec.startsWith('pack:')) {
+      const packSlug = spec.slice('pack:'.length);
+      if (resolvedPacks.has(packSlug)) continue; // same pack passed twice
+      resolvedPacks.add(packSlug);
+      let pack;
+      try {
+        pack = await api.packManifest(packSlug);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          msg.includes('404')
+            ? `合集包「${packSlug}」不存在或未发布（${cfg.registry}）`
+            : `获取合集包「${packSlug}」失败：${msg}`,
+        );
+      }
+      console.log(kleur.cyan(`◆ 合集包 ${kleur.bold(pack.name)} — ${pack.skills.length} 个 skills`));
+      queue.push(...pack.skills.map((s) => s.slug));
+    } else {
+      queue.push(spec);
+    }
+  }
+
+  // A skill can appear in several packs / be passed twice — install once. An
+  // explicit slug@version pin beats a bare (latest) entry from a pack.
+  const bySlug = new Map<string, string>();
+  for (const spec of queue) {
+    const [slug, version] = spec.split('@');
+    const existing = bySlug.get(slug);
+    if (!existing) {
+      bySlug.set(slug, spec);
+      continue;
+    }
+    const existingVersion = existing.split('@')[1];
+    if (version && !existingVersion) {
+      bySlug.set(slug, spec);
+    } else if (version && existingVersion && version !== existingVersion) {
+      console.warn(
+        kleur.yellow(`⚠ ${slug} 被指定了多个版本（@${existingVersion} 与 @${version}），使用 @${existingVersion}`),
+      );
+    }
+  }
+  const unique = [...bySlug.values()];
+
+  if (unique.length === 0) throw new Error('没有可安装的 skill');
+  if (unique.length === 1) return installCommand(unique[0], opts);
+
+  let ok = 0;
+  const failures: { spec: string; message: string }[] = [];
+  for (const spec of unique) {
+    try {
+      await installCommand(spec, opts);
+      ok += 1;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      failures.push({ spec, message });
+      console.error(kleur.red(`✗ ${spec}：${message}`));
+    }
+  }
+
+  console.log('');
+  if (failures.length === 0) {
+    console.log(kleur.green(`✔ 全部完成：${ok}/${unique.length} 个已安装`));
+  } else if (ok > 0) {
+    console.log(kleur.yellow(`⚠ 完成：成功 ${ok} 个，失败 ${failures.length} 个`));
+    process.exitCode = 1;
+  } else {
+    throw new Error(`全部 ${unique.length} 个安装失败`);
+  }
+}
+
 export async function installCommand(spec: string, opts: InstallOptions) {
   const [slug, version] = spec.split('@');
   const cfg = await loadConfig();

@@ -14,6 +14,7 @@ export const ASSIST_ACTIONS = [
   'tags',
   'triggers',
   'tokens', // estimate token cost when the skill is loaded
+  'pack', // write a skill-pack intro (summary + descriptionMd) from its member skills
 ] as const;
 
 export type AssistAction = (typeof ASSIST_ACTIONS)[number];
@@ -29,21 +30,45 @@ export function isAssistAction(v: unknown): v is AssistAction {
  * pass here. The only budget is the LLM context slice in buildAssistContext, which
  * truncates rather than rejects — so large skills work instead of 400'ing.
  */
-export const assistInputSchema = z.object({
-  action: z.string().refine(isAssistAction, 'unknown action'),
-  skillMd: z.string().min(1),
-  readme: z.string().optional().nullable(),
-  files: z.array(z.object({ path: z.string(), content: z.string() })).optional(),
-  current: z
-    .object({
-      name: z.string().optional(),
-      summary: z.string().optional(),
-      descriptionMd: z.string().optional(),
-      tags: z.array(z.string()).optional(),
-      triggers: z.array(z.string()).optional(),
-    })
-    .optional(),
-});
+export const assistInputSchema = z
+  .object({
+    action: z.string().refine(isAssistAction, 'unknown action'),
+    // Required for every action except `pack`, which reads packSkills instead.
+    skillMd: z.string().optional().nullable(),
+    readme: z.string().optional().nullable(),
+    files: z.array(z.object({ path: z.string(), content: z.string() })).optional(),
+    packSkills: z
+      .array(
+        z.object({
+          name: z.string().min(1),
+          summary: z.string().optional().nullable(),
+          descriptionMd: z.string().optional().nullable(),
+        }),
+      )
+      .optional(),
+    current: z
+      .object({
+        name: z.string().optional(),
+        summary: z.string().optional(),
+        descriptionMd: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+        triggers: z.array(z.string()).optional(),
+      })
+      .optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.action === 'pack') {
+      if (!v.packSkills || v.packSkills.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['packSkills'],
+          message: '先给合集包添加至少一个 skill',
+        });
+      }
+    } else if (!v.skillMd?.trim()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['skillMd'], message: '缺少 skill 内容' });
+    }
+  });
 
 export type AssistInput = z.infer<typeof assistInputSchema>;
 
@@ -91,6 +116,27 @@ const BASE_SYSTEM =
   '你是一个帮助作者整理「AI agent skill」元信息的助手。' +
   '你只输出 JSON，不要任何解释、前后缀或 Markdown 代码围栏。' +
   '所有面向用户的文案使用简体中文（除非该 skill 本身明显是英文受众）。';
+
+export interface PackSkillInput {
+  name: string;
+  summary?: string | null;
+  descriptionMd?: string | null;
+}
+
+/** Assemble the model-readable member list for the `pack` action. */
+export function buildPackAssistContext(skills: PackSkillInput[]): string {
+  const parts: string[] = [];
+  let used = 0;
+  for (const s of skills) {
+    const summary = (s.summary ?? '').trim();
+    const desc = (s.descriptionMd ?? '').trim().slice(0, 600);
+    const block = `## ${s.name}${summary ? `\n一句话：${summary}` : ''}${desc ? `\n简介：${desc}` : ''}`;
+    if (used + block.length > MAX_CONTEXT_CHARS) break;
+    parts.push(block);
+    used += block.length;
+  }
+  return parts.join('\n\n');
+}
 
 function emptyList(current: AssistCurrent): string[] {
   const missing: string[] = [];
@@ -171,6 +217,24 @@ export function buildAssistPrompt(
           `只返回包含这些字段的 JSON 对象，不要包含未要求的字段。例如：` +
           `{"name":"...","summary":"...","descriptionMd":"...","tags":["..."],"triggers":["..."]}`,
         maxTokens: 1600,
+      };
+    }
+    case 'pack': {
+      const packName = current.name?.trim();
+      const wantName = packName ? '' : '，另给出简洁包名 name（2-6 个词）';
+      const shape = packName
+        ? '{"summary": "...", "descriptionMd": "..."}'
+        : '{"name": "...", "summary": "...", "descriptionMd": "..."}';
+      return {
+        system: BASE_SYSTEM,
+        user:
+          `下面是一个「skill 合集包」的成员 skills 列表${packName ? `（包名：${packName}）` : ''}：\n\n${context}\n\n` +
+          `请为这个合集包撰写介绍${wantName}：\n` +
+          `summary=一句话（不超过 40 个汉字）说明这个包解决什么场景；\n` +
+          `descriptionMd=Markdown 介绍，依次包含：1-2 句总述；「### 包含内容」小节逐条列出每个 skill 及其作用（一行一个）；` +
+          `「### 适用场景」小节给出 3-5 条什么情况下应该安装这个包。\n` +
+          `只返回 JSON：${shape}`,
+        maxTokens: 1500,
       };
     }
   }
@@ -254,15 +318,16 @@ export function parseAssistResult(
     return result;
   }
 
-  if (action === 'name' || action === 'autofill') {
+  if (action === 'name' || action === 'autofill' || action === 'pack') {
     const name = asString(obj.name);
-    if (name) result.name = name.slice(0, 120);
+    // Pack names are capped at 80 by the admin API schema; skills allow 120.
+    if (name) result.name = name.slice(0, action === 'pack' ? 80 : 120);
   }
-  if (action === 'summary' || action === 'overview' || action === 'autofill') {
+  if (action === 'summary' || action === 'overview' || action === 'autofill' || action === 'pack') {
     const summary = asString(obj.summary);
     if (summary) result.summary = summary.slice(0, 140);
   }
-  if (action === 'overview' || action === 'autofill') {
+  if (action === 'overview' || action === 'autofill' || action === 'pack') {
     const overview = asString(obj.descriptionMd);
     if (overview) result.descriptionMd = overview;
   }

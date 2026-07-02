@@ -5,6 +5,7 @@ import { getProvider, LLMConfigError } from '@/lib/llm';
 import {
   assistInputSchema,
   buildAssistContext,
+  buildPackAssistContext,
   buildAssistPrompt,
   parseAssistResult,
   isAssistAction,
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
       : '请求参数无效';
     return NextResponse.json({ error: 'invalid_input', reason, issues: flat }, { status: 400 });
   }
-  const { action, skillMd, readme, files, current } = parsed.data;
+  const { action, skillMd, readme, files, packSkills, current } = parsed.data;
   if (!isAssistAction(action)) {
     return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
   }
@@ -57,7 +58,11 @@ export async function POST(req: Request) {
     throw e;
   }
 
-  const context = buildAssistContext({ skillMd, readme, files });
+  // `pack` reads the member-skill list; every other action reads the skill text.
+  const context =
+    action === 'pack'
+      ? buildPackAssistContext(packSkills ?? [])
+      : buildAssistContext({ skillMd: skillMd ?? '', readme, files });
   const prompt = buildAssistPrompt(action, context, current ?? {});
 
   let text: string;

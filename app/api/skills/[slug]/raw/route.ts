@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { storage, skillBundleKey } from '@/lib/storage';
 import { loadAccessContext, accessDenial } from '@/lib/access';
+import { exceededDownloadLimit, downloadLimitBody } from '@/lib/download-limit';
 import { synthesizeSkillMd } from '@/lib/skill-md';
 import { createZip } from '@/lib/zip';
 
@@ -19,7 +20,11 @@ function hashIp(ip: string | null): string | null {
 export async function GET(req: Request, { params }: { params: { slug: string } }) {
   const url = new URL(req.url);
   const versionArg = url.searchParams.get('version');
-  const viaArg = url.searchParams.get('via'); // 'install' | 'update' from the CLI
+  // Only the CLI-sent values are trusted. Anything else — notably a hand-crafted
+  // ?via=try trying to dodge the download cap (try rows are exempt from the
+  // count) — falls back to the user-agent default below.
+  const viaParam = url.searchParams.get('via');
+  const viaArg = viaParam === 'install' || viaParam === 'update' ? viaParam : null;
 
   const { skill, actor, grant, decision } = await loadAccessContext(params.slug, req);
   if (!skill) return NextResponse.json({ error: 'not_found' }, { status: 404 });
@@ -37,6 +42,16 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
 
   if (!version || (version.status !== 'published' && !privileged)) {
     return NextResponse.json({ error: 'version_not_found' }, { status: 404 });
+  }
+
+  // Admin-set per-user download cap; the skill's owner and admins are exempt.
+  // Soft quota: the log below is fire-and-forget, so a burst of parallel
+  // requests can overshoot by the concurrency — acceptable for this cap.
+  if (actor && !privileged) {
+    const exceeded = await exceededDownloadLimit(actor.id);
+    if (exceeded != null) {
+      return NextResponse.json(downloadLimitBody(exceeded), { status: 429 });
+    }
   }
 
   const isCli = req.headers.get('user-agent')?.includes('skills-cli') ?? false;

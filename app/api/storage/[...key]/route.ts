@@ -3,6 +3,7 @@ import { storage } from '@/lib/storage';
 import { prisma } from '@/lib/db';
 import { resolveActor } from '@/lib/auth/either';
 import { canAccessSkillContent } from '@/lib/access';
+import { exceededDownloadLimit, downloadLimitBody } from '@/lib/download-limit';
 
 /**
  * Raw stored-object proxy (local-dev storage driver). Gated so the bundle bytes
@@ -36,6 +37,30 @@ export async function GET(req: Request, { params }: { params: { key: string[] } 
         { error: decision.kind === 'auth_required' ? 'auth_required' : 'forbidden' },
         { status: decision.kind === 'auth_required' ? 401 : decision.kind === 'needs_request' ? 403 : 404 },
       );
+    }
+
+    // This proxy serves the same bundle bytes as /raw, so it must honour the
+    // same per-user download cap — and the fetch is attributed (via='storage')
+    // so it counts against the cap next time. Public downloadCount stats stay
+    // untouched: normal flows go through /raw; hitting this URL directly is an
+    // edge path we only need capped + auditable.
+    const privileged = decision.kind === 'owner' || decision.kind === 'admin';
+    if (actor && !privileged) {
+      const exceeded = await exceededDownloadLimit(actor.id);
+      if (exceeded != null) {
+        return NextResponse.json(downloadLimitBody(exceeded), { status: 429 });
+      }
+      prisma.download
+        .create({
+          data: {
+            skillId: skill.id,
+            userId: actor.id,
+            client: req.headers.get('user-agent')?.includes('skills-cli') ? 'cli' : 'web',
+            via: 'storage',
+            userAgent: req.headers.get('user-agent') ?? undefined,
+          },
+        })
+        .catch(() => undefined);
     }
   }
 

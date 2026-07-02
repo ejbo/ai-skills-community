@@ -31,8 +31,11 @@ function orderBy(sort: SortKey): Prisma.SkillOrderByWithRelationInput {
 }
 
 export async function browseSkills(filters: BrowseFilters) {
-  const page = Math.max(1, filters.page ?? 1);
-  const pageSize = Math.min(48, Math.max(1, filters.pageSize ?? 24));
+  // Sanitize the raw query params — NaN/floats would throw inside Prisma.
+  const rawPage = Number(filters.page ?? 1);
+  const page = Number.isFinite(rawPage) ? Math.max(1, Math.trunc(rawPage)) : 1;
+  const rawSize = Number(filters.pageSize ?? 24);
+  const pageSize = Number.isFinite(rawSize) ? Math.min(48, Math.max(1, Math.trunc(rawSize))) : 24;
 
   const where: Prisma.SkillWhereInput = {
     status: 'published',

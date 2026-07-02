@@ -4,7 +4,7 @@ import kleur from 'kleur';
 import { loginCommand } from './commands/login.js';
 import { logoutCommand } from './commands/logout.js';
 import { searchCommand } from './commands/search.js';
-import { installCommand } from './commands/install.js';
+import { installMany } from './commands/install.js';
 import { listCommand } from './commands/list.js';
 import { updateCommand } from './commands/update.js';
 import { subscribeCommand } from './commands/subscribe.js';
@@ -42,12 +42,15 @@ program
   .action((q) => searchCommand(q).catch(fail));
 
 program
-  .command('install <slug[@version]>')
-  .description('安装 skill（需先 `skills login`；默认装到当前项目 .claude/skills/，加 -g 装到全局 ~/.claude/skills/）')
+  .command('install <specs...>')
+  .description(
+    '安装 skill（需先 `skills login`；默认装到当前项目 .claude/skills/，加 -g 装到全局 ~/.claude/skills/）。' +
+      '可一次传多个 slug；`pack:<合集slug>` 会安装该合集包内的全部 skills。',
+  )
   .option('-t, --target <name>', '目标 (claude-code / cursor / ...)')
   .option('-g, --global', '装到全局（~/.claude/skills），默认装到当前项目')
   .option('-s, --subscribe', '同时订阅自动更新')
-  .action((spec, opts) => installCommand(spec, opts).catch(fail));
+  .action((specs, opts) => installMany(specs, opts).catch(fail));
 
 program
   .command('list')

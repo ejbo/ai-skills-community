@@ -3,8 +3,10 @@ import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { browseSkills, listCategories } from '@/lib/skill-queries';
+import { browsePacks } from '@/lib/pack-queries';
 import type { SourceType } from '@prisma/client';
 import { SkillCard, SkillCardSkeleton } from '@/components/SkillCard';
+import { PackCard } from '@/components/PackCard';
 import { FilterSidebar } from '@/components/FilterSidebar';
 import { SearchBar } from '@/components/SearchBar';
 import { SortMenu } from '@/components/SortMenu';
@@ -30,6 +32,67 @@ export default async function BrowseSkillsPage({
   searchParams: SearchParams;
 }) {
   const t = await getTranslations('browse');
+
+  // `source=packs` flips the page into the skill-pack grid: same search bar and
+  // tabs, but the skill-only sidebar/sort controls are hidden.
+  if (searchParams.source === 'packs') {
+    const { items, total, page, pageSize, hasMore } = await browsePacks({
+      q: searchParams.q,
+      page: Number(searchParams.page ?? 1),
+    });
+
+    return (
+      <div className="container py-6">
+        <div className="space-y-4">
+          <h1 className="text-3xl font-semibold tracking-tight">{t('title')}</h1>
+          <SearchBar />
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <SourceTabs />
+            <span className="ml-auto text-xs text-muted">共 {total.toLocaleString()} 个合集包</span>
+          </div>
+        </div>
+
+        <div className="mt-6">
+          {items.length === 0 ? (
+            <EmptyState
+              title={t('no_packs')}
+              description={t('no_packs_hint')}
+              actionLabel={t('reset_filters')}
+              actionHref="/skills?source=packs"
+            />
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {items.map((pack) => (
+                <PackCard
+                  key={pack.id}
+                  slug={pack.slug}
+                  name={pack.name}
+                  summary={pack.summary}
+                  icon={pack.icon}
+                  installCount={pack.installCount}
+                  updatedAt={pack.updatedAt}
+                  skills={pack.items.map((i) => i.skill)}
+                />
+              ))}
+            </div>
+          )}
+
+          {(page > 1 || hasMore) && (
+            <Pagination
+              searchParams={searchParams}
+              current={page}
+              pageSize={pageSize}
+              total={total}
+              hasMore={hasMore}
+              prevLabel={t('prev_page')}
+              nextLabel={t('next_page')}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const categories = await listCategories();
 
   const sourceParam = searchParams.source as SourceType | 'all' | undefined;
