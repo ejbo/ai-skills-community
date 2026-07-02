@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import localFont from 'next/font/local';
 import { NextIntlClientProvider } from 'next-intl';
+import { withBasePath } from '@/lib/base-path';
 
 // Self-hosted variable fonts (committed woff2, latin subset — CJK falls back to
 // system fonts as before). next/font/google fetches from Google AT BUILD TIME,
@@ -30,7 +31,8 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'AI Community',
   description: 'Share, discover and install AI agent skills. Watch geek videos.',
-  icons: { icon: '/favicon.ico' },
+  // withBasePath so the tab icon resolves under the /ai-community subpath deploy.
+  icons: { icon: withBasePath('/CARI_tab_Logo.png') },
 };
 
 export default async function RootLayout({

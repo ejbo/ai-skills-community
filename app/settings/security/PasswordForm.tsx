@@ -2,9 +2,11 @@
 
 import { useState, useTransition } from 'react';
 import { Loader2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
 
 export function PasswordForm({ hasPassword }: { hasPassword: boolean }) {
+  const t = useTranslations('settings');
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -13,11 +15,11 @@ export function PasswordForm({ hasPassword }: { hasPassword: boolean }) {
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (next !== confirm) {
-      pushToast('error', '两次密码不一致');
+      pushToast('error', t('password_mismatch'));
       return;
     }
     if (next.length < 8) {
-      pushToast('error', '密码至少 8 位');
+      pushToast('error', t('password_too_short'));
       return;
     }
     startTransition(async () => {
@@ -29,23 +31,23 @@ export function PasswordForm({ hasPassword }: { hasPassword: boolean }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const map: Record<string, string> = {
-          current_required: '请输入当前密码',
-          wrong_password: '当前密码错误',
+          current_required: t('current_required'),
+          wrong_password: t('wrong_password'),
         };
-        pushToast('error', map[data.error] ?? '保存失败');
+        pushToast('error', map[data.error] ?? t('save_failed'));
         return;
       }
       setCurrent('');
       setNext('');
       setConfirm('');
-      pushToast('success', '密码已更新');
+      pushToast('success', t('password_updated'));
     });
   }
 
   return (
     <form onSubmit={submit} className="surface space-y-3 rounded-2xl p-5">
       {hasPassword && (
-        <Field label="当前密码">
+        <Field label={t('current_password')}>
           <input
             type="password"
             value={current}
@@ -56,7 +58,7 @@ export function PasswordForm({ hasPassword }: { hasPassword: boolean }) {
           />
         </Field>
       )}
-      <Field label="新密码">
+      <Field label={t('new_password')}>
         <input
           type="password"
           value={next}
@@ -67,7 +69,7 @@ export function PasswordForm({ hasPassword }: { hasPassword: boolean }) {
           className="input"
         />
       </Field>
-      <Field label="确认新密码">
+      <Field label={t('confirm_password')}>
         <input
           type="password"
           value={confirm}
@@ -85,7 +87,7 @@ export function PasswordForm({ hasPassword }: { hasPassword: boolean }) {
           className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
         >
           {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          {hasPassword ? '更新密码' : '设置密码'}
+          {t('update_password')}
         </button>
       </div>
       <style jsx>{`

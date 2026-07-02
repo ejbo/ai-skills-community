@@ -66,6 +66,12 @@ export async function PATCH(req: Request) {
   const user = await prisma.user.findUnique({ where: { id: session.user.id } });
   if (!user) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
+  // W3 accounts authenticate through the company IdP — no local password may
+  // be set or changed here (mirrors the settings/security UI).
+  if (user.authMethod === 'huawei_sso' && !user.passwordHash) {
+    return NextResponse.json({ error: 'sso_only' }, { status: 403 });
+  }
+
   // If user already has a password, require current to be correct.
   if (user.passwordHash) {
     if (!parsed.data.current) return NextResponse.json({ error: 'current_required' }, { status: 400 });

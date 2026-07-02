@@ -1,22 +1,25 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { User, Key, Lock, Bell } from 'lucide-react';
+import { User, Key, Lock, Bell, Languages } from 'lucide-react';
+import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 
 export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
   if (!session?.user) redirect('/auth/login?callbackUrl=/settings');
+  const t = await getTranslations('settings');
 
   const links = [
-    { href: '/settings', label: '个人资料', icon: <User className="h-4 w-4" /> },
-    { href: '/settings/notifications', label: '通知', icon: <Bell className="h-4 w-4" /> },
-    { href: '/settings/tokens', label: 'CLI Token', icon: <Key className="h-4 w-4" /> },
-    { href: '/settings/security', label: '安全', icon: <Lock className="h-4 w-4" /> },
+    { href: '/settings', label: t('nav_profile'), icon: <User className="h-4 w-4" /> },
+    { href: '/settings/notifications', label: t('nav_notifications'), icon: <Bell className="h-4 w-4" /> },
+    { href: '/settings/tokens', label: t('nav_tokens'), icon: <Key className="h-4 w-4" /> },
+    { href: '/settings/security', label: t('nav_security'), icon: <Lock className="h-4 w-4" /> },
+    { href: '/settings/language', label: t('nav_language'), icon: <Languages className="h-4 w-4" /> },
   ];
 
   return (
     <div className="container py-8">
-      <h1 className="mb-6 text-3xl font-semibold tracking-tight">账号设置</h1>
+      <h1 className="mb-6 text-3xl font-semibold tracking-tight">{t('title')}</h1>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[200px_1fr]">
         <aside>
           <nav className="flex flex-col gap-0.5">

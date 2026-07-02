@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { Loader2, Upload, X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
 import { Avatar } from '@/components/Avatar';
 
@@ -20,6 +21,7 @@ interface User {
 }
 
 export function ProfileForm({ user }: { user: User }) {
+  const t = useTranslations('settings');
   const router = useRouter();
   const { update } = useSession();
   const [displayName, setDisplayName] = useState(user.displayName);
@@ -31,7 +33,7 @@ export function ProfileForm({ user }: { user: User }) {
 
   async function onPickFile(file: File) {
     if (!file.type.startsWith('image/')) {
-      pushToast('error', '请选择图片文件');
+      pushToast('error', t('pick_image'));
       return;
     }
     setUploading(true);
@@ -43,13 +45,13 @@ export function ProfileForm({ user }: { user: User }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.url) {
-        pushToast('error', data.error === 'too_large' ? '图片过大（上限 10MB）' : data.error ?? '上传失败');
+        pushToast('error', data.error === 'too_large' ? t('image_too_large') : data.error ?? t('upload_failed'));
         return;
       }
       setAvatarUrl(data.url);
-      pushToast('success', '头像已上传，点「保存」生效');
+      pushToast('success', t('avatar_uploaded'));
     } catch {
-      pushToast('error', '上传失败');
+      pushToast('error', t('upload_failed'));
     } finally {
       setUploading(false);
     }
@@ -63,10 +65,10 @@ export function ProfileForm({ user }: { user: User }) {
         body: JSON.stringify({ displayName, bio, avatarUrl }),
       });
       if (!res.ok) {
-        pushToast('error', '保存失败');
+        pushToast('error', t('save_failed'));
         return;
       }
-      pushToast('success', '已保存');
+      pushToast('success', t('saved'));
       // Refresh the JWT so the new avatar/name shows immediately. The session
       // callback no longer re-reads the DB every request, so this explicit update
       // is what propagates a profile change to the navbar.
@@ -77,52 +79,52 @@ export function ProfileForm({ user }: { user: User }) {
 
   return (
     <div className="surface space-y-4 rounded-2xl p-5">
-      <Field label="邮箱（不可改）">
+      <Field label={t('email')}>
         <input value={user.email} disabled className="input text-muted" />
       </Field>
-      <Field label="Handle（不可改）">
+      <Field label={t('employee_id')}>
         <div className="flex items-center gap-2">
           <input value={user.handle} disabled className="input font-mono text-muted" />
           <Link href={`/users/${user.handle}`} className="shrink-0 text-xs text-accent-600 hover:underline">
-            查看主页 →
+            {t('view_profile')}
           </Link>
         </div>
       </Field>
-      <Field label="登录方式">
+      <Field label={t('login_method')}>
         <input
           value={
             user.authMethod === 'both'
-              ? `密码 + W3 (${user.huaweiW3Id})`
+              ? `${t('login_password')} + W3 (${user.huaweiW3Id})`
               : user.authMethod === 'huawei_sso'
                 ? `W3 (${user.huaweiW3Id})`
-                : '邮箱密码'
+                : t('login_password')
           }
           disabled
           className="input text-muted"
         />
       </Field>
       {user.huaweiW3Name && (
-        <Field label="W3 姓名（不可改）">
+        <Field label={t('w3_name')}>
           <input value={user.huaweiW3Name} disabled className="input text-muted" />
         </Field>
       )}
-      <Field label="显示名">
+      <Field label={t('display_name')}>
         <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="input" />
       </Field>
-      <Field label="简介">
+      <Field label={t('bio')}>
         <textarea
           value={bio}
           onChange={(e) => setBio(e.target.value.slice(0, 240))}
           rows={3}
           maxLength={240}
-          placeholder="一两句话介绍你自己"
+          placeholder={t('bio_placeholder')}
           className="input"
         />
       </Field>
       {/* Avatar uploader — NOT wrapped in <Field>'s <label>, so clicks don't
           accidentally trigger the hidden file input. */}
       <div className="block">
-        <span className="mb-1 block text-xs font-medium text-muted">头像</span>
+        <span className="mb-1 block text-xs font-medium text-muted">{t('avatar')}</span>
         <div className="flex items-center gap-4">
           <Avatar name={displayName || user.displayName} src={avatarUrl || null} size="xl" />
           <div className="flex flex-col gap-2">
@@ -145,7 +147,7 @@ export function ProfileForm({ user }: { user: User }) {
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-3 text-sm font-medium transition hover:border-accent-500 disabled:opacity-60 dark:border-zinc-700"
               >
                 {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                上传头像
+                {t('upload_avatar')}
               </button>
               {avatarUrl && (
                 <button
@@ -154,11 +156,11 @@ export function ProfileForm({ user }: { user: User }) {
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm text-muted transition hover:text-danger"
                 >
                   <X className="h-3.5 w-3.5" />
-                  移除
+                  {t('remove')}
                 </button>
               )}
             </div>
-            <span className="text-[11px] text-muted">支持 JPG / PNG / WebP / GIF，最大 10MB。</span>
+            <span className="text-[11px] text-muted">{t('avatar_hint')}</span>
           </div>
         </div>
       </div>
@@ -169,7 +171,7 @@ export function ProfileForm({ user }: { user: User }) {
           className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
         >
           {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          保存
+          {t('save')}
         </button>
       </div>
       <style jsx>{`

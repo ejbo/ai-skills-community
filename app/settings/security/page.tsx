@@ -1,3 +1,4 @@
+import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { PasswordForm } from './PasswordForm';
@@ -10,19 +11,23 @@ export default async function SecuritySettingsPage() {
     where: { id: session!.user.id },
     select: { passwordHash: true, authMethod: true },
   });
-  const hasPassword = Boolean(user?.passwordHash);
+  const t = await getTranslations('settings');
+
+  // W3 accounts authenticate through the company IdP — they neither have nor
+  // may set a local password (the /api/auth/me PATCH enforces this too).
+  const ssoOnly = user?.authMethod === 'huawei_sso' && !user?.passwordHash;
+
   return (
     <div className="space-y-6">
       <section>
-        <h2 className="text-lg font-semibold">{hasPassword ? '修改密码' : '设置密码'}</h2>
-        {!hasPassword && (
-          <p className="mt-1 text-sm text-muted">
-            你目前通过 W3 登录。设置密码后可同时用邮箱登录。
-          </p>
+        <h2 className="text-lg font-semibold">{t('security_title')}</h2>
+        {ssoOnly ? (
+          <p className="mt-4 text-sm text-muted">{t('sso_no_password')}</p>
+        ) : (
+          <div className="mt-4">
+            <PasswordForm hasPassword={Boolean(user?.passwordHash)} />
+          </div>
         )}
-        <div className="mt-4">
-          <PasswordForm hasPassword={hasPassword} />
-        </div>
       </section>
     </div>
   );
