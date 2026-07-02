@@ -1,14 +1,20 @@
 import type { Metadata } from 'next';
-import { Inter, JetBrains_Mono } from 'next/font/google';
+import localFont from 'next/font/local';
 import { NextIntlClientProvider } from 'next-intl';
 
-const geistSans = Inter({
-  subsets: ['latin'],
+// Self-hosted variable fonts (committed woff2, latin subset — CJK falls back to
+// system fonts as before). next/font/google fetches from Google AT BUILD TIME,
+// which fails on the intranet box (corporate TLS-intercepting proxy → "self-signed
+// certificate in certificate chain"). Local files make builds fully offline.
+const geistSans = localFont({
+  src: './fonts/inter-var-latin.woff2',
+  weight: '100 900',
   variable: '--font-geist-sans',
   display: 'swap',
 });
-const geistMono = JetBrains_Mono({
-  subsets: ['latin'],
+const geistMono = localFont({
+  src: './fonts/jetbrains-mono-var-latin.woff2',
+  weight: '100 800',
   variable: '--font-geist-mono',
   display: 'swap',
 });
