@@ -121,6 +121,12 @@ skills update
 skills logout            # 清除本地 token
 ```
 
+发布新版 CLI 后，已装用户一条命令自升级（旧版没有该命令的，手动再 `npm i -g <地址>/skills-cli.tgz` 一次）：
+
+```bash
+skills upgrade           # 从当前 registry 重装 CLI 本体；区别于 skills update（更新已装 skill）
+```
+
 > 网页每个 Skill 详情页的"安装"框会自动显示当前服务器对应的完整命令，复制即用。
 >
 > **可见性**：`公开` = 任何登录用户可装；`受限下载` = 需在详情页「申请下载」、作者批准后可装；`私密` = 仅作者本人。受限/未授权时 CLI 会提示申请地址；未登录时提示 `skills login`。

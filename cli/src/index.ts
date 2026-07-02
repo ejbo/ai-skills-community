@@ -8,6 +8,7 @@ import { installMany } from './commands/install.js';
 import { listCommand } from './commands/list.js';
 import { updateCommand } from './commands/update.js';
 import { subscribeCommand } from './commands/subscribe.js';
+import { upgradeCommand } from './commands/upgrade.js';
 
 const program = new Command();
 
@@ -69,6 +70,12 @@ program
   .option('-a, --all', '项目 + 全局都更新')
   .option('-s, --subscribed', '只更新订阅了的')
   .action((slug, opts) => updateCommand(slug, opts).catch(fail));
+
+program
+  .command('upgrade')
+  .alias('self-update')
+  .description('升级 skills CLI 本体（从当前 registry 重新下载安装；区别于 update——那是更新已装的 skill）')
+  .action(() => upgradeCommand().catch(fail));
 
 program
   .command('subscribe <slug>')

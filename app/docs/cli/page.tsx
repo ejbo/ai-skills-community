@@ -55,6 +55,23 @@ skills update -a         # 更新全部已装
 skills subscribe <slug>  # 订阅更新提示（加 --off 取消）
 skills logout            # 退出登录（清除本地 token）
 \`\`\`
+
+## 五、升级 CLI 本体
+
+站点发布了新版 CLI（比如新增 \`pack:\` 合集包安装）后，一条命令升级：
+
+\`\`\`bash
+skills upgrade           # 从当前服务器重新安装 CLI 自己
+\`\`\`
+
+注意区分：\`skills update\` 更新的是**已安装的各个 Skill**；\`skills upgrade\` 升级的是 \`skills\` **命令本身**。
+
+如果你的 CLI 版本太老、还没有 \`upgrade\` 命令，手动重装一次即可（之后就有了）：
+
+\`\`\`bash
+npm i -g <本站地址>/skills-cli.tgz
+skills --version
+\`\`\`
 `;
 
 export default function CliDocsPage() {
