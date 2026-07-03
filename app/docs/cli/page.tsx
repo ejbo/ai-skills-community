@@ -72,6 +72,16 @@ skills upgrade           # 从当前服务器重新安装 CLI 自己
 npm i -g <本站地址>/skills-cli.tgz
 skills --version
 \`\`\`
+
+## 六、卸载
+
+\`\`\`bash
+npm uninstall -g @skills-community/cli   # 卸载全局安装的 skills 命令
+rm -rf ~/.skills                          # 可选：清除登录 token 与 CLI 配置
+rm -rf ~/.npm/_npx                        # 可选：清除 npx 方式的运行缓存
+\`\`\`
+
+卸载 CLI 不影响已装到本地的各个 Skill 文件。要删除某个 Skill，直接删对应目录即可：项目内 \`.claude/skills/<slug>/\`，全局 \`~/.claude/skills/<slug>/\`。
 `;
 
 export default function CliDocsPage() {
