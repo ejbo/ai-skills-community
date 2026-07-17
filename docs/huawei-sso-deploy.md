@@ -9,21 +9,22 @@ Everything must use the **same** `<SUBPATH>`: `NEXT_BASE_PATH`, `AUTH_URL`, the 
 
 ---
 
-## ⭐ This rollout (locked): `/ai-community` on `ai4news.rnd.huawei.com`
+## ⭐ This rollout (locked): `/ai-community` on `cari.rnd.huawei.com`
 
-Concrete values for the current internal deploy — **D2 (reuse ai4news's `client_id`),
-direct egress**. Ready-to-use artifacts:
+Concrete values for the current internal deploy — **D2 (reuse an existing `client_id`),
+direct egress**. Domain migrated from `ai4news.rnd.huawei.com` in 2026-07; the new host
+is registered (备案) in IDaaS. Ready-to-use artifacts:
 [`../.env.ai-community.example`](../.env.ai-community.example) and
 [`../deploy/ai-community.nginx.conf`](../deploy/ai-community.nginx.conf).
 
 | Setting | Value |
 |---|---|
-| Host (正统域名, **unchanged**) | `ai4news.rnd.huawei.com` |
-| New subpath | `/ai-community` |
-| `AUTH_URL` | `https://ai4news.rnd.huawei.com/ai-community/api/auth` ⚠️ must include `/api/auth` |
+| Host (正统域名) | `cari.rnd.huawei.com` (was `ai4news.rnd.huawei.com` until 2026-07) |
+| Subpath | `/ai-community` |
+| `AUTH_URL` | `https://cari.rnd.huawei.com/ai-community/api/auth` ⚠️ must include `/api/auth` |
 | `NEXT_BASE_PATH` | `/ai-community` |
-| Callback to register/confirm | `https://ai4news.rnd.huawei.com/ai-community/api/auth/callback/huawei` |
-| `client_id` / `secret` | reuse ai4news's (D2) |
+| Callback to register/confirm | `https://cari.rnd.huawei.com/ai-community/api/auth/callback/huawei` |
+| `client_id` / `secret` | the registration whose 应用域名 covers `cari.rnd.huawei.com` (D2) |
 | `USE_PROXY` | `false` (direct) — `SSO_VERIFY_SSL=false` |
 | App upstream port | `127.0.0.1:3100` (any free port; must match nginx + the `next start -p`) |
 
@@ -31,13 +32,13 @@ direct egress**. Ready-to-use artifacts:
 
 1. Copy `.env.ai-community.example` → `.env` on the box; fill `DATABASE_URL`,
    `AUTH_SECRET` (`openssl rand -base64 32`), and `SSO_CLIENT_ID` / `SSO_CLIENT_SECRET`
-   (= ai4news's). `ENABLE_SSO=true` is already set there.
-2. In the IDaaS console (`https://console-kwe.his.huawei.com/idaas/app/`), open
-   ai4news's registration and confirm **应用域名** covers `https://ai4news.rnd.huawei.com`
-   (host root). If it's pinned to `/authorize`, add the host root (or `…/ai-community`)
-   to the comma-separated 应用域名 — self-service, effective immediately.
+   (of the registration covering `cari.rnd.huawei.com`). `ENABLE_SSO=true` is already set there.
+2. In the IDaaS console (`https://console-kwe.his.huawei.com/idaas/app/`), open that
+   registration and confirm **应用域名** covers `https://cari.rnd.huawei.com`
+   (host root). 应用域名 is comma-separated multi-domain — adding a host there is
+   self-service and effective immediately.
 3. Paste `deploy/ai-community.nginx.conf` **above** the catch-all `location /` in the
-   ai4news server block, then `nginx -t && nginx -s reload`.
+   `cari.rnd.huawei.com` server block, then `nginx -t && nginx -s reload`.
 4. Build & run (basePath is baked at build time):
    ```bash
    pnpm install
@@ -47,7 +48,7 @@ direct egress**. Ready-to-use artifacts:
    # into next on pnpm v8+, which then treats `-p` as a directory and crashes.
    NEXT_BASE_PATH=/ai-community pnpm exec next start -p 3100 -H 127.0.0.1
    ```
-5. Visit `https://ai4news.rnd.huawei.com/ai-community/auth/login` → **both** the
+5. Visit `https://cari.rnd.huawei.com/ai-community/auth/login` → **both** the
    "Email & Password" card and the "Huawei W3 SSO" card show. Click W3 → uniportal →
    back logged in; a `User` row gets `huaweiW3Id` + `authMethod = huawei_sso` (or `both`).
 
@@ -105,7 +106,7 @@ nginx rationale, troubleshooting, and what the code already does).
 ## How it works (so the moving parts make sense)
 
 - The app runs as a normal Next.js server on some local port (e.g. `127.0.0.1:3100`),
-  reverse-proxied at `https://ai4news.rnd.huawei.com/<SUBPATH>/`.
+  reverse-proxied at `https://cari.rnd.huawei.com/<SUBPATH>/`.
 - Login is a NextAuth (Auth.js v5) custom OAuth provider with id `huawei`. NextAuth
   handles the browser redirect, CSRF `state`, callback, and the JWT session.
 - Huawei's protocol is non-standard (JSON token body, POST userinfo, no `token_type`),
@@ -122,23 +123,25 @@ nginx rationale, troubleshooting, and what the code already does).
   `…/<SUBPATH>/api/auth` so its origin (used behind the proxy) and path agree — a value
   of just `…/<SUBPATH>` would build the callback as `…/<SUBPATH>/callback/huawei` and fail.
 
-## D2: reuse ai4news's registration (recommended, least friction)
+## D2: reuse an existing registration (recommended, least friction)
 
-Because this app sits on the **same host** as ai4news (`ai4news.rnd.huawei.com`), and
-Huawei's rule is *"redirect_uri path must be a subdirectory of the registered 应用域名"*,
-the new callback `…/<SUBPATH>/api/auth/callback/huawei` is already a valid subdirectory
-of ai4news's registered host. So:
+Huawei's rule is *"redirect_uri path must be a subdirectory of the registered 应用域名"*
+(host must match exactly; subdomains do NOT count). So the callback
+`https://cari.rnd.huawei.com/<SUBPATH>/api/auth/callback/huawei` is valid under any
+registration whose 应用域名 covers `https://cari.rnd.huawei.com`. To reuse one:
 
-1. Reuse ai4news's `SSO_CLIENT_ID` and `SSO_CLIENT_SECRET` (same APPID, you own both).
-2. In the IDaaS console (`https://console-kwe.his.huawei.com/idaas/app/`), open ai4news's
-   registration and confirm **应用域名** is registered at the host root
-   `https://ai4news.rnd.huawei.com` (not pinned to `/authorize`). If it is pinned, add the
-   host root (or `…/<SUBPATH>`) to the comma-separated 应用域名 — self-service, immediate.
-3. No new client_id, and you inherit ai4news's already-approved extra userinfo fields
+1. Reuse that registration's `SSO_CLIENT_ID` and `SSO_CLIENT_SECRET` (same APPID, you own both).
+2. In the IDaaS console (`https://console-kwe.his.huawei.com/idaas/app/`), open the
+   registration and confirm **应用域名** includes the host root
+   `https://cari.rnd.huawei.com` (not pinned to a path). 应用域名 is comma-separated
+   multi-domain — adding a host is self-service and effective immediately, so an
+   existing registration (e.g. ai4news's) can be extended to cover a new domain
+   without a new client_id.
+3. No new client_id, and you inherit the already-approved extra userinfo fields
    (`uid` / `displayNameCn` / `email`).
 
 > If you'd rather isolate (D1): create a new registration with its own client_id, set
-> 应用域名 = `https://ai4news.rnd.huawei.com`, and tick `uid`/`displayNameCn`/`email` under
+> 应用域名 = `https://cari.rnd.huawei.com`, and tick `uid`/`displayNameCn`/`email` under
 > 用户信息申请. Everything else below is identical.
 
 ## Step 1 — environment variables (prod)
@@ -146,11 +149,11 @@ of ai4news's registered host. So:
 ```bash
 ENABLE_SSO=true
 AUTH_SECRET=<random 32+ byte string>                       # openssl rand -base64 32
-AUTH_URL=https://ai4news.rnd.huawei.com/<SUBPATH>/api/auth  # MUST end in /api/auth
+AUTH_URL=https://cari.rnd.huawei.com/<SUBPATH>/api/auth     # MUST end in /api/auth
 NEXT_BASE_PATH=/<SUBPATH>                                   # build-time; no trailing slash
 
-SSO_CLIENT_ID=<ai4news client_id>                          # D2 reuse
-SSO_CLIENT_SECRET=<ai4news client_secret>
+SSO_CLIENT_ID=<client_id covering cari.rnd.huawei.com>     # D2 reuse
+SSO_CLIENT_SECRET=<its client_secret>
 SSO_AUTHORIZE_URL=https://uniportal.huawei.com/saaslogin1/oauth2/authorize
 SSO_ACCESS_TOKEN_URL=https://uniportal.huawei.com/saaslogin1/oauth2/accesstoken
 SSO_USERINFO_URL=https://uniportal.huawei.com/saaslogin1/oauth2/userinfo
@@ -168,10 +171,10 @@ Next bakes `basePath` into the build.
 
 ## Step 2 — register the redirect_uri with Huawei
 
-Register (or confirm covered by ai4news's 应用域名):
+Register (or confirm covered by the registered 应用域名):
 
 ```
-https://ai4news.rnd.huawei.com/<SUBPATH>/api/auth/callback/huawei
+https://cari.rnd.huawei.com/<SUBPATH>/api/auth/callback/huawei
 ```
 
 Rule reminder: host+port must match the registered 应用域名 exactly; the path must be a
@@ -209,7 +212,7 @@ NEXT_BASE_PATH=/<SUBPATH> pnpm exec next start -p 3100 -H 127.0.0.1   # NOT `pnp
 
 ## Step 5 — verify the round trip
 
-1. Visit `https://ai4news.rnd.huawei.com/<SUBPATH>/auth/login` → the "Huawei W3 SSO" button shows (only when `ENABLE_SSO=true`).
+1. Visit `https://cari.rnd.huawei.com/<SUBPATH>/auth/login` → the "Huawei W3 SSO" button shows (only when `ENABLE_SSO=true`).
 2. Click it → you land on `uniportal.huawei.com/saaslogin1/oauth2/authorize?...`.
 3. After W3 auth → back to `…/<SUBPATH>/api/auth/callback/huawei` → you're logged in.
 4. In Postgres, a `User` row exists with `huaweiW3Id` set and `authMethod = huawei_sso`

@@ -2,7 +2,7 @@
 
 Next.js 14 (App Router) + NextAuth/Auth.js v5 + Prisma (PostgreSQL) + pnpm.
 Two deploys: **external** (AWS, root path, email/password only) and **internal**
-(Huawei intranet, served under `/ai-community` on `ai4news.rnd.huawei.com`, adds Huawei
+(Huawei intranet, served under `/ai-community` on `cari.rnd.huawei.com`, adds Huawei
 W3 SSO). Both login methods coexist; W3 is feature-flagged by `ENABLE_SSO`.
 
 ## Dev
@@ -61,7 +61,7 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
      hit `/ai-community/api/auth/*`, not the host root.
    - `HuaweiLoginButton`: post-login `callbackUrl` is `withBasePath()`-prefixed (W3 ends in a
      server redirect that Next does NOT auto-prefix; credentials login uses the router, which does).
-   - `.env`: `AUTH_URL=https://ai4news.rnd.huawei.com/ai-community/api/auth` (must end `/api/auth`);
+   - `.env`: `AUTH_URL=https://cari.rnd.huawei.com/ai-community/api/auth` (must end `/api/auth`);
      `NEXT_BASE_PATH=/ai-community` must be present **at build time**.
 5. **nginx `^~ /ai-community/` block: NO trailing slash on `proxy_pass`** (preserve the
    prefix for Next's basePath — opposite of `/cari_dste/`). `^~` stops asset regexes from
