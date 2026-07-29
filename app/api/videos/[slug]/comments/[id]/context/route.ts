@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { getComment } from '@/lib/video/queries';
+import { toPublicAuthor } from '@/lib/user-identity';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +25,7 @@ export async function GET(_req: Request, { params }: { params: { slug: string; i
     exists: true,
     rootId,
     isReply: target.parentId !== null,
-    root,
+    // 隐私账号: trim department/lab before the author leaves the server.
+    root: root ? { ...root, author: toPublicAuthor(root.author, session.user.isAdmin ?? false) } : root,
   });
 }

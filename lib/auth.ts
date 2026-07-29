@@ -3,6 +3,7 @@ import Credentials from 'next-auth/providers/credentials';
 import type { Provider } from 'next-auth/providers';
 import { prisma } from '@/lib/db';
 import { verifyPassword } from '@/lib/auth/password';
+import { syncDirectoryToUserAtLogin } from '@/lib/employee-directory';
 import { env } from '@/lib/env';
 import { createHuaweiFetch } from '@/lib/auth/huawei-fetch';
 
@@ -145,11 +146,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             },
           });
         }
+        // 员工名单：按工号把部门/研究所挂到刚登录的账号上（best-effort，绝不阻断登录）。
+        // 只用 W3 验证过的 id 匹配 — 见 lib/employee-directory.ts 的安全说明。
+        await syncDirectoryToUserAtLogin([w3Id]);
       } else if (account?.provider === 'credentials' && user?.email) {
-        await prisma.user.update({
+        const updated = await prisma.user.update({
           where: { email: user.email },
           data: { lastLoginAt: new Date() },
+          select: { huaweiW3Id: true },
         });
+        await syncDirectoryToUserAtLogin([updated.huaweiW3Id]);
       }
       return true;
     },

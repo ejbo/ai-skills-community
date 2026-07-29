@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { Upload } from 'lucide-react';
 import { prisma } from '@/lib/db';
+import { auth } from '@/lib/auth';
 import { isLLMConfigured } from '@/lib/llm';
 import { parseComparisonExample } from '@/lib/comparison';
 import {
@@ -296,14 +297,23 @@ async function ComparisonSectionLoader({
 }
 
 async function AccessSectionLoader({ skillId, slug }: { skillId: string; slug: string }) {
-  const overview = await getSkillAccessOverview(skillId);
-  return <AccessSection overview={overview} slug={slug} />;
+  const [session, overview] = await Promise.all([auth(), getSkillAccessOverview(skillId)]);
+  return (
+    <AccessSection overview={overview} slug={slug} viewerIsAdmin={session?.user?.isAdmin ?? false} />
+  );
 }
 
 async function AnalyticsSectionLoader({ skillId }: { skillId: string }) {
-  const [analytics, downloaders] = await Promise.all([
+  const [session, analytics, downloaders] = await Promise.all([
+    auth(),
     getSkillAnalytics(skillId),
     getSkillDownloaders(skillId, 100),
   ]);
-  return <AnalyticsSection analytics={analytics} downloaders={downloaders} />;
+  return (
+    <AnalyticsSection
+      analytics={analytics}
+      downloaders={downloaders}
+      viewerIsAdmin={session?.user?.isAdmin ?? false}
+    />
+  );
 }

@@ -9,6 +9,7 @@ import { pushToast } from '@/components/Toaster';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { Avatar } from '@/components/Avatar';
+import { DeptTag } from '@/components/DeptTag';
 
 export interface CommentView {
   id: string;
@@ -16,7 +17,15 @@ export interface CommentView {
   status: 'visible' | 'deleted';
   replyCount: number;
   createdAt: string | Date;
-  author: { handle: string; displayName: string; avatarUrl?: string | null };
+  author: {
+    handle: string;
+    displayName: string;
+    avatarUrl?: string | null;
+    // Already trimmed server-side via toPublicAuthor() — null for private accounts.
+    department?: string | null;
+    lab?: string | null;
+    isPrivate?: boolean;
+  };
 }
 
 export interface ThreadView extends CommentView {
@@ -264,6 +273,7 @@ function CommentBlock({
             <span className="font-medium text-zinc-800 dark:text-zinc-200">
               {comment.author.displayName}
             </span>
+            <DeptTag department={comment.author.department} lab={comment.author.lab} />
             <span>{formatDistanceToNowStrict(created, { addSuffix: true })}</span>
           </div>
           {isTombstone ? (

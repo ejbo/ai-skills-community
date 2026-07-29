@@ -7,6 +7,7 @@ import { ChevronDown, ChevronUp, Heart, Loader2, MessageSquare, Pencil, Trash2 }
 import { formatDistanceToNowStrict } from 'date-fns';
 import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
+import { DeptTag } from '@/components/DeptTag';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { withBasePath } from '@/lib/base-path';
 import { RichTextEditor } from '@/components/RichTextEditor';
@@ -187,7 +188,8 @@ export function CommentItem({ slug, comment, currentUser, onChanged, onAddSiblin
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 text-sm">
           <span className="font-medium">{author.displayName}</span>
-          <span className="text-xs text-muted">@{author.handle}</span>
+          {!author.isPrivate && <span className="text-xs text-muted">@{author.handle}</span>}
+          <DeptTag department={author.department} lab={author.lab} />
           <span className="text-xs text-muted">·</span>
           <span className="text-xs text-muted">
             {formatDistanceToNowStrict(comment.createdAt, { addSuffix: true })}

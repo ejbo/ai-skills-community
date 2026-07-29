@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowLeft, LayoutDashboard, Users, Package, Boxes, Clapperboard, FolderTree, History, Megaphone } from 'lucide-react';
+import { ArrowLeft, LayoutDashboard, Users, BookOpen, BookUser, Package, Boxes, Clapperboard, FolderTree, History, Megaphone, MessagesSquare } from 'lucide-react';
 import { requireAdmin } from '@/lib/admin';
 import './manage.css';
 
@@ -9,9 +9,12 @@ export default async function ManageLayout({ children }: { children: React.React
   const links = [
     { href: '/manage', label: '仪表盘', icon: <LayoutDashboard className="h-4 w-4" /> },
     { href: '/manage/users', label: '用户管理', icon: <Users className="h-4 w-4" /> },
+    { href: '/manage/employees', label: '员工名单', icon: <BookUser className="h-4 w-4" /> },
     { href: '/manage/skills', label: 'Skill 审核', icon: <Package className="h-4 w-4" /> },
     { href: '/manage/packs', label: '合集包', icon: <Boxes className="h-4 w-4" /> },
     { href: '/manage/videos', label: '视频管理', icon: <Clapperboard className="h-4 w-4" /> },
+    { href: '/manage/discussion', label: '讨论管理', icon: <MessagesSquare className="h-4 w-4" /> },
+    { href: '/manage/library', label: '知识库', icon: <BookOpen className="h-4 w-4" /> },
     { href: '/manage/categories', label: '类别', icon: <FolderTree className="h-4 w-4" /> },
     { href: '/manage/announcements', label: '公告', icon: <Megaphone className="h-4 w-4" /> },
     { href: '/manage/logs', label: '操作日志', icon: <History className="h-4 w-4" /> },

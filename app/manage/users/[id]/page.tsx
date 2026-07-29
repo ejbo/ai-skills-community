@@ -83,6 +83,29 @@ export default async function UserDetailPage({ params }: { params: { id: string 
                   <Dd className="font-medium">{user.huaweiW3Name}</Dd>
                 </>
               )}
+              <Dt>部门 / 研究所</Dt>
+              <Dd>
+                {user.department || user.lab ? (
+                  <>
+                    {user.department}
+                    {user.department && user.lab ? ' · ' : ''}
+                    {user.lab}
+                    <span className="ml-1 text-xs text-muted">（由员工名单按工号同步）</span>
+                  </>
+                ) : (
+                  <span className="text-muted">—（员工名单中无匹配工号）</span>
+                )}
+              </Dd>
+              <Dt>隐私账号</Dt>
+              <Dd>
+                {user.isPrivate ? (
+                  <span className="badge" style={{ background: '#fef3c7', color: '#92400e' }}>
+                    已开启 — 对普通用户仅显示昵称
+                  </span>
+                ) : (
+                  '未开启'
+                )}
+              </Dd>
               <Dt>注册时间</Dt>
               <Dd>{format(user.createdAt, 'yyyy-MM-dd HH:mm')}</Dd>
               <Dt>最近登录</Dt>

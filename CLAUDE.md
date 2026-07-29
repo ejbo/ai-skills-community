@@ -131,6 +131,38 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   writes inside interactive transactions (see the comment DELETE route) — copy that pattern, not
   the naive check-then-act. Admin moderation is inline on the detail page (status PATCH + delete,
   logAdmin'd); notifications reuse `comment_reply`/`reply_reply` types via `notifyFeedbackReply`.
+- **讨论区 (Discussion)**: community hub at `/discussion` — LinkedIn/HF-style 动态 feed
+  (`Post`/`PostMedia`/`PostLike`/`PostComment`/`PostCommentLike`) + Discourse-style forum
+  (`DiscussionTopic`/`DiscussionUpvote`/`DiscussionReply`); migration `20260729000000_add_discussion`.
+  Comments/replies copy the feedback board's 2-level flat thread contract + guarded counter
+  transactions verbatim; notifications reuse `comment_reply`/`reply_reply` via
+  `notifyPostReply`/`notifyTopicReply` (deep links `/discussion/posts/<id>?focus=<commentId>`,
+  `/discussion/topics/<id>?focus=<replyId>`). Post attachments: images reuse `/api/uploads/image`;
+  member videos (1 GB cap, faststart remux) + PDF/PPT/Word go through `/api/discussion/upload`
+  (per-user daily byte budget) and are served by `/api/discussion/media/[...key]` (login + Range;
+  content-disposition built CJK-safe — never put a raw filename in a header). External video links
+  render as link cards, NEVER iframes (intranet blocks embeds). Feed paging is an explicit keyset
+  cursor encoding `createdAt|id` — do not switch back to Prisma `cursor` (it breaks when the cursor
+  row is deleted/pinned); pinned posts are capped at `MAX_PINNED_POSTS` (enforced on pin). Authors
+  render via the identity contract (`toPublicAuthor` + `<DeptTag/>`). Admin: pin/lock/delete inline
+  on cards/topic pages + tables at `/manage/discussion`, all logAdmin'd.
+- **员工名单 (Employee Directory)**: admin roster at `/manage/employees` (`EmployeeDirectory` model;
+  bulk import via paste / CSV / XLSX — parsers in `lib/employee-import.ts`, merge rules in
+  `lib/employee-admin.ts`; 工号 canonicalized to lowercase at write time — the DB unique index is
+  case-sensitive, app lookups are not). Rows with 工号 push `User.department`/`lab` onto matching
+  users on every create/update/import, via the manual 同步 button, AND at login (`signIn` callback,
+  best-effort). Match = `huaweiW3Id` ONLY (case-insensitive; `lib/employee-directory.ts`) — NEVER
+  the handle: it derives from the unverified email local part under open registration, so matching
+  it would let `<工号>@any.tld` squatters inherit an employee's 部门/研究所 and harvest the roster.
+  Deleting an entry never touches users; 停用 (isActive=false) entries are excluded from all sync.
+- **隐私账号 & identity display**: `User.isPrivate` toggle at Settings → 隐私. Contract
+  (`lib/user-identity.ts`): author queries select `AUTHOR_IDENTITY_SELECT` and every server
+  boundary (RSC props / API JSON) maps through `toPublicAuthor(author, viewerIsAdmin)` so a private
+  user's department/lab are stripped SERVER-side (never shipped-then-hidden); UI renders
+  `<DeptTag/>` (`components/DeptTag.tsx`) next to names and hides the `@handle` TEXT when
+  `isPrivate` (profile links keep working; handle stays in payloads for ownership checks).
+  Admins always see full identity (and a 隐私 badge in /manage). Any NEW surface that renders
+  another user's identity must follow this select → trim → DeptTag pattern.
 - **Video delivery**: the file route (`app/api/videos/file/[...key]`) streams from local disk with
   HTTP Range. Under concurrency the bottleneck is that bytes flow through Node — set
   `VIDEO_X_ACCEL_REDIRECT=true` + add the internal `/_video/` nginx location (see deploy conf)

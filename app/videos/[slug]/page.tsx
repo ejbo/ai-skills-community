@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import { RelatedVideos } from '@/components/video/RelatedVideos';
 import { getVideoActor, canViewVideo, canPlayVideo, isVideoPrivileged } from '@/lib/video/access';
 import { getVideoBySlug, listTopComments, relatedVideos } from '@/lib/video/queries';
+import { toPublicAuthor } from '@/lib/user-identity';
 import { VideoPlayer } from '@/components/video/VideoPlayer';
 import { VideoMeta } from '@/components/video/VideoMeta';
 import { AiPanel } from '@/components/video/AiPanel';
@@ -41,6 +42,10 @@ export default async function VideoDetailPage({ params }: PageProps) {
 
   const t = await getTranslations('video');
 
+  // 隐私账号: strip department/lab server-side before authors reach the client.
+  const viewerIsAdmin = session.user.isAdmin ?? false;
+  const publicComments = comments.map((c) => ({ ...c, author: toPublicAuthor(c.author, viewerIsAdmin) }));
+
   const currentUser = actor
     ? { id: actor.id, isAdmin: actor.isAdmin, handle: session.user.handle }
     : null;
@@ -63,7 +68,7 @@ export default async function VideoDetailPage({ params }: PageProps) {
           />
 
           <VideoMeta
-            video={video}
+            video={{ ...video, uploader: toPublicAuthor(video.uploader, viewerIsAdmin) }}
             privileged={privileged}
             initialLiked={Boolean(likeRow)}
             initialFavorited={Boolean(favRow)}
@@ -76,7 +81,7 @@ export default async function VideoDetailPage({ params }: PageProps) {
 
           <CommentSection
             slug={video.slug}
-            initialComments={comments}
+            initialComments={publicComments}
             initialCursor={nextCursor}
             currentUser={currentUser}
           />

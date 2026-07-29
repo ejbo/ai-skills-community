@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Calendar, Pencil, Tag as TagIcon } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { getTranslations } from 'next-intl/server';
+import { DeptTag } from '@/components/DeptTag';
 import type { VideoDetail } from '@/lib/video/queries';
 import { formatCount, withBasePath } from '@/lib/video/types';
 import { VideoEngagementBar } from './VideoEngagementBar';
@@ -60,9 +61,12 @@ export async function VideoMeta({ video, privileged, initialLiked, initialFavori
           )}
           <div>
             <div className="text-[11px] uppercase tracking-wider text-muted">{t('detail.by')}</div>
-            <Link href={`/users/${uploader.handle}`} className="text-sm font-medium hover:underline">
-              {uploader.displayName}
-            </Link>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <Link href={`/users/${uploader.handle}`} className="text-sm font-medium hover:underline">
+                {uploader.displayName}
+              </Link>
+              <DeptTag department={uploader.department} lab={uploader.lab} />
+            </div>
           </div>
         </div>
 

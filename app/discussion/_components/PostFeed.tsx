@@ -1,0 +1,86 @@
+'use client';
+
+import { useState } from 'react';
+import { ChevronDown, Loader2 } from 'lucide-react';
+import { EmptyState } from '@/components/EmptyState';
+import { pushToast } from '@/components/Toaster';
+import { PostComposer } from './PostComposer';
+import { PostCard } from './PostCard';
+import type { CurrentUser, PostView } from './types';
+
+/** The 动态 tab: composer + post stream with cursor-based "load more". */
+export function PostFeed({
+  initialPosts,
+  initialHasMore,
+  initialCursor,
+  currentUser,
+}: {
+  initialPosts: PostView[];
+  initialHasMore: boolean;
+  initialCursor: string | null;
+  currentUser: CurrentUser | null;
+}) {
+  const [posts, setPosts] = useState<PostView[]>(initialPosts);
+  const [hasMore, setHasMore] = useState(initialHasMore);
+  const [cursor, setCursor] = useState<string | null>(initialCursor);
+  const [loading, setLoading] = useState(false);
+
+  async function loadMore() {
+    if (loading || !cursor) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/discussion/posts?cursor=${encodeURIComponent(cursor)}&limit=10`);
+      if (!res.ok) throw new Error('failed');
+      const data = await res.json();
+      setPosts((prev) => {
+        const seen = new Set(prev.map((p) => p.id));
+        return [...prev, ...(data.items as PostView[]).filter((p) => !seen.has(p.id))];
+      });
+      setHasMore(Boolean(data.hasMore));
+      setCursor(data.nextCursor ?? null);
+    } catch {
+      pushToast('error', '加载失败，请重试');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-2xl space-y-4">
+      <PostComposer
+        currentUser={currentUser}
+        onPosted={(post) => setPosts((prev) => [post, ...prev])}
+      />
+
+      {posts.length === 0 ? (
+        <EmptyState title="还没有动态" description="来发布第一条动态吧" />
+      ) : (
+        posts.map((post) => (
+          <PostCard
+            key={post.id}
+            post={post}
+            currentUser={currentUser}
+            onRemoved={(id) => setPosts((prev) => prev.filter((p) => p.id !== id))}
+          />
+        ))
+      )}
+
+      {hasMore && (
+        <div className="flex justify-center pt-1">
+          <button
+            onClick={loadMore}
+            disabled={loading}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 transition hover:border-accent-500 hover:text-accent-700 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+            加载更多
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

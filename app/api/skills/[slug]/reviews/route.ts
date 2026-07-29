@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
 
 const reviewSchema = z.object({
   rating: z.number().int().min(1).max(5),
@@ -9,16 +10,21 @@ const reviewSchema = z.object({
 });
 
 export async function GET(_req: Request, { params }: { params: { slug: string } }) {
+  const session = await auth();
+  const viewerIsAdmin = session?.user?.isAdmin ?? false;
   const skill = await prisma.skill.findUnique({ where: { slug: params.slug }, select: { id: true } });
   if (!skill) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   const reviews = await prisma.review.findMany({
     where: { skillId: skill.id },
     orderBy: { createdAt: 'desc' },
     include: {
-      author: { select: { handle: true, displayName: true } },
+      author: AUTHOR_IDENTITY_SELECT,
     },
   });
-  return NextResponse.json({ reviews });
+  return NextResponse.json({
+    // 隐私账号：trim department/lab server-side before the JSON boundary.
+    reviews: reviews.map((r) => ({ ...r, author: toPublicAuthor(r.author, viewerIsAdmin) })),
+  });
 }
 
 export async function POST(req: Request, { params }: { params: { slug: string } }) {

@@ -3,6 +3,8 @@ import { ChevronLeft, ChevronRight, MessageSquare } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { auth } from '@/lib/auth';
 import { listFeedback, isFeedbackStatus, type FeedbackSort } from '@/lib/feedback-queries';
+import { toPublicAuthor } from '@/lib/user-identity';
+import { DeptTag } from '@/components/DeptTag';
 import { EmptyState } from '@/components/EmptyState';
 import { FeedbackComposer } from './_components/FeedbackComposer';
 import { UpvoteButton } from './_components/UpvoteButton';
@@ -30,6 +32,7 @@ function pageHref(sp: SearchParams, patch: Partial<SearchParams>) {
 
 export default async function FeedbackPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await auth();
+  const viewerIsAdmin = session?.user?.isAdmin ?? false;
   const status = isFeedbackStatus(searchParams.status) ? searchParams.status : undefined;
   const sort: FeedbackSort = searchParams.sort === 'top' ? 'top' : 'newest';
 
@@ -109,7 +112,9 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
           />
         ) : (
           <ul className="surface divide-y divide-zinc-100 overflow-hidden rounded-2xl dark:divide-zinc-800/60">
-            {items.map((f) => (
+            {items.map((f) => {
+              const author = toPublicAuthor(f.author, viewerIsAdmin);
+              return (
               // The vote button is a SIBLING of the row link (not nested inside
               // it) — interactive-in-interactive markup breaks a11y/aux-click.
               <li
@@ -129,7 +134,8 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
                       <StatusBadge status={f.status} />
                     </div>
                     <div className="mt-1 flex items-center gap-2 text-xs text-muted">
-                      <span className="truncate">{f.author.displayName}</span>
+                      <span className="truncate">{author.displayName}</span>
+                      <DeptTag department={author.department} lab={author.lab} />
                       <span>·</span>
                       <span>{formatDistanceToNowStrict(f.createdAt, { addSuffix: true })}</span>
                     </div>
@@ -140,7 +146,8 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
                   </span>
                 </Link>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
 

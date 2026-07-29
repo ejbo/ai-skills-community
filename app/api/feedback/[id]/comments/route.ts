@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
 import { notifyFeedbackReply } from '@/lib/notifications';
+import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
 
 const createSchema = z.object({
   bodyMd: z.string().trim().min(1).max(2000),
@@ -63,7 +64,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         parentId: true,
         replyCount: true,
         createdAt: true,
-        author: { select: { handle: true, displayName: true, avatarUrl: true } },
+        author: AUTHOR_IDENTITY_SELECT,
       },
     }),
     prisma.feedback.update({
@@ -125,5 +126,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     });
   }
 
-  return NextResponse.json({ ok: true, comment });
+  return NextResponse.json({
+    ok: true,
+    comment: {
+      ...comment,
+      author: toPublicAuthor(comment.author, session.user.isAdmin ?? false),
+    },
+  });
 }

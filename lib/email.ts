@@ -191,6 +191,48 @@ export function notifyFeedbackReplyEmail(opts: {
   });
 }
 
+/** Notify a user that their post/comment on the discussion feed got a reply. `link` is absolute. */
+export function notifyPostReplyEmail(opts: {
+  to: string;
+  actorName: string;
+  postExcerpt: string;
+  link: string;
+  snippet: string;
+  isReplyToComment: boolean;
+}): void {
+  const what = opts.isReplyToComment ? '评论' : '动态';
+  sendMailAsync({
+    to: opts.to,
+    subject: `【社区动态】${opts.actorName} 回复了你的${what}`,
+    text: `${opts.actorName} 在「${opts.postExcerpt}」下回复了你的${what}：\n\n${opts.snippet}\n\n查看：${opts.link}`,
+    html:
+      `<p><strong>${esc(opts.actorName)}</strong> 在「${esc(opts.postExcerpt)}」下回复了你的${what}：</p>` +
+      `<blockquote>${esc(opts.snippet)}</blockquote>` +
+      `<p><a href="${opts.link}">查看对话 →</a></p>`,
+  });
+}
+
+/** Notify a user that their forum topic/reply got a reply. `link` is absolute. */
+export function notifyTopicReplyEmail(opts: {
+  to: string;
+  actorName: string;
+  topicTitle: string;
+  link: string;
+  snippet: string;
+  isReplyToComment: boolean;
+}): void {
+  const what = opts.isReplyToComment ? '回复' : '帖子';
+  sendMailAsync({
+    to: opts.to,
+    subject: `【讨论区】${opts.actorName} 回复了你的${what}`,
+    text: `${opts.actorName} 在「${opts.topicTitle}」下回复了你的${what}：\n\n${opts.snippet}\n\n查看：${opts.link}`,
+    html:
+      `<p><strong>${esc(opts.actorName)}</strong> 在「${esc(opts.topicTitle)}」下回复了你的${what}：</p>` +
+      `<blockquote>${esc(opts.snippet)}</blockquote>` +
+      `<p><a href="${opts.link}">查看对话 →</a></p>`,
+  });
+}
+
 /** Notify a user of a published announcement. `link` is absolute. */
 export function notifyAnnouncementEmail(opts: {
   to: string;

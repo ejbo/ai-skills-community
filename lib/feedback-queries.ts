@@ -1,5 +1,6 @@
 import { Prisma, FeedbackStatus } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { AUTHOR_IDENTITY_SELECT } from '@/lib/user-identity';
 
 export const FEEDBACK_STATUSES = ['open', 'planned', 'in_progress', 'done', 'declined'] as const;
 
@@ -9,7 +10,8 @@ export function isFeedbackStatus(v: unknown): v is FeedbackStatus {
 
 export type FeedbackSort = 'newest' | 'top';
 
-const AUTHOR_SELECT = { select: { handle: true, displayName: true, avatarUrl: true } };
+// Includes department/lab/isPrivate — consumers MUST trim via toPublicAuthor().
+const AUTHOR_SELECT = AUTHOR_IDENTITY_SELECT;
 
 export interface ListFeedbackFilters {
   status?: FeedbackStatus;

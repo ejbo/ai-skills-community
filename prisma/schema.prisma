@@ -32,6 +32,11 @@ model User {
   authMethod         AuthMethod @default(password)
   avatarUrl          String?
   bio                String?
+  // 部门 / 研究所 — 引用自员工名单（/manage/employees），按工号自动同步；请勿手工维护。
+  department         String?
+  lab                String?
+  // 隐私账号：开启后对普通用户只显示昵称与头像（隐藏部门/研究所/@handle）；管理员始终可见全部。
+  isPrivate          Boolean    @default(false)
   isAdmin            Boolean    @default(false)
   isActive           Boolean    @default(true)
   canPublishSkills   Boolean    @default(true)
@@ -57,6 +62,7 @@ model User {
   downloads       Download[]
   accessRequests  SkillAccessRequest[] @relation("AccessRequester")
   accessDecisions SkillAccessRequest[] @relation("AccessDecider")
+  employeeEntries EmployeeDirectory[]  @relation("EmployeeEntryCreator")
 
   // ── Video board back-relations (virtual; no SQL columns on User) ──
   uploadedVideos    Video[]            @relation("UploadedVideos")
@@ -78,6 +84,23 @@ model User {
   feedbacks        Feedback[]
   feedbackUpvotes  FeedbackUpvote[]
   feedbackComments FeedbackComment[]
+
+  // ── Discussion back-relations (virtual; no SQL columns on User) ──
+  posts             Post[]             @relation("AuthoredPosts")
+  postLikes         PostLike[]
+  postComments      PostComment[]
+  postCommentLikes  PostCommentLike[]
+  discussionTopics  DiscussionTopic[]
+  discussionUpvotes DiscussionUpvote[]
+  discussionReplies DiscussionReply[]
+
+  // ── Library back-relations (virtual; no SQL columns on User) ──
+  libraryDocs       LibraryDoc[]
+  libraryShelf      LibraryShelfItem[]
+  libraryLikes      LibraryLike[]
+  libraryProgress   LibraryProgress[]
+  libraryHighlights LibraryHighlight[]
+  libraryViews      LibraryView[]
 
   @@index([handle])
   @@index([email])
@@ -868,6 +891,186 @@ model Announcement {
   @@index([createdById])
 }
 
+// ─── Discussion（讨论区）───────────────────────────────────────────────────
+// Community hub: LinkedIn/HF-style feed posts (Post*) + Discourse-style forum
+// topics (Discussion*). Self-contained like the video board: every model here
+// FKs only to User or another Post*/Discussion* model — never Skill/Video.
+
+enum PostMediaKind {
+  image
+  video // self-hosted upload, played inline in the feed
+  video_link // external URL — rendered as a link card (intranet blocks iframes)
+  file // pdf / ppt / doc attachment
+}
+
+enum PostCommentStatus {
+  visible
+  deleted // tombstone: kept to preserve thread shape, body wiped
+}
+
+model Post {
+  id           String    @id @default(cuid())
+  authorId     String
+  bodyMd       String    @default("")
+  pinned       Boolean   @default(false)
+  likeCount    Int       @default(0)
+  commentCount Int       @default(0)
+  editedAt     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  author   User          @relation("AuthoredPosts", fields: [authorId], references: [id], onDelete: Cascade)
+  media    PostMedia[]
+  likes    PostLike[]
+  comments PostComment[]
+
+  @@index([pinned, createdAt])
+  @@index([createdAt])
+  @@index([authorId])
+}
+
+model PostMedia {
+  id        String        @id @default(cuid())
+  postId    String
+  kind      PostMediaKind
+  // Uploaded media stores the storage key + root-relative URL (withBasePath is
+  // applied at render time); video_link stores the external URL, key stays "".
+  key       String        @default("")
+  url       String
+  posterUrl String?
+  name      String        @default("") // original filename (file) / link label
+  mimeType  String        @default("")
+  sizeBytes Int           @default(0)
+  width     Int?
+  height    Int?
+  sortOrder Int           @default(0)
+  createdAt DateTime      @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, sortOrder])
+}
+
+model PostLike {
+  userId    String
+  postId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId])
+  @@index([postId])
+}
+
+model PostComment {
+  id         String            @id @default(cuid())
+  postId     String
+  authorId   String
+  // Always points at a TOP-LEVEL comment (2-level flat threads); reply-to-reply
+  // routing uses a transient replyToId in the API, never stored.
+  parentId   String?
+  bodyMd     String
+  status     PostCommentStatus @default(visible)
+  likeCount  Int               @default(0)
+  replyCount Int               @default(0)
+  createdAt  DateTime          @default(now())
+
+  post    Post              @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author  User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent  PostComment?      @relation("PostCommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies PostComment[]     @relation("PostCommentThread")
+  likes   PostCommentLike[]
+
+  @@index([postId, createdAt])
+  @@index([postId, likeCount])
+  @@index([parentId])
+}
+
+model PostCommentLike {
+  userId    String
+  commentId String
+  createdAt DateTime @default(now())
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment PostComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@id([userId, commentId])
+  @@index([commentId])
+}
+
+enum DiscussionCategory {
+  tech // 技术交流
+  qa // 问答求助
+  share // 经验分享
+  showcase // 成果展示
+  general // 灌水闲聊
+}
+
+enum DiscussionReplyStatus {
+  visible
+  deleted // tombstone: kept to preserve thread shape, body wiped
+}
+
+model DiscussionTopic {
+  id             String             @id @default(cuid())
+  authorId       String
+  title          String
+  bodyMd         String             @default("")
+  category       DiscussionCategory @default(general)
+  pinned         Boolean            @default(false)
+  locked         Boolean            @default(false)
+  upvoteCount    Int                @default(0)
+  replyCount     Int                @default(0)
+  // Bumped on every reply — drives the default "最新回复" ordering.
+  lastActivityAt DateTime           @default(now())
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  author  User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  upvotes DiscussionUpvote[]
+  replies DiscussionReply[]
+
+  @@index([category, lastActivityAt])
+  @@index([pinned, lastActivityAt])
+  @@index([lastActivityAt])
+  @@index([upvoteCount])
+  @@index([authorId])
+}
+
+model DiscussionUpvote {
+  userId    String
+  topicId   String
+  createdAt DateTime @default(now())
+
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic DiscussionTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@id([userId, topicId])
+  @@index([topicId])
+}
+
+model DiscussionReply {
+  id         String                @id @default(cuid())
+  topicId    String
+  authorId   String
+  // Always points at a TOP-LEVEL reply (2-level flat threads); reply-to-reply
+  // routing uses a transient replyToId in the API, never stored.
+  parentId   String?
+  bodyMd     String
+  status     DiscussionReplyStatus @default(visible)
+  replyCount Int                   @default(0)
+  createdAt  DateTime              @default(now())
+
+  topic   DiscussionTopic   @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  author  User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent  DiscussionReply?  @relation("DiscussionReplyThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies DiscussionReply[] @relation("DiscussionReplyThread")
+
+  @@index([topicId, createdAt])
+  @@index([parentId])
+}
+
 // Per-user notification settings: per-category in-app toggle + "also email".
 // Access request/decision emails default ON to preserve the existing behavior;
 // the newer comment-reply / announcement emails default OFF (opt-in).
@@ -886,4 +1089,235 @@ model NotificationPreference {
   updatedAt           DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── 员工名单（Employee Directory）─────────────────────────────────────────
+// Admin-curated roster maintained at /manage/employees. Rows whose accountNumber
+// (工号, stored lowercase) match a registered user's huaweiW3Id (the W3-verified
+// identity — NEVER the email-derived handle, see lib/employee-directory.ts) and
+// push department/lab onto that user on every create / update / import, and at
+// that user's next login — deleting a directory entry never touches the user.
+model EmployeeDirectory {
+  id            String   @id @default(cuid())
+  name          String
+  // 工号：null = 未填（允许同名多行）；非空时全局唯一（Postgres 对 NULL 不判重）。
+  accountNumber String?  @unique
+  department    String   @default("")
+  lab           String   @default("")
+  avatarUrl     String   @default("")
+  isActive      Boolean  @default(true)
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  createdBy User? @relation("EmployeeEntryCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([name])
+  @@index([department])
+  @@index([lab])
+}
+
+// ─── Library（知识库）──────────────────────────────────────────────────────
+// Readwise-Reader-style community library: users submit a URL / PDF / EPUB;
+// the server extracts it into a normalized reading carrier (chaptered
+// sanitized HTML + plain-text chunks); AI reads it ONCE (cached on the rows);
+// all users then share the AI 导读 + cheap retrieval Q&A. Self-contained like
+// the video board: every Library* model FKs only to User or Library*.
+
+enum LibraryDocType {
+  book
+  paper
+  blog
+  article
+  report
+  other
+}
+
+enum LibraryDocFormat {
+  url
+  pdf
+  epub
+}
+
+enum LibraryDocStatus {
+  pending
+  processing
+  ready
+  failed
+}
+
+enum LibraryHighlightColor {
+  yellow
+  green
+  blue
+  pink
+}
+
+model LibraryDoc {
+  id              String           @id @default(cuid())
+  slug            String           @unique
+  title           String
+  author          String?
+  language        String? // 'zh' | 'en' | null (heuristic)
+  docType         LibraryDocType   @default(article)
+  docTypePinned   Boolean          @default(false) // user/admin chose explicitly; AI never overwrites
+  format          LibraryDocFormat
+  status          LibraryDocStatus @default(pending)
+  processingError String?
+  summary         String           @default("") // short description shown on cards (AI-filled)
+  sourceUrl       String? // canonicalized original URL (null for file uploads)
+  siteName        String? // og:site_name / readable domain / null
+  publishedAt     DateTime? // original publish date
+  coverUrl        String? // root-relative stored cover, null => deterministic placeholder
+  fileKey         String? // original pdf/epub key in storage
+  fileUrl         String? // root-relative /api/library/file/<key>
+  mimeType        String?
+  fileSizeBytes   Int              @default(0)
+  contentHash     String? // sha256 hex of original bytes (dedup anchor #2)
+  wordCount       Int              @default(0) // CJK chars + latin words
+  estReadMinutes  Int              @default(0)
+  chapterCount    Int              @default(0)
+  chunkerVersion  Int              @default(1)
+  featured        Boolean          @default(false)
+  featuredAt      DateTime?
+  uploaderId      String
+  viewCount       Int              @default(0)
+  likeCount       Int              @default(0)
+  shelfCount      Int              @default(0)
+
+  // AI cache — generated once, shared by all users
+  aiOverview     Json? // { summary: string, outline: string[], keyPoints: string[], questions: string[] }
+  aiModel        String?
+  aiIndexedAt    DateTime?
+  aiSourceHash   String? // = contentHash at indexing time; mismatch => stale
+  aiIndexState   String    @default("none") // none | running | ready | failed
+  aiError        String?
+  aiTokensInput  Int       @default(0)
+  aiTokensOutput Int       @default(0)
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  uploader   User               @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+  chapters   LibraryChapter[]
+  chunks     LibraryChunk[]
+  shelfItems LibraryShelfItem[]
+  likes      LibraryLike[]
+  progress   LibraryProgress[]
+  highlights LibraryHighlight[]
+  views      LibraryView[]
+
+  @@index([status, deletedAt, createdAt])
+  @@index([docType, status, createdAt])
+  @@index([featured, featuredAt])
+  @@index([uploaderId])
+  @@index([contentHash])
+  @@index([sourceUrl])
+  @@index([shelfCount])
+  @@index([viewCount])
+}
+
+model LibraryChapter {
+  id           String   @id @default(cuid())
+  docId        String
+  chapterIndex Int
+  title        String?
+  html         String // sanitized reading HTML (sanitized at ingest; rendered with dangerouslySetInnerHTML)
+  charCount    Int      @default(0)
+  aiSummary    String? // <=120 chars retrieval index entry; null = not yet summarized (checkpoint)
+  aiKeywords   String[] @default([])
+
+  doc LibraryDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  @@unique([docId, chapterIndex])
+}
+
+model LibraryChunk {
+  id            String @id @default(cuid())
+  docId         String
+  chapterIndex  Int
+  ordinal       Int // chunkKey = `c${chapterIndex}-${ordinal}`
+  text          String
+  tokenEstimate Int
+  charStart     Int // offsets within chapter plain text (paragraphs joined by \n\n)
+  charEnd       Int
+
+  doc LibraryDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  @@unique([docId, chapterIndex, ordinal])
+  @@index([docId])
+}
+
+model LibraryShelfItem {
+  userId    String
+  docId     String
+  createdAt DateTime @default(now())
+
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  doc  LibraryDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  @@id([userId, docId])
+  @@index([docId])
+  @@index([userId, createdAt])
+}
+
+model LibraryLike {
+  userId    String
+  docId     String
+  createdAt DateTime @default(now())
+
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  doc  LibraryDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  @@id([userId, docId])
+  @@index([docId])
+}
+
+model LibraryProgress {
+  userId       String
+  docId        String
+  chapterIndex Int      @default(0)
+  scrollRatio  Float    @default(0) // 0..1 within chapter
+  percent      Float    @default(0) // 0..100 whole doc
+  updatedAt    DateTime @updatedAt
+
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  doc  LibraryDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  @@id([userId, docId])
+  @@index([userId, updatedAt])
+}
+
+model LibraryHighlight {
+  id           String                @id @default(cuid())
+  docId        String
+  userId       String
+  chapterIndex Int
+  charStart    Int // offsets in chapter plain text (fallback ordering/position)
+  charEnd      Int
+  quote        String // <=300 chars, primary DOM re-anchoring key
+  color        LibraryHighlightColor @default(yellow)
+  noteText     String?
+  createdAt    DateTime              @default(now())
+
+  doc  LibraryDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([docId, userId, chapterIndex])
+  @@index([userId, createdAt])
+}
+
+model LibraryView {
+  id          String   @id @default(cuid())
+  docId       String
+  userId      String?
+  sessionHash String // sha256(dailySalt: (userId|ipHash) + docId + UTC day) — copy VideoView pattern
+  createdAt   DateTime @default(now())
+
+  doc  LibraryDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
+  user User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([docId, sessionHash])
+  @@index([userId])
 }

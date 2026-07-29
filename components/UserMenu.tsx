@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, LayoutDashboard, Settings, ShieldCheck, Upload, LogOut, User } from 'lucide-react';
+import { ChevronDown, LayoutDashboard, LibraryBig, Settings, ShieldCheck, Upload, LogOut, User } from 'lucide-react';
 import { signOut } from 'next-auth/react';
 import { useTranslations } from 'next-intl';
 import { withBasePath } from '@/lib/base-path';
@@ -59,6 +59,9 @@ export function UserMenu({ user }: { user: MenuUser }) {
             </MenuItem>
             <MenuItem href="/dashboard" icon={<LayoutDashboard className="h-4 w-4" />}>
               {t('dashboard')}
+            </MenuItem>
+            <MenuItem href="/library/shelf" icon={<LibraryBig className="h-4 w-4" />}>
+              我的书架
             </MenuItem>
             <MenuItem href="/skills/new" icon={<Upload className="h-4 w-4" />}>
               {t('upload')}

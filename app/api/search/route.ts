@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { auth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ q, skills: [], users: [], categories: [], tags: [], videos: [] });
   }
   const contains = { contains: q, mode: 'insensitive' as const };
+  const session = await auth();
+  const viewerIsAdmin = session?.user?.isAdmin ?? false;
 
   const [skills, users, categories, tags, videos] = await Promise.all([
     prisma.skill.findMany({
@@ -29,7 +32,7 @@ export async function GET(req: Request) {
     }),
     prisma.user.findMany({
       where: { isActive: true, OR: [{ displayName: contains }, { handle: contains }] },
-      select: { handle: true, displayName: true },
+      select: { handle: true, displayName: true, isPrivate: true },
       take: PER_TYPE,
     }),
     prisma.category.findMany({
@@ -66,7 +69,13 @@ export async function GET(req: Request) {
   return NextResponse.json({
     q,
     skills: skills.map((s) => ({ slug: s.slug, name: s.name, author: s.author.displayName, date: s.updatedAt })),
-    users,
+    // 隐私账号: the @handle locator is decided server-side — empty meta for
+    // non-admin searchers (handle still ships; it powers the profile-link href).
+    users: users.map((u) => ({
+      handle: u.handle,
+      displayName: u.displayName,
+      meta: u.isPrivate && !viewerIsAdmin ? '' : `@${u.handle}`,
+    })),
     categories,
     tags,
     videos: videos.map((v) => ({

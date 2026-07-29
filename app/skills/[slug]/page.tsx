@@ -14,6 +14,8 @@ import { TokenCostBadge } from '@/components/TokenCostBadge';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { BackButton } from '@/components/BackButton';
 import { Avatar } from '@/components/Avatar';
+import { DeptTag } from '@/components/DeptTag';
+import { toPublicAuthor } from '@/lib/user-identity';
 import { DetailTabs } from './DetailTabs';
 import { ActionButtons } from './ActionButtons';
 import { ReviewsTab } from './ReviewsTab';
@@ -72,6 +74,9 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
     restrictedLocked &&
     Boolean(skill.descriptionMd) &&
     skill.descriptionMd === (skill.currentVersion?.contentInline ?? null);
+
+  // 隐私账号：department/lab trimmed server-side before rendering.
+  const author = toPublicAuthor(skill.author, session?.user?.isAdmin ?? false);
 
   const t = await getTranslations('detail');
   const rawTab = (searchParams.tab as 'overview' | 'files' | 'versions' | 'reviews' | 'composition' | 'comparison' | 'playground' | 'manage') ?? 'overview';
@@ -171,13 +176,14 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
           {/* Author identity + stats share one horizontal row; author pinned far-left. */}
           <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
             <Link
-              href={`/users/${skill.author.handle}`}
+              href={`/users/${author.handle}`}
               className="flex min-w-0 items-center gap-2.5 border-zinc-200 pr-6 transition hover:opacity-80 dark:border-zinc-800 sm:border-r"
             >
-              <Avatar name={skill.author.displayName} src={skill.author.avatarUrl} size="md" />
+              <Avatar name={author.displayName} src={author.avatarUrl} size="md" />
               <div className="min-w-0">
-                <div className="truncate text-sm font-medium">{skill.author.displayName}</div>
-                <div className="truncate text-xs text-muted">@{skill.author.handle}</div>
+                <div className="truncate text-sm font-medium">{author.displayName}</div>
+                {!author.isPrivate && <div className="truncate text-xs text-muted">@{author.handle}</div>}
+                <DeptTag department={author.department} lab={author.lab} className="mt-0.5" />
               </div>
             </Link>
             <StatBlock label={t('downloads')} value={skill.downloadCount.toLocaleString()} icon={<Download className="h-3.5 w-3.5" />} />

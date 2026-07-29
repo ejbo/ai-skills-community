@@ -20,6 +20,9 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: '6mb',
     },
+    // jsdom / unpdf are CJS-heavy Node packages — keep them external to the RSC
+    // bundle so the library ingest pipeline can require() them at runtime.
+    serverComponentsExternalPackages: ['jsdom', 'unpdf'],
   },
   images: {
     remotePatterns: [

@@ -11,7 +11,7 @@ export default async function UsersListPage({
 }: {
   searchParams: { q?: string; page?: string; sort?: string };
 }) {
-  const page = Math.max(1, Number(searchParams.page ?? 1));
+  const page = Math.max(1, Math.floor(Number(searchParams.page)) || 1);
   const q = (searchParams.q ?? '').trim();
   const sort = (searchParams.sort ?? 'last_seen') as 'last_seen' | 'created' | 'email';
 
@@ -53,6 +53,9 @@ export default async function UsersListPage({
         createdAt: true,
         huaweiW3Id: true,
         huaweiW3Name: true,
+        department: true,
+        lab: true,
+        isPrivate: true,
       },
     }),
     prisma.user.count({ where }),
@@ -95,6 +98,7 @@ export default async function UsersListPage({
               <th>用户</th>
               <th>W3 姓名</th>
               <th>工号</th>
+              <th>部门 / 研究所</th>
               <th>Email</th>
               <th>身份</th>
               <th>登录方式</th>
@@ -112,6 +116,11 @@ export default async function UsersListPage({
                       {u.displayName.charAt(0)}
                     </span>
                     <span className="font-medium">{u.displayName}</span>
+                    {u.isPrivate && (
+                      <span className="badge" style={{ background: '#fef3c7', color: '#92400e' }}>
+                        隐私
+                      </span>
+                    )}
                   </Link>
                 </td>
                 <td className="text-[13px]">
@@ -123,6 +132,17 @@ export default async function UsersListPage({
                 </td>
                 <td className="font-mono text-[12px]">
                   {u.huaweiW3Id ? u.huaweiW3Id : <span className="font-sans text-muted">—</span>}
+                </td>
+                <td className="text-[12px]">
+                  {u.department || u.lab ? (
+                    <span>
+                      {u.department}
+                      {u.department && u.lab ? ' · ' : ''}
+                      {u.lab}
+                    </span>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
                 </td>
                 <td className="text-[12px] text-muted">{u.email}</td>
                 <td>

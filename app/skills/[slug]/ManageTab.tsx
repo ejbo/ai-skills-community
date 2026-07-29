@@ -1,5 +1,6 @@
 import { formatDistanceToNowStrict } from 'date-fns';
 import { Clock, Users, Download, BarChart3 } from 'lucide-react';
+import { auth } from '@/lib/auth';
 import {
   getSkillAccessOverview,
   getSkillAnalytics,
@@ -18,10 +19,21 @@ type Identity = {
   email: string;
   huaweiW3Id: string | null;
   avatarUrl: string | null;
+  isPrivate: boolean;
 };
 
-function Who({ user }: { user: Identity | null }) {
+function Who({ user, viewerIsAdmin }: { user: Identity | null; viewerIsAdmin: boolean }) {
   if (!user) return <span className="text-muted">匿名</span>;
+  // 隐私账号：对非管理员（技能作者也是普通成员）只显示昵称——@handle 对 SSO 用户
+  // 就是工号，email/W3 更是名单级信息。
+  if (user.isPrivate && !viewerIsAdmin) {
+    return (
+      <div className="min-w-0">
+        <div className="truncate font-medium">{user.displayName}</div>
+        <div className="truncate text-[11px] text-muted">隐私账号</div>
+      </div>
+    );
+  }
   return (
     <div className="min-w-0">
       <div className="truncate font-medium">{user.displayName}</div>
@@ -70,7 +82,15 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 }
 
 /** Pending download requests + active grants. Presentational; data passed in. */
-export function AccessSection({ overview, slug }: { overview: AccessOverview; slug: string }) {
+export function AccessSection({
+  overview,
+  slug,
+  viewerIsAdmin,
+}: {
+  overview: AccessOverview;
+  slug: string;
+  viewerIsAdmin: boolean;
+}) {
   return (
     <div className="space-y-5">
       <Section icon={<Clock className="h-4 w-4 text-warn" />} title="待处理申请" count={overview.pending.length}>
@@ -84,7 +104,7 @@ export function AccessSection({ overview, slug }: { overview: AccessOverview; sl
                 className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800"
               >
                 <div className="min-w-0 flex-1">
-                  <Who user={r.user} />
+                  <Who user={r.user} viewerIsAdmin={viewerIsAdmin} />
                   {r.message && <p className="mt-1 text-xs text-muted">「{r.message}」</p>}
                   <p className="mt-1 text-[11px] text-muted">
                     {formatDistanceToNowStrict(r.createdAt, { addSuffix: true })}
@@ -114,7 +134,7 @@ export function AccessSection({ overview, slug }: { overview: AccessOverview; sl
                 {overview.approved.map((g) => (
                   <tr key={g.id} className="border-b border-zinc-100 dark:border-zinc-800/60">
                     <td className="py-2 pr-3">
-                      <Who user={g.user} />
+                      <Who user={g.user} viewerIsAdmin={viewerIsAdmin} />
                     </td>
                     <td className="py-2 pr-3 text-xs text-muted">
                       {g.decidedAt ? formatDistanceToNowStrict(g.decidedAt, { addSuffix: true }) : '—'}
@@ -137,9 +157,11 @@ export function AccessSection({ overview, slug }: { overview: AccessOverview; sl
 export function AnalyticsSection({
   analytics,
   downloaders,
+  viewerIsAdmin,
 }: {
   analytics: Analytics;
   downloaders: Downloaders;
+  viewerIsAdmin: boolean;
 }) {
   return (
     <div className="space-y-5">
@@ -161,7 +183,7 @@ export function AnalyticsSection({
                 {downloaders.map((d) => (
                   <tr key={d.id} className="border-b border-zinc-100 dark:border-zinc-800/60">
                     <td className="py-2 pr-3">
-                      <Who user={d.user} />
+                      <Who user={d.user} viewerIsAdmin={viewerIsAdmin} />
                     </td>
                     <td className="py-2 pr-3 font-mono text-xs">{d.version ? `v${d.version}` : '—'}</td>
                     <td className="py-2 pr-3">
@@ -228,15 +250,17 @@ export function AnalyticsSection({
 
 /** Combined access + analytics view (legacy single-tab composition). */
 export async function ManageTab({ skillId, slug }: { skillId: string; slug: string }) {
-  const [overview, analytics, downloaders] = await Promise.all([
+  const [session, overview, analytics, downloaders] = await Promise.all([
+    auth(),
     getSkillAccessOverview(skillId),
     getSkillAnalytics(skillId),
     getSkillDownloaders(skillId, 100),
   ]);
+  const viewerIsAdmin = session?.user?.isAdmin ?? false;
   return (
     <div className="space-y-5">
-      <AccessSection overview={overview} slug={slug} />
-      <AnalyticsSection analytics={analytics} downloaders={downloaders} />
+      <AccessSection overview={overview} slug={slug} viewerIsAdmin={viewerIsAdmin} />
+      <AnalyticsSection analytics={analytics} downloaders={downloaders} viewerIsAdmin={viewerIsAdmin} />
     </div>
   );
 }

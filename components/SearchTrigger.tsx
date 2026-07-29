@@ -21,7 +21,8 @@ type GroupKey = 'skills' | 'users' | 'categories' | 'tags' | 'videos';
 
 interface Results {
   skills: { slug: string; name: string; author: string; date: string }[];
-  users: { handle: string; displayName: string }[];
+  // meta is server-computed: '@handle', or '' for a 隐私账号 (non-admin viewer).
+  users: { handle: string; displayName: string; meta?: string }[];
   categories: { slug: string; name: string }[];
   tags: { slug: string; name: string; usageCount: number }[];
   videos: { slug: string; title: string; author: string; date: string }[];
@@ -152,7 +153,7 @@ export function SearchTrigger() {
       }),
     );
     results.users.forEach((u) =>
-      items.push({ group: 'users', key: `u:${u.handle}`, href: `/users/${u.handle}`, label: u.displayName, meta: `@${u.handle}` }),
+      items.push({ group: 'users', key: `u:${u.handle}`, href: `/users/${u.handle}`, label: u.displayName, meta: u.meta }),
     );
     results.categories.forEach((c) =>
       items.push({ group: 'categories', key: `c:${c.slug}`, href: `/skills?category=${c.slug}`, label: c.name }),

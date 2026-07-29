@@ -5,6 +5,8 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { Avatar } from '@/components/Avatar';
+import { DeptTag } from '@/components/DeptTag';
+import { AUTHOR_IDENTITY_FIELDS, toPublicAuthor } from '@/lib/user-identity';
 import { ReviewForm } from './ReviewForm';
 
 export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: string }) {
@@ -20,7 +22,7 @@ export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: str
     where: { skillId },
     orderBy: { createdAt: 'desc' },
     include: {
-      author: { select: { id: true, handle: true, displayName: true, avatarUrl: true } },
+      author: { select: { id: true, ...AUTHOR_IDENTITY_FIELDS } },
     },
   });
 
@@ -35,6 +37,7 @@ export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: str
   const maxBar = Math.max(1, ...distribution.map((d) => d.count));
 
   const canReview = !!session?.user && session.user.id !== skill.authorId;
+  const viewerIsAdmin = session?.user?.isAdmin ?? false;
 
   return (
     <div className="space-y-6">
@@ -96,12 +99,16 @@ export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: str
           <p className="text-sm text-muted">还没有评论 — 来当第一个吧。</p>
         ) : (
           <ul className="space-y-3">
-            {reviews.map((r) => (
+            {reviews.map((r) => {
+              // 隐私账号：trim per reviewer before rendering.
+              const author = toPublicAuthor(r.author, viewerIsAdmin);
+              return (
               <li key={r.id} className="surface rounded-xl p-4">
                 <div className="flex items-center justify-between">
-                  <Link href={`/users/${r.author.handle}`} className="flex items-center gap-2 hover:text-accent-600">
-                    <Avatar name={r.author.displayName} src={r.author.avatarUrl} size="sm" />
-                    <span className="text-sm font-medium">{r.author.displayName}</span>
+                  <Link href={`/users/${author.handle}`} className="flex items-center gap-2 hover:text-accent-600">
+                    <Avatar name={author.displayName} src={author.avatarUrl} size="sm" />
+                    <span className="text-sm font-medium">{author.displayName}</span>
+                    <DeptTag department={author.department} lab={author.lab} />
                   </Link>
                   <div className="flex items-center gap-3 text-xs text-muted">
                     <div className="flex items-center gap-0.5">
@@ -131,7 +138,8 @@ export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: str
                   </div>
                 )}
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </div>

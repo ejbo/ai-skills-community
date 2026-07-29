@@ -12,6 +12,8 @@ import {
   notifyApplicantOfDecision,
   notifyCommentReplyEmail,
   notifyFeedbackReplyEmail,
+  notifyPostReplyEmail,
+  notifyTopicReplyEmail,
   notifyAnnouncementEmail,
 } from '@/lib/email';
 
@@ -153,6 +155,99 @@ export async function notifyFeedbackReply(opts: {
     }
   } catch (e) {
     console.error('[notify] feedback reply failed:', e);
+  }
+}
+
+/**
+ * Reply landed on someone's discussion-feed post or post comment. Reuses the
+ * comment_reply/reply_reply types + preference pair — semantically identical
+ * ("someone replied to you"), so no enum/preference migration is needed.
+ */
+export async function notifyPostReply(opts: {
+  recipientId: string;
+  recipientEmail: string;
+  actorId: string;
+  actorName: string;
+  postId: string;
+  postExcerpt: string; // first words of the post body (posts have no title)
+  focusId: string; // the new comment's id (deep-link target)
+  bodyMd: string;
+  isReplyToComment: boolean; // false = top-level comment on the post
+}): Promise<void> {
+  if (opts.recipientId === opts.actorId) return; // never notify yourself
+  try {
+    const pref = await getPref(opts.recipientId);
+    const snippet = truncate(opts.bodyMd);
+    const what = opts.isReplyToComment ? '评论' : '动态';
+    const link = `/discussion/posts/${opts.postId}?focus=${opts.focusId}`;
+    if (pref.inAppCommentReply) {
+      await createInApp({
+        recipientId: opts.recipientId,
+        actorId: opts.actorId,
+        type: opts.isReplyToComment ? 'reply_reply' : 'comment_reply',
+        title: `${opts.actorName} 回复了你的${what}`,
+        body: snippet,
+        link,
+      });
+    }
+    if (pref.emailCommentReply) {
+      notifyPostReplyEmail({
+        to: opts.recipientEmail,
+        actorName: opts.actorName,
+        postExcerpt: opts.postExcerpt,
+        link: appUrl(link),
+        snippet,
+        isReplyToComment: opts.isReplyToComment,
+      });
+    }
+  } catch (e) {
+    console.error('[notify] post reply failed:', e);
+  }
+}
+
+/**
+ * Reply landed on someone's forum topic or forum reply. Same reuse of the
+ * comment_reply/reply_reply types + preference pair as the feedback board.
+ */
+export async function notifyTopicReply(opts: {
+  recipientId: string;
+  recipientEmail: string;
+  actorId: string;
+  actorName: string;
+  topicId: string;
+  topicTitle: string;
+  focusId: string; // the new reply's id (deep-link target)
+  bodyMd: string;
+  isReplyToComment: boolean; // false = top-level reply on the topic
+}): Promise<void> {
+  if (opts.recipientId === opts.actorId) return; // never notify yourself
+  try {
+    const pref = await getPref(opts.recipientId);
+    const snippet = truncate(opts.bodyMd);
+    const what = opts.isReplyToComment ? '回复' : '帖子';
+    const link = `/discussion/topics/${opts.topicId}?focus=${opts.focusId}`;
+    if (pref.inAppCommentReply) {
+      await createInApp({
+        recipientId: opts.recipientId,
+        actorId: opts.actorId,
+        type: opts.isReplyToComment ? 'reply_reply' : 'comment_reply',
+        title: `${opts.actorName} 回复了你的${what}`,
+        body: snippet,
+        link,
+      });
+    }
+    if (pref.emailCommentReply) {
+      notifyTopicReplyEmail({
+        to: opts.recipientEmail,
+        actorName: opts.actorName,
+        topicTitle: opts.topicTitle,
+        link: appUrl(link),
+        snippet,
+        isReplyToComment: opts.isReplyToComment,
+      });
+    }
+  } catch (e) {
+    console.error('[notify] topic reply failed:', e);
   }
 }
 

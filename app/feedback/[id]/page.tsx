@@ -2,9 +2,11 @@ import { notFound } from 'next/navigation';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { auth } from '@/lib/auth';
 import { getFeedbackDetail } from '@/lib/feedback-queries';
+import { toPublicAuthor } from '@/lib/user-identity';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { BackButton } from '@/components/BackButton';
 import { Avatar } from '@/components/Avatar';
+import { DeptTag } from '@/components/DeptTag';
 import { UpvoteButton } from '../_components/UpvoteButton';
 import { StatusBadge, CategoryChip } from '../_components/badges';
 import { FeedbackActions } from '../_components/FeedbackActions';
@@ -26,7 +28,9 @@ export default async function FeedbackDetailPage({
   const viewer = session?.user
     ? { handle: session.user.handle, isAdmin: session.user.isAdmin }
     : null;
+  const viewerIsAdmin = viewer?.isAdmin ?? false;
   const isAuthor = viewer?.handle === feedback.author.handle;
+  const author = toPublicAuthor(feedback.author, viewerIsAdmin);
 
   const threads: ThreadView[] = feedback.comments.map((c) => ({
     id: c.id,
@@ -34,14 +38,14 @@ export default async function FeedbackDetailPage({
     status: c.status,
     replyCount: c.replyCount,
     createdAt: c.createdAt,
-    author: c.author,
+    author: toPublicAuthor(c.author, viewerIsAdmin),
     replies: c.replies.map((r) => ({
       id: r.id,
       bodyMd: r.bodyMd,
       status: r.status,
       replyCount: r.replyCount,
       createdAt: r.createdAt,
-      author: r.author,
+      author: toPublicAuthor(r.author, viewerIsAdmin),
     })),
   }));
 
@@ -68,13 +72,9 @@ export default async function FeedbackDetailPage({
               {feedback.title}
             </h1>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-              <Avatar
-                name={feedback.author.displayName}
-                src={feedback.author.avatarUrl}
-                size="xs"
-                tone="subtle"
-              />
-              <span>{feedback.author.displayName}</span>
+              <Avatar name={author.displayName} src={author.avatarUrl} size="xs" tone="subtle" />
+              <span>{author.displayName}</span>
+              <DeptTag department={author.department} lab={author.lab} />
               <span>·</span>
               <span>{formatDistanceToNowStrict(feedback.createdAt, { addSuffix: true })}</span>
             </div>

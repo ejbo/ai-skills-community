@@ -3,6 +3,7 @@
 
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { AUTHOR_IDENTITY_SELECT } from '@/lib/user-identity';
 import type { CommentSort, VideoSort } from './types';
 
 // ── Card shape (feed grids + rails) ──────────────────────────────────────────
@@ -32,7 +33,7 @@ export const VIDEO_CARD_SELECT = {
 export type VideoCard = Prisma.VideoGetPayload<{ select: typeof VIDEO_CARD_SELECT }>;
 
 export const VIDEO_DETAIL_INCLUDE = {
-  uploader: { select: { handle: true, displayName: true, avatarUrl: true } },
+  uploader: AUTHOR_IDENTITY_SELECT,
   guestUser: { select: { handle: true, displayName: true, avatarUrl: true } },
   category: { select: { slug: true, name: true } },
   tags: { include: { tag: { select: { slug: true, name: true } } } },
@@ -220,7 +221,7 @@ const COMMENT_SELECT = {
   pinned: true,
   editedAt: true,
   createdAt: true,
-  author: { select: { handle: true, displayName: true, avatarUrl: true } },
+  author: AUTHOR_IDENTITY_SELECT,
 } satisfies Prisma.VideoCommentSelect;
 
 export type VideoCommentView = Prisma.VideoCommentGetPayload<{ select: typeof COMMENT_SELECT }> & {

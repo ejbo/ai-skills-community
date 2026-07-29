@@ -3,12 +3,17 @@ import Link from 'next/link';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { Calendar, Sparkles, Download, Heart } from 'lucide-react';
 import { prisma } from '@/lib/db';
+import { auth } from '@/lib/auth';
+import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
 import { SkillCard } from '@/components/SkillCard';
 import { Avatar } from '@/components/Avatar';
+import { DeptTag } from '@/components/DeptTag';
 
 export const dynamic = 'force-dynamic';
 
 export default async function UserProfilePage({ params }: { params: { handle: string } }) {
+  const session = await auth();
+  const viewerIsAdmin = session?.user?.isAdmin ?? false;
   const user = await prisma.user.findUnique({
     where: { handle: params.handle },
     include: {
@@ -18,6 +23,10 @@ export default async function UserProfilePage({ params }: { params: { handle: st
     },
   });
   if (!user || !user.isActive) notFound();
+
+  // 隐私账号: trim department/lab server-side; the @handle text is hidden below.
+  const identity = toPublicAuthor(user, viewerIsAdmin);
+  const hideHandle = user.isPrivate && !viewerIsAdmin;
 
   const skills = await prisma.skill.findMany({
     where: {
@@ -42,7 +51,7 @@ export default async function UserProfilePage({ params }: { params: { handle: st
       reviewCount: true,
       avgRating: true,
       tokenCostEstimate: true,
-      author: { select: { handle: true, displayName: true, avatarUrl: true } },
+      author: AUTHOR_IDENTITY_SELECT,
     },
   });
 
@@ -56,7 +65,8 @@ export default async function UserProfilePage({ params }: { params: { handle: st
           <Avatar name={user.displayName} src={user.avatarUrl} size="xl" />
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-semibold tracking-tight">{user.displayName}</h1>
-            <p className="mt-0.5 text-sm text-muted">@{user.handle}</p>
+            {!hideHandle && <p className="mt-0.5 text-sm text-muted">@{user.handle}</p>}
+            <DeptTag department={identity.department} lab={identity.lab} className="mt-1.5" />
             {user.bio && <p className="mt-3 text-sm">{user.bio}</p>}
             <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-muted">
               <span className="inline-flex items-center gap-1">
@@ -66,6 +76,11 @@ export default async function UserProfilePage({ params }: { params: { handle: st
               {user.isAdmin && (
                 <span className="rounded-full bg-accent-500/15 px-2 py-0.5 text-[11px] font-medium text-accent-700 dark:text-accent-300">
                   Admin
+                </span>
+              )}
+              {viewerIsAdmin && user.isPrivate && (
+                <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                  隐私账号
                 </span>
               )}
             </div>
@@ -92,7 +107,7 @@ export default async function UserProfilePage({ params }: { params: { handle: st
                 summary={s.summary}
                 sourceType={s.sourceType}
                 visibility={s.visibility}
-                author={s.author}
+                author={toPublicAuthor(s.author, viewerIsAdmin)}
                 updatedAt={s.updatedAt}
                 stats={{
                   downloads: s.downloadCount,

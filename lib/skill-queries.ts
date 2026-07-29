@@ -1,5 +1,6 @@
 import { Prisma, SourceType } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { AUTHOR_IDENTITY_FIELDS } from '@/lib/user-identity';
 
 export type SortKey = 'trending' | 'downloads' | 'newest' | 'top_rated';
 
@@ -108,7 +109,7 @@ export async function getSkillBySlug(slug: string) {
   return prisma.skill.findUnique({
     where: { slug },
     include: {
-      author: { select: { id: true, handle: true, displayName: true, avatarUrl: true, bio: true } },
+      author: { select: { id: true, bio: true, ...AUTHOR_IDENTITY_FIELDS } },
       category: true,
       currentVersion: true,
       tags: { include: { tag: true } },

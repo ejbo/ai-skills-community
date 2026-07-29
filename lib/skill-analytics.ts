@@ -18,6 +18,9 @@ const DOWNLOADER_USER_SELECT = {
   email: true,
   huaweiW3Id: true,
   avatarUrl: true,
+  // 隐私账号：owner-facing UI (ManageTab Who) must mask handle/email/W3 when set
+  // and the viewer is not an admin — these panels are visible to plain members.
+  isPrivate: true,
 } as const;
 
 export async function getSkillAnalytics(skillId: string) {
