@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
+import { apiReason } from '@/lib/api-errors';
 import { auth } from '@/lib/auth';
 import { logAdmin } from '@/lib/audit';
 import {
@@ -46,7 +47,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!parsed.success) {
     const first = parsed.error.issues[0];
     return NextResponse.json(
-      { error: 'invalid_input', reason: first?.message ?? '请求参数无效' },
+      { error: 'invalid_input', reason: first?.message ?? (await apiReason('invalid_request')) },
       { status: 400 },
     );
   }
@@ -85,13 +86,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     resolved = resolveMedia(media);
     if (!resolved) {
       return NextResponse.json(
-        { error: 'invalid_input', reason: '附件无效或超出数量限制' },
+        { error: 'invalid_input', reason: await apiReason('media_invalid') },
         { status: 400 },
       );
     }
     if (!(await mediaKeysAvailable(resolved, { excludeTopicId: topic.id }))) {
       return NextResponse.json(
-        { error: 'invalid_input', reason: '附件已被其他内容使用，请重新上传' },
+        { error: 'invalid_input', reason: await apiReason('media_in_use') },
         { status: 400 },
       );
     }

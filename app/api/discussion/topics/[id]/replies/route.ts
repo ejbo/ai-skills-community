@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
+import { apiReason } from '@/lib/api-errors';
 import { auth } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
 import { notifyTopicReply } from '@/lib/notifications';
@@ -24,7 +25,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const gate = rateLimit(`discussion:reply:${session.user.id}`, 10, 60_000);
   if (!gate.allowed) {
     return NextResponse.json(
-      { error: 'rate_limited', reason: '回复过于频繁，请稍后再试' },
+      { error: 'rate_limited', reason: await apiReason('rate_limited_reply') },
       { status: 429 },
     );
   }
@@ -40,7 +41,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!topic) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   if (topic.locked && !session.user.isAdmin) {
     return NextResponse.json(
-      { error: 'locked', reason: '该帖子已被锁定，无法回复' },
+      { error: 'locked', reason: await apiReason('topic_locked') },
       { status: 403 },
     );
   }

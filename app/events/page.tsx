@@ -38,14 +38,14 @@ import {
   addMonthsUtc,
   dayKey,
   dayKeyToDate,
-  fmtDateShort,
-  fmtDateFull,
+  fmtDateShortL,
+  fmtDateFullL,
   monthGrid,
   monthKey,
   monthKeyToDate,
   nowWall,
   startOfMonthUtc,
-  weekdayZh,
+  weekdayShortL,
 } from '@/lib/events/time';
 import { EventCard } from './_components/EventCard';
 import { DateRangePicker } from './_components/DateRangePicker';
@@ -133,6 +133,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
   const t = await getTranslations('events');
   const tl = await getTranslations('labels');
   const tb = await getTranslations('browse');
+  const locale = await getLocale();
 
   // ── filters from URL ────────────────────────────────────────────────────
   const tab: EventTab = firstParam(searchParams.tab) === 'past' ? 'past' : 'upcoming';
@@ -189,11 +190,12 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
   }
   function groupLabel(key: string): { main: string; sub: string } {
     const d = dayKeyToDate(key)!;
-    if (key === todayKey) return { main: t('today'), sub: `${weekdayZh(d)} · ${fmtDateShort(d)}` };
-    if (key === tomorrowKey) return { main: t('tomorrow'), sub: `${weekdayZh(d)} · ${fmtDateShort(d)}` };
+    const short = `${weekdayShortL(d, locale)} · ${fmtDateShortL(d, locale)}`;
+    if (key === todayKey) return { main: t('today'), sub: short };
+    if (key === tomorrowKey) return { main: t('tomorrow'), sub: short };
     return {
-      main: d.getUTCFullYear() === currentYear ? fmtDateShort(d) : fmtDateFull(d),
-      sub: weekdayZh(d),
+      main: d.getUTCFullYear() === currentYear ? fmtDateShortL(d, locale) : fmtDateFullL(d, locale),
+      sub: weekdayShortL(d, locale),
     };
   }
 
@@ -204,10 +206,10 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
   if (topic) chips.push({ label: t(`topic_${topic}`), href: eventsHref(searchParams, { topic: '' }) });
   if (mode) chips.push({ label: tl(`eventMode.${mode}`), href: eventsHref(searchParams, { mode: '' }) });
   if (city) chips.push({ label: t(cityKey(city)), href: eventsHref(searchParams, { city: '' }) });
-  if (day) chips.push({ label: fmtDateShort(day), href: eventsHref(searchParams, { day: '' }) });
+  if (day) chips.push({ label: fmtDateShortL(day, locale), href: eventsHref(searchParams, { day: '' }) });
   else if (presetApplied) chips.push({ label: t(`preset_${preset}`), href: eventsHref(searchParams, { preset: '' }) });
   else if (from || to) {
-    const label = `${from ? fmtDateShort(from) : '…'} – ${to ? fmtDateShort(to) : '…'}`;
+    const label = `${from ? fmtDateShortL(from, locale) : '…'} – ${to ? fmtDateShortL(to, locale) : '…'}`;
     chips.push({ label, href: eventsHref(searchParams, { from: '', to: '' }) });
   }
 
@@ -624,6 +626,7 @@ async function MiniCalendar({
 
 async function MonthAgenda({ sp, cal }: { sp: SearchParams; cal: CalendarMonthData }) {
   const t = await getTranslations('events');
+  const locale = await getLocale();
   if (cal.agenda.length === 0) {
     return (
       <div className="surface rounded-2xl p-4">
@@ -644,7 +647,7 @@ async function MonthAgenda({ sp, cal }: { sp: SearchParams; cal: CalendarMonthDa
                 href={eventsHref(sp, { day: entry.key, preset: '', from: '', to: '' })}
                 className="text-xs font-medium text-muted transition hover:text-accent-600"
               >
-                {fmtDateShort(d)} {weekdayZh(d)}
+                {fmtDateShortL(d, locale)} {weekdayShortL(d, locale)}
               </Link>
               <ul className="mt-1 space-y-1">
                 {entry.items.slice(0, 3).map((it) => (

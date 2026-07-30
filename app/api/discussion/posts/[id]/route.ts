@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
+import { apiReason } from '@/lib/api-errors';
 import { auth } from '@/lib/auth';
 import { logAdmin } from '@/lib/audit';
 import { deleteUnreferencedMediaFiles } from '@/lib/discussion-media';
@@ -48,7 +49,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const pinnedCount = await prisma.post.count({ where: { pinned: true } });
     if (pinnedCount >= MAX_PINNED_POSTS) {
       return NextResponse.json(
-        { error: 'too_many_pinned', reason: `置顶数量已达上限（${MAX_PINNED_POSTS} 条），请先取消其他置顶` },
+        { error: 'too_many_pinned', reason: await apiReason('too_many_pinned', { max: MAX_PINNED_POSTS }) },
         { status: 400 },
       );
     }

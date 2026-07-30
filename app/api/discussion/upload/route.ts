@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
+import { apiReason } from '@/lib/api-errors';
 import { rateLimit } from '@/lib/rate-limit';
 import {
   MAX_POST_FILE_BYTES,
@@ -90,7 +91,7 @@ export async function POST(req: Request) {
   const reserved = Number.isFinite(declared) && declared > 0 ? declared : max;
   if (!chargeBytes(session.user.id, reserved)) {
     return NextResponse.json(
-      { error: 'quota_exceeded', reason: '今日上传流量已达上限，请明天再试' },
+      { error: 'quota_exceeded', reason: await apiReason('upload_quota') },
       { status: 429 },
     );
   }

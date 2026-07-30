@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
-import { formatDistanceToNowStrict } from 'date-fns';
+import { getLocale } from 'next-intl/server';
 import { auth } from '@/lib/auth';
+import { relativeTime } from '@/lib/i18n-date';
 import { getFeedbackDetail } from '@/lib/feedback-queries';
 import { toPublicAuthor } from '@/lib/user-identity';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
@@ -22,6 +23,7 @@ export default async function FeedbackDetailPage({
   searchParams: { focus?: string };
 }) {
   const session = await auth();
+  const locale = await getLocale();
   const feedback = await getFeedbackDetail(params.id, session?.user?.id ?? null);
   if (!feedback) notFound();
 
@@ -76,7 +78,7 @@ export default async function FeedbackDetailPage({
               <span>{author.displayName}</span>
               <DeptTag department={author.department} lab={author.lab} />
               <span>·</span>
-              <span>{formatDistanceToNowStrict(feedback.createdAt, { addSuffix: true })}</span>
+              <span>{relativeTime(feedback.createdAt, locale)}</span>
             </div>
           </div>
           <FeedbackActions

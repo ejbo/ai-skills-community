@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
+import { apiReason } from '@/lib/api-errors';
 import { auth } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
 import { mediaArraySchema, mediaKeysAvailable, resolveMedia } from '@/lib/discussion-media';
@@ -36,7 +37,7 @@ export async function POST(req: Request) {
   const gate = rateLimit(`discussion:topic:${session.user.id}`, 10, HOUR_MS);
   if (!gate.allowed) {
     return NextResponse.json(
-      { error: 'rate_limited', reason: '发帖过于频繁，请稍后再试' },
+      { error: 'rate_limited', reason: await apiReason('rate_limited_topic') },
       { status: 429 },
     );
   }
@@ -46,7 +47,7 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     const first = parsed.error.issues[0];
     return NextResponse.json(
-      { error: 'invalid_input', reason: first?.message ?? '请求参数无效' },
+      { error: 'invalid_input', reason: first?.message ?? (await apiReason('invalid_request')) },
       { status: 400 },
     );
   }
@@ -54,13 +55,13 @@ export async function POST(req: Request) {
   const media = resolveMedia(parsed.data.media);
   if (!media) {
     return NextResponse.json(
-      { error: 'invalid_input', reason: '附件无效或超出数量限制' },
+      { error: 'invalid_input', reason: await apiReason('media_invalid') },
       { status: 400 },
     );
   }
   if (!(await mediaKeysAvailable(media))) {
     return NextResponse.json(
-      { error: 'invalid_input', reason: '附件已被其他内容使用，请重新上传' },
+      { error: 'invalid_input', reason: await apiReason('media_in_use') },
       { status: 400 },
     );
   }

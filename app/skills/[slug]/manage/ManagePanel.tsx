@@ -28,8 +28,8 @@ export function coerceSection(raw: string | undefined): ManageSection {
 }
 
 function triggersOf(payload: unknown): string[] {
-  const t = (payload as { triggers?: unknown } | null)?.triggers;
-  return Array.isArray(t) ? t.map(String) : [];
+  const raw = (payload as { triggers?: unknown } | null)?.triggers;
+  return Array.isArray(raw) ? raw.map(String) : [];
 }
 
 /**

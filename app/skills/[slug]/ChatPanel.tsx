@@ -28,7 +28,12 @@ export function ChatPanel({ slug }: { slug: string }) {
   function send(text: string) {
     if (!text.trim() || pending) return;
     setInput('');
-    void sendMessage(slug, text, `/api/skills/${slug}/chat`);
+    // chatStore lives outside React and can't translate — hand it the copy.
+    void sendMessage(slug, text, `/api/skills/${slug}/chat`, {
+      requestFailed: t('request_failed'),
+      connectionLost: t('connection_lost'),
+      unknownError: t('unknown_error'),
+    });
   }
 
   const starters = [t('starter1'), t('starter2'), t('starter3')];

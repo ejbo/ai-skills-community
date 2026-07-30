@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
+import { apiReason } from '@/lib/api-errors';
 import { auth } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
 import { notifyPostReply } from '@/lib/notifications';
@@ -57,7 +58,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const gate = rateLimit(`discussion:comment:${session.user.id}`, 10, 60_000);
   if (!gate.allowed) {
     return NextResponse.json(
-      { error: 'rate_limited', reason: '评论过于频繁，请稍后再试' },
+      { error: 'rate_limited', reason: await apiReason('rate_limited_comment') },
       { status: 429 },
     );
   }

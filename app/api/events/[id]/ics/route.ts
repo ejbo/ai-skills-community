@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getTranslations } from 'next-intl/server';
 import { prisma } from '@/lib/db';
 import { buildIcs } from '@/lib/events/calendar';
 import { withBasePath } from '@/lib/base-path';
@@ -29,9 +30,13 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? '';
   const url = host ? `${proto}://${host}${withBasePath(`/events/${event.id}`)}` : undefined;
 
+  // Same key as AddToCalendar's Google link so both calendars agree, in the
+  // locale the downloader is browsing in (the cookie is readable here).
+  const t = await getTranslations('events');
+
   const ics = buildIcs({
     id: event.id,
-    title: event.cancelledAt ? `【已取消】${event.title}` : event.title,
+    title: event.cancelledAt ? t('cancelled_calendar_title', { title: event.title }) : event.title,
     startAt: event.startAt,
     endAt: event.endAt,
     allDay: event.allDay,

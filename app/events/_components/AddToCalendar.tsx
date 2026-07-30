@@ -40,7 +40,8 @@ export function AddToCalendar({
     const url = googleCalendarUrl({
       id,
       // 与 .ics 保持一致：已取消的活动带上前缀，别让人加进一条“看起来还活着”的日程。
-      title: cancelled ? `【已取消】${title}` : title,
+      // The .ics route builds the same prefix from the same key, in the viewer's locale.
+      title: cancelled ? t('cancelled_calendar_title', { title }) : title,
       startAt: new Date(startAt),
       endAt: endAt ? new Date(endAt) : null,
       allDay,

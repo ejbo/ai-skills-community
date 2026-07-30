@@ -111,6 +111,33 @@ export function fmtTime(d: Date): string {
   return `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
 }
 
+// ── Locale-aware variants of the three formatters above ────────────────────
+// The zh helpers stay: `fmtEventRange`/`humanRange` build composite strings from
+// them and tests pin their exact output. New UI takes these instead, passing the
+// next-intl locale. `timeZone: 'UTC'` is REQUIRED — these Dates are UTC-midnight
+// *wall* dates (dayKeyToDate/nowWall), so formatting them in the server's local
+// zone would slide the rendered day by one.
+
+/** '8月5日' / 'Aug 5' / '5 août' */
+export function fmtDateShortL(d: Date, locale: string): string {
+  return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(d);
+}
+
+/** '2026年8月5日' / 'Aug 5, 2026' / '5 août 2026' */
+export function fmtDateFullL(d: Date, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  }).format(d);
+}
+
+/** '周三' / 'Wed' / 'mer.' */
+export function weekdayShortL(d: Date, locale: string): string {
+  return new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone: 'UTC' }).format(d);
+}
+
 export function sameUtcDay(a: Date, b: Date): boolean {
   return dayKey(a) === dayKey(b);
 }

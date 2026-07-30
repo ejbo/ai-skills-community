@@ -9,15 +9,15 @@
 // isn't lost. All-day events are date-only and never converted.
 
 import { useEffect, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import {
   dayKey,
-  fmtDateFull,
-  fmtDateShort,
-  fmtEventRange,
+  fmtDateFullL,
+  fmtDateShortL,
   fmtTime,
   sameUtcDay,
   toWallDate,
+  weekdayShortL,
 } from '@/lib/events/time';
 import { DEFAULT_EVENT_TIMEZONE, TZ_SHORT } from '@/lib/events/types';
 
@@ -56,28 +56,53 @@ interface TimeProps {
   timezone: string | null;
 }
 
-function allDaySpanLabel(t: T, start: Date, end: Date | null, withDate: boolean): string {
+/**
+ * All-day label. `full` (detail page) keeps the year and appends the weekday;
+ * the compact card form drops both.
+ */
+function allDaySpanLabel(
+  t: T,
+  locale: string,
+  start: Date,
+  end: Date | null,
+  withDate: boolean,
+  full = false,
+): string {
   if (end && !sameUtcDay(start, end)) {
     const sameYear = start.getUTCFullYear() === end.getUTCFullYear();
     const sameMonth = sameYear && start.getUTCMonth() === end.getUTCMonth();
-    const endText = sameMonth
-      ? t('day_of_month', { day: end.getUTCDate() })
-      : sameYear
-        ? fmtDateShort(end)
-        : fmtDateFull(end);
-    const startText = sameYear ? fmtDateShort(start) : fmtDateFull(start);
+    const endText =
+      sameMonth && !full
+        ? t('day_of_month', { day: end.getUTCDate() })
+        : sameYear
+          ? fmtDateShortL(end, locale)
+          : fmtDateFullL(end, locale);
+    const startText = sameYear && !full ? fmtDateShortL(start, locale) : fmtDateFullL(start, locale);
     return t('all_day_range', { start: startText, end: endText });
   }
-  return withDate ? t('all_day_on', { date: fmtDateShort(start) }) : t('all_day');
+  if (full) {
+    return `${fmtDateFullL(start, locale)} ${weekdayShortL(start, locale)} · ${t('all_day')}`;
+  }
+  return withDate ? t('all_day_on', { date: fmtDateShortL(start, locale) }) : t('all_day');
+}
+
+/** Timed range for the detail line — the localized counterpart of fmtEventRange. */
+function timedRangeLabel(locale: string, start: Date, end: Date | null): string {
+  const date = fmtDateFullL(start, locale);
+  const weekday = weekdayShortL(start, locale);
+  if (!end) return `${date} ${weekday} ${fmtTime(start)}`;
+  if (sameUtcDay(start, end)) return `${date} ${weekday} ${fmtTime(start)} – ${fmtTime(end)}`;
+  return `${date} ${fmtTime(start)} – ${fmtDateShortL(end, locale)} ${fmtTime(end)}`;
 }
 
 /** Compact one-liner for list cards: viewer-local time + event-zone original. */
 export function EventTimeCard({ startAt, endAt, allDay, timezone, showDate = false }: TimeProps & { showDate?: boolean }) {
   const t = useTranslations('events');
+  const locale = useLocale();
   const viewerZone = useViewerZone();
   const start = new Date(startAt);
   const end = endAt ? new Date(endAt) : null;
-  if (allDay) return <>{allDaySpanLabel(t, start, end, showDate)}</>;
+  if (allDay) return <>{allDaySpanLabel(t, locale, start, end, showDate)}</>;
 
   const eventZone = timezone ?? DEFAULT_EVENT_TIMEZONE;
   const zone = viewerZone ?? eventZone;
@@ -87,12 +112,12 @@ export function EventTimeCard({ startAt, endAt, allDay, timezone, showDate = fal
 
   // 跨天/换日：本地日期偏离活动本地日期时补上日期，避免归组标签误导。
   const datePrefix =
-    showDate || dayKey(ls) !== dayKey(es) ? `${fmtDateShort(ls)} ` : '';
+    showDate || dayKey(ls) !== dayKey(es) ? `${fmtDateShortL(ls, locale)} ` : '';
   let label: string;
   if (le) {
     label = sameUtcDay(ls, le)
       ? `${datePrefix}${fmtTime(ls)} – ${fmtTime(le)}`
-      : `${fmtDateShort(ls)} ${fmtTime(ls)} – ${fmtDateShort(le)} ${fmtTime(le)}`;
+      : `${fmtDateShortL(ls, locale)} ${fmtTime(ls)} – ${fmtDateShortL(le, locale)} ${fmtTime(le)}`;
   } else {
     label = `${datePrefix}${fmtTime(ls)}`;
   }
@@ -112,11 +137,12 @@ export function EventTimeCard({ startAt, endAt, allDay, timezone, showDate = fal
 /** Two-line block for the detail page date card. */
 export function EventTimeDetail({ startAt, endAt, allDay, timezone }: TimeProps) {
   const t = useTranslations('events');
+  const locale = useLocale();
   const viewerZone = useViewerZone();
   const start = new Date(startAt);
   const end = endAt ? new Date(endAt) : null;
   if (allDay) {
-    return <div className="font-medium">{fmtEventRange(start, end, true)}</div>;
+    return <div className="font-medium">{allDaySpanLabel(t, locale, start, end, true, true)}</div>;
   }
   const eventZone = timezone ?? DEFAULT_EVENT_TIMEZONE;
   const zone = viewerZone ?? eventZone;
@@ -127,13 +153,13 @@ export function EventTimeDetail({ startAt, endAt, allDay, timezone }: TimeProps)
   const differs = ls.getTime() !== es.getTime();
   return (
     <div>
-      <div className="font-medium">{fmtEventRange(ls, le, false)}</div>
+      <div className="font-medium">{timedRangeLabel(locale, ls, le)}</div>
       {differs ? (
         <div className="mt-0.5 text-xs text-muted">
           {t('zone_time_line', {
             zone: zoneShort(t, eventZone),
-            time: `${fmtDateShort(es)} ${fmtTime(es)}${
-              ee ? ` – ${sameUtcDay(es, ee) ? '' : `${fmtDateShort(ee)} `}${fmtTime(ee)}` : ''
+            time: `${fmtDateShortL(es, locale)} ${fmtTime(es)}${
+              ee ? ` – ${sameUtcDay(es, ee) ? '' : `${fmtDateShortL(ee, locale)} `}${fmtTime(ee)}` : ''
             }`,
           })}
         </div>
