@@ -14,10 +14,11 @@ import { detectLanguage, type ExtractedChapter, type ExtractedDoc } from './type
 const MAX_IMAGES_PER_BOOK = 40;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MIN_CHAPTER_TEXT_CHARS = 20;
-// Zip-bomb guards: a ≤50MB EPUB may decompress to GBs — cap every entry read
-// while streaming, and cap the whole book's extracted text.
-const MAX_TEXT_ENTRY_BYTES = 8 * 1024 * 1024;
-const MAX_TOTAL_TEXT_CHARS = 24 * 1024 * 1024;
+// Zip-bomb guards — memory protection only (there is deliberately NO upload
+// size cap): a small EPUB may decompress to GBs, so entry reads are streamed
+// with generous per-entry / whole-book ceilings far above any real book.
+const MAX_TEXT_ENTRY_BYTES = 64 * 1024 * 1024;
+const MAX_TOTAL_TEXT_CHARS = 128 * 1024 * 1024;
 
 const IMAGE_EXT_BY_MIME: Record<string, string> = {
   'image/jpeg': 'jpg',

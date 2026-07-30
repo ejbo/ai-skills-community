@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Trash2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import type { FeedbackStatus } from '@prisma/client';
 import { pushToast } from '@/components/Toaster';
 import { STATUS_META } from './badges';
@@ -23,6 +24,8 @@ export function FeedbackActions({
   canDelete: boolean;
 }) {
   const router = useRouter();
+  const t = useTranslations('feedback');
+  const g = useTranslations();
   const [busy, setBusy] = useState(false);
 
   async function changeStatus(next: string) {
@@ -35,10 +38,10 @@ export function FeedbackActions({
         body: JSON.stringify({ status: next }),
       });
       if (!res.ok) {
-        pushToast('error', '状态更新失败');
+        pushToast('error', t('status_update_failed'));
         return;
       }
-      pushToast('success', `已标记为「${STATUS_META[next as FeedbackStatus].label}」`);
+      pushToast('success', t('marked_as', { status: t(`status_${next}`) }));
       router.refresh();
     } finally {
       setBusy(false);
@@ -46,16 +49,16 @@ export function FeedbackActions({
   }
 
   async function remove() {
-    if (!confirm('确定删除这条反馈？所有评论和 +1 会一并删除。')) return;
+    if (!confirm(t('delete_feedback_confirm'))) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/feedback/${feedbackId}`, { method: 'DELETE' });
       if (!res.ok) {
-        pushToast('error', '删除失败');
+        pushToast('error', t('delete_failed'));
         setBusy(false);
         return;
       }
-      pushToast('success', '已删除');
+      pushToast('success', t('delete_done'));
       router.push('/feedback');
       router.refresh();
     } catch {
@@ -73,12 +76,12 @@ export function FeedbackActions({
           value={status}
           disabled={busy}
           onChange={(e) => changeStatus(e.target.value)}
-          title="标记处理状态（管理员）"
+          title={t('status_select_title')}
           className="h-8 rounded-lg border border-zinc-200 bg-white px-2 text-xs dark:border-zinc-700 dark:bg-zinc-900"
         >
-          {Object.entries(STATUS_META).map(([key, meta]) => (
+          {Object.keys(STATUS_META).map((key) => (
             <option key={key} value={key}>
-              {meta.label}
+              {t(`status_${key}`)}
             </option>
           ))}
         </select>
@@ -90,7 +93,7 @@ export function FeedbackActions({
           className="flex h-8 items-center gap-1 rounded-lg border border-danger/40 px-2.5 text-xs text-danger hover:bg-danger/10 disabled:opacity-60"
         >
           <Trash2 className="h-3 w-3" />
-          删除
+          {g('common.delete')}
         </button>
       )}
     </div>

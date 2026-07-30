@@ -2,44 +2,61 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { AnimatePresence, motion } from 'framer-motion';
 import { FileUp, Link2, Loader2, Plus, UploadCloud, X } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 import { withBasePath } from '@/lib/base-path';
-import { DOC_TYPES, DOC_TYPE_LABELS, type LibraryDocTypeValue } from '@/lib/library/types';
+import {
+  DOC_TYPES,
+  LIBRARY_CATEGORIES,
+  type LibraryDocTypeValue,
+} from '@/lib/library/types';
 
 type DocTypeChoice = 'auto' | LibraryDocTypeValue;
+type Translator = ReturnType<typeof useTranslations>;
 
-const ERROR_TOASTS: Record<string, string> = {
-  invalid_url: '链接格式不正确',
-  fetch_failed: '无法抓取该链接，请检查地址或稍后再试',
-  unsupported_content: '暂不支持该内容类型',
-  unsupported_type: '仅支持 PDF / EPUB 文件',
-  file_too_large: '文件过大',
-  too_large: '文件过大',
-  rate_limited: '操作过于频繁，请稍后再试',
-  unauthenticated: '请先登录',
+// API error code → library_ui toast key（错误码本身不翻译，仅映射展示文案）。
+const ERROR_TOAST_KEYS: Record<string, string> = {
+  invalid_url: 'err_invalid_url',
+  fetch_failed: 'err_fetch_failed',
+  unsupported_content: 'err_unsupported_content',
+  unsupported_type: 'err_unsupported_type',
+  file_too_large: 'err_file_too_large',
+  too_large: 'err_file_too_large',
+  rate_limited: 'err_rate_limited',
 };
 
-function toastForError(status: number, data: { error?: string; reason?: string }) {
+function toastForError(
+  status: number,
+  data: { error?: string; reason?: string },
+  t: Translator,
+  tv: Translator,
+) {
   if (data.reason) return data.reason;
-  if (data.error && ERROR_TOASTS[data.error]) return ERROR_TOASTS[data.error];
-  if (status === 415) return '仅支持 PDF / EPUB 文件';
-  if (status === 413) return '文件过大';
-  if (status === 502) return '无法抓取该链接，请检查地址或稍后再试';
-  if (status === 429) return '操作过于频繁，请稍后再试';
-  if (status === 401) return '请先登录';
-  return '操作失败，请重试';
+  if (data.error === 'unauthenticated') return tv('login_required');
+  if (data.error && ERROR_TOAST_KEYS[data.error]) return t(ERROR_TOAST_KEYS[data.error]);
+  if (status === 415) return t('err_unsupported_type');
+  if (status === 413) return t('err_file_too_large');
+  if (status === 502) return t('err_fetch_failed');
+  if (status === 429) return t('err_rate_limited');
+  if (status === 401) return tv('login_required');
+  return t('action_failed');
 }
 
 /** 「+ 添加内容」按钮 + 两 tab（链接 / 文件）提交弹窗。 */
 export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
+  const t = useTranslations('library_ui');
+  const tl = useTranslations('labels');
+  const tv = useTranslations('video');
+  const tc = useTranslations('common');
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<'url' | 'file'>('url');
   const [url, setUrl] = useState('');
   const [docType, setDocType] = useState<DocTypeChoice>('auto');
+  const [categories, setCategories] = useState<string[]>([]);
   const [stage, setStage] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -61,7 +78,7 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
 
   function openModal() {
     if (!loggedIn) {
-      pushToast('error', '请先登录再添加内容');
+      pushToast('error', t('login_before_add'));
       router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
       return;
     }
@@ -69,12 +86,12 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
   }
 
   function goToLogin() {
-    pushToast('error', '请先登录');
+    pushToast('error', tv('login_required'));
     router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
   }
 
   function done(doc: { slug: string }, existing: boolean) {
-    if (existing) pushToast('info', '该内容已在知识库中');
+    if (existing) pushToast('info', t('already_in_library'));
     setOpen(false);
     setUrl('');
     router.push(`/library/${doc.slug}`);
@@ -83,18 +100,20 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
   async function submitUrl() {
     const trimmed = url.trim();
     if (!trimmed) {
-      pushToast('error', '请输入链接');
+      pushToast('error', t('enter_url'));
       return;
     }
     if (stage) return;
-    setStage('正在抓取网页并提取内容…');
+    setStage(t('stage_fetching'));
     try {
       const res = await fetch('/api/library/docs', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(
-          docType === 'auto' ? { url: trimmed } : { url: trimmed, docType },
-        ),
+        body: JSON.stringify({
+          url: trimmed,
+          ...(docType === 'auto' ? {} : { docType }),
+          ...(categories.length > 0 ? { categories } : {}),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.status === 401) {
@@ -102,12 +121,12 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
         return;
       }
       if (!res.ok || !data.doc) {
-        pushToast('error', toastForError(res.status, data));
+        pushToast('error', toastForError(res.status, data, t, tv));
         return;
       }
       done(data.doc, Boolean(data.existing));
     } catch {
-      pushToast('error', '网络错误，请重试');
+      pushToast('error', t('network_error'));
     } finally {
       setStage(null);
     }
@@ -116,25 +135,26 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
   function uploadFile(file: File) {
     if (stage) return;
     const lower = file.name.toLowerCase();
-    if (!lower.endsWith('.pdf') && !lower.endsWith('.epub')) {
-      pushToast('error', '仅支持 PDF / EPUB 文件');
+    if (!/\.(pdf|epub|html?|pptx|docx)$/.test(lower)) {
+      pushToast('error', t('err_unsupported_type'));
       return;
     }
-    setStage('正在上传文件…');
+    setStage(t('stage_uploading'));
     // XHR（非 fetch）以拿到上传进度；fetch shim 不覆盖 XHR，需手动 withBasePath。
     const xhr = new XMLHttpRequest();
     xhr.open('POST', withBasePath('/api/library/upload'));
     xhr.setRequestHeader('content-type', file.type || 'application/octet-stream');
     xhr.setRequestHeader('x-filename', encodeURIComponent(file.name));
     if (docType !== 'auto') xhr.setRequestHeader('x-doc-type', docType);
+    if (categories.length > 0) xhr.setRequestHeader('x-categories', JSON.stringify(categories));
     xhr.upload.onprogress = (e) => {
       if (!e.lengthComputable || e.total <= 0) return;
       const pct = Math.round((e.loaded / e.total) * 100);
-      setStage(pct >= 100 ? '正在解析文档…' : `正在上传文件… ${pct}%`);
+      setStage(pct >= 100 ? t('stage_parsing') : t('stage_uploading_pct', { pct }));
     };
     xhr.onerror = () => {
       setStage(null);
-      pushToast('error', '网络错误，请重试');
+      pushToast('error', t('network_error'));
     };
     xhr.onload = () => {
       setStage(null);
@@ -154,7 +174,7 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
         return;
       }
       if (xhr.status < 200 || xhr.status >= 300 || !data.doc) {
-        pushToast('error', toastForError(xhr.status, data));
+        pushToast('error', toastForError(xhr.status, data, t, tv));
         return;
       }
       done(data.doc, Boolean(data.existing));
@@ -168,21 +188,57 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
     }`;
 
   const typeSelect = (
-    <div>
-      <label className="mb-1.5 block text-xs font-medium text-muted">类型</label>
-      <select
-        value={docType}
-        onChange={(e) => setDocType(e.target.value as DocTypeChoice)}
-        disabled={Boolean(stage)}
-        className="h-9 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
-      >
-        <option value="auto">自动识别</option>
-        {DOC_TYPES.map((t) => (
-          <option key={t} value={t}>
-            {DOC_TYPE_LABELS[t]}
-          </option>
-        ))}
-      </select>
+    <div className="space-y-3">
+      <div>
+        <label className="mb-1.5 block text-xs font-medium text-muted">{t('type_label')}</label>
+        <select
+          value={docType}
+          onChange={(e) => setDocType(e.target.value as DocTypeChoice)}
+          disabled={Boolean(stage)}
+          className="h-9 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
+        >
+          <option value="auto">{t('auto_detect')}</option>
+          {DOC_TYPES.map((dt) => (
+            <option key={dt} value={dt}>
+              {tl(`docType.${dt}`)}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="mb-1.5 block text-xs font-medium text-muted">
+          {t('category_label')}
+        </label>
+        <div className="flex flex-wrap gap-1.5">
+          {LIBRARY_CATEGORIES.map((c) => {
+            const on = categories.includes(c.slug);
+            return (
+              <button
+                key={c.slug}
+                type="button"
+                aria-pressed={on}
+                disabled={Boolean(stage)}
+                onClick={() =>
+                  setCategories((prev) =>
+                    on
+                      ? prev.filter((s) => s !== c.slug)
+                      : prev.length >= 4
+                        ? (pushToast('info', t('max_categories')), prev)
+                        : [...prev, c.slug],
+                  )
+                }
+                className={`rounded-full px-2.5 py-1 text-xs transition ${
+                  on
+                    ? 'bg-accent-500 font-medium text-white'
+                    : 'border border-zinc-200 text-muted hover:border-accent-400 hover:text-accent-600 dark:border-zinc-700'
+                }`}
+              >
+                {tl(`libCategory.${c.slug}`)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 
@@ -193,7 +249,7 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
         className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600"
       >
         <Plus className="h-4 w-4" />
-        添加内容
+        {t('add_content')}
       </button>
 
       <AnimatePresence>
@@ -220,10 +276,10 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
               className="surface relative z-10 w-full max-w-lg rounded-2xl p-5 shadow-2xl"
             >
               <div className="flex items-center justify-between">
-                <h2 className="text-base font-semibold tracking-tight">添加内容</h2>
+                <h2 className="text-base font-semibold tracking-tight">{t('add_content')}</h2>
                 <button
                   onClick={() => !stage && setOpen(false)}
-                  aria-label="关闭"
+                  aria-label={tc('dismiss')}
                   className="grid h-7 w-7 place-items-center rounded-lg text-muted transition hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
                 >
                   <X className="h-4 w-4" />
@@ -233,14 +289,14 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
               <div className="mt-3 flex border-b border-zinc-200 dark:border-zinc-800">
                 <button onClick={() => !stage && setTab('url')} className={tabCls(tab === 'url')}>
                   <Link2 className="h-4 w-4" />
-                  链接
+                  {t('tab_url')}
                   {tab === 'url' && (
                     <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-accent-500" />
                   )}
                 </button>
                 <button onClick={() => !stage && setTab('file')} className={tabCls(tab === 'file')}>
                   <FileUp className="h-4 w-4" />
-                  文件
+                  {t('tab_file')}
                   {tab === 'file' && (
                     <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-accent-500" />
                   )}
@@ -250,7 +306,7 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
               {tab === 'url' ? (
                 <div className="mt-4 space-y-3">
                   <div>
-                    <label className="mb-1.5 block text-xs font-medium text-muted">网页链接</label>
+                    <label className="mb-1.5 block text-xs font-medium text-muted">{t('url_label')}</label>
                     <input
                       autoFocus
                       type="url"
@@ -264,7 +320,7 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
                   </div>
                   {typeSelect}
                   <p className="text-xs text-muted">
-                    支持网页文章链接（博客、公众号、新闻等）；PDF 链接请下载后从「文件」上传。
+                    {t('url_hint')}
                   </p>
                   <div className="flex items-center justify-end gap-3">
                     {stage && (
@@ -278,7 +334,7 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
                       disabled={Boolean(stage)}
                       className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
                     >
-                      提交
+                      {t('submit')}
                     </button>
                   </div>
                 </div>
@@ -311,15 +367,15 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
                     ) : (
                       <>
                         <UploadCloud className="h-6 w-6 text-muted" />
-                        <p className="text-sm font-medium">拖拽文件到这里，或点击选择</p>
-                        <p className="text-xs text-muted">支持 PDF（≤100MB）/ EPUB（≤50MB）</p>
+                        <p className="text-sm font-medium">{t('drop_hint')}</p>
+                        <p className="text-xs text-muted">{t('file_types_hint')}</p>
                       </>
                     )}
                   </div>
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".pdf,.epub"
+                    accept=".pdf,.epub,.html,.htm,.pptx,.docx"
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];

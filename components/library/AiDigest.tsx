@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Loader2, MessageCircleQuestion, Sparkles } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 import type { AiOverview } from '@/lib/library/types';
@@ -26,6 +27,8 @@ export function AiDigest({
   canTrigger: boolean;
   slug: string;
 }) {
+  const t = useTranslations('library_ui');
+  const tv = useTranslations('video');
   const router = useRouter();
   const [state, setState] = useState(aiIndexState);
   const [busy, setBusy] = useState(false);
@@ -57,16 +60,16 @@ export function AiDigest({
       const res = await fetch(`/api/library/docs/${docId}/index`, { method: 'POST' });
       const data = await res.json().catch(() => ({}));
       if (res.status === 401) {
-        pushToast('error', '请先登录');
+        pushToast('error', tv('login_required'));
         return;
       }
       if (res.ok || data.error === 'already_running') {
         setState('running');
         return;
       }
-      pushToast('error', data.reason ?? '生成失败，请稍后再试');
+      pushToast('error', data.reason ?? t('generate_failed'));
     } catch {
-      pushToast('error', '网络错误，请重试');
+      pushToast('error', t('network_error'));
     } finally {
       setBusy(false);
     }
@@ -77,12 +80,12 @@ export function AiDigest({
       <section className="surface rounded-2xl p-5">
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-accent-500" />
-          <h2 className="text-sm font-semibold">AI 导读</h2>
+          <h2 className="text-sm font-semibold">{t('ai_digest')}</h2>
         </div>
         {overview.summary && <p className="mt-3 text-sm leading-relaxed">{overview.summary}</p>}
         {overview.outline.length > 0 && (
           <div className="mt-4">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted">大纲</h3>
+            <h3 className="text-xs font-medium uppercase tracking-wider text-muted">{t('outline')}</h3>
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">
               {overview.outline.map((line, i) => (
                 <li key={i}>{line}</li>
@@ -92,7 +95,7 @@ export function AiDigest({
         )}
         {overview.keyPoints.length > 0 && (
           <div className="mt-4">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted">要点</h3>
+            <h3 className="text-xs font-medium uppercase tracking-wider text-muted">{t('key_points')}</h3>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
               {overview.keyPoints.map((p, i) => (
                 <li key={i}>{p}</li>
@@ -102,7 +105,7 @@ export function AiDigest({
         )}
         {overview.questions.length > 0 && (
           <div className="mt-4">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted">可以问问</h3>
+            <h3 className="text-xs font-medium uppercase tracking-wider text-muted">{t('ask_suggestions')}</h3>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {overview.questions.map((q, i) => (
                 <Link
@@ -126,7 +129,7 @@ export function AiDigest({
       <section className="surface rounded-2xl p-5">
         <div className="flex items-center gap-2 text-sm font-medium">
           <Loader2 className="h-4 w-4 animate-spin text-accent-500" />
-          AI 正在阅读本文档…只需一次，之后所有人共享
+          {t('ai_reading')}
         </div>
         <div className="mt-4 space-y-2">
           <div className="shimmer h-3 w-full rounded" />
@@ -141,9 +144,9 @@ export function AiDigest({
     <section className="surface rounded-2xl p-5">
       <div className="flex items-center gap-2">
         <Sparkles className="h-4 w-4 text-accent-500" />
-        <h2 className="text-sm font-semibold">AI 导读</h2>
+        <h2 className="text-sm font-semibold">{t('ai_digest')}</h2>
       </div>
-      <p className="mt-2 text-xs text-muted">AI 精读一次，之后所有人即时查看导读并可对文档提问。</p>
+      <p className="mt-2 text-xs text-muted">{t('ai_digest_intro')}</p>
       {state === 'failed' && aiError && <p className="mt-2 text-xs text-danger">{aiError}</p>}
       {canTrigger ? (
         <button
@@ -152,10 +155,10 @@ export function AiDigest({
           className="mt-3 flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
         >
           {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          {state === 'failed' ? '重新生成 AI 导读' : '生成 AI 导读'}
+          {state === 'failed' ? t('regenerate_digest') : t('generate_digest')}
         </button>
       ) : (
-        <p className="mt-2 text-xs text-muted">登录后可生成 AI 导读。</p>
+        <p className="mt-2 text-xs text-muted">{t('login_to_generate')}</p>
       )}
     </section>
   );

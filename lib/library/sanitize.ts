@@ -17,7 +17,33 @@ const ALLOWED_TAGS = [
   'span', 'mark',
 ];
 
-const ALLOWED_ATTR = ['href', 'src', 'alt', 'title', 'colspan', 'rowspan', 'start'];
+const ALLOWED_ATTR = ['href', 'src', 'alt', 'title', 'colspan', 'rowspan', 'start', 'style'];
+
+// Inline styles survive ONLY through this whitelist (post-pass below) — enough
+// to keep the source's structural formatting (alignment, emphasis weight,
+// indent) without letting author colors/fonts fight the reader themes.
+const ALLOWED_STYLE_PROPS = new Set([
+  'text-align',
+  'font-weight',
+  'font-style',
+  'text-decoration',
+  'text-decoration-line',
+  'text-indent',
+]);
+
+function filterStyle(raw: string): string {
+  const kept: string[] = [];
+  for (const decl of raw.split(';')) {
+    const idx = decl.indexOf(':');
+    if (idx === -1) continue;
+    const prop = decl.slice(0, idx).trim().toLowerCase();
+    const value = decl.slice(idx + 1).trim();
+    if (!ALLOWED_STYLE_PROPS.has(prop)) continue;
+    if (!/^[\w\s.%#-]+$/.test(value)) continue;
+    kept.push(`${prop}: ${value.replace(/\s*!important/gi, '')}`);
+  }
+  return kept.join('; ');
+}
 
 const LIBRARY_FILE_PREFIX = '/api/library/file/';
 
@@ -93,6 +119,12 @@ export function sanitizeChapterHtml(html: string, opts: { baseUrl?: string | nul
     } else {
       img.remove();
     }
+  }
+
+  for (const el of Array.from(doc.body.querySelectorAll('[style]'))) {
+    const filtered = filterStyle(el.getAttribute('style') ?? '');
+    if (filtered) el.setAttribute('style', filtered);
+    else el.removeAttribute('style');
   }
 
   for (const p of Array.from(doc.body.querySelectorAll('p'))) {

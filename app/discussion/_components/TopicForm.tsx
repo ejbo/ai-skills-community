@@ -1,97 +1,179 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { Check, ChevronDown, Loader2 } from 'lucide-react';
 import type { DiscussionCategory } from '@prisma/client';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
-import { CATEGORY_META } from './badges';
+import { VISIBLE_CATEGORIES } from './badges';
+import { EMPTY_MEDIA, MediaPicker, mediaPayload, type MediaDraft } from './MediaPicker';
 
-const CATEGORIES = Object.entries(CATEGORY_META) as [
-  DiscussionCategory,
-  (typeof CATEGORY_META)[DiscussionCategory],
-][];
+const MAX_TOPICS = 3;
 
 /**
  * Shared forum-topic form: creates a topic (POST) or edits an existing one
- * (PATCH) depending on whether `topicId` is given.
+ * (PATCH). 主题 is a neutral multi-select dropdown (≤3); attachments use the
+ * same MediaPicker as the feed composer (video plays inline on the topic
+ * page, PDF/PPT/Word download).
  */
 export function TopicForm({
   topicId,
   initialTitle = '',
   initialBodyMd = '',
-  initialCategory = 'general',
+  initialCategories = [],
+  initialMedia = EMPTY_MEDIA,
 }: {
   topicId?: string;
   initialTitle?: string;
   initialBodyMd?: string;
-  initialCategory?: DiscussionCategory;
+  initialCategories?: DiscussionCategory[];
+  initialMedia?: MediaDraft;
 }) {
+  const t = useTranslations('discussion_ui');
+  const tc = useTranslations('common');
+  const tl = useTranslations('labels');
   const router = useRouter();
   const pathname = usePathname();
   const [title, setTitle] = useState(initialTitle);
-  const [category, setCategory] = useState<DiscussionCategory>(initialCategory);
+  const [categories, setCategories] = useState<DiscussionCategory[]>(
+    initialCategories.filter((c) =>
+      (VISIBLE_CATEGORIES as readonly DiscussionCategory[]).includes(c),
+    ),
+  );
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [bodyMd, setBodyMd] = useState(initialBodyMd);
+  const [media, setMedia] = useState<MediaDraft>(initialMedia);
+  const [uploading, setUploading] = useState(0);
   const [busy, setBusy] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    function close(e: MouseEvent) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickerOpen(false);
+    }
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [pickerOpen]);
+
+  function toggleCategory(key: DiscussionCategory) {
+    setCategories((prev) => {
+      if (prev.includes(key)) return prev.filter((c) => c !== key);
+      if (prev.length >= MAX_TOPICS) {
+        pushToast('info', t('max_topics', { max: MAX_TOPICS }));
+        return prev;
+      }
+      return [...prev, key];
+    });
+  }
 
   async function submit() {
     if (title.trim().length < 4) {
-      pushToast('error', '标题至少 4 个字');
+      pushToast('error', t('title_min'));
       return;
     }
-    if (busy) return;
+    if (categories.length === 0) {
+      pushToast('error', t('pick_at_least_one_topic'));
+      return;
+    }
+    if (busy || uploading > 0) return;
     setBusy(true);
     try {
-      const res = await fetch(topicId ? `/api/discussion/topics/${topicId}` : '/api/discussion/topics', {
-        method: topicId ? 'PATCH' : 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ title: title.trim(), category, bodyMd }),
-      });
+      const res = await fetch(
+        topicId ? `/api/discussion/topics/${topicId}` : '/api/discussion/topics',
+        {
+          method: topicId ? 'PATCH' : 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            title: title.trim(),
+            categories,
+            bodyMd,
+            media: mediaPayload(media),
+          }),
+        },
+      );
       const data = await res.json().catch(() => ({}));
       if (res.status === 401) {
-        pushToast('error', '请先登录');
+        pushToast('error', t('login_required'));
         router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
         return;
       }
       if (!res.ok) {
-        pushToast('error', data.reason ?? (topicId ? '保存失败，请重试' : '发布失败，请重试'));
+        pushToast(
+          'error',
+          data.reason ?? (topicId ? t('save_failed_retry') : t('publish_failed_retry')),
+        );
         return;
       }
-      pushToast('success', topicId ? '已保存' : '已发布');
+      pushToast('success', topicId ? tc('saved') : t('published'));
       const id = topicId ?? (data.topic?.id as string);
       router.push(`/discussion/topics/${id}`);
       router.refresh();
+    } catch {
+      pushToast('error', topicId ? t('save_failed_retry') : t('publish_failed_retry'));
     } finally {
       setBusy(false);
     }
   }
 
+  const selectedLabels = categories
+    .map((c) => tl(`discussionCategory.${c}`))
+    .join(t('topic_separator'));
+  // Editing a legacy topic whose category got retired (e.g. 综合讨论) starts
+  // with an empty picker — tell the author why instead of silently blocking.
+  const hadRetiredCategory =
+    initialCategories.length > 0 &&
+    !initialCategories.some((c) => (VISIBLE_CATEGORIES as readonly DiscussionCategory[]).includes(c));
+
   return (
     <div className="surface space-y-4 rounded-2xl p-5">
       <input
         autoFocus={!topicId}
-        placeholder="一句话说清楚讨论主题（必填）"
+        placeholder={t('topic_title_placeholder')}
         value={title}
         maxLength={120}
         onChange={(e) => setTitle(e.target.value)}
         className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        {CATEGORIES.map(([key, meta]) => (
-          <button
-            key={key}
-            onClick={() => setCategory(key)}
-            className={`rounded-full border px-3 py-1 text-xs transition ${
-              category === key
-                ? 'border-accent-500 bg-accent-500/10 font-medium text-accent-600 dark:text-accent-300'
-                : `border-transparent ${meta.className} hover:border-accent-400`
-            }`}
-          >
-            {meta.label}
-          </button>
-        ))}
+      {/* 主题 — neutral multi-select dropdown (no colored chips) */}
+      <div ref={pickerRef} className="relative">
+        <button
+          type="button"
+          onClick={() => setPickerOpen((v) => !v)}
+          aria-expanded={pickerOpen}
+          className="flex h-10 w-full items-center justify-between rounded-lg border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
+        >
+          <span className={selectedLabels ? '' : 'text-muted'}>
+            {selectedLabels || t('select_topics_placeholder', { max: MAX_TOPICS })}
+          </span>
+          <ChevronDown
+            className={`h-4 w-4 shrink-0 text-muted transition-transform ${pickerOpen ? 'rotate-180' : ''}`}
+          />
+        </button>
+        {hadRetiredCategory && categories.length === 0 && (
+          <p className="mt-1.5 text-xs text-muted">{t('retired_category_hint')}</p>
+        )}
+        {pickerOpen && (
+          <div className="surface absolute left-0 top-full z-30 mt-2 w-full rounded-xl p-1 shadow-lg">
+            {VISIBLE_CATEGORIES.map((key) => {
+              const selected = categories.includes(key);
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => toggleCategory(key)}
+                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                >
+                  <span>{tl(`discussionCategory.${key}`)}</span>
+                  {selected && <Check className="h-4 w-4 text-accent-500" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <RichTextEditor
@@ -99,24 +181,26 @@ export function TopicForm({
         onChange={setBodyMd}
         variant="full"
         maxLength={20000}
-        placeholder="展开说说：背景、想讨论的问题、你的看法…（支持 Markdown，可粘贴图片）"
-        ariaLabel="帖子正文"
+        placeholder={t('topic_body_placeholder')}
+        ariaLabel={t('topic_body_aria')}
       />
+
+      <MediaPicker value={media} onChange={setMedia} onUploadingChange={setUploading} />
 
       <div className="flex justify-end gap-2">
         <button
           onClick={() => router.back()}
           className="h-9 rounded-lg px-4 text-sm font-medium text-muted transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
-          取消
+          {tc('cancel')}
         </button>
         <button
           onClick={submit}
-          disabled={busy}
+          disabled={busy || uploading > 0}
           className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-5 text-sm font-medium text-white hover:bg-accent-600 disabled:opacity-60"
         >
-          {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          {topicId ? '保存' : '发布'}
+          {(busy || uploading > 0) && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          {topicId ? tc('save') : t('publish')}
         </button>
       </div>
     </div>

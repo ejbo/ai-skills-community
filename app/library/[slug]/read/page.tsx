@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { requireUser } from '@/lib/admin';
 import { getDocReaderData } from '@/lib/library-queries';
 import { ReaderShell } from '@/components/library/reader/ReaderShell';
@@ -10,6 +10,7 @@ interface SearchParams {
   ch?: string;
   chat?: string;
   hl?: string;
+  view?: string;
 }
 
 export default async function LibraryReaderPage({
@@ -26,17 +27,26 @@ export default async function LibraryReaderPage({
   // rather than silently opening chapter 0.
   const chRaw = typeof searchParams.ch === 'string' ? searchParams.ch.trim() : '';
   const requested = chRaw ? Number(chRaw) : Number.NaN;
+  const view =
+    searchParams.view === 'flow' ? 'flow' : searchParams.view === 'paged' ? 'paged' : undefined;
   const data = await getDocReaderData(
     params.slug,
-    session.user.id,
+    { id: session.user.id, isAdmin: session.user.isAdmin },
     Number.isFinite(requested) ? Math.trunc(requested) : -1,
+    view,
   );
+  // Restricted/private doc without an approved grant → the detail page hosts
+  // the 申请阅读 flow.
+  if (data === 'no_access') redirect(`/library/${params.slug}`);
   if (!data) notFound();
 
   return (
     <ReaderShell
       doc={data.doc}
-      chapter={data.chapter}
+      mode={data.mode}
+      flowAvailable={data.flowAvailable}
+      chapters={data.chapters}
+      initialChapter={data.initialChapter}
       toc={data.toc}
       progress={data.progress}
       highlights={data.highlights.map((h) => ({ ...h, createdAt: h.createdAt.toISOString() }))}

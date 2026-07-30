@@ -1,11 +1,13 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { BookOpen, CheckCircle2, LibraryBig } from 'lucide-react';
+import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { getShelfDocs, getShelfStats } from '@/lib/library-queries';
-import { DOC_TYPES, DOC_TYPE_LABELS, isDocType } from '@/lib/library/types';
+import { DOC_TYPES, isDocType } from '@/lib/library/types';
 import { EmptyState } from '@/components/EmptyState';
 import { ShelfGrid } from '@/components/library/ShelfGrid';
+import { ListScrollRestore } from '@/components/library/ScrollMemory';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +29,9 @@ export default async function ShelfPage({ searchParams }: { searchParams: Search
   const session = await auth();
   if (!session?.user) redirect('/auth/login?callbackUrl=/library/shelf');
 
+  const t = await getTranslations('shelf');
+  const tl = await getTranslations('labels');
+
   const sort: 'recent' | 'added' = searchParams.sort === 'added' ? 'added' : 'recent';
   const activeType = isDocType(searchParams.type) ? searchParams.type : 'all';
 
@@ -38,29 +43,30 @@ export default async function ShelfPage({ searchParams }: { searchParams: Search
   const serialized = docs.map((d) => ({ ...d, createdAt: d.createdAt.toISOString() }));
 
   const typeChips = [
-    { key: 'all', label: '全部' },
-    ...DOC_TYPES.map((t) => ({ key: t as string, label: DOC_TYPE_LABELS[t] })),
+    { key: 'all', label: t('all_types') },
+    ...DOC_TYPES.map((dt) => ({ key: dt as string, label: tl(`docType.${dt}`) })),
   ];
 
   return (
     <div className="container py-8">
+      <ListScrollRestore />
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">我的书架</h1>
-          <p className="mt-1 text-sm text-muted">收藏的内容与阅读进度</p>
+          <h1 className="text-3xl font-semibold tracking-tight">{t('title')}</h1>
+          <p className="mt-1 text-sm text-muted">{t('subtitle')}</p>
         </div>
         <Link
           href="/library"
           className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-4 text-sm font-medium transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
         >
-          去知识库
+          {t('go_library')}
         </Link>
       </header>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatBox icon={<LibraryBig className="h-4 w-4" />} label="全部" value={stats.total} />
-        <StatBox icon={<BookOpen className="h-4 w-4" />} label="在读" value={stats.reading} />
-        <StatBox icon={<CheckCircle2 className="h-4 w-4" />} label="已读完" value={stats.finished} />
+        <StatBox icon={<LibraryBig className="h-4 w-4" />} label={t('stat_total')} value={stats.total} />
+        <StatBox icon={<BookOpen className="h-4 w-4" />} label={t('stat_reading')} value={stats.reading} />
+        <StatBox icon={<CheckCircle2 className="h-4 w-4" />} label={t('stat_finished')} value={stats.finished} />
       </div>
 
       <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
@@ -85,8 +91,8 @@ export default async function ShelfPage({ searchParams }: { searchParams: Search
         <div className="flex items-center gap-3 text-xs">
           {(
             [
-              { key: 'recent', label: '最近阅读' },
-              { key: 'added', label: '最近加入' },
+              { key: 'recent', label: t('sort_recent') },
+              { key: 'added', label: t('sort_added') },
             ] as const
           ).map((s) => {
             const active = sort === s.key;
@@ -110,9 +116,13 @@ export default async function ShelfPage({ searchParams }: { searchParams: Search
       <div className="mt-4">
         {docs.length === 0 ? (
           <EmptyState
-            title={activeType === 'all' ? '书架还是空的' : `书架上还没有${DOC_TYPE_LABELS[activeType as keyof typeof DOC_TYPE_LABELS]}`}
-            description="把感兴趣的内容加入书架，随时继续阅读"
-            actionLabel="去知识库看看"
+            title={
+              activeType === 'all'
+                ? t('empty_title')
+                : t('empty_title_typed', { type: tl(`docType.${activeType}`) })
+            }
+            description={t('empty_desc')}
+            actionLabel={t('empty_cta')}
             actionHref="/library"
           />
         ) : (

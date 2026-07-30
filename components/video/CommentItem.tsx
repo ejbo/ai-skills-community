@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ChevronDown, ChevronUp, Heart, Loader2, MessageSquare, Pencil, Trash2 } from 'lucide-react';
-import { formatDistanceToNowStrict } from 'date-fns';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
+import { relativeTime } from '@/lib/i18n-date';
 import { pushToast } from '@/components/Toaster';
 import { DeptTag } from '@/components/DeptTag';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
@@ -28,6 +28,8 @@ interface Props {
 
 export function CommentItem({ slug, comment, currentUser, onChanged, onAddSibling }: Props) {
   const t = useTranslations('video');
+  const tu = useTranslations('video_ui');
+  const locale = useLocale();
   const router = useRouter();
 
   const [liked, setLiked] = useState(comment.likedByMe);
@@ -99,7 +101,7 @@ export function CommentItem({ slug, comment, currentUser, onChanged, onAddSiblin
         pushToast('info', t('login_required'));
         router.push('/auth/login');
       } else {
-        pushToast('error', '操作失败，请稍后再试');
+        pushToast('error', tu('action_failed'));
       }
     }
   }
@@ -121,7 +123,7 @@ export function CommentItem({ slug, comment, currentUser, onChanged, onAddSiblin
       setReplies((data.comments ?? []) as VideoCommentView[]);
       setShowReplies(true);
     } catch {
-      pushToast('error', '加载回复失败');
+      pushToast('error', tu('load_replies_failed'));
     } finally {
       setLoadingReplies(false);
     }
@@ -142,7 +144,7 @@ export function CommentItem({ slug, comment, currentUser, onChanged, onAddSiblin
       setEditedAt(new Date());
       setEditing(false);
     } catch {
-      pushToast('error', '保存失败，请稍后再试');
+      pushToast('error', tu('save_failed'));
     } finally {
       setSavingEdit(false);
     }
@@ -162,7 +164,7 @@ export function CommentItem({ slug, comment, currentUser, onChanged, onAddSiblin
         onChanged();
       }
     } catch {
-      pushToast('error', '删除失败，请稍后再试');
+      pushToast('error', tu('delete_failed'));
     }
   }
 
@@ -192,7 +194,7 @@ export function CommentItem({ slug, comment, currentUser, onChanged, onAddSiblin
           <DeptTag department={author.department} lab={author.lab} />
           <span className="text-xs text-muted">·</span>
           <span className="text-xs text-muted">
-            {formatDistanceToNowStrict(comment.createdAt, { addSuffix: true })}
+            {relativeTime(comment.createdAt, locale)}
           </span>
           {editedAt && !isTombstone && (
             <span className="text-xs text-muted">· {t('comments.edited')}</span>

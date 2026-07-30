@@ -15,7 +15,13 @@
 // (new identity) on every change so snapshots stay correct, and listeners are
 // notified to re-render whoever is currently mounted (possibly nobody).
 
-import { streamChat } from './streamChat';
+import { streamChat, type StreamChatStrings } from './streamChat';
+
+// Lives outside React, so it can't call useTranslations. <ChatPanel> passes its
+// already-translated fallback copy in; the English defaults are just a safety net.
+export interface ChatStrings extends StreamChatStrings {
+  unknownError?: string;
+}
 
 export interface ChatMsg {
   role: 'user' | 'assistant';
@@ -110,7 +116,12 @@ export function clearChat(slug: string) {
   setState(session, { messages: [], pending: false, error: null });
 }
 
-export async function sendMessage(slug: string, text: string, endpoint: string) {
+export async function sendMessage(
+  slug: string,
+  text: string,
+  endpoint: string,
+  strings?: ChatStrings,
+) {
   const session = getSession(slug);
   const trimmed = text.trim();
   if (!trimmed || session.state.pending) return;
@@ -142,10 +153,16 @@ export async function sendMessage(slug: string, text: string, endpoint: string) 
   };
 
   try {
-    const result = await streamChat(endpoint, { messages: history }, applyDelta, controller.signal);
+    const result = await streamChat(
+      endpoint,
+      { messages: history },
+      applyDelta,
+      controller.signal,
+      strings,
+    );
     if (!result.ok) {
       setState(session, {
-        error: result.error ?? '请求失败',
+        error: result.error ?? strings?.requestFailed ?? 'Request failed',
         messages: dropEmptyPlaceholder(session.state.messages),
         pending: false,
       });
@@ -156,7 +173,7 @@ export async function sendMessage(slug: string, text: string, endpoint: string) 
     // An explicit clear aborts the fetch; that's not an error worth surfacing.
     if (controller.signal.aborted) return;
     setState(session, {
-      error: e instanceof Error ? e.message : '未知错误',
+      error: e instanceof Error ? e.message : (strings?.unknownError ?? 'Unknown error'),
       messages: dropEmptyPlaceholder(session.state.messages),
       pending: false,
     });

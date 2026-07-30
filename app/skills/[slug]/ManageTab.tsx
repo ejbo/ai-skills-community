@@ -1,6 +1,7 @@
-import { formatDistanceToNowStrict } from 'date-fns';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { Clock, Users, Download, BarChart3 } from 'lucide-react';
 import { auth } from '@/lib/auth';
+import { relativeTime } from '@/lib/i18n-date';
 import {
   getSkillAccessOverview,
   getSkillAnalytics,
@@ -22,15 +23,17 @@ type Identity = {
   isPrivate: boolean;
 };
 
-function Who({ user, viewerIsAdmin }: { user: Identity | null; viewerIsAdmin: boolean }) {
-  if (!user) return <span className="text-muted">匿名</span>;
+async function Who({ user, viewerIsAdmin }: { user: Identity | null; viewerIsAdmin: boolean }) {
+  const t = await getTranslations('skill_manage');
+  if (!user) return <span className="text-muted">{t('anonymous')}</span>;
   // 隐私账号：对非管理员（技能作者也是普通成员）只显示昵称——@handle 对 SSO 用户
   // 就是工号，email/W3 更是名单级信息。
   if (user.isPrivate && !viewerIsAdmin) {
+    const tp = await getTranslations('profile');
     return (
       <div className="min-w-0">
         <div className="truncate font-medium">{user.displayName}</div>
-        <div className="truncate text-[11px] text-muted">隐私账号</div>
+        <div className="truncate text-[11px] text-muted">{tp('private_badge')}</div>
       </div>
     );
   }
@@ -82,7 +85,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 }
 
 /** Pending download requests + active grants. Presentational; data passed in. */
-export function AccessSection({
+export async function AccessSection({
   overview,
   slug,
   viewerIsAdmin,
@@ -91,11 +94,14 @@ export function AccessSection({
   slug: string;
   viewerIsAdmin: boolean;
 }) {
+  const t = await getTranslations('skill_manage');
+  const tdash = await getTranslations('dashboard');
+  const locale = await getLocale();
   return (
     <div className="space-y-5">
-      <Section icon={<Clock className="h-4 w-4 text-warn" />} title="待处理申请" count={overview.pending.length}>
+      <Section icon={<Clock className="h-4 w-4 text-warn" />} title={tdash('stat_pending')} count={overview.pending.length}>
         {overview.pending.length === 0 ? (
-          <p className="text-sm text-muted">暂无待处理的下载申请。</p>
+          <p className="text-sm text-muted">{t('access_pending_empty')}</p>
         ) : (
           <ul className="space-y-3">
             {overview.pending.map((r) => (
@@ -106,9 +112,7 @@ export function AccessSection({
                 <div className="min-w-0 flex-1">
                   <Who user={r.user} viewerIsAdmin={viewerIsAdmin} />
                   {r.message && <p className="mt-1 text-xs text-muted">「{r.message}」</p>}
-                  <p className="mt-1 text-[11px] text-muted">
-                    {formatDistanceToNowStrict(r.createdAt, { addSuffix: true })}
-                  </p>
+                  <p className="mt-1 text-[11px] text-muted">{relativeTime(r.createdAt, locale)}</p>
                 </div>
                 <DecisionButtons slug={slug} id={r.id} variant="pending" />
               </li>
@@ -117,16 +121,16 @@ export function AccessSection({
         )}
       </Section>
 
-      <Section icon={<Users className="h-4 w-4 text-ok" />} title="已授权用户" count={overview.approved.length}>
+      <Section icon={<Users className="h-4 w-4 text-ok" />} title={t('access_granted')} count={overview.approved.length}>
         {overview.approved.length === 0 ? (
-          <p className="text-sm text-muted">还没有授权任何用户。</p>
+          <p className="text-sm text-muted">{t('access_granted_empty')}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-200 text-left text-[11px] uppercase text-muted dark:border-zinc-800">
-                  <th className="py-2 pr-3 font-medium">用户</th>
-                  <th className="py-2 pr-3 font-medium">授权时间</th>
+                  <th className="py-2 pr-3 font-medium">{t('col_user')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('col_granted_at')}</th>
                   <th className="py-2 font-medium" />
                 </tr>
               </thead>
@@ -137,7 +141,7 @@ export function AccessSection({
                       <Who user={g.user} viewerIsAdmin={viewerIsAdmin} />
                     </td>
                     <td className="py-2 pr-3 text-xs text-muted">
-                      {g.decidedAt ? formatDistanceToNowStrict(g.decidedAt, { addSuffix: true }) : '—'}
+                      {g.decidedAt ? relativeTime(g.decidedAt, locale) : '—'}
                     </td>
                     <td className="py-2 text-right">
                       <DecisionButtons slug={slug} id={g.id} variant="grant" />
@@ -154,7 +158,7 @@ export function AccessSection({
 }
 
 /** Download log + aggregate analytics. Presentational; data passed in. */
-export function AnalyticsSection({
+export async function AnalyticsSection({
   analytics,
   downloaders,
   viewerIsAdmin,
@@ -163,20 +167,23 @@ export function AnalyticsSection({
   downloaders: Downloaders;
   viewerIsAdmin: boolean;
 }) {
+  const t = await getTranslations('skill_manage');
+  const td = await getTranslations('detail');
+  const locale = await getLocale();
   return (
     <div className="space-y-5">
-      <Section icon={<Download className="h-4 w-4" />} title="下载记录" count={analytics.totals.downloads}>
+      <Section icon={<Download className="h-4 w-4" />} title={t('downloads_log')} count={analytics.totals.downloads}>
         {downloaders.length === 0 ? (
-          <p className="text-sm text-muted">还没有下载记录。</p>
+          <p className="text-sm text-muted">{t('downloads_empty')}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-200 text-left text-[11px] uppercase text-muted dark:border-zinc-800">
-                  <th className="py-2 pr-3 font-medium">下载者</th>
-                  <th className="py-2 pr-3 font-medium">版本</th>
-                  <th className="py-2 pr-3 font-medium">客户端</th>
-                  <th className="py-2 font-medium">时间</th>
+                  <th className="py-2 pr-3 font-medium">{t('col_downloader')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('col_version')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('col_client')}</th>
+                  <th className="py-2 font-medium">{t('col_time')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -192,43 +199,41 @@ export function AnalyticsSection({
                         {d.via && d.via !== d.client ? `·${d.via}` : ''}
                       </span>
                     </td>
-                    <td className="py-2 text-xs text-muted">
-                      {formatDistanceToNowStrict(d.createdAt, { addSuffix: true })}
-                    </td>
+                    <td className="py-2 text-xs text-muted">{relativeTime(d.createdAt, locale)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
             {analytics.totals.downloads > downloaders.length && (
-              <p className="mt-2 text-[11px] text-muted">仅显示最近 {downloaders.length} 条。</p>
+              <p className="mt-2 text-[11px] text-muted">{t('showing_recent', { count: downloaders.length })}</p>
             )}
           </div>
         )}
       </Section>
 
-      <Section icon={<BarChart3 className="h-4 w-4" />} title="数据分析">
+      <Section icon={<BarChart3 className="h-4 w-4" />} title={t('analytics')}>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat label="总下载" value={analytics.totals.downloads.toLocaleString()} />
-          <Stat label="独立用户" value={analytics.totals.uniqueDownloaders.toLocaleString()} />
-          <Stat label="网页 / CLI" value={`${analytics.clientSplit.web} / ${analytics.clientSplit.cli}`} />
-          <Stat label="Try 次数" value={analytics.totals.tryRuns.toLocaleString()} />
-          <Stat label="收藏" value={analytics.totals.favorites.toLocaleString()} />
-          <Stat label="点赞" value={analytics.totals.likes.toLocaleString()} />
-          <Stat label="订阅" value={analytics.totals.subscribers.toLocaleString()} />
+          <Stat label={t('stat_total_downloads')} value={analytics.totals.downloads.toLocaleString()} />
+          <Stat label={t('stat_unique_users')} value={analytics.totals.uniqueDownloaders.toLocaleString()} />
+          <Stat label={t('stat_web_cli')} value={`${analytics.clientSplit.web} / ${analytics.clientSplit.cli}`} />
+          <Stat label={t('stat_try_runs')} value={analytics.totals.tryRuns.toLocaleString()} />
+          <Stat label={t('favorites')} value={analytics.totals.favorites.toLocaleString()} />
+          <Stat label={t('likes')} value={analytics.totals.likes.toLocaleString()} />
+          <Stat label={t('subscribers')} value={analytics.totals.subscribers.toLocaleString()} />
           <Stat
-            label="评分"
+            label={t('rating')}
             value={analytics.totals.avgRating > 0 ? analytics.totals.avgRating.toFixed(1) : '—'}
           />
         </div>
-        <h4 className="mb-2 mt-4 text-[11px] font-semibold uppercase tracking-wider text-muted">各版本下载</h4>
+        <h4 className="mb-2 mt-4 text-[11px] font-semibold uppercase tracking-wider text-muted">{t('per_version_downloads')}</h4>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-zinc-200 text-left text-[11px] uppercase text-muted dark:border-zinc-800">
-                <th className="py-2 pr-3 font-medium">版本</th>
-                <th className="py-2 pr-3 font-medium">下载</th>
-                <th className="py-2 pr-3 font-medium">状态</th>
-                <th className="py-2 font-medium">大小</th>
+                <th className="py-2 pr-3 font-medium">{t('col_version')}</th>
+                <th className="py-2 pr-3 font-medium">{td('downloads')}</th>
+                <th className="py-2 pr-3 font-medium">{t('status')}</th>
+                <th className="py-2 font-medium">{t('col_size')}</th>
               </tr>
             </thead>
             <tbody>

@@ -1,8 +1,10 @@
 import { notFound, redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { BackButton } from '@/components/BackButton';
 import { TopicForm } from '../../../_components/TopicForm';
+import type { MediaDraft, UploadedItem } from '../../../_components/MediaPicker';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,24 +14,51 @@ export default async function EditTopicPage({ params }: { params: { id: string }
 
   const topic = await prisma.discussionTopic.findUnique({
     where: { id: params.id },
-    select: { id: true, authorId: true, title: true, bodyMd: true, category: true },
+    select: {
+      id: true,
+      authorId: true,
+      title: true,
+      bodyMd: true,
+      category: true,
+      categories: true,
+      media: {
+        orderBy: { sortOrder: 'asc' },
+        select: { kind: true, key: true, url: true, name: true, mimeType: true, sizeBytes: true },
+      },
+    },
   });
   if (!topic) notFound();
   // Content edits are author-only (the PATCH route enforces the same rule).
   if (topic.authorId !== session.user.id) redirect(`/discussion/topics/${topic.id}`);
+  const t = await getTranslations('discussion_pages');
+
+  const toItem = (m: (typeof topic.media)[number]): UploadedItem => ({
+    key: m.key,
+    url: m.url,
+    name: m.name,
+    mimeType: m.mimeType,
+    sizeBytes: m.sizeBytes,
+  });
+  const initialMedia: MediaDraft = {
+    images: topic.media.filter((m) => m.kind === 'image').map(toItem),
+    video: topic.media.filter((m) => m.kind === 'video').map(toItem)[0] ?? null,
+    videoLink: topic.media.find((m) => m.kind === 'video_link')?.url ?? '',
+    files: topic.media.filter((m) => m.kind === 'file').map(toItem),
+  };
 
   return (
     <div className="container max-w-3xl py-8">
       <div className="mb-5">
         <BackButton fallbackHref={`/discussion/topics/${topic.id}`} />
       </div>
-      <h1 className="text-2xl font-semibold tracking-tight">编辑帖子</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">{t('edit_topic_title')}</h1>
       <div className="mt-5">
         <TopicForm
           topicId={topic.id}
           initialTitle={topic.title}
           initialBodyMd={topic.bodyMd}
-          initialCategory={topic.category}
+          initialCategories={topic.categories.length > 0 ? topic.categories : [topic.category]}
+          initialMedia={initialMedia}
         />
       </div>
     </div>

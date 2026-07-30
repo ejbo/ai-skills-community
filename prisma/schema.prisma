@@ -19,36 +19,46 @@ enum AuthMethod {
 }
 
 model User {
-  id                 String     @id @default(cuid())
-  email              String     @unique
-  handle             String     @unique
-  displayName        String
-  passwordHash       String?
-  huaweiW3Id         String?    @unique
+  id                  String     @id @default(cuid())
+  email               String     @unique
+  handle              String     @unique
+  displayName         String
+  passwordHash        String?
+  huaweiW3Id          String?    @unique
   // Real/company name from Huawei W3, captured on first SSO login. IMMUTABLE — never
   // editable by the user (displayName is the editable one); lets admins see who a
   // person really is even after they rename their display name.
-  huaweiW3Name       String?
-  authMethod         AuthMethod @default(password)
-  avatarUrl          String?
-  bio                String?
+  huaweiW3Name        String?
+  authMethod          AuthMethod @default(password)
+  avatarUrl           String?
+  bio                 String?
   // 部门 / 研究所 — 引用自员工名单（/manage/employees），按工号自动同步；请勿手工维护。
-  department         String?
-  lab                String?
+  department          String?
+  lab                 String?
   // 隐私账号：开启后对普通用户只显示昵称与头像（隐藏部门/研究所/@handle）；管理员始终可见全部。
-  isPrivate          Boolean    @default(false)
-  isAdmin            Boolean    @default(false)
-  isActive           Boolean    @default(true)
-  canPublishSkills   Boolean    @default(true)
-  canRemix           Boolean    @default(true)
-  canUseCli          Boolean    @default(true)
-  dailyDownloadLimit Int?
-  dailyPublishLimit  Int?
-  lastLoginAt        DateTime?
-  lastLoginIp        String?
-  lastSeenAt         DateTime?
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
+  isPrivate           Boolean    @default(false)
+  // 知识库阅读动态：关闭后不出现在文档的「正在阅读」名单里（计数不受影响）。
+  showLibraryActivity Boolean    @default(true)
+  // 个人主页板块可见性（/users/[handle]）：关闭后该板块仅本人与管理员可见。
+  // 服务端裁剪 —— 关闭的板块数据不查询、不下发（同 isPrivate 的合同）。
+  showProfileSkills   Boolean    @default(true)
+  showProfileDocs     Boolean    @default(true)
+  showProfilePosts    Boolean    @default(true)
+  showProfileComments Boolean    @default(true)
+  showProfileShelf    Boolean    @default(true)
+  showProfileEvents   Boolean    @default(true)
+  isAdmin             Boolean    @default(false)
+  isActive            Boolean    @default(true)
+  canPublishSkills    Boolean    @default(true)
+  canRemix            Boolean    @default(true)
+  canUseCli           Boolean    @default(true)
+  dailyDownloadLimit  Int?
+  dailyPublishLimit   Int?
+  lastLoginAt         DateTime?
+  lastLoginIp         String?
+  lastSeenAt          DateTime?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
 
   skills          Skill[]              @relation("AuthoredSkills")
   reviews         Review[]
@@ -94,13 +104,22 @@ model User {
   discussionUpvotes DiscussionUpvote[]
   discussionReplies DiscussionReply[]
 
+  // ── Events back-relations (virtual; no SQL columns on User) ──
+  authoredEvents Event[] @relation("AuthoredEvents")
+
   // ── Library back-relations (virtual; no SQL columns on User) ──
-  libraryDocs       LibraryDoc[]
-  libraryShelf      LibraryShelfItem[]
-  libraryLikes      LibraryLike[]
-  libraryProgress   LibraryProgress[]
-  libraryHighlights LibraryHighlight[]
-  libraryViews      LibraryView[]
+  libraryDocs            LibraryDoc[]
+  libraryShelf           LibraryShelfItem[]
+  libraryLikes           LibraryLike[]
+  libraryProgress        LibraryProgress[]
+  libraryHighlights      LibraryHighlight[]
+  libraryViews           LibraryView[]
+  libraryChatMessages    LibraryChatMessage[]
+  libraryComments        LibraryComment[]
+  libraryRatings         LibraryRating[]
+  libraryNoteReplies     LibraryNoteReply[]
+  libraryAccessRequests  LibraryAccessRequest[] @relation("LibraryAccessRequester")
+  libraryAccessDecisions LibraryAccessRequest[] @relation("LibraryAccessDecider")
 
   @@index([handle])
   @@index([email])
@@ -951,16 +970,29 @@ model PostMedia {
   @@index([postId, sortOrder])
 }
 
+// LinkedIn-style reactions: one row per (user, post); `reaction` records which
+// of the palette was chosen. Post.likeCount stays the TOTAL across all types.
+enum PostReaction {
+  like // 👍 赞
+  celebrate // 👏 精彩
+  support // 🤝 支持
+  love // ❤️ 喜爱
+  insightful // 💡 有启发
+  funny // 😄 有趣
+}
+
 model PostLike {
   userId    String
   postId    String
-  createdAt DateTime @default(now())
+  reaction  PostReaction @default(like)
+  createdAt DateTime     @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@id([userId, postId])
   @@index([postId])
+  @@index([postId, reaction])
 }
 
 model PostComment {
@@ -1004,7 +1036,11 @@ enum DiscussionCategory {
   qa // 问答求助
   share // 经验分享
   showcase // 成果展示
-  general // 灌水闲聊
+  general // 综合讨论（历史值，发帖入口已隐藏 — 分类聚焦 AI 技术）
+  models // 模型与算法
+  agents // Agent 与工具
+  skills // Skill 开发
+  research // 前沿研究
 }
 
 enum DiscussionReplyStatus {
@@ -1013,29 +1049,72 @@ enum DiscussionReplyStatus {
 }
 
 model DiscussionTopic {
-  id             String             @id @default(cuid())
+  id             String               @id @default(cuid())
   authorId       String
   title          String
-  bodyMd         String             @default("")
-  category       DiscussionCategory @default(general)
-  pinned         Boolean            @default(false)
-  locked         Boolean            @default(false)
-  upvoteCount    Int                @default(0)
-  replyCount     Int                @default(0)
+  bodyMd         String               @default("")
+  // Legacy single category — kept in sync with categories[0] so existing
+  // indexes/sorts stay valid. New reads/filters use `categories`.
+  category       DiscussionCategory   @default(general)
+  // Multi-select主题 (1..3 picked in the composer).
+  categories     DiscussionCategory[] @default([])
+  pinned         Boolean              @default(false)
+  locked         Boolean              @default(false)
+  upvoteCount    Int                  @default(0)
+  replyCount     Int                  @default(0)
+  viewCount      Int                  @default(0)
   // Bumped on every reply — drives the default "最新回复" ordering.
-  lastActivityAt DateTime           @default(now())
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  lastActivityAt DateTime             @default(now())
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
-  author  User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author  User                  @relation(fields: [authorId], references: [id], onDelete: Cascade)
   upvotes DiscussionUpvote[]
   replies DiscussionReply[]
+  views   DiscussionTopicView[]
+  media   TopicMedia[]
 
   @@index([category, lastActivityAt])
   @@index([pinned, lastActivityAt])
   @@index([lastActivityAt])
   @@index([upvoteCount])
   @@index([authorId])
+}
+
+// Forum-topic attachments — same shape/serving stack as PostMedia (uploads via
+// /api/discussion/upload, bytes via /api/discussion/media/[...key]).
+model TopicMedia {
+  id        String        @id @default(cuid())
+  topicId   String
+  kind      PostMediaKind
+  // Uploaded media stores the storage key + root-relative URL (withBasePath is
+  // applied at render time); video_link stores the external URL, key stays "".
+  key       String        @default("")
+  url       String
+  posterUrl String?
+  name      String        @default("") // original filename (file) / link label
+  mimeType  String        @default("")
+  sizeBytes Int           @default(0)
+  width     Int?
+  height    Int?
+  sortOrder Int           @default(0)
+  createdAt DateTime      @default(now())
+
+  topic DiscussionTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([topicId, sortOrder])
+}
+
+model DiscussionTopicView {
+  id          String   @id @default(cuid())
+  topicId     String
+  sessionHash String // sha256( (userId | ipHash) + topicId + UTC-day ) — day-bucket dedupe
+  createdAt   DateTime @default(now())
+
+  topic DiscussionTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([topicId, sessionHash])
+  @@index([topicId])
 }
 
 model DiscussionUpvote {
@@ -1137,6 +1216,9 @@ enum LibraryDocFormat {
   url
   pdf
   epub
+  html
+  pptx
+  docx
 }
 
 enum LibraryDocStatus {
@@ -1153,37 +1235,56 @@ enum LibraryHighlightColor {
   pink
 }
 
+enum LibraryVisibility {
+  public
+  restricted
+  private
+}
+
+enum LibraryCommentStatus {
+  visible
+  deleted
+}
+
 model LibraryDoc {
-  id              String           @id @default(cuid())
-  slug            String           @unique
-  title           String
-  author          String?
-  language        String? // 'zh' | 'en' | null (heuristic)
-  docType         LibraryDocType   @default(article)
-  docTypePinned   Boolean          @default(false) // user/admin chose explicitly; AI never overwrites
-  format          LibraryDocFormat
-  status          LibraryDocStatus @default(pending)
-  processingError String?
-  summary         String           @default("") // short description shown on cards (AI-filled)
-  sourceUrl       String? // canonicalized original URL (null for file uploads)
-  siteName        String? // og:site_name / readable domain / null
-  publishedAt     DateTime? // original publish date
-  coverUrl        String? // root-relative stored cover, null => deterministic placeholder
-  fileKey         String? // original pdf/epub key in storage
-  fileUrl         String? // root-relative /api/library/file/<key>
-  mimeType        String?
-  fileSizeBytes   Int              @default(0)
-  contentHash     String? // sha256 hex of original bytes (dedup anchor #2)
-  wordCount       Int              @default(0) // CJK chars + latin words
-  estReadMinutes  Int              @default(0)
-  chapterCount    Int              @default(0)
-  chunkerVersion  Int              @default(1)
-  featured        Boolean          @default(false)
-  featuredAt      DateTime?
-  uploaderId      String
-  viewCount       Int              @default(0)
-  likeCount       Int              @default(0)
-  shelfCount      Int              @default(0)
+  id               String            @id @default(cuid())
+  slug             String            @unique
+  title            String
+  author           String?
+  language         String? // 'zh' | 'en' | null (heuristic)
+  docType          LibraryDocType    @default(article)
+  docTypePinned    Boolean           @default(false) // user/admin chose explicitly; AI never overwrites
+  categories       String[]          @default([]) // fixed AI-topic taxonomy slugs (lib/library/types.ts), multi-select
+  categoriesPinned Boolean           @default(false) // uploader picked; AI backfill never overwrites
+  visibility       LibraryVisibility @default(public) // restricted = 申请后可读 (skills model); private = 仅上传者/管理员
+  metaPinned       Boolean           @default(false) // uploader edited title/author/summary; re-extract keeps them
+  format           LibraryDocFormat
+  status           LibraryDocStatus  @default(pending)
+  processingError  String?
+  summary          String            @default("") // short description shown on cards (AI-filled)
+  abstractMd       String            @default("") // 上传者撰写的摘要 Abstract — never AI-touched; shown above AI 导读
+  sourceUrl        String? // canonicalized original URL (null for file uploads)
+  siteName         String? // og:site_name / readable domain / null
+  publishedAt      DateTime? // original publish date
+  coverUrl         String? // root-relative stored cover, null => deterministic placeholder
+  fileKey          String? // original pdf/epub key in storage
+  fileUrl          String? // root-relative /api/library/file/<key>
+  mimeType         String?
+  fileSizeBytes    Int               @default(0)
+  contentHash      String? // sha256 hex of original bytes (dedup anchor #2)
+  wordCount        Int               @default(0) // CJK chars + latin words
+  estReadMinutes   Int               @default(0)
+  chapterCount     Int               @default(0)
+  chunkerVersion   Int               @default(1)
+  featured         Boolean           @default(false)
+  featuredAt       DateTime?
+  uploaderId       String
+  viewCount        Int               @default(0)
+  likeCount        Int               @default(0)
+  shelfCount       Int               @default(0)
+  commentCount     Int               @default(0)
+  ratingCount      Int               @default(0)
+  avgRating        Float             @default(0)
 
   // AI cache — generated once, shared by all users
   aiOverview     Json? // { summary: string, outline: string[], keyPoints: string[], questions: string[] }
@@ -1199,14 +1300,18 @@ model LibraryDoc {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  uploader   User               @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
-  chapters   LibraryChapter[]
-  chunks     LibraryChunk[]
-  shelfItems LibraryShelfItem[]
-  likes      LibraryLike[]
-  progress   LibraryProgress[]
-  highlights LibraryHighlight[]
-  views      LibraryView[]
+  uploader       User                   @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+  chapters       LibraryChapter[]
+  chunks         LibraryChunk[]
+  shelfItems     LibraryShelfItem[]
+  likes          LibraryLike[]
+  progress       LibraryProgress[]
+  highlights     LibraryHighlight[]
+  views          LibraryView[]
+  chatMessages   LibraryChatMessage[]
+  comments       LibraryComment[]
+  ratings        LibraryRating[]
+  accessRequests LibraryAccessRequest[]
 
   @@index([status, deletedAt, createdAt])
   @@index([docType, status, createdAt])
@@ -1225,6 +1330,10 @@ model LibraryChapter {
   title        String?
   html         String // sanitized reading HTML (sanitized at ingest; rendered with dangerouslySetInnerHTML)
   charCount    Int      @default(0)
+  // PDF page span (0-based, inclusive) — the 原版 pdf.js view maps highlights
+  // and TOC jumps between pages and chapters through these. Null for non-PDF.
+  pageStart    Int?
+  pageEnd      Int?
   aiSummary    String? // <=120 chars retrieval index entry; null = not yet summarized (checkpoint)
   aiKeywords   String[] @default([])
 
@@ -1280,6 +1389,7 @@ model LibraryProgress {
   chapterIndex Int      @default(0)
   scrollRatio  Float    @default(0) // 0..1 within chapter
   percent      Float    @default(0) // 0..100 whole doc
+  shareNotes   Boolean  @default(false) // 公开我的划线/笔记给本文档的其他读者
   updatedAt    DateTime @updatedAt
 
   user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1299,13 +1409,121 @@ model LibraryHighlight {
   quote        String // <=300 chars, primary DOM re-anchoring key
   color        LibraryHighlightColor @default(yellow)
   noteText     String?
+  replyCount   Int                   @default(0) // community replies (visible when the owner shares notes)
   createdAt    DateTime              @default(now())
+
+  doc     LibraryDoc         @relation(fields: [docId], references: [id], onDelete: Cascade)
+  user    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replies LibraryNoteReply[]
+
+  @@index([docId, userId, chapterIndex])
+  @@index([userId, createdAt])
+}
+
+// Skills-style gated access for visibility=restricted docs: re-apply mutates
+// the unique row back to pending; uploader or admin decides.
+model LibraryAccessRequest {
+  id           String              @id @default(cuid())
+  docId        String
+  userId       String
+  status       AccessRequestStatus @default(pending)
+  message      String?
+  decidedById  String?
+  decidedAt    DateTime?
+  decisionNote String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  doc       LibraryDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
+  user      User       @relation("LibraryAccessRequester", fields: [userId], references: [id], onDelete: Cascade)
+  decidedBy User?      @relation("LibraryAccessDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@unique([docId, userId])
+  @@index([docId, status])
+  @@index([userId])
+  @@index([decidedById])
+}
+
+// Detail-page discussion — the feedback board's 2-level flat thread contract
+// (parentId = thread root; transient replyToId only in the API; tombstone when
+// replies exist).
+model LibraryComment {
+  id         String               @id @default(cuid())
+  docId      String
+  authorId   String
+  parentId   String?
+  bodyMd     String
+  status     LibraryCommentStatus @default(visible)
+  replyCount Int                  @default(0)
+  createdAt  DateTime             @default(now())
+
+  doc     LibraryDoc       @relation(fields: [docId], references: [id], onDelete: Cascade)
+  author  User             @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent  LibraryComment?  @relation("LibraryCommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies LibraryComment[] @relation("LibraryCommentThread")
+
+  @@index([docId, createdAt])
+  @@index([parentId])
+  @@index([authorId, createdAt])
+}
+
+// 1–5 star rating, one per user per doc; avgRating/ratingCount denormalized on the doc.
+model LibraryRating {
+  userId    String
+  docId     String
+  rating    Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  doc  LibraryDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  @@id([userId, docId])
+  @@index([docId])
+}
+
+// Admin-configured LLM override for 知识库 AI (indexing / chat). Single row
+// (id 'default'); null fields fall back to the env-configured provider.
+model LibrarySetting {
+  id          String   @id @default("default")
+  llmProvider String? // 'anthropic' | 'openai'
+  llmBaseUrl  String?
+  llmApiKey   String?
+  llmModel    String?
+  updatedAt   DateTime @updatedAt
+}
+
+// Per-user "问问这篇文档" conversation history — the reader chat panel loads
+// it on open and the chat route appends both sides after each exchange.
+model LibraryChatMessage {
+  id        String   @id @default(cuid())
+  docId     String
+  userId    String
+  role      String // 'user' | 'assistant'
+  content   String
+  citations Json? // assistant rows: [{key, chapterIndex, charStart, snippet}]
+  createdAt DateTime @default(now())
 
   doc  LibraryDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
   user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([docId, userId, chapterIndex])
-  @@index([userId, createdAt])
+  @@index([docId, userId, createdAt])
+}
+
+// Replies to a shared note in the reader's community sidebar (single level).
+model LibraryNoteReply {
+  id          String               @id @default(cuid())
+  highlightId String
+  authorId    String
+  bodyMd      String
+  status      LibraryCommentStatus @default(visible)
+  createdAt   DateTime             @default(now())
+
+  highlight LibraryHighlight @relation(fields: [highlightId], references: [id], onDelete: Cascade)
+  author    User             @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([highlightId, createdAt])
+  @@index([authorId])
 }
 
 model LibraryView {
@@ -1320,4 +1538,80 @@ model LibraryView {
 
   @@unique([docId, sessionHash])
   @@index([userId])
+}
+
+// ─── 活动（Events）─────────────────────────────────────────────────────────
+// Community event calendar: member-published events — 外部活动 (conferences),
+// 内部活动, 专家分享, 研讨会 — with optional speaker lineups. Self-contained
+// like the video board: Event* models FK only to User or Event*.
+//
+// Time semantics: TIMED events store REAL UTC instants in startAt/endAt plus
+// the organizer's picked IANA zone in `timezone` (fixed EVENT_TIMEZONES set in
+// lib/events/types.ts); the UI converts to each viewer's local zone. ALL-DAY
+// events are date-only (UTC midnight, timezone null) and never converted. Date
+// filtering compiles to exact per-zone SQL branches in lib/event-queries.ts.
+
+enum EventKind {
+  external // 外部活动（学术会议 / 行业峰会 / 外部讲座）
+  internal // 内部活动（团队 / 公司活动）
+  expert_talk // 专家分享
+  seminar // 研讨会 / workshop
+}
+
+enum EventMode {
+  online // 线上
+  offline // 线下
+  hybrid // 线上 + 线下
+}
+
+model Event {
+  id            String    @id @default(cuid())
+  authorId      String
+  title         String
+  summary       String    @default("") // 一句话简介 shown on cards
+  descriptionMd String    @default("")
+  kind          EventKind
+  topics        String[]  @default([]) // fixed topic taxonomy slugs (lib/events/types.ts), multi-select
+  mode          EventMode @default(offline)
+  startAt       DateTime // timed: real UTC instant; allDay: date-only UTC midnight
+  endAt         DateTime? // optional; may be a later day (multi-day conferences)
+  allDay        Boolean   @default(false) // 全天/多天活动：只显示日期，不显示时刻
+  timezone      String? // IANA zone (fixed EVENT_TIMEZONES set); null for allDay / legacy = default zone
+  venue         String? // 具体地点（会议室 / 场馆 / 地址）
+  city          String? // 城市 — fixed EVENT_CITIES option (filter facet)
+  meetingUrl    String? // 线上会议链接（WeLink / Zoom / …）
+  websiteUrl    String? // 官网 / 报名链接（多用于外部会议）
+  coverUrl      String? // root-relative stored cover; withBasePath at render time
+  pinned        Boolean   @default(false) // admin 置顶（活动页顶部推荐位）
+  cancelledAt   DateTime? // organizer/admin 取消 — kept visible with a 已取消 banner
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  author   User           @relation("AuthoredEvents", fields: [authorId], references: [id], onDelete: Cascade)
+  speakers EventSpeaker[]
+
+  @@index([deletedAt, startAt])
+  @@index([kind, startAt])
+  @@index([pinned, startAt])
+  @@index([city])
+  @@index([authorId])
+}
+
+// Ordered speaker lineup (讲师/嘉宾), fully embedded in its event: rows are
+// replaced wholesale on event edit (delete + recreate), never shared.
+model EventSpeaker {
+  id        String @id @default(cuid())
+  eventId   String
+  name      String
+  title     String @default("") // 头衔 / 职位
+  org       String @default("") // 单位 / 组织
+  avatarUrl String @default("") // root-relative upload or external URL; withBasePath at render
+  link      String @default("") // 个人主页 / 学术主页
+  bio       String @default("")
+  sortOrder Int    @default(0)
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, sortOrder])
 }

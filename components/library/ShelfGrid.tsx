@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { X } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 import type { DocCardData } from '@/lib/library-queries';
@@ -12,6 +13,8 @@ export type ShelfDocData = Omit<DocCardData, 'createdAt'> & { createdAt: string 
 
 /** 书架卡片网格：DocCard + 悬浮「移出」按钮（Link 的兄弟节点，绝对定位覆盖）。 */
 export function ShelfGrid({ docs }: { docs: ShelfDocData[] }) {
+  const t = useTranslations('library_cards');
+  const tf = useTranslations('feedback');
   const router = useRouter();
   const [removing, setRemoving] = useState<string | null>(null);
 
@@ -21,10 +24,10 @@ export function ShelfGrid({ docs }: { docs: ShelfDocData[] }) {
     try {
       const res = await fetch(`/api/library/docs/${docId}/shelf`, { method: 'DELETE' });
       if (!res.ok) throw new Error();
-      pushToast('success', '已移出书架');
+      pushToast('success', t('removed_from_shelf'));
       router.refresh();
     } catch {
-      pushToast('error', '操作失败，请重试');
+      pushToast('error', tf('action_failed_retry'));
     } finally {
       setRemoving(null);
     }
@@ -38,8 +41,8 @@ export function ShelfGrid({ docs }: { docs: ShelfDocData[] }) {
           <button
             onClick={() => remove(doc.id)}
             disabled={removing === doc.id}
-            title="移出书架"
-            aria-label="移出书架"
+            title={t('remove_from_shelf')}
+            aria-label={t('remove_from_shelf')}
             className="absolute right-2 top-2 z-10 grid h-7 w-7 place-items-center rounded-lg border border-zinc-200 bg-white/90 text-muted opacity-0 shadow-sm transition hover:border-danger/40 hover:text-danger focus-visible:opacity-100 disabled:opacity-60 group-hover/shelf:opacity-100 dark:border-zinc-700 dark:bg-zinc-900/90"
           >
             <X className="h-3.5 w-3.5" />

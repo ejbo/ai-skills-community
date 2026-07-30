@@ -8,16 +8,31 @@ import {
   FolderTree,
   Tag as TagIcon,
   Video as VideoIcon,
+  BookOpen,
+  MessagesSquare,
+  Boxes,
+  Lightbulb,
+  CalendarDays,
   Loader2,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { motion, AnimatePresence } from 'framer-motion';
-import { formatDistanceToNowStrict } from 'date-fns';
+import { relativeTime } from '@/lib/i18n-date';
 
-type GroupKey = 'skills' | 'users' | 'categories' | 'tags' | 'videos';
+type GroupKey =
+  | 'skills'
+  | 'users'
+  | 'categories'
+  | 'tags'
+  | 'videos'
+  | 'library'
+  | 'discussions'
+  | 'events'
+  | 'packs'
+  | 'feedback';
 
 interface Results {
   skills: { slug: string; name: string; author: string; date: string }[];
@@ -26,12 +41,29 @@ interface Results {
   categories: { slug: string; name: string }[];
   tags: { slug: string; name: string; usageCount: number }[];
   videos: { slug: string; title: string; author: string; date: string }[];
+  library: { slug: string; title: string; author: string; date: string }[];
+  discussions: { kind: 'topic' | 'post'; id: string; title: string; author: string; date: string }[];
+  events: { id: string; title: string; author: string; date: string }[];
+  packs: { slug: string; name: string; date: string }[];
+  feedback: { id: string; title: string; author: string; date: string }[];
 }
 
-const EMPTY: Results = { skills: [], users: [], categories: [], tags: [], videos: [] };
+const EMPTY: Results = {
+  skills: [],
+  users: [],
+  categories: [],
+  tags: [],
+  videos: [],
+  library: [],
+  discussions: [],
+  events: [],
+  packs: [],
+  feedback: [],
+};
 
 interface FlatItem {
-  group: GroupKey;
+  /** null = the synthetic "查看全部搜索结果" row (always first, default-active). */
+  group: GroupKey | null;
   key: string;
   href: string;
   label: string;
@@ -45,6 +77,11 @@ const GROUP_ICON: Record<GroupKey, typeof FileCode2> = {
   categories: FolderTree,
   tags: TagIcon,
   videos: VideoIcon,
+  library: BookOpen,
+  discussions: MessagesSquare,
+  events: CalendarDays,
+  packs: Boxes,
+  feedback: Lightbulb,
 };
 const GROUP_LABEL_KEY: Record<GroupKey, string> = {
   skills: 'search_skills',
@@ -52,21 +89,30 @@ const GROUP_LABEL_KEY: Record<GroupKey, string> = {
   categories: 'search_categories',
   tags: 'search_tags',
   videos: 'search_videos',
+  library: 'search_library',
+  discussions: 'search_discussion',
+  events: 'search_events',
+  packs: 'search_packs',
+  feedback: 'search_feedback',
 };
 
-function reldate(iso: string): string {
+function reldate(iso: string, locale: string): string {
   try {
-    return formatDistanceToNowStrict(new Date(iso), { addSuffix: true });
+    return relativeTime(new Date(iso), locale);
   } catch {
     return '';
   }
 }
 
-// Global ⌘K command palette: searches skills, users, categories, tags and videos
-// site-wide and shows grouped, keyboard-navigable results with author + date.
+// Global ⌘K command palette: searches ALL site content — skills, users,
+// categories, tags, videos, 书籍 (library), 讨论 (topics + posts), packs and
+// feedback — and shows grouped, keyboard-navigable results with author + date.
+// Per-tab in-page searches stay scoped to their own tab; this is the global one.
 export function SearchTrigger() {
   const router = useRouter();
   const t = useTranslations('nav');
+  const tu = useTranslations('ui');
+  const locale = useLocale();
   const [isMac, setIsMac] = useState(true);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -112,8 +158,11 @@ export function SearchTrigger() {
     if (!q) {
       setResults(EMPTY);
       setLoading(false);
+      setActive(0);
       return;
     }
+    // 清空重打时立刻回到合成行（flat 收缩后旧 active 会越界，Enter 变成静默 no-op）。
+    setActive(0);
     setLoading(true);
     const ctrl = new AbortController();
     const id = setTimeout(() => {
@@ -126,6 +175,11 @@ export function SearchTrigger() {
             categories: data.categories ?? [],
             tags: data.tags ?? [],
             videos: data.videos ?? [],
+            library: data.library ?? [],
+            discussions: data.discussions ?? [],
+            events: data.events ?? [],
+            packs: data.packs ?? [],
+            feedback: data.feedback ?? [],
           });
           setActive(0);
         })
@@ -141,15 +195,27 @@ export function SearchTrigger() {
   }, [query, open]);
 
   // One flat, ordered list drives both rendering and keyboard navigation.
+  // Row 0 is the synthetic "查看全部搜索结果" entry — it is the default-active
+  // item, so a plain Enter opens the full /search page; arrow keys still jump
+  // straight to an individual match.
   const flat: FlatItem[] = useMemo(() => {
     const items: FlatItem[] = [];
+    const q = query.trim();
+    if (q) {
+      items.push({
+        group: null,
+        key: '__all__',
+        href: `/search?q=${encodeURIComponent(q)}`,
+        label: t('search_all_results', { q }),
+      });
+    }
     results.skills.forEach((s) =>
       items.push({
         group: 'skills',
         key: `s:${s.slug}`,
         href: `/skills/${s.slug}`,
         label: s.name,
-        meta: `${s.author} · ${reldate(s.date)}`,
+        meta: `${s.author} · ${reldate(s.date, locale)}`,
       }),
     );
     results.users.forEach((u) =>
@@ -167,11 +233,56 @@ export function SearchTrigger() {
         key: `v:${v.slug}`,
         href: `/videos/${v.slug}`,
         label: v.title,
-        meta: `${v.author} · ${reldate(v.date)}`,
+        meta: `${v.author} · ${reldate(v.date, locale)}`,
+      }),
+    );
+    results.library.forEach((d) =>
+      items.push({
+        group: 'library',
+        key: `l:${d.slug}`,
+        href: `/library/${d.slug}`,
+        label: d.title,
+        meta: [d.author, reldate(d.date, locale)].filter(Boolean).join(' · '),
+      }),
+    );
+    results.discussions.forEach((d) =>
+      items.push({
+        group: 'discussions',
+        key: `d:${d.kind}:${d.id}`,
+        href: d.kind === 'topic' ? `/discussion/topics/${d.id}` : `/discussion/posts/${d.id}`,
+        label: d.title || t('search_post_media'),
+        meta: `${d.author} · ${reldate(d.date, locale)}`,
+      }),
+    );
+    results.events.forEach((e) =>
+      items.push({
+        group: 'events',
+        key: `e:${e.id}`,
+        href: `/events/${e.id}`,
+        label: e.title,
+        meta: `${e.author} · ${reldate(e.date, locale)}`,
+      }),
+    );
+    results.packs.forEach((p) =>
+      items.push({
+        group: 'packs',
+        key: `p:${p.slug}`,
+        href: `/packs/${p.slug}`,
+        label: p.name,
+        meta: reldate(p.date, locale),
+      }),
+    );
+    results.feedback.forEach((f) =>
+      items.push({
+        group: 'feedback',
+        key: `f:${f.id}`,
+        href: `/feedback/${f.id}`,
+        label: f.title,
+        meta: `${f.author} · ${reldate(f.date, locale)}`,
       }),
     );
     return items;
-  }, [results]);
+  }, [results, query, t, locale]);
 
   const go = useCallback(
     (item?: FlatItem) => {
@@ -183,6 +294,8 @@ export function SearchTrigger() {
   );
 
   function onKeyDown(e: React.KeyboardEvent) {
+    // 输入法组合中（拼音上屏的 Enter）不当作确认 — 否则会带着未上屏的拼音跳转。
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === 'Escape') setOpen(false);
     else if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -192,13 +305,16 @@ export function SearchTrigger() {
       setActive((i) => Math.max(i - 1, 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      go(flat[active]);
+      // flat 收缩后 active 可能短暂越界 — 钳到范围内，Enter 永远有目标。
+      go(flat[Math.min(active, flat.length - 1)]);
     }
   }
 
-  const showEmpty = Boolean(query.trim()) && !loading && flat.length === 0;
+  // flat[0] is the synthetic all-results row whenever a query exists, so
+  // "no matches" means the synthetic row is the ONLY item.
+  const showEmpty = Boolean(query.trim()) && !loading && flat.length <= 1;
   const hasResults = flat.length > 0;
-  let lastGroup: GroupKey | '' = '';
+  let lastGroup: GroupKey | null | '' = '';
 
   return (
     <>
@@ -252,47 +368,54 @@ export function SearchTrigger() {
                     type="button"
                     onClick={() => setQuery('')}
                     className="shrink-0 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                    aria-label="Clear"
+                    aria-label={tu('search_clear')}
                   >
                     <X className="h-4 w-4" />
                   </button>
                 ) : null}
               </div>
 
-              {(showEmpty || hasResults) && (
+              {hasResults && (
                 <div className="max-h-[58vh] overflow-auto px-2 pb-2 pt-1">
-                  {showEmpty ? (
-                    <div className="px-3 py-8 text-center text-sm text-muted">{t('search_empty')}</div>
-                  ) : (
-                    flat.map((item, i) => {
-                      const header =
-                        item.group !== lastGroup ? ((lastGroup = item.group), item.group) : null;
-                      const Icon = GROUP_ICON[item.group];
-                      return (
-                        <div key={item.key}>
-                          {header && (
-                            <div className="flex items-center gap-1.5 px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                              <Icon className="h-3 w-3" />
-                              {t(GROUP_LABEL_KEY[header])}
-                            </div>
+                  {flat.map((item, i) => {
+                    const header =
+                      item.group && item.group !== lastGroup
+                        ? ((lastGroup = item.group), item.group)
+                        : null;
+                    const Icon = item.group ? GROUP_ICON[item.group] : Search;
+                    return (
+                      <div key={item.key}>
+                        {header && (
+                          <div className="flex items-center gap-1.5 px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                            <Icon className="h-3 w-3" />
+                            {t(GROUP_LABEL_KEY[header])}
+                          </div>
+                        )}
+                        <button
+                          onMouseEnter={() => setActive(i)}
+                          onClick={() => go(item)}
+                          className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
+                            i === active
+                              ? 'bg-accent-500/10 text-accent-700 dark:text-accent-300'
+                              : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                          } ${item.group === null ? 'mt-1' : ''}`}
+                        >
+                          {item.group === null && <Search className="h-3.5 w-3.5 shrink-0 text-muted" />}
+                          <span className="truncate font-medium">{item.label}</span>
+                          {item.group === null && (
+                            <kbd className="ml-auto shrink-0 rounded border border-zinc-200 px-1.5 text-[10px] font-mono text-zinc-500 dark:border-zinc-700">
+                              ⏎
+                            </kbd>
                           )}
-                          <button
-                            onMouseEnter={() => setActive(i)}
-                            onClick={() => go(item)}
-                            className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
-                              i === active
-                                ? 'bg-accent-500/10 text-accent-700 dark:text-accent-300'
-                                : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                            }`}
-                          >
-                            <span className="truncate font-medium">{item.label}</span>
-                            {item.meta && (
-                              <span className="ml-auto shrink-0 pl-3 text-xs text-muted">{item.meta}</span>
-                            )}
-                          </button>
-                        </div>
-                      );
-                    })
+                          {item.meta && (
+                            <span className="ml-auto shrink-0 pl-3 text-xs text-muted">{item.meta}</span>
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {showEmpty && (
+                    <div className="px-3 py-6 text-center text-sm text-muted">{t('search_empty')}</div>
                   )}
                 </div>
               )}

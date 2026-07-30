@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { Loader2, FileText, X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
 import {
   type StagedFile,
@@ -19,7 +20,7 @@ import {
 export function FileDropZone({
   staged,
   onChange,
-  title = '上传文件',
+  title,
   hint,
 }: {
   staged: StagedFile[];
@@ -27,6 +28,7 @@ export function FileDropZone({
   title?: string;
   hint?: string;
 }) {
+  const t = useTranslations('skills_misc');
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -42,7 +44,12 @@ export function FileDropZone({
       const next = await stageRaw(entries);
       onChange(mergeStaged(staged, next));
     } catch (e) {
-      pushToast('error', `解压失败：${e instanceof Error ? e.message : '未知错误'}`);
+      pushToast(
+        'error',
+        t('dropzone_unzip_failed', {
+          message: e instanceof Error ? e.message : t('error_unknown'),
+        }),
+      );
     } finally {
       setBusy(false);
     }
@@ -61,11 +68,14 @@ export function FileDropZone({
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
       <div className="flex items-center justify-between gap-2 border-b border-zinc-200 px-3.5 py-2.5 text-sm font-semibold dark:border-zinc-800">
-        <span>{title}</span>
+        <span>{title ?? t('dropzone_title')}</span>
         <span className="text-xs font-normal text-muted">
           {staged.length > 0
-            ? `${staged.length} 个 · ${(totalBytes / 1024).toFixed(1)} KB · 必含 SKILL.md`
-            : (hint ?? '必含 SKILL.md · .zip 自动解压 · < 5MB')}
+            ? t('dropzone_staged_summary', {
+                count: staged.length,
+                size: (totalBytes / 1024).toFixed(1),
+              })
+            : (hint ?? t('dropzone_hint'))}
         </span>
       </div>
 
@@ -87,17 +97,17 @@ export function FileDropZone({
         <p className="text-sm text-muted">
           {busy ? (
             <span className="inline-flex items-center gap-1.5">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> 处理中…
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('processing')}
             </span>
           ) : (
             <>
-              把文件拖到这里，或{' '}
+              {t('dropzone_drag_here')}{' '}
               <button
                 type="button"
                 onClick={() => fileInput.current?.click()}
                 className="font-semibold text-accent-600 hover:text-accent-700 dark:text-accent-400"
               >
-                选择文件
+                {t('dropzone_pick_files')}
               </button>{' '}
               /{' '}
               <button
@@ -105,12 +115,12 @@ export function FileDropZone({
                 onClick={() => folderInput.current?.click()}
                 className="font-semibold text-accent-600 hover:text-accent-700 dark:text-accent-400"
               >
-                选择文件夹
+                {t('dropzone_pick_folder')}
               </button>
             </>
           )}
         </p>
-        <p className="mt-1 text-[11px] text-muted">单个 SKILL.md 也行 · .zip 自动解压 · &lt; 5MB</p>
+        <p className="mt-1 text-[11px] text-muted">{t('dropzone_hint2')}</p>
         <input
           ref={fileInput}
           type="file"
@@ -137,7 +147,7 @@ export function FileDropZone({
 
       {staged.length > 0 && !skillMdPresent && (
         <div className="mx-3.5 mb-3 rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-warn">
-          还缺少 SKILL.md，必须包含它才能提交。
+          {t('dropzone_missing_skill_md')}
         </div>
       )}
 
@@ -156,7 +166,7 @@ export function FileDropZone({
               type="button"
               onClick={() => onChange(staged.filter((x) => x.path !== f.path))}
               className="text-muted opacity-0 transition group-hover:opacity-100 hover:text-danger"
-              aria-label={`移除 ${f.path}`}
+              aria-label={t('remove_item', { name: f.path })}
             >
               <X className="h-3.5 w-3.5" />
             </button>

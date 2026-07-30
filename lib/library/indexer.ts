@@ -6,7 +6,8 @@
 
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
-import { getProvider, LLMConfigError, type LLMProvider } from '@/lib/llm';
+import { LLMConfigError, type LLMProvider } from '@/lib/llm';
+import { getLibraryProvider } from './llm';
 import {
   chapterSummaryPrompt,
   overviewPrompt,
@@ -49,6 +50,8 @@ export async function runDocIndexing(docId: string, opts?: { force?: boolean }):
         deletedAt: true,
         summary: true,
         docTypePinned: true,
+        categories: true,
+        categoriesPinned: true,
         contentHash: true,
         aiIndexState: true,
         aiSourceHash: true,
@@ -78,8 +81,11 @@ export async function runDocIndexing(docId: string, opts?: { force?: boolean }):
     if (claim.count === 0) return;
 
     let provider: LLMProvider;
+    let overrideModel: string | null = null;
     try {
-      provider = getProvider();
+      const resolved = await getLibraryProvider();
+      provider = resolved.provider;
+      overrideModel = resolved.model;
     } catch (e) {
       await fail(e instanceof LLMConfigError ? e.message : (e as Error).message);
       return;
@@ -182,14 +188,17 @@ export async function runDocIndexing(docId: string, opts?: { force?: boolean }):
       return;
     }
 
-    const { docType, ...overview } = parsed;
+    const { docType, categories, ...overview } = parsed;
     await prisma.libraryDoc.update({
       where: { id: docId },
       data: {
         aiOverview: overview,
         ...(doc.summary === '' ? { summary: overview.summary } : {}),
         ...(!doc.docTypePinned && docType ? { docType } : {}),
-        aiModel: env.LLM_MODEL ?? 'default',
+        ...(!doc.categoriesPinned && doc.categories.length === 0 && categories.length > 0
+          ? { categories }
+          : {}),
+        aiModel: overrideModel ?? env.LLM_MODEL ?? 'default',
         aiIndexedAt: new Date(),
         aiSourceHash: doc.contentHash,
         aiIndexState: 'ready',

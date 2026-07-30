@@ -1,9 +1,22 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus, Sparkles, Bell, Star, Inbox } from 'lucide-react';
-import { formatDistanceToNowStrict } from 'date-fns';
+import {
+  Plus,
+  Sparkles,
+  Bell,
+  Star,
+  Inbox,
+  BookOpen,
+  Lock,
+  MessageSquare,
+  User,
+  LibraryBig,
+} from 'lucide-react';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { getCommentsOnMyDocs, getMyLibraryDocs } from '@/lib/library-queries';
+import { relativeTime } from '@/lib/i18n-date';
 import { SkillCard } from '@/components/SkillCard';
 import { SourceBadge } from '@/components/SourceBadge';
 import { VisibilityBadge } from '@/components/VisibilityBadge';
@@ -14,9 +27,13 @@ export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user) redirect('/auth/login?callbackUrl=/dashboard');
 
+  const locale = await getLocale();
+  const t = await getTranslations('dashboard');
+  const tl = await getTranslations('labels');
+
   const userId = session.user.id;
 
-  const [owned, subscribed, favorited] = await Promise.all([
+  const [owned, subscribed, favorited, myDocs, docComments, myPosts] = await Promise.all([
     prisma.skill.findMany({
       where: { authorId: userId, deletedAt: null },
       orderBy: { updatedAt: 'desc' },
@@ -47,6 +64,16 @@ export default async function DashboardPage() {
         },
       },
     }),
+    getMyLibraryDocs(userId),
+    getCommentsOnMyDocs(userId),
+    prisma.post
+      .findMany({
+        where: { authorId: userId },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        select: { id: true, bodyMd: true, likeCount: true, commentCount: true, createdAt: true },
+      })
+      .catch(() => []),
   ]);
 
   const subscribedWithUpdates = subscribed.filter(
@@ -69,31 +96,61 @@ export default async function DashboardPage() {
     <div className="container py-8">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">我的面板</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">{t('title')}</h1>
           <p className="mt-1 text-sm text-muted">
-            欢迎回来，{session.user.displayName}
+            {t('welcome', { name: session.user.displayName ?? '' })}
           </p>
         </div>
-        <Link
-          href="/skills/new"
-          className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          发布新 Skill
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/users/${session.user.handle ?? session.user.id}`}
+            className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-3.5 text-sm font-medium transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
+          >
+            <User className="h-3.5 w-3.5" />
+            {t('view_profile')}
+          </Link>
+          <Link
+            href="/library/shelf"
+            className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-3.5 text-sm font-medium transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
+          >
+            <LibraryBig className="h-3.5 w-3.5" />
+            {t('my_shelf')}
+          </Link>
+          <Link
+            href="/skills/new"
+            className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t('new_skill')}
+          </Link>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatBox icon={<Sparkles className="h-4 w-4" />} label="我发布的" value={owned.length} />
-        <StatBox icon={<Bell className="h-4 w-4" />} label="我订阅的" value={subscribed.length} extra={subscribedWithUpdates.length > 0 ? `${subscribedWithUpdates.length} 个有新版本` : undefined} />
-        <StatBox icon={<Star className="h-4 w-4" />} label="我收藏的" value={favorited.length} />
-        <StatBox icon={<Inbox className="h-4 w-4" />} label="待处理申请" value={totalPending} extra={totalPending > 0 ? '点击下方 Skill 处理' : undefined} />
+        <StatBox icon={<Sparkles className="h-4 w-4" />} label={t('stat_published')} value={owned.length} />
+        <StatBox
+          icon={<Bell className="h-4 w-4" />}
+          label={t('stat_subscribed')}
+          value={subscribed.length}
+          extra={
+            subscribedWithUpdates.length > 0
+              ? t('stat_updates', { count: subscribedWithUpdates.length })
+              : undefined
+          }
+        />
+        <StatBox icon={<Star className="h-4 w-4" />} label={t('stat_favorited')} value={favorited.length} />
+        <StatBox
+          icon={<Inbox className="h-4 w-4" />}
+          label={t('stat_pending')}
+          value={totalPending}
+          extra={totalPending > 0 ? t('stat_pending_hint') : undefined}
+        />
       </div>
 
       <section className="mt-10">
-        <SectionHeader title="我发布的 Skills" count={owned.length} />
+        <SectionHeader title={t('section_my_skills')} count={owned.length} />
         {owned.length === 0 ? (
-          <Empty hint="你还没发布过 Skill。" action={{ href: '/skills/new', label: '马上发一个 →' }} />
+          <Empty hint={t('empty_my_skills')} action={{ href: '/skills/new', label: t('empty_my_skills_cta') }} />
         ) : (
           <ul className="surface mt-3 divide-y divide-zinc-100 overflow-hidden rounded-2xl dark:divide-zinc-800">
             {owned.map((s) => (
@@ -105,7 +162,18 @@ export default async function DashboardPage() {
                     </Link>
                     <SourceBadge source={s.sourceType} />
                     <VisibilityBadge visibility={s.visibility} />
-                    <StatusBadge status={s.status} />
+                    <span
+                      className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                      style={
+                        s.status === 'published'
+                          ? { background: '#dcfce7', color: '#166534' }
+                          : s.status === 'draft'
+                            ? { background: '#fef3c7', color: '#92400e' }
+                            : { background: '#fee2e2', color: '#991b1b' }
+                      }
+                    >
+                      {tl(`skillStatus.${s.status}`)}
+                    </span>
                     {s.currentVersion && (
                       <span className="font-mono text-[11px] text-muted">v{s.currentVersion.version}</span>
                     )}
@@ -114,7 +182,7 @@ export default async function DashboardPage() {
                         href={`/skills/${s.slug}?tab=manage`}
                         className="rounded-full bg-danger/15 px-2 py-0.5 text-[10px] font-medium text-danger transition hover:bg-danger/25"
                       >
-                        {pendingMap.get(s.id)} 个下载申请待处理
+                        {t('pending_requests', { count: pendingMap.get(s.id) ?? 0 })}
                       </Link>
                     )}
                   </div>
@@ -123,14 +191,12 @@ export default async function DashboardPage() {
                 <div className="flex items-center gap-3 text-xs text-muted">
                   <span className="font-mono tabular-nums">⬇ {s.downloadCount}</span>
                   <span className="font-mono tabular-nums">❤ {s.likeCount}</span>
-                  <span className="text-[11px]">
-                    {formatDistanceToNowStrict(s.updatedAt, { addSuffix: true })}
-                  </span>
+                  <span className="text-[11px]">{relativeTime(s.updatedAt, locale)}</span>
                   <Link
                     href={`/skills/${s.slug}/manage`}
                     className="rounded border border-zinc-200 px-2 py-0.5 text-[11px] transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
                   >
-                    管理
+                    {t('manage')}
                   </Link>
                 </div>
               </li>
@@ -141,18 +207,18 @@ export default async function DashboardPage() {
 
       <section className="mt-10">
         <SectionHeader
-          title="我订阅的 Skills"
+          title={t('section_subscribed')}
           count={subscribed.length}
           extra={
             subscribedWithUpdates.length > 0 ? (
               <span className="rounded-full bg-warn/15 px-2 py-0.5 text-xs font-medium text-warn">
-                {subscribedWithUpdates.length} 个有更新可用
+                {t('updates_available', { count: subscribedWithUpdates.length })}
               </span>
             ) : null
           }
         />
         {subscribed.length === 0 ? (
-          <Empty hint="还没有订阅任何 Skill。" action={{ href: '/skills', label: '去浏览 →' }} />
+          <Empty hint={t('empty_subscribed')} action={{ href: '/skills', label: t('go_browse') }} />
         ) : (
           <ul className="surface mt-3 divide-y divide-zinc-100 overflow-hidden rounded-2xl dark:divide-zinc-800">
             {subscribed.map((s) => {
@@ -170,12 +236,16 @@ export default async function DashboardPage() {
                       <SourceBadge source={s.skill.sourceType} />
                       {hasUpdate && (
                         <span className="rounded-full bg-warn/15 px-2 py-0.5 text-[10px] font-medium text-warn">
-                          有更新
+                          {t('has_update')}
                         </span>
                       )}
                     </div>
                     <p className="mt-0.5 truncate text-xs text-muted">
-                      作者 {s.skill.author.displayName} · 你装的 v{s.installedVersion?.version ?? '?'} · 最新 v{s.skill.currentVersion?.version ?? '?'}
+                      {t('subscribed_meta', {
+                        author: s.skill.author.displayName,
+                        installed: s.installedVersion?.version ?? '?',
+                        latest: s.skill.currentVersion?.version ?? '?',
+                      })}
                     </p>
                   </div>
                 </li>
@@ -186,9 +256,125 @@ export default async function DashboardPage() {
       </section>
 
       <section className="mt-10">
-        <SectionHeader title="我收藏的 Skills" count={favorited.length} />
+        <SectionHeader
+          title={t('section_my_docs')}
+          count={myDocs.length}
+          extra={
+            <Link href="/library" className="ml-auto text-sm text-accent-600 hover:text-accent-700">
+              {t('go_library')}
+            </Link>
+          }
+        />
+        {myDocs.length === 0 ? (
+          <Empty hint={t('empty_my_docs')} action={{ href: '/library', label: t('empty_my_docs_cta') }} />
+        ) : (
+          <div className="surface mt-3 divide-y divide-zinc-100 rounded-2xl dark:divide-zinc-800/60">
+            {myDocs.slice(0, 10).map((d) => (
+              <div key={d.id} className="flex items-center gap-3 px-4 py-3">
+                <BookOpen className="h-4 w-4 shrink-0 text-muted" />
+                <div className="min-w-0 flex-1">
+                  <Link
+                    href={`/library/${d.slug}`}
+                    className="block truncate text-sm font-medium hover:text-accent-600"
+                  >
+                    {d.title}
+                  </Link>
+                  <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] text-muted">
+                    <span>{tl(`docType.${d.docType}`)}</span>
+                    {d.status !== 'ready' && (
+                      <span className={d.status === 'failed' ? 'text-danger' : 'text-warn'}>
+                        · {d.status === 'failed' ? t('doc_failed') : t('doc_processing')}
+                      </span>
+                    )}
+                    {d.visibility !== 'public' && (
+                      <span className="inline-flex items-center gap-0.5">
+                        · <Lock className="h-3 w-3" />
+                        {tl(`visibility.${d.visibility}`)}
+                      </span>
+                    )}
+                    <span className="font-mono tabular-nums">
+                      · {t('doc_counts', {
+                        shelved: d.shelfCount,
+                        views: d.viewCount,
+                        comments: d.commentCount,
+                      })}
+                    </span>
+                    {d.ratingCount > 0 && (
+                      <span className="font-mono tabular-nums">
+                        · {t('doc_rating', { rating: d.avgRating.toFixed(1), count: d.ratingCount })}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <Link
+                  href={`/library/${d.slug}/edit`}
+                  className="shrink-0 rounded-md border border-zinc-200 px-2 py-1 text-[11px] transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
+                >
+                  {t('edit')}
+                </Link>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {docComments.length > 0 && (
+        <section className="mt-10">
+          <SectionHeader title={t('section_doc_comments')} count={docComments.length} />
+          <div className="surface mt-3 divide-y divide-zinc-100 rounded-2xl dark:divide-zinc-800/60">
+            {docComments.map((c) => (
+              <Link
+                key={c.id}
+                href={`/library/${c.doc.slug}?focus=${c.id}`}
+                className="flex items-start gap-3 px-4 py-3 transition hover:bg-zinc-50 dark:hover:bg-zinc-900/60"
+              >
+                <MessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
+                <div className="min-w-0 flex-1">
+                  <p className="line-clamp-2 text-sm">{c.bodyMd}</p>
+                  <p className="mt-0.5 text-[11px] text-muted">
+                    {c.author.displayName} · {t('on_doc', { title: c.doc.title })} ·{' '}
+                    {relativeTime(c.createdAt, locale)}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {myPosts.length > 0 && (
+        <section className="mt-10">
+          <SectionHeader
+            title={t('section_my_posts')}
+            count={myPosts.length}
+            extra={
+              <Link href="/discussion" className="ml-auto text-sm text-accent-600 hover:text-accent-700">
+                {t('go_discussion')}
+              </Link>
+            }
+          />
+          <div className="surface mt-3 divide-y divide-zinc-100 rounded-2xl dark:divide-zinc-800/60">
+            {myPosts.map((p) => (
+              <Link
+                key={p.id}
+                href={`/discussion/posts/${p.id}`}
+                className="block px-4 py-3 transition hover:bg-zinc-50 dark:hover:bg-zinc-900/60"
+              >
+                <p className="line-clamp-2 text-sm">{p.bodyMd}</p>
+                <p className="mt-0.5 font-mono text-[11px] tabular-nums text-muted">
+                  {t('post_counts', { likes: p.likeCount, comments: p.commentCount })} ·{' '}
+                  {relativeTime(p.createdAt, locale)}
+                </p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="mt-10">
+        <SectionHeader title={t('section_favorited')} count={favorited.length} />
         {favorited.length === 0 ? (
-          <Empty hint="还没有收藏任何 Skill。" action={{ href: '/skills', label: '去浏览 →' }} />
+          <Empty hint={t('empty_favorited')} action={{ href: '/skills', label: t('go_browse') }} />
         ) : (
           <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {favorited.map((f) => (
@@ -273,22 +459,5 @@ function Empty({
         </Link>
       )}
     </div>
-  );
-}
-
-function StatusBadge({ status }: { status: 'draft' | 'published' | 'archived' }) {
-  const styles =
-    status === 'published'
-      ? { bg: '#dcfce7', color: '#166534', label: '已发布' }
-      : status === 'draft'
-        ? { bg: '#fef3c7', color: '#92400e', label: '草稿' }
-        : { bg: '#fee2e2', color: '#991b1b', label: '已归档' };
-  return (
-    <span
-      className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-      style={{ background: styles.bg, color: styles.color }}
-    >
-      {styles.label}
-    </span>
   );
 }

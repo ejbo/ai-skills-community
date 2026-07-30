@@ -165,6 +165,7 @@
   border-radius: 10px;
   margin: 1.2em auto;
   display: block;
+  cursor: zoom-in;
 }
 .reader-prose figure {
   margin: 1.2em 0;
@@ -237,6 +238,19 @@
   border-radius: 2px;
   color: inherit;
 }
+/* Other readers' shared notes — dotted underline markers, never a fill (the
+   page must stay calm; details live in the 社区 sidebar). */
+.reader-hl-community {
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted rgb(var(--accent) / 0.75);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+.reader-hl-community:hover {
+  background: rgb(var(--accent) / 0.08);
+}
 .reader-hl-flash {
   animation: reader-hl-flash 0.8s ease-out 3;
 }
@@ -248,6 +262,20 @@
   50% {
     box-shadow: 0 0 0 3px rgb(var(--accent) / 0.45);
   }
+}
+
+/* community-drawer quote left borders */
+.hl-border-yellow {
+  border-left-color: #facc15;
+}
+.hl-border-green {
+  border-left-color: #4ade80;
+}
+.hl-border-blue {
+  border-left-color: #60a5fa;
+}
+.hl-border-pink {
+  border-left-color: #f472b6;
 }
 
 /* selection-menu color dots */
@@ -262,6 +290,88 @@
 }
 .hl-dot-pink {
   background: #f472b6;
+}
+
+/* ── 原版 PDF renderer (pdf.js canvas + official TextLayer) ─────────────── */
+
+.pdf-page {
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+.pdf-canvas {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  width: 100%;
+  z-index: 1;
+}
+
+/* pdf.js sets each span's inline left/top/font-size + the layer's
+   --scale-factor via setLayerDimensions; these rules mirror the official
+   text_layer_builder.css so glyph spans align pixel-exactly with the canvas
+   (misaligned spans = the "选中很乱" bug). */
+.textLayer {
+  position: absolute;
+  text-align: initial;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 2;
+}
+.textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+.textLayer span.markedContent {
+  top: 0;
+  height: 0;
+}
+.textLayer ::selection {
+  background: rgb(var(--accent) / 0.35);
+}
+.textLayer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  cursor: default;
+  user-select: none;
+}
+.textLayer mark {
+  color: transparent;
+  padding: 0;
+}
+.textLayer .reader-hl-community {
+  background: rgb(var(--accent) / 0.1);
+  text-decoration-thickness: 2px;
+}
+
+/* internal outline/link annotations — transparent clickable overlays */
+.pdf-annots {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+}
+.pdf-annot-link {
+  position: absolute;
+  display: block;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.pdf-annot-link:hover {
+  background: rgb(var(--accent) / 0.12);
 }
 
 /* ── AI chat citations ─────────────────────────────────────────────────── */

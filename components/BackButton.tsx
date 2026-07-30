@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { ArrowLeft } from 'lucide-react';
 
 /**
@@ -13,11 +14,12 @@ import { ArrowLeft } from 'lucide-react';
  */
 export function BackButton({
   fallbackHref = '/skills',
-  label = '返回',
+  label,
 }: {
   fallbackHref?: string;
   label?: string;
 }) {
+  const t = useTranslations('detail');
   const router = useRouter();
   const [canGoBack, setCanGoBack] = useState(false);
 
@@ -34,7 +36,7 @@ export function BackButton({
       className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-muted transition hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 dark:hover:bg-zinc-800 dark:hover:text-white"
     >
       <ArrowLeft className="h-4 w-4" />
-      {label}
+      {label ?? t('back')}
     </button>
   );
 }

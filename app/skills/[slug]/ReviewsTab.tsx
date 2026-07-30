@@ -1,6 +1,7 @@
 import Link from 'next/link';
-import { formatDistanceToNowStrict } from 'date-fns';
 import { Star } from 'lucide-react';
+import { getLocale, getTranslations } from 'next-intl/server';
+import { relativeTime } from '@/lib/i18n-date';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
@@ -11,6 +12,8 @@ import { ReviewForm } from './ReviewForm';
 
 export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: string }) {
   const session = await auth();
+  const t = await getTranslations('skill_detail');
+  const locale = await getLocale();
 
   const skill = await prisma.skill.findUnique({
     where: { id: skillId },
@@ -56,7 +59,7 @@ export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: str
               />
             ))}
           </div>
-          <div className="mt-1 text-xs text-muted">{skill.reviewCount} 条评论</div>
+          <div className="mt-1 text-xs text-muted">{t('review_count', { count: skill.reviewCount })}</div>
         </div>
         <div className="flex flex-1 flex-col gap-1.5 min-w-[200px]">
           {distribution.map(({ star, count }) => (
@@ -82,21 +85,27 @@ export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: str
         />
       )}
       {session?.user && session.user.id === skill.authorId && (
-        <p className="text-xs text-muted">作者本人不能评论自己的 Skill。</p>
+        <p className="text-xs text-muted">{t('author_cannot_review')}</p>
       )}
       {!session?.user && (
         <p className="text-xs text-muted">
-          <Link href={`/auth/login?callbackUrl=/skills/${slug}?tab=reviews`} className="text-accent-600 hover:underline">
-            登录
-          </Link>{' '}
-          后即可发表评论。
+          {t.rich('login_to_review', {
+            link: (chunks) => (
+              <Link
+                href={`/auth/login?callbackUrl=/skills/${slug}?tab=reviews`}
+                className="text-accent-600 hover:underline"
+              >
+                {chunks}
+              </Link>
+            ),
+          })}
         </p>
       )}
 
       <div>
-        <h3 className="mb-3 text-sm font-semibold">全部评论</h3>
+        <h3 className="mb-3 text-sm font-semibold">{t('all_reviews')}</h3>
         {reviews.length === 0 ? (
-          <p className="text-sm text-muted">还没有评论 — 来当第一个吧。</p>
+          <p className="text-sm text-muted">{t('no_reviews')}</p>
         ) : (
           <ul className="space-y-3">
             {reviews.map((r) => {
@@ -121,7 +130,7 @@ export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: str
                         />
                       ))}
                     </div>
-                    <span>{formatDistanceToNowStrict(r.createdAt, { addSuffix: true })}</span>
+                    <span>{relativeTime(r.createdAt, locale)}</span>
                   </div>
                 </div>
                 {r.bodyMd && (
@@ -132,7 +141,7 @@ export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: str
                 {r.authorReply && (
                   <div className="mt-3 rounded-lg border-l-2 border-accent-500 bg-accent-500/5 p-3 text-sm">
                     <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-accent-600">
-                      作者回复
+                      {t('author_reply')}
                     </div>
                     <MarkdownRenderer content={r.authorReply} compact />
                   </div>

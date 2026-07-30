@@ -1,144 +1,218 @@
 import Link from 'next/link';
-import { ArrowRight, Sparkles, Zap, GitBranch, Bell, Clapperboard } from 'lucide-react';
+import {
+  ArrowRight,
+  ArrowUpRight,
+  Blocks,
+  BookOpen,
+  CalendarDays,
+  Clapperboard,
+  Flame,
+  MessagesSquare,
+  Package,
+  Sparkles,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { prisma } from '@/lib/db';
+import { DISCOVERABLE_SKILL_WHERE, SKILL_CARD_SELECT } from '@/lib/skill-queries';
 import { SkillCard } from '@/components/SkillCard';
 import { InstallSnippet } from '@/components/InstallSnippet';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
+import { Reveal } from './home/Reveal';
+import { SectionHeader } from './home/SectionHeader';
+import { HeroBackdrop } from './home/HeroBackdrop';
+
+// The six community surfaces highlighted below the hero. Copy lives in the
+// `home` i18n namespace (surface_*_title / surface_*_body).
+const SURFACES: { key: string; href: string; icon: LucideIcon }[] = [
+  { key: 'skills', href: '/skills', icon: Blocks },
+  { key: 'packs', href: '/skills?source=packs', icon: Package },
+  { key: 'videos', href: '/videos', icon: Clapperboard },
+  { key: 'discussion', href: '/discussion', icon: MessagesSquare },
+  { key: 'library', href: '/library', icon: BookOpen },
+  { key: 'events', href: '/events', icon: CalendarDays },
+];
 
 /** Marketing landing shown to signed-out visitors at `/`. */
 export async function Landing() {
-  const t = await getTranslations('home');
+  const [t, locale] = await Promise.all([getTranslations('home'), getLocale()]);
 
-  const trending = await prisma.skill.findMany({
-    where: { status: 'published', deletedAt: null },
-    orderBy: { trendingScore: 'desc' },
-    take: 6,
-    select: {
-      id: true,
-      slug: true,
-      name: true,
-      summary: true,
-      sourceType: true,
-      updatedAt: true,
-      downloadCount: true,
-      likeCount: true,
-      reviewCount: true,
-      avgRating: true,
-      tokenCostEstimate: true,
-      author: { select: { handle: true, displayName: true } },
-    },
-  });
+  const [trending, skillCount, memberCount, downloads] = await Promise.all([
+    prisma.skill.findMany({
+      where: DISCOVERABLE_SKILL_WHERE,
+      orderBy: { trendingScore: 'desc' },
+      take: 6,
+      select: SKILL_CARD_SELECT,
+    }),
+    prisma.skill.count({ where: DISCOVERABLE_SKILL_WHERE }),
+    prisma.user.count(),
+    prisma.skill.aggregate({ _sum: { downloadCount: true } }),
+  ]);
+
+  const nf = new Intl.NumberFormat(locale);
+  const stats = [
+    { value: skillCount, label: t('stat_skills') },
+    { value: memberCount, label: t('stat_members') },
+    { value: downloads._sum.downloadCount ?? 0, label: t('stat_installs') },
+  ].filter((s) => s.value > 0);
 
   return (
     <div>
-      {/* Hero */}
-      <section className="container py-16 md:py-24">
-        <div className="mx-auto max-w-2xl text-center">
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-accent-500/30 bg-accent-500/10 px-3 py-1 text-xs font-medium text-accent-700 dark:text-accent-300">
+      {/* Hero — CSS-staggered entrance so it renders (and animates) without JS. */}
+      <section className="relative overflow-hidden">
+        <HeroBackdrop />
+        <div className="container relative flex flex-col items-center py-16 text-center md:py-24">
+          <div className="animate-rise inline-flex items-center gap-2 rounded-full border border-accent-500/30 bg-accent-500/10 px-3.5 py-1 text-xs font-medium text-accent-700 dark:border-accent-400/30 dark:text-accent-300">
             <Sparkles className="h-3 w-3" />
-            {t('hero_badge')}
+            {t('hero_badge_v2')}
           </div>
-          <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">{t('hero_title')}</h1>
-          <p className="mt-4 text-lg text-muted">{t('hero_subtitle')}</p>
-          <div className="mx-auto mt-6 max-w-md">
+          <h1
+            className="animate-rise mt-6 max-w-3xl text-4xl font-semibold tracking-tight md:text-5xl"
+            style={{ animationDelay: '70ms' }}
+          >
+            {t('hero_heading_pre')}
+            <span className="bg-gradient-to-r from-accent-500 to-sky-600 bg-clip-text text-transparent dark:from-accent-400 dark:to-sky-400">
+              {t('hero_heading_em')}
+            </span>
+          </h1>
+          <p
+            className="animate-rise mt-4 max-w-xl text-lg text-muted"
+            style={{ animationDelay: '140ms' }}
+          >
+            {t('hero_sub_v2')}
+          </p>
+          <div className="animate-rise mt-7 w-full max-w-md" style={{ animationDelay: '210ms' }}>
             <InstallSnippet slug="<your-skill>" />
           </div>
-          <div className="mt-6 flex items-center justify-center gap-3">
+          <div
+            className="animate-rise mt-6 flex flex-wrap items-center justify-center gap-3"
+            style={{ animationDelay: '280ms' }}
+          >
             <Link
               href="/skills"
-              className="flex items-center gap-1.5 rounded-lg bg-accent-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-accent-600"
+              className="flex h-10 items-center gap-1.5 rounded-xl bg-accent-500 px-5 text-sm font-medium text-white shadow-lg shadow-accent-500/25 transition hover:bg-accent-600 hover:shadow-accent-500/30"
             >
               {t('browse_skills')}
-              <ArrowRight className="h-3.5 w-3.5" />
+              <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
-              href="/videos"
-              className="flex items-center gap-1.5 rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              href="/auth/signup"
+              className="flex h-10 items-center rounded-xl border border-zinc-300 bg-white/60 px-5 text-sm font-medium backdrop-blur transition hover:border-zinc-400 hover:bg-white dark:border-zinc-700 dark:bg-zinc-900/60 dark:hover:border-zinc-600 dark:hover:bg-zinc-900"
             >
-              <Clapperboard className="h-3.5 w-3.5" />
-              {t('browse_videos')}
+              {t('join_now')}
             </Link>
           </div>
+          {stats.length > 0 && (
+            <div
+              className="animate-rise mt-10 flex flex-wrap items-center justify-center gap-x-8 gap-y-2"
+              style={{ animationDelay: '350ms' }}
+            >
+              {stats.map((s) => (
+                <div key={s.label} className="flex items-baseline gap-1.5">
+                  <span className="font-mono text-xl font-semibold tabular-nums">
+                    {nf.format(s.value)}
+                  </span>
+                  <span className="text-xs text-muted">{s.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
-      {/* Feature row */}
-      <section className="container grid grid-cols-1 gap-4 md:grid-cols-3">
-        <Feature
-          icon={<Zap className="h-4 w-4" />}
-          title={t('feature_install_title')}
-          body={t('feature_install_body')}
-        />
-        <Feature
-          icon={<Bell className="h-4 w-4" />}
-          title={t('feature_subscribe_title')}
-          body={t('feature_subscribe_body')}
-        />
-        <Feature
-          icon={<GitBranch className="h-4 w-4" />}
-          title={t('feature_remix_title')}
-          body={t('feature_remix_body')}
-        />
+      {/* Community surfaces */}
+      <section className="container pt-4 md:pt-8">
+        <Reveal className="mx-auto max-w-xl text-center">
+          <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">
+            {t('explore_title')}
+          </h2>
+          <p className="mt-2 text-base text-muted">{t('explore_sub')}</p>
+        </Reveal>
+        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {SURFACES.map((s, i) => (
+            <Reveal key={s.key} delay={(i % 3) * 0.07} className="h-full">
+              <Link href={s.href} className="card-hover surface group flex h-full flex-col rounded-2xl p-5">
+                <div className="flex items-center justify-between">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-500/15 text-accent-600 transition-colors duration-200 group-hover:bg-accent-500 group-hover:text-white dark:text-accent-400 dark:group-hover:text-white">
+                    <s.icon className="h-4 w-4" />
+                  </span>
+                  <ArrowUpRight className="h-4 w-4 -translate-x-1 text-muted opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100" />
+                </div>
+                <h3 className="mt-3.5 text-base font-semibold">{t(`surface_${s.key}_title`)}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted">
+                  {t(`surface_${s.key}_body`)}
+                </p>
+              </Link>
+            </Reveal>
+          ))}
+        </div>
       </section>
 
-      {/* Trending */}
-      <section className="container py-12">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-semibold tracking-tight">{t('trending')}</h2>
-          <Link href="/skills" className="text-sm text-accent-600 hover:text-accent-700">
-            {t('view_all')} →
-          </Link>
-        </div>
-        {trending.length === 0 ? (
-          <div className="surface rounded-2xl px-6 py-12 text-center text-sm text-muted">
-            {t('no_skills_yet')}{' '}
-            <Link href="/skills/new" className="text-accent-600 hover:underline">
-              {t('be_first')}
-            </Link>
-          </div>
-        ) : (
+      {/* Trending skills */}
+      {trending.length > 0 && (
+        <section className="container py-12 md:py-16">
+          <Reveal>
+            <SectionHeader
+              icon={<Flame className="h-4 w-4" />}
+              title={t('trending')}
+              href="/skills"
+              linkLabel={t('view_all')}
+            />
+          </Reveal>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {trending.map((s) => (
-              <SkillCard
-                key={s.id}
-                slug={s.slug}
-                name={s.name}
-                summary={s.summary}
-                sourceType={s.sourceType}
-                author={s.author}
-                updatedAt={s.updatedAt}
-                stats={{
-                  downloads: s.downloadCount,
-                  likes: s.likeCount,
-                  rating: s.avgRating,
-                  reviewCount: s.reviewCount,
-                  tokens: s.tokenCostEstimate,
-                }}
-              />
+            {trending.map((s, i) => (
+              <Reveal key={s.id} delay={(i % 3) * 0.07} className="h-full">
+                <SkillCard
+                  slug={s.slug}
+                  name={s.name}
+                  summary={s.summary}
+                  sourceType={s.sourceType}
+                  visibility={s.visibility}
+                  author={s.author}
+                  updatedAt={s.updatedAt}
+                  stats={{
+                    downloads: s.downloadCount,
+                    likes: s.likeCount,
+                    rating: s.avgRating,
+                    reviewCount: s.reviewCount,
+                    tokens: s.tokenCostEstimate,
+                  }}
+                />
+              </Reveal>
             ))}
           </div>
-        )}
-      </section>
-    </div>
-  );
-}
+        </section>
+      )}
 
-function Feature({
-  icon,
-  title,
-  body,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  body: string;
-}) {
-  return (
-    <div className="surface rounded-2xl p-5">
-      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-500/15 text-accent-600">
-        {icon}
-      </div>
-      <h3 className="mt-3 text-base font-semibold">{title}</h3>
-      <p className="mt-1 text-sm text-muted">{body}</p>
+      {/* Closing CTA */}
+      <section className={`container pb-16 md:pb-24 ${trending.length === 0 ? 'pt-12' : ''}`}>
+        <Reveal>
+          <div className="relative overflow-hidden rounded-3xl border border-accent-500/20 bg-gradient-to-br from-accent-500/10 via-transparent to-sky-500/10 px-6 py-14 text-center dark:border-accent-400/20">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute left-1/2 top-[-140px] h-[260px] w-[520px] -translate-x-1/2 rounded-full bg-accent-500/15 blur-3xl"
+            />
+            <h2 className="relative text-2xl font-semibold tracking-tight md:text-3xl">
+              {t('cta_title')}
+            </h2>
+            <p className="relative mx-auto mt-2 max-w-md text-base text-muted">{t('cta_sub')}</p>
+            <div className="relative mt-6 flex flex-wrap items-center justify-center gap-3">
+              <Link
+                href="/auth/signup"
+                className="flex h-10 items-center gap-1.5 rounded-xl bg-accent-500 px-5 text-sm font-medium text-white shadow-lg shadow-accent-500/25 transition hover:bg-accent-600"
+              >
+                {t('join_now')}
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                href="/auth/login"
+                className="flex h-10 items-center rounded-xl px-5 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800/70 dark:hover:text-white"
+              >
+                {t('sign_in')}
+              </Link>
+            </div>
+          </div>
+        </Reveal>
+      </section>
     </div>
   );
 }

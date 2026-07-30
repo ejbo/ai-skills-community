@@ -1,4 +1,5 @@
 import { notFound, redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { canAccessSkillContent } from '@/lib/access';
@@ -39,12 +40,17 @@ export default async function RemixPage({ params }: { params: { slug: string } }
     select: { id: true, slug: true, name: true },
   });
 
+  const t = await getTranslations('skill_compare');
+
   return (
     <div className="container py-8">
       <div className="mx-auto max-w-5xl">
-        <h1 className="text-3xl font-semibold tracking-tight">Remix Skill</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">{t('remix_page_title')}</h1>
         <p className="mt-1 text-sm text-muted">
-          基于 <span className="font-medium">{skill.name}</span> fork 出一份属于你自己的版本，可以自由修改后重新发布。
+          {t.rich('remix_page_subtitle', {
+            name: skill.name,
+            strong: (chunks) => <span className="font-medium">{chunks}</span>,
+          })}
         </p>
         <div className="mt-6">
           <RemixEditor

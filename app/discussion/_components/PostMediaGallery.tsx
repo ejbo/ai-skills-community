@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import {
   ChevronLeft,
   ChevronRight,
@@ -73,17 +74,22 @@ export function PostMediaGallery({ media }: { media: MediaView[] }) {
 }
 
 function ImageGrid({ images, onOpen }: { images: MediaView[]; onOpen: (i: number) => void }) {
+  const t = useTranslations('discussion_ui');
   const count = images.length;
-  const shown = images.slice(0, 4);
-  const extra = count - 4;
+  // LinkedIn mosaic: up to 5 visible tiles; beyond that the LAST tile carries a
+  // "+N" overlay and opens the lightbox at the first hidden image, whose ←/→
+  // arrows and dots then reach every remaining image.
+  const shown = images.slice(0, 5);
+  const extra = count - 5;
 
-  function tile(m: MediaView, i: number, className: string, overlay?: number) {
+  function tile(m: MediaView, i: number, className: string, overlay?: number, openAt?: number) {
     return (
       <button
         key={m.id}
-        onClick={() => onOpen(i)}
+        // The "+N" overlay tile jumps to the first HIDDEN image, not itself.
+        onClick={() => onOpen(openAt ?? i)}
         className={`relative block overflow-hidden bg-zinc-100 dark:bg-zinc-900 ${className}`}
-        aria-label={`查看图片 ${i + 1}/${count}`}
+        aria-label={t('view_image_n', { index: (openAt ?? i) + 1, total: count })}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -126,9 +132,31 @@ function ImageGrid({ images, onOpen }: { images: MediaView[]; onOpen: (i: number
       </div>
     );
   }
+  if (count === 4) {
+    return (
+      <div className="grid grid-cols-2 gap-1 overflow-hidden rounded-xl">
+        {shown.map((m, i) => tile(m, i, 'aspect-[4/3]'))}
+      </div>
+    );
+  }
+  // 5+ — LinkedIn's 2-on-top / 3-below mosaic; every image stays reachable.
   return (
-    <div className="grid grid-cols-2 gap-1 overflow-hidden rounded-xl">
-      {shown.map((m, i) => tile(m, i, 'aspect-[4/3]', i === 3 ? extra : undefined))}
+    <div className="overflow-hidden rounded-xl">
+      <div className="grid grid-cols-2 gap-1">
+        {shown.slice(0, 2).map((m, i) => tile(m, i, 'aspect-[4/3]'))}
+      </div>
+      <div className="mt-1 grid grid-cols-3 gap-1">
+        {shown.slice(2).map((m, i) => {
+          const isOverlay = i + 2 === 4 && extra > 0;
+          return tile(
+            m,
+            i + 2,
+            'aspect-[4/3]',
+            isOverlay ? extra : undefined,
+            isOverlay ? 5 : undefined,
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -144,6 +172,8 @@ function Lightbox({
   onClose: () => void;
   onNavigate: (i: number) => void;
 }) {
+  const t = useTranslations('discussion_ui');
+  const tc = useTranslations('common');
   const count = images.length;
   const prev = useCallback(
     () => onNavigate((index - 1 + count) % count),
@@ -170,11 +200,11 @@ function Lightbox({
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label="图片预览"
+      aria-label={t('image_preview')}
     >
       <button
         onClick={onClose}
-        aria-label="关闭"
+        aria-label={tc('dismiss')}
         className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white transition hover:bg-white/20"
       >
         <X className="h-5 w-5" />
@@ -185,7 +215,7 @@ function Lightbox({
             e.stopPropagation();
             prev();
           }}
-          aria-label="上一张"
+          aria-label={t('prev_image')}
           className="absolute left-4 rounded-full bg-white/10 p-2 text-white transition hover:bg-white/20"
         >
           <ChevronLeft className="h-6 w-6" />
@@ -204,7 +234,7 @@ function Lightbox({
             e.stopPropagation();
             next();
           }}
-          aria-label="下一张"
+          aria-label={t('next_image')}
           className="absolute right-4 rounded-full bg-white/10 p-2 text-white transition hover:bg-white/20"
         >
           <ChevronRight className="h-6 w-6" />
@@ -219,7 +249,7 @@ function Lightbox({
                 e.stopPropagation();
                 onNavigate(i);
               }}
-              aria-label={`第 ${i + 1} 张`}
+              aria-label={t('image_dot_n', { index: i + 1 })}
               className={`h-1.5 rounded-full transition-all ${
                 i === index ? 'w-5 bg-white' : 'w-1.5 bg-white/40 hover:bg-white/70'
               }`}
@@ -240,6 +270,7 @@ function domainOf(url: string): string {
 }
 
 function VideoLinkCard({ media }: { media: MediaView }) {
+  const t = useTranslations('discussion_ui');
   return (
     <a
       href={media.url}
@@ -255,7 +286,7 @@ function VideoLinkCard({ media }: { media: MediaView }) {
           {media.name || domainOf(media.url)}
         </span>
         <span className="mt-0.5 block truncate text-xs text-muted">
-          {domainOf(media.url)} · 外部视频，在新窗口打开
+          {domainOf(media.url)} · {t('external_video_new_tab')}
         </span>
       </span>
       <ExternalLink className="h-4 w-4 shrink-0 text-muted" />
@@ -274,6 +305,7 @@ function fileMeta(m: MediaView): { label: string; className: string; inline: boo
 }
 
 function FileCard({ media }: { media: MediaView }) {
+  const t = useTranslations('discussion_ui');
   const meta = fileMeta(media);
   // Non-inline files carry the original name so the download keeps it.
   const href = withBasePath(
@@ -300,7 +332,7 @@ function FileCard({ media }: { media: MediaView }) {
         <span className="mt-0.5 block text-xs text-muted">
           {meta.label}
           {media.sizeBytes > 0 ? ` · ${formatBytes(media.sizeBytes)}` : ''}
-          {meta.inline ? ' · 点击预览' : ' · 点击下载'}
+          {meta.inline ? ` · ${t('click_preview')}` : ` · ${t('click_download')}`}
         </span>
       </span>
     </a>

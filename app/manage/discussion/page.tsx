@@ -31,6 +31,7 @@ export default async function AdminDiscussionPage() {
         id: true,
         title: true,
         category: true,
+        categories: true,
         pinned: true,
         locked: true,
         upvoteCount: true,
@@ -58,7 +59,7 @@ export default async function AdminDiscussionPage() {
         topics={topics.map((t) => ({
           id: t.id,
           title: t.title,
-          category: t.category,
+          categories: t.categories.length > 0 ? t.categories : [t.category],
           pinned: t.pinned,
           locked: t.locked,
           upvoteCount: t.upvoteCount,

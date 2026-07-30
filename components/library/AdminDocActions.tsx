@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
 
 /** 详情页管理员内联操作：推荐 / 重新处理 / 删除（软删）/ 恢复。 */
@@ -14,6 +15,8 @@ export function AdminDocActions({
   featured: boolean;
   deleted: boolean;
 }) {
+  const t = useTranslations('library_ui');
+  const tc = useTranslations('common');
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
@@ -24,14 +27,14 @@ export function AdminDocActions({
       const res = await fn();
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        pushToast('error', data.reason ?? '操作失败');
+        pushToast('error', data.reason ?? t('op_failed'));
         return;
       }
       pushToast('success', okMsg);
       if (after) after();
       else router.refresh();
     } catch {
-      pushToast('error', '网络错误，请重试');
+      pushToast('error', t('network_error'));
     } finally {
       setBusy(false);
     }
@@ -50,13 +53,15 @@ export function AdminDocActions({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-[11px] text-muted">管理</span>
+      <span className="text-[11px] text-muted">{t('admin_label')}</span>
       <button
         disabled={busy}
         className={btn}
-        onClick={() => call(() => patch({ featured: !featured }), featured ? '已取消推荐' : '已设为推荐')}
+        onClick={() =>
+          call(() => patch({ featured: !featured }), featured ? t('unfeature_done') : t('feature_done'))
+        }
       >
-        {featured ? '取消推荐' : '推荐'}
+        {featured ? t('unfeature') : t('feature')}
       </button>
       <button
         disabled={busy}
@@ -64,34 +69,34 @@ export function AdminDocActions({
         onClick={() =>
           call(
             () => fetch(`/api/library/docs/${docId}/reprocess`, { method: 'POST' }),
-            '已重新开始处理',
+            t('reprocess_done'),
           )
         }
       >
-        重新处理
+        {t('reprocess')}
       </button>
       {deleted ? (
         <button
           disabled={busy}
           className={btn}
-          onClick={() => call(() => patch({ restore: true }), '已恢复')}
+          onClick={() => call(() => patch({ restore: true }), t('restore_done'))}
         >
-          恢复
+          {t('restore')}
         </button>
       ) : (
         <button
           disabled={busy}
           className="rounded border border-danger/40 px-2 py-1 text-[11px] text-danger transition hover:bg-danger/10 disabled:opacity-60"
           onClick={() => {
-            if (!confirm('确定删除这篇内容？')) return;
+            if (!confirm(t('delete_doc_confirm'))) return;
             call(
               () => fetch(`/api/admin/library/${docId}`, { method: 'DELETE' }),
-              '已删除',
+              t('deleted_done'),
               () => router.push('/library'),
             );
           }}
         >
-          删除
+          {tc('delete')}
         </button>
       )}
     </div>

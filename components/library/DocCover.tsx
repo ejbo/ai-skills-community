@@ -50,7 +50,7 @@ export function DocCover({
   const h1 = hash % 360;
   const h2 = (h1 + 40 + ((hash >>> 9) % 80)) % 360;
   const Icon = TYPE_ICONS[docType] ?? File;
-  const initial = (Array.from(title.trim())[0] ?? '书').toUpperCase();
+  const initial = (Array.from(title.trim())[0] ?? '#').toUpperCase();
 
   return (
     <div

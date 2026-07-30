@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 /** Chip-style multi-value input used for tags and triggers. */
 export function TagInput({
@@ -15,6 +16,7 @@ export function TagInput({
   placeholder?: string;
   mono?: boolean;
 }) {
+  const t = useTranslations('skills_misc');
   const [draft, setDraft] = useState('');
 
   function commit(raw: string) {
@@ -36,9 +38,9 @@ export function TagInput({
           {tag}
           <button
             type="button"
-            onClick={() => onChange(value.filter((t) => t !== tag))}
+            onClick={() => onChange(value.filter((x) => x !== tag))}
             className="text-muted transition hover:text-danger"
-            aria-label={`移除 ${tag}`}
+            aria-label={t('remove_item', { name: tag })}
           >
             <X className="h-3 w-3" />
           </button>

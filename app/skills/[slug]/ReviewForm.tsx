@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Star, Loader2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
 import { RichTextEditor } from '@/components/RichTextEditor';
 
@@ -15,6 +16,8 @@ export function ReviewForm({
   existingRating?: number;
   existingBody?: string;
 }) {
+  const t = useTranslations('skill_detail');
+  const tc = useTranslations('common');
   const router = useRouter();
   const [rating, setRating] = useState(existingRating ?? 0);
   const [hover, setHover] = useState(0);
@@ -23,7 +26,7 @@ export function ReviewForm({
 
   function submit() {
     if (rating < 1) {
-      pushToast('error', '请先打分');
+      pushToast('error', t('rate_first'));
       return;
     }
     startTransition(async () => {
@@ -34,25 +37,25 @@ export function ReviewForm({
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        pushToast('error', data.error ?? '保存失败');
+        pushToast('error', data.error ?? t('save_failed'));
         return;
       }
-      pushToast('success', existingRating ? '评论已更新' : '评论已发布');
+      pushToast('success', existingRating ? t('review_updated') : t('review_posted'));
       router.refresh();
     });
   }
 
   function remove() {
-    if (!confirm('删除你的评论？')) return;
+    if (!confirm(t('delete_review_confirm'))) return;
     startTransition(async () => {
       const res = await fetch(`/api/skills/${slug}/reviews`, { method: 'DELETE' });
       if (!res.ok) {
-        pushToast('error', '删除失败');
+        pushToast('error', t('delete_failed'));
         return;
       }
       setRating(0);
       setBody('');
-      pushToast('success', '已删除');
+      pushToast('success', t('deleted'));
       router.refresh();
     });
   }
@@ -60,7 +63,7 @@ export function ReviewForm({
   return (
     <div className="surface space-y-3 rounded-2xl p-4">
       <div className="flex items-center gap-2">
-        <span className="text-sm font-medium">{existingRating ? '更新你的评论' : '写一条评论'}</span>
+        <span className="text-sm font-medium">{existingRating ? t('edit_review_title') : t('write_review_title')}</span>
       </div>
       <div className="flex items-center gap-1" onMouseLeave={() => setHover(0)}>
         {[1, 2, 3, 4, 5].map((s) => {
@@ -82,15 +85,17 @@ export function ReviewForm({
             </button>
           );
         })}
-        <span className="ml-2 text-xs text-muted">{rating > 0 ? `${rating} 星` : '点击打分'}</span>
+        <span className="ml-2 text-xs text-muted">
+          {rating > 0 ? t('stars_count', { count: rating }) : t('click_to_rate')}
+        </span>
       </div>
       <RichTextEditor
         value={body}
         onChange={setBody}
         variant="compact"
         maxLength={2000}
-        placeholder="说点什么（可选）"
-        ariaLabel="评论内容"
+        placeholder={t('review_placeholder')}
+        ariaLabel={t('review_aria')}
       />
       <div className="flex items-center justify-end gap-2">
         <div className="flex items-center gap-2">
@@ -100,7 +105,7 @@ export function ReviewForm({
               disabled={pending}
               className="h-8 rounded-lg border border-zinc-300 px-3 text-xs transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
             >
-              删除
+              {tc('delete')}
             </button>
           )}
           <button
@@ -109,7 +114,7 @@ export function ReviewForm({
             className="flex h-8 items-center gap-1.5 rounded-lg bg-accent-500 px-3 text-xs font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
           >
             {pending && <Loader2 className="h-3 w-3 animate-spin" />}
-            {existingRating ? '更新' : '提交'}
+            {existingRating ? t('update_btn') : t('submit_btn')}
           </button>
         </div>
       </div>

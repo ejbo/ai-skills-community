@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { ChevronUp } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 
@@ -22,6 +23,7 @@ export function UpvoteButton({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const t = useTranslations('feedback');
   const [count, setCount] = useState(initialCount);
   const [upvoted, setUpvoted] = useState(initialUpvoted);
   const [busy, setBusy] = useState(false);
@@ -41,7 +43,7 @@ export function UpvoteButton({
       if (res.status === 401) {
         setCount(prev.count);
         setUpvoted(prev.upvoted);
-        pushToast('error', '请先登录再 +1');
+        pushToast('error', t('login_before_upvote'));
         router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
         return;
       }
@@ -52,7 +54,7 @@ export function UpvoteButton({
     } catch {
       setCount(prev.count);
       setUpvoted(prev.upvoted);
-      pushToast('error', '操作失败，请重试');
+      pushToast('error', t('action_failed_retry'));
     } finally {
       setBusy(false);
     }
@@ -70,7 +72,7 @@ export function UpvoteButton({
       onClick={toggle}
       disabled={busy}
       aria-pressed={upvoted}
-      title={upvoted ? '取消 +1' : '+1 支持这条反馈'}
+      title={upvoted ? t('upvote_undo') : t('upvote_title')}
       className={`${base} ${tone} ${dims}`}
     >
       <ChevronUp className={size === 'lg' ? 'h-4 w-4' : 'h-3.5 w-3.5'} />

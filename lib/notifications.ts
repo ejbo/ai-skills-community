@@ -373,3 +373,113 @@ export async function fanoutAnnouncement(opts: {
   }
   return { inApp, email };
 }
+
+/**
+ * Reply landed on someone's 知识库 doc comment (or a top-level comment on
+ * their doc). Reuses comment_reply/reply_reply — no enum/preference migration.
+ * In-app only (library replies have no dedicated email template yet).
+ */
+export async function notifyLibraryReply(opts: {
+  recipientId: string;
+  actorId: string;
+  actorName: string;
+  docSlug: string;
+  docTitle: string;
+  focusId: string;
+  bodyMd: string;
+  isReplyToComment: boolean;
+}): Promise<void> {
+  if (opts.recipientId === opts.actorId) return;
+  try {
+    const pref = await getPref(opts.recipientId);
+    if (!pref.inAppCommentReply) return;
+    await createInApp({
+      recipientId: opts.recipientId,
+      actorId: opts.actorId,
+      type: opts.isReplyToComment ? 'reply_reply' : 'comment_reply',
+      title: `${opts.actorName} ${opts.isReplyToComment ? '回复了你的评论' : `评论了《${truncate(opts.docTitle, 40)}》`}`,
+      body: truncate(opts.bodyMd),
+      link: `/library/${opts.docSlug}?focus=${opts.focusId}`,
+    });
+  } catch (e) {
+    console.error('[notify] library reply failed:', e);
+  }
+}
+
+/** Someone replied to the recipient's shared reading note. */
+export async function notifyLibraryNoteReply(opts: {
+  recipientId: string;
+  actorId: string;
+  actorName: string;
+  docSlug: string;
+  chapterIndex: number;
+  highlightId: string;
+  bodyMd: string;
+}): Promise<void> {
+  if (opts.recipientId === opts.actorId) return;
+  try {
+    const pref = await getPref(opts.recipientId);
+    if (!pref.inAppCommentReply) return;
+    await createInApp({
+      recipientId: opts.recipientId,
+      actorId: opts.actorId,
+      type: 'reply_reply',
+      title: `${opts.actorName} 回复了你的阅读笔记`,
+      body: truncate(opts.bodyMd),
+      link: `/library/${opts.docSlug}/read?ch=${opts.chapterIndex}&hl=${opts.highlightId}`,
+    });
+  } catch (e) {
+    console.error('[notify] library note reply failed:', e);
+  }
+}
+
+/** Reader asked for access to a restricted 知识库 doc → notify the uploader. */
+export async function notifyLibraryAccessRequest(opts: {
+  recipientId: string;
+  actorId: string;
+  actorName: string;
+  docSlug: string;
+  docTitle: string;
+  message?: string | null;
+}): Promise<void> {
+  if (opts.recipientId === opts.actorId) return;
+  try {
+    const pref = await getPref(opts.recipientId);
+    if (!pref.inAppAccessRequest) return;
+    await createInApp({
+      recipientId: opts.recipientId,
+      actorId: opts.actorId,
+      type: 'access_request',
+      title: `${opts.actorName} 申请阅读《${truncate(opts.docTitle, 40)}》`,
+      body: opts.message ? truncate(opts.message) : null,
+      link: `/library/${opts.docSlug}`,
+    });
+  } catch (e) {
+    console.error('[notify] library access request failed:', e);
+  }
+}
+
+/** The uploader/admin decided an access request → notify the requester. */
+export async function notifyLibraryAccessDecision(opts: {
+  recipientId: string;
+  actorId: string;
+  docSlug: string;
+  docTitle: string;
+  approved: boolean;
+}): Promise<void> {
+  if (opts.recipientId === opts.actorId) return;
+  try {
+    const pref = await getPref(opts.recipientId);
+    if (!pref.inAppAccessDecision) return;
+    await createInApp({
+      recipientId: opts.recipientId,
+      actorId: opts.actorId,
+      type: 'access_decision',
+      title: `你对《${truncate(opts.docTitle, 40)}》的阅读申请${opts.approved ? '已通过' : '未通过'}`,
+      body: null,
+      link: `/library/${opts.docSlug}`,
+    });
+  } catch (e) {
+    console.error('[notify] library access decision failed:', e);
+  }
+}

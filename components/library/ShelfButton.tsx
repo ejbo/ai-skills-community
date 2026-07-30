@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { BookmarkCheck, BookmarkPlus } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 
@@ -15,6 +16,9 @@ export function ShelfButton({
   initialShelved: boolean;
   initialCount: number;
 }) {
+  const t = useTranslations('library_cards');
+  const tv = useTranslations('video');
+  const tf = useTranslations('feedback');
   const router = useRouter();
   const pathname = usePathname();
   const [shelved, setShelved] = useState(initialShelved);
@@ -34,7 +38,7 @@ export function ShelfButton({
       if (res.status === 401) {
         setShelved(prev.shelved);
         setCount(prev.count);
-        pushToast('error', '请先登录');
+        pushToast('error', tv('login_required'));
         router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
         return;
       }
@@ -45,7 +49,7 @@ export function ShelfButton({
     } catch {
       setShelved(prev.shelved);
       setCount(prev.count);
-      pushToast('error', '操作失败，请重试');
+      pushToast('error', tf('action_failed_retry'));
     } finally {
       setBusy(false);
     }
@@ -63,7 +67,7 @@ export function ShelfButton({
       }`}
     >
       {shelved ? <BookmarkCheck className="h-4 w-4" /> : <BookmarkPlus className="h-4 w-4" />}
-      {shelved ? '已在书架' : '加入书架'}
+      {shelved ? t('on_shelf') : t('add_to_shelf')}
       <span className="font-mono text-xs tabular-nums">{count}</span>
     </button>
   );

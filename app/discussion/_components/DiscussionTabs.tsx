@@ -1,20 +1,22 @@
 'use client';
 
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { motion } from 'framer-motion';
 
 type Tab = 'posts' | 'forum';
 
 /** URL-param tabs for the Discussion hub — same pattern as SourceTabs. */
 export function DiscussionTabs() {
+  const t = useTranslations('discussion');
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
   const current: Tab = params.get('tab') === 'forum' ? 'forum' : 'posts';
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: 'posts', label: '动态' },
-    { key: 'forum', label: '讨论帖' },
+    { key: 'posts', label: t('tab_posts') },
+    { key: 'forum', label: t('tab_forum') },
   ];
 
   function select(key: Tab) {

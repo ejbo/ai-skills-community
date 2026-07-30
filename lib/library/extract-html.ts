@@ -159,10 +159,44 @@ function splitChapters(sanitized: string, fullText: string): ExtractedChapter[] 
  * Extract a fetched HTML page into a normalized document.
  * Throws FetchUrlError('unsupported_content') when no usable content exists.
  */
+/**
+ * Promote lazy-loaded image URLs into `src` BEFORE Readability/sanitize run.
+ * WeChat 公众号 (and most CMSes) ship `<img data-src="…">` with an empty or
+ * 1px-placeholder src — without this every article image is dropped.
+ */
+function promoteLazyImages(document: Document): void {
+  for (const img of Array.from(document.querySelectorAll('img'))) {
+    const src = img.getAttribute('src') ?? '';
+    const hasRealSrc = /^https?:\/\//i.test(src) && !/\b(1x1|pixel|blank|spacer)\b/i.test(src);
+    if (hasRealSrc) continue;
+    const lazy =
+      img.getAttribute('data-src') ??
+      img.getAttribute('data-original') ??
+      img.getAttribute('data-lazy-src') ??
+      img.getAttribute('data-actualsrc');
+    if (lazy && /^(https?:)?\/\//i.test(lazy.trim())) {
+      img.setAttribute('src', lazy.trim());
+      continue;
+    }
+    // srcset fallback: pick the largest candidate.
+    const srcset = img.getAttribute('srcset') ?? img.getAttribute('data-srcset');
+    if (!srcset) continue;
+    let best: { url: string; w: number } | null = null;
+    for (const part of srcset.split(',')) {
+      const [u, d] = part.trim().split(/\s+/);
+      if (!u) continue;
+      const w = d?.endsWith('w') ? Number.parseInt(d, 10) : 0;
+      if (!best || w > best.w) best = { url: u, w: Number.isFinite(w) ? w : 0 };
+    }
+    if (best && /^(https?:)?\/\//i.test(best.url)) img.setAttribute('src', best.url);
+  }
+}
+
 export function extractArticle(html: string, url: string): ExtractedDoc {
   const dom = new JSDOM(html, { url });
   const document = dom.window.document;
   const meta = extractMeta(document, html, url);
+  promoteLazyImages(document);
 
   let contentHtml: string | null = null;
   try {

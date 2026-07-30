@@ -10,6 +10,32 @@ import { detectLanguage, type ExtractedChapter, type ExtractedDoc } from './type
 const FALLBACK_GROUP_PAGES = 12;
 const SCANNED_CHARS_PER_PAGE = 20;
 const SCANNED_NOTICE_HTML = '<p>该 PDF 为扫描版，暂不支持文字提取；请使用原文件阅读。</p>';
+const GARBLED_NOTICE_HTML =
+  '<p>该 PDF 的内嵌文字编码异常（常见于缺失 ToUnicode 映射的字体），无法可靠提取；请使用原文视图阅读。</p>';
+
+/**
+ * PDFs with broken/missing ToUnicode maps extract as mojibake — replacement
+ * chars, Private-Use-Area glyph codes, control bytes. Showing that text (or
+ * chunking it for AI/highlights) is worse than degrading to the original view.
+ */
+function looksGarbled(sample: string): boolean {
+  const solid = sample.replace(/\s/g, '');
+  if (solid.length < 200) return false;
+  let suspicious = 0;
+  for (const ch of solid) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (
+      code === 0xfffd ||
+      (code >= 0xe000 && code <= 0xf8ff) || // BMP Private Use Area
+      (code >= 0xf0000 && code <= 0x10fffd) || // supplementary PUA
+      (code < 0x20 && code !== 0x09) ||
+      (code >= 0x0080 && code <= 0x009f) // C1 controls
+    ) {
+      suspicious++;
+    }
+  }
+  return suspicious / solid.length > 0.03;
+}
 
 const CJK_CHAR_RE = /[㐀-䶿一-鿿豈-﫿぀-ヿ가-힯]/;
 const SENTENCE_END_RE = /[。！？．.!?…：:;；"”』」）)]$/;
@@ -126,6 +152,8 @@ function buildChapter(span: PageSpan, pages: string[]): ExtractedChapter {
     title: span.title,
     html: paragraphs.map((p) => `<p>${escapeHtml(p)}</p>`).join('\n'),
     text: paragraphs.join('\n\n'),
+    pageStart: span.start,
+    pageEnd: Math.max(span.start, span.end - 1),
   };
 }
 
@@ -162,6 +190,19 @@ export async function extractPdf(buf: Buffer): Promise<ExtractedDoc> {
         ...base,
         language: null,
         chapters: [{ title: null, html: SCANNED_NOTICE_HTML, text: '' }],
+      };
+    }
+    // Sample from several points of the doc — encoding damage is usually global.
+    const joined = pages.join('\n');
+    const sample =
+      joined.slice(0, 4000) +
+      joined.slice(Math.floor(joined.length / 2), Math.floor(joined.length / 2) + 4000) +
+      joined.slice(-4000);
+    if (looksGarbled(sample)) {
+      return {
+        ...base,
+        language: null,
+        chapters: [{ title: null, html: GARBLED_NOTICE_HTML, text: '' }],
       };
     }
 

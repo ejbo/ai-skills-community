@@ -1,90 +1,9 @@
 import { headers } from 'next/headers';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { getTranslations } from 'next-intl/server';
 
-const CONTENT = `
-# CLI 快速开始
-
-用 \`skills\` 命令把社区里的 Skill 一行装到本地。
-
-## 前置：安装 Node.js（含 npm）
-
-到 [nodejs.org](https://nodejs.org) 安装 Node.js（自带 \`npm\`），然后验证：
-
-\`\`\`bash
-node -v        # 看到版本号即可
-npm -v
-\`\`\`
-
-## 一、安装 CLI（一次性）
-
-\`\`\`bash
-npm i -g <本站地址>/skills-cli.tgz   # 全局安装 skills 命令
-skills --version                      # 验证安装成功
-\`\`\`
-
-## 二、登录（一次性）
-
-先在 [<本站地址>/settings/tokens](<本站地址>/settings/tokens) 生成一个 token（只显示一次，立刻复制），然后：
-
-\`\`\`bash
-skills login --registry <本站地址>   # 粘贴 token；并把本站设为默认服务器
-\`\`\`
-
-登录后所有命令默认连本站，之后无需再带 \`--registry\`。
-
-## 三、安装 Skill
-
-\`\`\`bash
-skills install <slug>              # 装到当前项目 .claude/skills/
-skills install <slug> -g           # 装到全局 ~/.claude/skills/
-skills install <slug>@1.2.0 -s     # 指定版本，并订阅更新
-skills install <a> <b> <c>         # 一次装多个
-skills install pack:<合集slug>     # 安装一个「合集包」内的全部 Skills
-\`\`\`
-
-每个 Skill 详情页的「安装」框已填好 \`skills install <slug>\`，复制即用。受限下载的 Skill 需先到详情页点「申请下载」、作者批准后才能装。
-
-「合集包」是管理员按场景整理的 Skill 组合（浏览页的「合集包」标签页），一条 \`pack:\` 命令全部装上；某个成员装失败（如受限未批准）不影响其余成员。
-
-## 四、常用命令
-
-\`\`\`bash
-skills search "关键词"   # 搜索 Skill
-skills list -a           # 列出已装（项目 + 全局）
-skills update -a         # 更新全部已装
-skills subscribe <slug>  # 订阅更新提示（加 --off 取消）
-skills logout            # 退出登录（清除本地 token）
-\`\`\`
-
-## 五、升级 CLI 本体
-
-站点发布了新版 CLI（比如新增 \`pack:\` 合集包安装）后，一条命令升级：
-
-\`\`\`bash
-skills upgrade           # 从当前服务器重新安装 CLI 自己
-\`\`\`
-
-注意区分：\`skills update\` 更新的是**已安装的各个 Skill**；\`skills upgrade\` 升级的是 \`skills\` **命令本身**。
-
-如果你的 CLI 版本太老、还没有 \`upgrade\` 命令，手动重装一次即可（之后就有了）：
-
-\`\`\`bash
-npm i -g <本站地址>/skills-cli.tgz
-skills --version
-\`\`\`
-
-## 六、卸载
-
-\`\`\`bash
-npm uninstall -g @skills-community/cli   # 卸载全局安装的 skills 命令
-rm -rf ~/.skills                          # 可选：清除登录 token 与 CLI 配置
-rm -rf ~/.npm/_npx                        # 可选：清除 npx 方式的运行缓存
-\`\`\`
-
-卸载 CLI 不影响已装到本地的各个 Skill 文件。要删除某个 Skill，直接删对应目录即可：项目内 \`.claude/skills/<slug>/\`，全局 \`~/.claude/skills/<slug>/\`。
-`;
-
-export default function CliDocsPage() {
+export default async function CliDocsPage() {
+  const t = await getTranslations('docs_page');
   // Bake the live site origin into the commands so they're copy-paste ready
   // (tracks whatever host serves the page — localhost / AWS / intranet).
   const h = headers();
@@ -92,8 +11,97 @@ export default function CliDocsPage() {
   const proto = h.get('x-forwarded-proto') ?? 'http';
   // Include the deploy basePath (…/ai-community) — the tarball + API live under it on a subpath
   // deploy. The commands also pass `--registry <base>` so the CLI targets THIS server.
-  const base = host ? `${proto}://${host}${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}` : '<本站地址>';
-  const content = CONTENT.replaceAll('<本站地址>', base);
+  const base = host
+    ? `${proto}://${host}${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}`
+    : t('cli_site_placeholder');
+
+  // Prose + the trailing `#` comments of the samples are translated; the commands
+  // themselves stay verbatim. `<SITE_URL>` is the origin sentinel baked into the
+  // command samples — replaced with the live origin below.
+  const CONTENT = `
+# ${t('cli_title')}
+
+${t('cli_intro')}
+
+## ${t('cli_h_prereq')}
+
+${t('cli_prereq_p1')}
+
+\`\`\`bash
+node -v        # ${t('cli_cmt_node_version')}
+npm -v
+\`\`\`
+
+## ${t('cli_h_install')}
+
+\`\`\`bash
+npm i -g <SITE_URL>/skills-cli.tgz   # ${t('cli_cmt_install_global')}
+skills --version                      # ${t('cli_cmt_verify_install')}
+\`\`\`
+
+## ${t('cli_h_login')}
+
+${t('cli_login_p1', { site: base })}
+
+\`\`\`bash
+skills login --registry <SITE_URL>   # ${t('cli_cmt_login')}
+\`\`\`
+
+${t('cli_login_p2')}
+
+## ${t('cli_h_install_skill')}
+
+\`\`\`bash
+skills install <slug>              # ${t('cli_cmt_install_project')}
+skills install <slug> -g           # ${t('cli_cmt_install_global_skill')}
+skills install <slug>@1.2.0 -s     # ${t('cli_cmt_install_version')}
+skills install <a> <b> <c>         # ${t('cli_cmt_install_many')}
+skills install pack:<${t('cli_arg_pack_slug')}>     # ${t('cli_cmt_install_pack')}
+\`\`\`
+
+${t('cli_install_p1')}
+
+${t('cli_install_p2')}
+
+## ${t('cli_h_common')}
+
+\`\`\`bash
+skills search "${t('cli_arg_keyword')}"   # ${t('cli_cmt_search')}
+skills list -a           # ${t('cli_cmt_list')}
+skills update -a         # ${t('cli_cmt_update')}
+skills subscribe <slug>  # ${t('cli_cmt_subscribe')}
+skills logout            # ${t('cli_cmt_logout')}
+\`\`\`
+
+## ${t('cli_h_upgrade')}
+
+${t('cli_upgrade_p1')}
+
+\`\`\`bash
+skills upgrade           # ${t('cli_cmt_upgrade')}
+\`\`\`
+
+${t('cli_upgrade_p2')}
+
+${t('cli_upgrade_p3')}
+
+\`\`\`bash
+npm i -g <SITE_URL>/skills-cli.tgz
+skills --version
+\`\`\`
+
+## ${t('cli_h_uninstall')}
+
+\`\`\`bash
+npm uninstall -g @skills-community/cli   # ${t('cli_cmt_uninstall_cli')}
+rm -rf ~/.skills                          # ${t('cli_cmt_uninstall_config')}
+rm -rf ~/.npm/_npx                        # ${t('cli_cmt_uninstall_npx')}
+\`\`\`
+
+${t('cli_uninstall_p1')}
+`;
+
+  const content = CONTENT.replaceAll('<SITE_URL>', base);
 
   return (
     <div className="prose prose-zinc max-w-none dark:prose-invert">

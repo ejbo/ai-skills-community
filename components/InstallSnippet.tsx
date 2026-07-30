@@ -10,6 +10,7 @@ import { copyText } from '@/lib/clipboard';
 
 export function InstallSnippet({ slug, version }: { slug: string; version?: string }) {
   const t = useTranslations('common');
+  const tu = useTranslations('ui');
   const [copied, setCopied] = useState(false);
 
   const ref = version ? `${slug}@${version}` : slug;
@@ -67,11 +68,13 @@ export function InstallSnippet({ slug, version }: { slug: string; version?: stri
         </button>
       </div>
       <p className="text-[11px] text-muted">
-        首次使用需先安装 CLI 并登录，见{' '}
-        <Link href="/docs/cli" className="underline hover:text-accent-600">
-          CLI 快速开始
-        </Link>
-        。
+        {tu.rich('install_cli_hint', {
+          link: (chunks) => (
+            <Link href="/docs/cli" className="underline hover:text-accent-600">
+              {chunks}
+            </Link>
+          ),
+        })}
       </p>
     </div>
   );

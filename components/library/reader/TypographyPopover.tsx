@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { useTranslations } from 'next-intl';
 import { Minus, Plus } from 'lucide-react';
 import {
   MAX_FONT_SIZE,
@@ -11,23 +12,24 @@ import {
   type ReaderWidth,
 } from './reader-prefs';
 
-const LINE_HEIGHTS: { value: ReaderLineHeight; label: string }[] = [
-  { value: 1.5, label: '紧凑' },
-  { value: 1.75, label: '适中' },
-  { value: 2, label: '宽松' },
+// labelKey → reader.* message keys, translated at render time.
+const LINE_HEIGHTS: { value: ReaderLineHeight; labelKey: string }[] = [
+  { value: 1.5, labelKey: 'lh_compact' },
+  { value: 1.75, labelKey: 'lh_normal' },
+  { value: 2, labelKey: 'lh_loose' },
 ];
 
-const WIDTHS: { value: ReaderWidth; label: string }[] = [
-  { value: 'narrow', label: '窄' },
-  { value: 'normal', label: '适中' },
-  { value: 'wide', label: '宽' },
+const WIDTHS: { value: ReaderWidth; labelKey: string }[] = [
+  { value: 'narrow', labelKey: 'width_narrow' },
+  { value: 'normal', labelKey: 'width_normal' },
+  { value: 'wide', labelKey: 'width_wide' },
 ];
 
-const THEMES: { value: ReaderTheme; label: string; swatch: string }[] = [
-  { value: 'auto', label: '跟随', swatch: 'linear-gradient(135deg, #ffffff 50%, #18181b 50%)' },
-  { value: 'light', label: '浅色', swatch: '#fafafb' },
-  { value: 'sepia', label: '护眼', swatch: '#faf4e8' },
-  { value: 'dark', label: '深色', swatch: '#18181b' },
+const THEMES: { value: ReaderTheme; labelKey: string; swatch: string }[] = [
+  { value: 'auto', labelKey: 'theme_auto', swatch: 'linear-gradient(135deg, #ffffff 50%, #18181b 50%)' },
+  { value: 'light', labelKey: 'theme_light', swatch: '#fafafb' },
+  { value: 'sepia', labelKey: 'theme_sepia', swatch: '#faf4e8' },
+  { value: 'dark', labelKey: 'theme_dark', swatch: '#18181b' },
 ];
 
 /** Aa popover anchored under the chrome button (button carries data-typo-anchor). */
@@ -36,20 +38,24 @@ export function TypographyPopover({
   onClose,
   prefs,
   onChange,
+  flow,
 }: {
   open: boolean;
   onClose: () => void;
   prefs: ReaderPrefs;
   onChange: (patch: Partial<ReaderPrefs>) => void;
+  /** 连续/分章 reading mode (null = single-chapter doc, no choice to make). */
+  flow: { mode: 'paged' | 'flow'; available: boolean; onChange: (mode: 'paged' | 'flow') => void } | null;
 }) {
+  const t = useTranslations('reader');
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent | TouchEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (!t) return;
-      if (ref.current?.contains(t) || t.closest('[data-typo-anchor]')) return;
+      const el = e.target as HTMLElement | null;
+      if (!el) return;
+      if (ref.current?.contains(el) || el.closest('[data-typo-anchor]')) return;
       onClose();
     };
     document.addEventListener('mousedown', onDown);
@@ -66,14 +72,31 @@ export function TypographyPopover({
     <div
       ref={ref}
       role="dialog"
-      aria-label="排版设置"
+      aria-label={t('typography_settings')}
       className="reader-panel rborder absolute right-0 top-11 z-50 w-64 space-y-4 rounded-xl border p-4 shadow-xl"
     >
+      {flow && (
+        <section className="space-y-1.5">
+          <Label>{t('reading_mode')}</Label>
+          <div className="grid grid-cols-2 gap-1.5">
+            <Segment active={flow.mode === 'flow'} onClick={() => flow.available && flow.onChange('flow')}>
+              {t('flow_mode')}
+            </Segment>
+            <Segment active={flow.mode === 'paged'} onClick={() => flow.onChange('paged')}>
+              {t('paged_mode')}
+            </Segment>
+          </div>
+          {!flow.available && (
+            <p className="r-muted text-[11px]">{t('flow_unavailable')}</p>
+          )}
+        </section>
+      )}
+
       <section className="space-y-1.5">
-        <Label>字号</Label>
+        <Label>{t('font_size')}</Label>
         <div className="flex items-center gap-2">
           <StepButton
-            label="减小字号"
+            label={t('decrease_font')}
             disabled={prefs.fontSize <= MIN_FONT_SIZE}
             onClick={() => onChange({ fontSize: prefs.fontSize - 1 })}
           >
@@ -81,7 +104,7 @@ export function TypographyPopover({
           </StepButton>
           <span className="flex-1 text-center font-mono text-sm tabular-nums">{prefs.fontSize}px</span>
           <StepButton
-            label="增大字号"
+            label={t('increase_font')}
             disabled={prefs.fontSize >= MAX_FONT_SIZE}
             onClick={() => onChange({ fontSize: prefs.fontSize + 1 })}
           >
@@ -91,19 +114,19 @@ export function TypographyPopover({
       </section>
 
       <section className="space-y-1.5">
-        <Label>字体</Label>
+        <Label>{t('font_family')}</Label>
         <div className="grid grid-cols-2 gap-1.5">
           <Segment active={!prefs.serif} onClick={() => onChange({ serif: false })}>
-            黑体
+            {t('font_sans')}
           </Segment>
           <Segment active={prefs.serif} onClick={() => onChange({ serif: true })}>
-            <span style={{ fontFamily: "'Songti SC', Georgia, serif" }}>宋体</span>
+            <span style={{ fontFamily: "'Songti SC', Georgia, serif" }}>{t('font_serif')}</span>
           </Segment>
         </div>
       </section>
 
       <section className="space-y-1.5">
-        <Label>行距</Label>
+        <Label>{t('line_height')}</Label>
         <div className="grid grid-cols-3 gap-1.5">
           {LINE_HEIGHTS.map((o) => (
             <Segment
@@ -111,44 +134,44 @@ export function TypographyPopover({
               active={prefs.lineHeight === o.value}
               onClick={() => onChange({ lineHeight: o.value })}
             >
-              {o.label}
+              {t(o.labelKey)}
             </Segment>
           ))}
         </div>
       </section>
 
       <section className="space-y-1.5">
-        <Label>版宽</Label>
+        <Label>{t('page_width')}</Label>
         <div className="grid grid-cols-3 gap-1.5">
           {WIDTHS.map((o) => (
             <Segment key={o.value} active={prefs.width === o.value} onClick={() => onChange({ width: o.value })}>
-              {o.label}
+              {t(o.labelKey)}
             </Segment>
           ))}
         </div>
       </section>
 
       <section className="space-y-1.5">
-        <Label>主题</Label>
+        <Label>{t('theme')}</Label>
         <div className="grid grid-cols-4 gap-1.5">
-          {THEMES.map((t) => (
+          {THEMES.map((theme) => (
             <button
-              key={t.value}
+              key={theme.value}
               type="button"
-              onClick={() => onChange({ theme: t.value })}
-              aria-pressed={prefs.theme === t.value}
+              onClick={() => onChange({ theme: theme.value })}
+              aria-pressed={prefs.theme === theme.value}
               className="flex flex-col items-center gap-1"
             >
               <span
                 className={`h-6 w-6 rounded-full border ${
-                  prefs.theme === t.value
+                  prefs.theme === theme.value
                     ? 'border-accent-500 ring-2 ring-accent-500/40'
                     : 'border-[var(--reader-border)]'
                 }`}
-                style={{ background: t.swatch }}
+                style={{ background: theme.swatch }}
               />
-              <span className={`text-[11px] ${prefs.theme === t.value ? 'font-medium text-[var(--reader-accent)]' : 'r-muted'}`}>
-                {t.label}
+              <span className={`text-[11px] ${prefs.theme === theme.value ? 'font-medium text-[var(--reader-accent)]' : 'r-muted'}`}>
+                {t(theme.labelKey)}
               </span>
             </button>
           ))}

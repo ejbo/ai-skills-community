@@ -32,6 +32,7 @@ function pickDefault(files: FileMeta[]): string | null {
 
 export function FilesTab({ slug }: { slug: string }) {
   const t = useTranslations('detail.files');
+  const ts = useTranslations('skill_detail');
   const [files, setFiles] = useState<FileMeta[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -46,7 +47,7 @@ export function FilesTab({ slug }: { slug: string }) {
         const data = await res.json();
         if (!alive) return;
         if (!res.ok) {
-          setError(data.reason ?? data.error ?? '加载失败');
+          setError(data.reason ?? data.error ?? ts('load_failed'));
           return;
         }
         setFiles(data.files);
@@ -59,11 +60,11 @@ export function FilesTab({ slug }: { slug: string }) {
         const def = pickDefault(data.files);
         if (def) setSelected(def);
       })
-      .catch((e) => alive && setError(e instanceof Error ? e.message : '加载失败'));
+      .catch((e) => alive && setError(e instanceof Error ? e.message : ts('load_failed')));
     return () => {
       alive = false;
     };
-  }, [slug]);
+  }, [slug, ts]);
 
   useEffect(() => {
     if (!selected) return;
@@ -274,19 +275,20 @@ function ViewToggle({
   view: 'rendered' | 'raw';
   onChange: (v: 'rendered' | 'raw') => void;
 }) {
+  const ts = useTranslations('skill_detail');
   const base = 'inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium transition';
   const on = 'bg-accent-500/10 text-accent-700 dark:text-accent-300';
   const off = 'text-muted hover:bg-zinc-100 dark:hover:bg-zinc-800';
   return (
     <div className="inline-flex overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
       <button onClick={() => onChange('rendered')} className={`${base} ${view === 'rendered' ? on : off}`}>
-        <Eye className="h-3 w-3" /> 渲染
+        <Eye className="h-3 w-3" /> {ts('view_rendered')}
       </button>
       <button
         onClick={() => onChange('raw')}
         className={`${base} border-l border-zinc-200 dark:border-zinc-800 ${view === 'raw' ? on : off}`}
       >
-        <Code2 className="h-3 w-3" /> 原始
+        <Code2 className="h-3 w-3" /> {ts('view_raw')}
       </button>
     </div>
   );

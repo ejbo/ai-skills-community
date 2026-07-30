@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Calendar, Pencil, Tag as TagIcon } from 'lucide-react';
-import { formatDistanceToNowStrict } from 'date-fns';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
+import { relativeTime } from '@/lib/i18n-date';
 import { DeptTag } from '@/components/DeptTag';
 import type { VideoDetail } from '@/lib/video/queries';
 import { formatCount, withBasePath } from '@/lib/video/types';
@@ -16,6 +16,8 @@ interface Props {
 
 export async function VideoMeta({ video, privileged, initialLiked, initialFavorited }: Props) {
   const t = await getTranslations('video');
+  const tc = await getTranslations('common');
+  const locale = await getLocale();
   const uploader = video.uploader;
   const publishedAt = video.publishedAt ?? video.createdAt;
 
@@ -33,7 +35,7 @@ export async function VideoMeta({ video, privileged, initialLiked, initialFavori
         <span>·</span>
         <span className="inline-flex items-center gap-1">
           <Calendar className="h-3.5 w-3.5" />
-          {formatDistanceToNowStrict(publishedAt, { addSuffix: true })}
+          {relativeTime(publishedAt, locale)}
         </span>
         {video.category && (
           <>
@@ -84,7 +86,7 @@ export async function VideoMeta({ video, privileged, initialLiked, initialFavori
               className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-3 text-sm font-medium transition hover:border-zinc-400 dark:border-zinc-700"
             >
               <Pencil className="h-3.5 w-3.5" />
-              编辑
+              {tc('edit')}
             </Link>
           )}
         </div>

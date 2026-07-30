@@ -1,8 +1,8 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Bell, GitFork, Heart, Star, Calendar, Tag as TagIcon, ExternalLink, Download, Lock } from 'lucide-react';
-import { formatDistanceToNowStrict } from 'date-fns';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
+import { relativeTime } from '@/lib/i18n-date';
 import { auth } from '@/lib/auth';
 import { getSkillBySlug } from '@/lib/skill-queries';
 import { prisma } from '@/lib/db';
@@ -79,6 +79,8 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
   const author = toPublicAuthor(skill.author, session?.user?.isAdmin ?? false);
 
   const t = await getTranslations('detail');
+  const ts = await getTranslations('skill_detail');
+  const locale = await getLocale();
   const rawTab = (searchParams.tab as 'overview' | 'files' | 'versions' | 'reviews' | 'composition' | 'comparison' | 'playground' | 'manage') ?? 'overview';
 
   const [versionCount, isLiked, isFav, isSub, comparison] = await Promise.all([
@@ -140,7 +142,7 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
             <>
               <InstallSnippet slug={skill.slug} />
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-                <span>或</span>
+                <span>{ts('or')}</span>
                 {session?.user ? (
                   <DownloadButton
                     slug={skill.slug}
@@ -153,11 +155,12 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
                     className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:border-accent-500 hover:bg-accent-500/5 hover:text-accent-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-accent-400 dark:hover:bg-accent-500/10 dark:hover:text-accent-300"
                   >
                     <Download className="h-3.5 w-3.5" />
-                    下载技能包 (.zip)
+                    {ts('download_zip')}
                   </a>
                 )}
                 <span className="font-mono text-[11px]">
-                  解压到 <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">~/.claude/skills/{skill.slug}/</code>
+                  {ts('unzip_to')}{' '}
+                  <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">~/.claude/skills/{skill.slug}/</code>
                 </span>
               </div>
             </>
@@ -194,9 +197,9 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
               </div>
             </div>
               <StatBlock label={t('subscribers')} value={skill.subscriberCount.toLocaleString()} icon={<Bell className="h-3.5 w-3.5" />} />
-              <StatBlock label="点赞" value={skill.likeCount.toLocaleString()} icon={<Heart className="h-3.5 w-3.5" />} />
+              <StatBlock label={t('like')} value={skill.likeCount.toLocaleString()} icon={<Heart className="h-3.5 w-3.5" />} />
               <StatBlock
-                label="评分"
+                label={ts('rating')}
                 value={skill.avgRating > 0 ? `${skill.avgRating.toFixed(1)} (${skill.reviewCount})` : '—'}
                 icon={<Star className="h-3.5 w-3.5" />}
               />
@@ -204,7 +207,7 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
                 label={t('last_published')}
                 value={
                   skill.currentVersion?.publishedAt
-                    ? formatDistanceToNowStrict(skill.currentVersion.publishedAt, { addSuffix: true })
+                    ? relativeTime(skill.currentVersion.publishedAt, locale)
                     : '—'
                 }
                 icon={<Calendar className="h-3.5 w-3.5" />}
@@ -240,22 +243,23 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
                 className="inline-flex items-center gap-1 text-xs text-accent-600 hover:text-accent-700"
               >
                 <ExternalLink className="h-3 w-3" />
-                查看上游来源
+                {ts('view_upstream')}
               </a>
             )}
             {skill.forkedFrom && (
               <div className="text-xs">
-                <span className="text-muted">Fork 自 </span>
+                <span className="text-muted">{ts('forked_from')} </span>
                 <Link href={`/skills/${skill.forkedFrom.slug}`} className="text-accent-600 hover:underline">
                   {skill.forkedFrom.name}
                 </Link>
               </div>
             )}
             {skill._count.forks > 0 && (
-              <div className="text-xs">
-                <span className="text-muted">被 Remix </span>
-                <span className="font-mono tabular-nums">{skill._count.forks}</span>
-                <span className="text-muted"> 次</span>
+              <div className="text-xs text-muted">
+                {ts.rich('remixed_count', {
+                  count: skill._count.forks,
+                  num: (chunks) => <span className="font-mono tabular-nums text-zinc-700 dark:text-zinc-300">{chunks}</span>,
+                })}
                 <GitFork className="ml-1 inline h-3 w-3 text-muted" />
               </div>
             )}
@@ -283,7 +287,7 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
               <MarkdownRenderer content={skill.descriptionMd} />
             ) : (
               <div className="space-y-3">
-                <p className="text-sm text-muted">作者还没有为这个 skill 撰写使用指南。下面是简介：</p>
+                <p className="text-sm text-muted">{ts('no_guide')}</p>
                 <MarkdownRenderer content={skill.summary} />
               </div>
             ))}
@@ -308,11 +312,12 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
   );
 }
 
-function LockedNote() {
+async function LockedNote() {
+  const ts = await getTranslations('skill_detail');
   return (
     <div className="surface flex items-center gap-2 rounded-2xl border border-warn/30 p-4 text-sm text-muted">
       <Lock className="h-4 w-4 text-warn" />
-      此内容为「受限下载」，申请并获得作者批准后即可查看。
+      {ts('locked_note')}
     </div>
   );
 }
@@ -330,12 +335,14 @@ function StatBlock({ label, value, icon }: { label: string; value: string; icon?
 }
 
 async function VersionsTab({ skillId }: { skillId: string }) {
+  const ts = await getTranslations('skill_detail');
+  const locale = await getLocale();
   const versions = await prisma.skillVersion.findMany({
     where: { skillId, status: { in: ['published', 'yanked'] } },
     orderBy: [{ major: 'desc' }, { minor: 'desc' }, { patch: 'desc' }],
   });
   if (versions.length === 0) {
-    return <div className="text-sm text-muted">还没有发布过版本。</div>;
+    return <div className="text-sm text-muted">{ts('no_versions')}</div>;
   }
   return (
     <ul className="space-y-3">
@@ -348,11 +355,11 @@ async function VersionsTab({ skillId }: { skillId: string }) {
               </span>
               {v.publishedAt && (
                 <span className="text-xs text-muted">
-                  {formatDistanceToNowStrict(v.publishedAt, { addSuffix: true })}
+                  {relativeTime(v.publishedAt, locale)}
                 </span>
               )}
               {v.status === 'yanked' && (
-                <span className="text-xs text-warn">已撤回</span>
+                <span className="text-xs text-warn">{ts('yanked')}</span>
               )}
             </div>
             <span className="font-mono text-[11px] text-muted">{(v.totalBytes / 1024).toFixed(1)} KB</span>

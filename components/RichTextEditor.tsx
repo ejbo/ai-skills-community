@@ -12,6 +12,7 @@
 //   <RichTextEditor value={md} onChange={setMd} placeholder="…" variant="full" />
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { useEditor, EditorContent, type Editor } from '@tiptap/react';
 import { mergeAttributes } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -255,11 +256,12 @@ function Toolbar({
   uploading: number;
   onPickImage: () => void;
 }) {
+  const t = useTranslations('ui');
   const icon = 'h-4 w-4';
 
   const setLink = () => {
     const prev = editor.getAttributes('link').href as string | undefined;
-    const url = window.prompt('链接地址 / Link URL', prev ?? 'https://');
+    const url = window.prompt(t('rte_link_prompt'), prev ?? 'https://');
     if (url === null) return; // cancelled
     if (url.trim() === '') {
       editor.chain().focus().extendMarkRange('link').unsetLink().run();
@@ -270,72 +272,72 @@ function Toolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-0.5 border-b border-[rgb(var(--border))] px-1.5 py-1">
-      <ToolbarButton title="加粗 Bold" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}>
+      <ToolbarButton title={t('rte_bold')} active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}>
         <Bold className={icon} />
       </ToolbarButton>
-      <ToolbarButton title="倾斜 Italic" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()}>
+      <ToolbarButton title={t('rte_italic')} active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()}>
         <Italic className={icon} />
       </ToolbarButton>
-      <ToolbarButton title="删除线 Strikethrough" active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()}>
+      <ToolbarButton title={t('rte_strike')} active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()}>
         <Strikethrough className={icon} />
       </ToolbarButton>
-      <ToolbarButton title="行内代码 Inline code" active={editor.isActive('code')} onClick={() => editor.chain().focus().toggleCode().run()}>
+      <ToolbarButton title={t('rte_inline_code')} active={editor.isActive('code')} onClick={() => editor.chain().focus().toggleCode().run()}>
         <Code className={icon} />
       </ToolbarButton>
 
       {variant === 'full' && (
         <>
           <Divider />
-          <ToolbarButton title="标题 1" active={editor.isActive('heading', { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
+          <ToolbarButton title={t('rte_h1')} active={editor.isActive('heading', { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
             <Heading1 className={icon} />
           </ToolbarButton>
-          <ToolbarButton title="标题 2" active={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
+          <ToolbarButton title={t('rte_h2')} active={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
             <Heading2 className={icon} />
           </ToolbarButton>
-          <ToolbarButton title="标题 3" active={editor.isActive('heading', { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>
+          <ToolbarButton title={t('rte_h3')} active={editor.isActive('heading', { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>
             <Heading3 className={icon} />
           </ToolbarButton>
         </>
       )}
 
       <Divider />
-      <ToolbarButton title="无序列表 Bullet list" active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()}>
+      <ToolbarButton title={t('rte_bullet_list')} active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()}>
         <List className={icon} />
       </ToolbarButton>
-      <ToolbarButton title="有序列表 Ordered list" active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()}>
+      <ToolbarButton title={t('rte_ordered_list')} active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()}>
         <ListOrdered className={icon} />
       </ToolbarButton>
 
       {variant === 'full' && (
         <>
-          <ToolbarButton title="引用 Quote" active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()}>
+          <ToolbarButton title={t('rte_quote')} active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()}>
             <Quote className={icon} />
           </ToolbarButton>
-          <ToolbarButton title="代码块 Code block" active={editor.isActive('codeBlock')} onClick={() => editor.chain().focus().toggleCodeBlock().run()}>
+          <ToolbarButton title={t('rte_code_block')} active={editor.isActive('codeBlock')} onClick={() => editor.chain().focus().toggleCodeBlock().run()}>
             <Code2 className={icon} />
           </ToolbarButton>
         </>
       )}
 
       <Divider />
-      <ToolbarButton title="链接 Link" active={editor.isActive('link')} onClick={setLink}>
+      <ToolbarButton title={t('rte_link')} active={editor.isActive('link')} onClick={setLink}>
         <LinkIcon className={icon} />
       </ToolbarButton>
-      <ToolbarButton title="插入图片 Insert image" disabled={uploading > 0} onClick={onPickImage}>
+      <ToolbarButton title={t('rte_insert_image')} disabled={uploading > 0} onClick={onPickImage}>
         {uploading > 0 ? <Loader2 className={`${icon} animate-spin`} /> : <ImageIcon className={icon} />}
       </ToolbarButton>
 
       {variant === 'full' && (
-        <ToolbarButton title="分割线 Horizontal rule" onClick={() => editor.chain().focus().setHorizontalRule().run()}>
+        <ToolbarButton title={t('rte_divider')} onClick={() => editor.chain().focus().setHorizontalRule().run()}>
           <Minus className={icon} />
         </ToolbarButton>
       )}
 
       <Divider />
-      <ToolbarButton title="撤销 Undo" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}>
+      <ToolbarButton title={t('rte_undo')} disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}>
         <Undo2 className={icon} />
       </ToolbarButton>
-      <ToolbarButton title="重做 Redo" disabled={!editor.can().redo()} onClick={() => editor.chain().focus().redo().run()}>
+      <ToolbarButton title={t('rte_redo')} disabled={!editor.can().redo()} onClick={() => editor.chain().focus().redo().run()}>
         <Redo2 className={icon} />
       </ToolbarButton>
     </div>

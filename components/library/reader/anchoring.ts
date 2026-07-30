@@ -221,6 +221,36 @@ export function removeHighlightMarks(root: HTMLElement, id: string): void {
 }
 
 /**
+ * Community annotation markers (other readers' shared notes): dotted-underline
+ * marks with their own dataset key so own-highlight logic never touches them.
+ */
+export function applyCommunityMarks(
+  root: HTMLElement,
+  notes: { id: string; quote: string; charStart: number }[],
+): void {
+  for (const note of notes) {
+    try {
+      if (root.querySelector(`mark[data-chl-id="${esc(note.id)}"]`)) continue;
+      const range = locateQuote(root, note.quote, note.charStart);
+      if (!range) continue;
+      const marks = wrapRange(range, 'reader-hl-community');
+      for (const m of marks) m.dataset.chlId = note.id;
+    } catch {
+      /* skip */
+    }
+  }
+}
+
+export function clearCommunityMarks(root: HTMLElement): void {
+  try {
+    root.querySelectorAll('mark[data-chl-id]').forEach((m) => unwrapMark(m as HTMLElement));
+    root.normalize();
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
  * Scroll to `quote` (nearest `nearCharStart`) and flash it with a temporary
  * mark that unwraps itself. Used by citation jumps and pending cross-chapter
  * jumps. Returns whether the quote was found.

@@ -1,17 +1,26 @@
+'use client';
+
 import Link from 'next/link';
+import { useLocale, useTranslations } from 'next-intl';
 import { Star } from 'lucide-react';
-import { formatDistanceToNowStrict } from 'date-fns';
 import type { DocCardData } from '@/lib/library-queries';
 import { DOC_TYPE_LABELS } from '@/lib/library/types';
+import { relativeTime } from '@/lib/i18n-date';
 import { DocCover } from './DocCover';
+import { rememberListScroll } from './ScrollMemory';
 
 export interface DocCardProps extends Omit<DocCardData, 'createdAt'> {
   createdAt: Date | string;
 }
 
 export function DocCard(props: DocCardProps) {
+  const t = useTranslations('library_ui');
+  const tl = useTranslations('labels');
+  const tp = useTranslations('profile');
+  const locale = useLocale();
   const created = typeof props.createdAt === 'string' ? new Date(props.createdAt) : props.createdAt;
-  const typeLabel = DOC_TYPE_LABELS[props.docType as keyof typeof DOC_TYPE_LABELS] ?? props.docType;
+  const typeLabel =
+    props.docType in DOC_TYPE_LABELS ? tl(`docType.${props.docType}`) : props.docType;
   const source = props.siteName ?? props.author;
   const progress =
     typeof props.progressPercent === 'number' && props.progressPercent > 0
@@ -21,6 +30,7 @@ export function DocCard(props: DocCardProps) {
   return (
     <Link
       href={`/library/${props.slug}`}
+      onClick={rememberListScroll}
       className="card-hover surface group flex gap-3 rounded-xl p-4"
     >
       <div className="relative h-24 w-[72px] shrink-0 overflow-hidden rounded-lg">
@@ -45,7 +55,7 @@ export function DocCard(props: DocCardProps) {
           {props.featured && (
             <span className="inline-flex items-center gap-0.5 rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-600 dark:text-accent-300">
               <Star className="h-3 w-3" />
-              精选
+              {t('featured_badge')}
             </span>
           )}
         </div>
@@ -60,13 +70,26 @@ export function DocCard(props: DocCardProps) {
               <span>·</span>
             </>
           )}
-          <span>{props.estReadMinutes} 分钟</span>
+          {props.ratingCount > 0 && (
+            <>
+              <span className="inline-flex items-center gap-0.5 font-mono tabular-nums">
+                <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                {props.avgRating.toFixed(1)}
+              </span>
+              <span>·</span>
+            </>
+          )}
+          <span>{t('read_minutes', { min: props.estReadMinutes })}</span>
           <span>·</span>
-          <span className="font-mono tabular-nums">{props.shelfCount} 收藏</span>
+          <span className="font-mono tabular-nums">{tp('n_shelved', { count: props.shelfCount })}</span>
+          {props.commentCount > 0 && (
+            <>
+              <span>·</span>
+              <span className="font-mono tabular-nums">{tp('n_comments', { count: props.commentCount })}</span>
+            </>
+          )}
           <span>·</span>
-          <span className="font-mono tabular-nums">{props.viewCount} 浏览</span>
-          <span>·</span>
-          <span>{formatDistanceToNowStrict(created, { addSuffix: true })}</span>
+          <span>{relativeTime(created, locale)}</span>
         </div>
       </div>
     </Link>

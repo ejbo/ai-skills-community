@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { formatDistanceToNowStrict } from 'date-fns';
+import { useLocale, useTranslations } from 'next-intl';
 import { Loader2, Lock } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
+import { relativeTime } from '@/lib/i18n-date';
 
 // 2-level flat threads — same contract and UI structure as the feedback
 // board's FeedbackComments (parentId = thread root, transient replyToId).
@@ -52,6 +53,7 @@ export function TopicReplies({
   locked: boolean;
   focusId?: string;
 }) {
+  const t = useTranslations('discussion_ui');
   const [threads, setThreads] = useState<ReplyThreadView[]>(initialThreads);
 
   function addThread(c: ReplyView) {
@@ -90,7 +92,7 @@ export function TopicReplies({
 
   return (
     <div className="space-y-5">
-      <h2 className="text-sm font-semibold">{count} 条回复</h2>
+      <h2 className="text-sm font-semibold">{t('reply_count', { count })}</h2>
 
       <div className="space-y-5">
         {threads.map((thread) => (
@@ -112,16 +114,22 @@ export function TopicReplies({
       {locked ? (
         <p className="flex items-center gap-2 rounded-xl bg-zinc-50 px-4 py-3 text-sm text-muted dark:bg-zinc-900">
           <Lock className="h-4 w-4" />
-          该帖子已被管理员锁定，无法回复
+          {t('locked_notice')}
         </p>
       ) : currentUser ? (
-        <ReplyBox topicId={topicId} onPosted={addThread} placeholder="写下你的回复…" />
+        <ReplyBox topicId={topicId} onPosted={addThread} placeholder={t('reply_placeholder')} />
       ) : (
         <p className="text-sm text-muted">
-          <Link href="/auth/login" className="text-accent-600 hover:underline dark:text-accent-300">
-            登录
-          </Link>{' '}
-          后参与讨论
+          {t.rich('login_to_join_discussion', {
+            link: (chunks) => (
+              <Link
+                href="/auth/login"
+                className="text-accent-600 hover:underline dark:text-accent-300"
+              >
+                {chunks}
+              </Link>
+            ),
+          })}
         </p>
       )}
     </div>
@@ -145,6 +153,7 @@ function ThreadBlock({
   onReplyPosted: (c: ReplyView) => void;
   onRemoved: (replyId: string, tombstoned: boolean, prunedParent: boolean) => void;
 }) {
+  const t = useTranslations('discussion_ui');
   const [replyTo, setReplyTo] = useState<ReplyView | null>(null);
   const canReply = Boolean(currentUser) && !locked;
 
@@ -181,7 +190,7 @@ function ThreadBlock({
               parentId={thread.id}
               replyToId={replyTo.id}
               autoFocus
-              placeholder={`回复 ${replyTo.author.displayName}…`}
+              placeholder={t('reply_to_placeholder', { name: replyTo.author.displayName })}
               onPosted={(c) => {
                 onReplyPosted(c);
                 setReplyTo(null);
@@ -214,6 +223,9 @@ function ReplyBlock({
   onReply: () => void;
   onRemoved: (replyId: string, tombstoned: boolean, prunedParent: boolean) => void;
 }) {
+  const t = useTranslations('discussion_ui');
+  const tc = useTranslations('common');
+  const locale = useLocale();
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -232,7 +244,7 @@ function ReplyBlock({
   }, [focusId, reply.id]);
 
   async function remove() {
-    if (!confirm('确定删除这条回复？')) return;
+    if (!confirm(t('delete_reply_confirm'))) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/discussion/topics/${topicId}/replies/${reply.id}`, {
@@ -240,12 +252,12 @@ function ReplyBlock({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        pushToast('error', '删除失败');
+        pushToast('error', t('delete_failed'));
         return;
       }
       onRemoved(reply.id, Boolean(data.tombstoned), Boolean(data.prunedParent));
     } catch {
-      pushToast('error', '删除失败，请重试');
+      pushToast('error', t('delete_failed_retry'));
     } finally {
       setBusy(false);
     }
@@ -275,12 +287,10 @@ function ReplyBlock({
               {reply.author.displayName}
             </Link>
             <DeptTag department={reply.author.department} lab={reply.author.lab} />
-            <span className="text-muted">
-              {formatDistanceToNowStrict(new Date(reply.createdAt), { addSuffix: true })}
-            </span>
+            <span className="text-muted">{relativeTime(reply.createdAt, locale)}</span>
           </div>
           {isTombstone ? (
-            <p className="mt-1 text-sm italic text-muted">该回复已删除</p>
+            <p className="mt-1 text-sm italic text-muted">{t('reply_deleted')}</p>
           ) : (
             <div className="mt-1">
               <MarkdownRenderer content={reply.bodyMd} compact />
@@ -290,12 +300,12 @@ function ReplyBlock({
             <div className="mt-1.5 flex items-center gap-3 text-xs text-muted">
               {canReply && (
                 <button onClick={onReply} className="transition hover:text-zinc-700 dark:hover:text-zinc-200">
-                  回复
+                  {t('reply')}
                 </button>
               )}
               {canDelete && (
                 <button onClick={remove} disabled={busy} className="transition hover:text-danger">
-                  删除
+                  {tc('delete')}
                 </button>
               )}
             </div>
@@ -323,6 +333,8 @@ function ReplyBox({
   onPosted: (c: ReplyView) => void;
   onCancel?: () => void;
 }) {
+  const t = useTranslations('discussion_ui');
+  const tc = useTranslations('common');
   const router = useRouter();
   const pathname = usePathname();
   const [bodyMd, setBodyMd] = useState('');
@@ -344,19 +356,19 @@ function ReplyBox({
         }),
       });
       if (res.status === 401) {
-        pushToast('error', '请先登录');
+        pushToast('error', t('login_required'));
         router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
         return;
       }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        pushToast('error', data.reason ?? '发送失败，请重试');
+        pushToast('error', data.reason ?? t('send_failed_retry'));
         return;
       }
       setBodyMd('');
       onPosted(data.reply as ReplyView);
     } catch {
-      pushToast('error', '发送失败，请重试');
+      pushToast('error', t('send_failed_retry'));
     } finally {
       setBusy(false);
     }
@@ -370,7 +382,7 @@ function ReplyBox({
         variant="compact"
         maxLength={5000}
         placeholder={placeholder}
-        ariaLabel="回复"
+        ariaLabel={t('reply')}
         autoFocus={autoFocus}
       />
       <div className="flex items-center justify-end gap-2">
@@ -379,7 +391,7 @@ function ReplyBox({
             onClick={onCancel}
             className="h-8 rounded-lg px-3 text-xs font-medium text-muted transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
           >
-            取消
+            {tc('cancel')}
           </button>
         )}
         <button
@@ -388,7 +400,7 @@ function ReplyBox({
           className="flex h-8 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-xs font-medium text-white hover:bg-accent-600 disabled:opacity-60"
         >
           {busy && <Loader2 className="h-3 w-3 animate-spin" />}
-          发送
+          {t('send')}
         </button>
       </div>
     </div>

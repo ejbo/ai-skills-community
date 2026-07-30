@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { ChevronDown, Loader2 } from 'lucide-react';
 import { EmptyState } from '@/components/EmptyState';
 import { pushToast } from '@/components/Toaster';
@@ -14,12 +15,23 @@ export function PostFeed({
   initialHasMore,
   initialCursor,
   currentUser,
+  sort = 'new',
+  showComposer = true,
+  emptyTitle,
+  emptyDescription,
 }: {
   initialPosts: PostView[];
   initialHasMore: boolean;
   initialCursor: string | null;
   currentUser: CurrentUser | null;
+  /** Feed ordering — load-more pages must stay on the same stream. */
+  sort?: 'new' | 'hot';
+  /** 搜索模式下隐藏发布框（新帖不属于当前筛选结果）。 */
+  showComposer?: boolean;
+  emptyTitle?: string;
+  emptyDescription?: string;
 }) {
+  const t = useTranslations('discussion_ui');
   const [posts, setPosts] = useState<PostView[]>(initialPosts);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
@@ -29,7 +41,9 @@ export function PostFeed({
     if (loading || !cursor) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/discussion/posts?cursor=${encodeURIComponent(cursor)}&limit=10`);
+      const res = await fetch(
+        `/api/discussion/posts?cursor=${encodeURIComponent(cursor)}&limit=10&sort=${sort}`,
+      );
       if (!res.ok) throw new Error('failed');
       const data = await res.json();
       setPosts((prev) => {
@@ -39,21 +53,26 @@ export function PostFeed({
       setHasMore(Boolean(data.hasMore));
       setCursor(data.nextCursor ?? null);
     } catch {
-      pushToast('error', '加载失败，请重试');
+      pushToast('error', t('load_failed_retry'));
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
-      <PostComposer
-        currentUser={currentUser}
-        onPosted={(post) => setPosts((prev) => [post, ...prev])}
-      />
+    <div className="mx-auto w-full max-w-3xl space-y-4">
+      {showComposer && (
+        <PostComposer
+          currentUser={currentUser}
+          onPosted={(post) => setPosts((prev) => [post, ...prev])}
+        />
+      )}
 
       {posts.length === 0 ? (
-        <EmptyState title="还没有动态" description="来发布第一条动态吧" />
+        <EmptyState
+          title={emptyTitle ?? t('feed_empty_title')}
+          description={emptyDescription ?? t('feed_empty_desc')}
+        />
       ) : (
         posts.map((post) => (
           <PostCard
@@ -77,7 +96,7 @@ export function PostFeed({
             ) : (
               <ChevronDown className="h-4 w-4" />
             )}
-            加载更多
+            {t('load_more')}
           </button>
         </div>
       )}

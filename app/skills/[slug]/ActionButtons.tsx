@@ -19,6 +19,7 @@ interface Props {
 
 export function ActionButtons(props: Props) {
   const t = useTranslations('detail');
+  const ts = useTranslations('skill_detail');
   const router = useRouter();
   const [liked, setLiked] = useState(props.initiallyLiked);
   const [fav, setFav] = useState(props.initiallyFavorited);
@@ -44,10 +45,10 @@ export function ActionButtons(props: Props) {
       setLocal(current);
       if (countSetter && typeof currentCount === 'number') countSetter(currentCount);
       if (res.status === 401) {
-        pushToast('info', '请先登录');
+        pushToast('info', ts('login_required'));
         router.push(`/auth/login?callbackUrl=/skills/${props.slug}`);
       } else {
-        pushToast('error', '操作失败，请稍后再试');
+        pushToast('error', ts('action_failed'));
       }
     }
   }

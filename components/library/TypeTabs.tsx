@@ -2,17 +2,20 @@
 
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { DOC_TYPES, DOC_TYPE_LABELS } from '@/lib/library/types';
+import { useTranslations } from 'next-intl';
+import { DOC_TYPES } from '@/lib/library/types';
 
 /** 类型下划线 tab（feedback 页的 Link 版式样）：写 `?type=`，全部 = 删参。 */
 export function TypeTabs() {
+  const tb = useTranslations('browse');
+  const tl = useTranslations('labels');
   const pathname = usePathname();
   const params = useSearchParams();
   const active = params.get('type') ?? 'all';
 
   const tabs = [
-    { key: 'all', label: '全部' },
-    ...DOC_TYPES.map((t) => ({ key: t as string, label: DOC_TYPE_LABELS[t] })),
+    { key: 'all', label: tb('all') },
+    ...DOC_TYPES.map((type) => ({ key: type as string, label: tl(`docType.${type}`) })),
   ];
 
   function href(key: string) {

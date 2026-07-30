@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
 import { prisma } from '@/lib/db';
 import { SourceBadge } from '@/components/SourceBadge';
 
@@ -12,6 +13,8 @@ interface CoInstallRow {
 }
 
 export async function CompositionTab({ skillId }: { skillId: string }) {
+  const t = await getTranslations('skill_compare');
+
   // Find users who subscribed/downloaded this skill, then count the other skills
   // they engaged with. Subscribe is a stronger signal than download — weight 3 vs 1.
   const rows = await prisma.$queryRaw<CoInstallRow[]>`
@@ -39,7 +42,7 @@ export async function CompositionTab({ skillId }: { skillId: string }) {
   if (rows.length === 0) {
     return (
       <div className="surface rounded-2xl px-6 py-10 text-center">
-        <p className="text-sm text-muted">这个 Skill 还没有足够的共同安装数据。</p>
+        <p className="text-sm text-muted">{t('composition_empty')}</p>
       </div>
     );
   }
@@ -50,10 +53,8 @@ export async function CompositionTab({ skillId }: { skillId: string }) {
   return (
     <div className="space-y-4">
       <div className="surface rounded-2xl p-4">
-        <h3 className="text-sm font-semibold">经常被一起安装</h3>
-        <p className="mt-1 text-xs text-muted">
-          下面这些 Skill 经常和当前 Skill 出现在同一用户的本地。
-        </p>
+        <h3 className="text-sm font-semibold">{t('composition_title')}</h3>
+        <p className="mt-1 text-xs text-muted">{t('composition_desc')}</p>
         <ul className="mt-4 space-y-2">
           {rows.map((r) => {
             const pct = (Number(r.coCount) / maxCount) * 100;
@@ -76,7 +77,7 @@ export async function CompositionTab({ skillId }: { skillId: string }) {
                     <p className="mt-0.5 truncate text-xs text-muted">{r.summary}</p>
                   </div>
                   <span className="font-mono text-xs tabular-nums text-muted">
-                    {Number(r.coCount)} 人共同安装
+                    {t('composition_co_install', { count: Number(r.coCount) })}
                   </span>
                 </Link>
               </li>
@@ -84,9 +85,7 @@ export async function CompositionTab({ skillId }: { skillId: string }) {
           })}
         </ul>
         <div className="mt-4 flex items-center justify-between rounded-xl border border-dashed border-accent-500/30 bg-accent-500/5 p-3 text-xs">
-          <span>
-            一键打包安装这个 Stack（{rows.length} 个 Skill）
-          </span>
+          <span>{t('composition_stack_install', { count: rows.length })}</span>
           <code className="rounded bg-white px-2 py-1 font-mono dark:bg-zinc-900">
             skills install {rows.map((r) => r.slug).join(' ')}
           </code>

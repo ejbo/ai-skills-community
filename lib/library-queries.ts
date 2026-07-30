@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { isDocType, type AiOverview } from '@/lib/library/types';
+import { AUTHOR_IDENTITY_SELECT } from '@/lib/user-identity';
+import { isDocType, isLibraryCategory, type AiOverview } from '@/lib/library/types';
 
 // Member reads only ever surface docs that finished extraction and were not
 // soft-deleted; drafts/failures stay visible to their uploader and admins.
@@ -8,6 +9,32 @@ export const READY_DOC_WHERE = {
   status: 'ready',
   deletedAt: null,
 } satisfies Prisma.LibraryDocWhereInput;
+
+// Browse/discovery additionally hides private docs (skills model: restricted
+// docs stay discoverable, reading is gated behind an approved access request).
+export const BROWSABLE_DOC_WHERE = {
+  ...READY_DOC_WHERE,
+  visibility: { not: 'private' },
+} satisfies Prisma.LibraryDocWhereInput;
+
+/**
+ * Whether the viewer may READ (reader/chat/file) this doc. Detail-page
+ * discoverability is looser — restricted docs show their metadata to everyone.
+ */
+export async function canReadDoc(
+  doc: { id: string; uploaderId: string; visibility: string },
+  viewer: { id: string; isAdmin: boolean } | null,
+): Promise<boolean> {
+  if (doc.visibility === 'public') return !!viewer;
+  if (!viewer) return false;
+  if (viewer.isAdmin || viewer.id === doc.uploaderId) return true;
+  if (doc.visibility === 'private') return false;
+  const granted = await prisma.libraryAccessRequest.findUnique({
+    where: { docId_userId: { docId: doc.id, userId: viewer.id } },
+    select: { status: true },
+  });
+  return granted?.status === 'approved';
+}
 
 export const LIBRARY_SORTS = ['newest', 'featured', 'shelved', 'views'] as const;
 export type LibrarySort = (typeof LIBRARY_SORTS)[number];
@@ -27,6 +54,8 @@ const DOC_CARD_SELECT = {
   title: true,
   author: true,
   docType: true,
+  categories: true,
+  visibility: true,
   format: true,
   summary: true,
   siteName: true,
@@ -38,6 +67,9 @@ const DOC_CARD_SELECT = {
   shelfCount: true,
   likeCount: true,
   viewCount: true,
+  commentCount: true,
+  ratingCount: true,
+  avgRating: true,
   createdAt: true,
   uploader: AUTHOR_SELECT,
 } satisfies Prisma.LibraryDocSelect;
@@ -48,6 +80,8 @@ export interface DocCardData {
   title: string;
   author: string | null;
   docType: string;
+  categories: string[];
+  visibility: string;
   format: string;
   summary: string;
   siteName: string | null;
@@ -59,6 +93,9 @@ export interface DocCardData {
   shelfCount: number;
   likeCount: number;
   viewCount: number;
+  commentCount: number;
+  ratingCount: number;
+  avgRating: number;
   createdAt: Date;
   uploader: { handle: string; displayName: string; avatarUrl: string | null };
   /** Present in shelf queries. */
@@ -68,6 +105,7 @@ export interface DocCardData {
 export interface BrowseDocFilters {
   q?: string;
   type?: string;
+  cat?: string;
   sort?: string;
   page?: number;
   pageSize?: number;
@@ -87,8 +125,9 @@ export async function browseDocs(filters: BrowseDocFilters): Promise<{
   const rawSize = Number(filters.pageSize ?? 20);
   const pageSize = Number.isFinite(rawSize) ? Math.min(50, Math.max(1, Math.trunc(rawSize))) : 20;
 
-  const where: Prisma.LibraryDocWhereInput = { ...READY_DOC_WHERE };
+  const where: Prisma.LibraryDocWhereInput = { ...BROWSABLE_DOC_WHERE };
   if (isDocType(filters.type)) where.docType = filters.type;
+  if (isLibraryCategory(filters.cat)) where.categories = { has: filters.cat };
   if (filters.q) {
     const q = filters.q.trim();
     if (q) {
@@ -130,11 +169,24 @@ export async function browseDocs(filters: BrowseDocFilters): Promise<{
 export async function getFeaturedDocs(limit = 8): Promise<DocCardData[]> {
   const take = Number.isFinite(limit) ? Math.min(24, Math.max(1, Math.trunc(limit))) : 8;
   return prisma.libraryDoc.findMany({
-    where: { ...READY_DOC_WHERE, featured: true },
+    where: { ...BROWSABLE_DOC_WHERE, featured: true },
     orderBy: [{ featuredAt: 'desc' }],
     take,
     select: DOC_CARD_SELECT,
   });
+}
+
+/** Per-category doc counts for the browse sidebar (ready, non-private docs). */
+export async function getCategoryCounts(): Promise<Record<string, number>> {
+  const rows = await prisma.libraryDoc.findMany({
+    where: BROWSABLE_DOC_WHERE,
+    select: { categories: true },
+  });
+  const counts: Record<string, number> = {};
+  for (const row of rows) {
+    for (const cat of row.categories) counts[cat] = (counts[cat] ?? 0) + 1;
+  }
+  return counts;
 }
 
 const DOC_DETAIL_SELECT = {
@@ -145,10 +197,17 @@ const DOC_DETAIL_SELECT = {
   language: true,
   docType: true,
   docTypePinned: true,
+  categories: true,
+  visibility: true,
+  metaPinned: true,
+  commentCount: true,
+  ratingCount: true,
+  avgRating: true,
   format: true,
   status: true,
   processingError: true,
   summary: true,
+  abstractMd: true,
   sourceUrl: true,
   siteName: true,
   publishedAt: true,
@@ -176,36 +235,59 @@ const DOC_DETAIL_SELECT = {
   uploader: AUTHOR_SELECT,
   chapters: {
     orderBy: { chapterIndex: 'asc' },
-    select: { chapterIndex: true, title: true, charCount: true },
+    select: { chapterIndex: true, title: true, charCount: true, aiSummary: true },
   },
 } satisfies Prisma.LibraryDocSelect;
 
 /**
- * Detail page load. Returns null unless the doc is publicly visible
- * (ready && not deleted) OR the viewer is the uploader / an admin.
+ * Detail page load. Returns null unless the doc is discoverable
+ * (ready && not deleted && not private) OR the viewer is the uploader / admin.
+ * `canRead` gates the reading affordances for restricted docs.
  */
 export async function getDocBySlug(slug: string, viewer: { id: string; isAdmin: boolean } | null) {
   const doc = await prisma.libraryDoc.findUnique({ where: { slug }, select: DOC_DETAIL_SELECT });
   if (!doc) return null;
 
-  const publiclyVisible = doc.status === 'ready' && !doc.deletedAt;
+  const discoverable = doc.status === 'ready' && !doc.deletedAt && doc.visibility !== 'private';
   const privileged = !!viewer && (viewer.isAdmin || viewer.id === doc.uploaderId);
-  if (!publiclyVisible && !privileged) return null;
+  if (!discoverable && !privileged) return null;
 
   let shelvedByMe = false;
   let likedByMe = false;
   let progressPercent = 0;
+  let myRating = 0;
+  let myAccessStatus: string | null = null;
   if (viewer) {
     const pair = { userId: viewer.id, docId: doc.id };
-    const [shelf, like, progress] = await Promise.all([
+    const [shelf, like, progress, rating, access] = await Promise.all([
       prisma.libraryShelfItem.findUnique({ where: { userId_docId: pair }, select: { userId: true } }),
       prisma.libraryLike.findUnique({ where: { userId_docId: pair }, select: { userId: true } }),
       prisma.libraryProgress.findUnique({ where: { userId_docId: pair }, select: { percent: true } }),
+      prisma.libraryRating.findUnique({ where: { userId_docId: pair }, select: { rating: true } }),
+      prisma.libraryAccessRequest.findUnique({
+        where: { docId_userId: { docId: doc.id, userId: viewer.id } },
+        select: { status: true },
+      }),
     ]);
     shelvedByMe = !!shelf;
     likedByMe = !!like;
     progressPercent = progress?.percent ?? 0;
+    myRating = rating?.rating ?? 0;
+    myAccessStatus = access?.status ?? null;
   }
+
+  const canRead =
+    privileged || doc.visibility === 'public'
+      ? !!viewer
+      : doc.visibility === 'restricted' && myAccessStatus === 'approved';
+
+  // 公开笔记数 — readers whose per-doc shareNotes toggle is on.
+  const sharedNoteCount = await prisma.libraryHighlight.count({
+    where: {
+      docId: doc.id,
+      user: { libraryProgress: { some: { docId: doc.id, shareNotes: true } } },
+    },
+  });
 
   return {
     ...doc,
@@ -213,6 +295,10 @@ export async function getDocBySlug(slug: string, viewer: { id: string; isAdmin: 
     shelvedByMe,
     likedByMe,
     progressPercent,
+    myRating,
+    myAccessStatus,
+    canRead: privileged || canRead,
+    sharedNoteCount,
   };
 }
 
@@ -229,6 +315,12 @@ export interface HighlightRow {
   createdAt: Date;
 }
 
+export interface ReaderChapterPayload {
+  chapterIndex: number;
+  title: string | null;
+  html: string;
+}
+
 export interface ReaderData {
   doc: {
     id: string;
@@ -241,26 +333,48 @@ export interface ReaderData {
     siteName: string | null;
     fileUrl: string | null;
     chapterCount: number;
+    wordCount: number;
     aiOverview: AiOverview | null;
     aiIndexState: string;
     language: string | null;
   };
-  chapter: { chapterIndex: number; title: string | null; html: string } | null;
-  toc: { chapterIndex: number; title: string | null; charCount: number }[];
-  progress: { chapterIndex: number; scrollRatio: number; percent: number } | null;
+  /** 'flow' = whole doc stacked for continuous scrolling; 'paged' = one chapter. */
+  mode: 'paged' | 'flow';
+  /** Whether continuous mode is offered at all (small enough docs only). */
+  flowAvailable: boolean;
+  chapters: ReaderChapterPayload[];
+  initialChapter: number;
+  toc: {
+    chapterIndex: number;
+    title: string | null;
+    charCount: number;
+    aiSummary: string | null;
+    pageStart: number | null;
+    pageEnd: number | null;
+  }[];
+  progress: { chapterIndex: number; scrollRatio: number; percent: number; shareNotes: boolean } | null;
   highlights: HighlightRow[];
 }
+
+// Continuous mode ships every chapter's HTML in one payload — cap it so a
+// full-length book can't produce a multi-MB page.
+const FLOW_MAX_CHARS = 400_000;
 
 /**
  * Everything the reader shell needs in one call. `chapterIndex` is clamped to
  * the doc's range; pass a negative / non-finite value to resume from the
- * viewer's saved progress (fallback chapter 0).
+ * viewer's saved progress (fallback chapter 0). `view` picks 连续/分章 —
+ * undefined defaults to continuous for web articles (原格式一直读完), paged
+ * otherwise. Returns 'no_access' when the doc exists but the viewer may not
+ * read it (restricted/private).
  */
 export async function getDocReaderData(
   slug: string,
-  userId: string,
+  viewer: { id: string; isAdmin: boolean },
   chapterIndex: number,
-): Promise<ReaderData | null> {
+  view?: 'flow' | 'paged',
+): Promise<ReaderData | 'no_access' | null> {
+  const userId = viewer.id;
   const doc = await prisma.libraryDoc.findUnique({
     where: { slug },
     select: {
@@ -274,19 +388,37 @@ export async function getDocReaderData(
       siteName: true,
       fileUrl: true,
       chapterCount: true,
+      wordCount: true,
       aiOverview: true,
       aiIndexState: true,
       language: true,
       status: true,
+      visibility: true,
+      uploaderId: true,
       deletedAt: true,
     },
   });
   if (!doc || doc.status !== 'ready' || doc.deletedAt) return null;
+  if (!(await canReadDoc(doc, viewer))) return 'no_access';
 
-  const progress = await prisma.libraryProgress.findUnique({
-    where: { userId_docId: { userId, docId: doc.id } },
-    select: { chapterIndex: true, scrollRatio: true, percent: true },
-  });
+  const [progress, toc] = await Promise.all([
+    prisma.libraryProgress.findUnique({
+      where: { userId_docId: { userId, docId: doc.id } },
+      select: { chapterIndex: true, scrollRatio: true, percent: true, shareNotes: true },
+    }),
+    prisma.libraryChapter.findMany({
+      where: { docId: doc.id },
+      orderBy: { chapterIndex: 'asc' },
+      select: {
+        chapterIndex: true,
+        title: true,
+        charCount: true,
+        aiSummary: true,
+        pageStart: true,
+        pageEnd: true,
+      },
+    }),
+  ]);
 
   const maxIndex = Math.max(0, doc.chapterCount - 1);
   const requested =
@@ -295,19 +427,41 @@ export async function getDocReaderData(
       : (progress?.chapterIndex ?? 0);
   const resolved = Math.min(Math.max(0, requested), maxIndex);
 
-  const [chapter, toc, highlights] = await Promise.all([
-    prisma.libraryChapter.findUnique({
-      where: { docId_chapterIndex: { docId: doc.id, chapterIndex: resolved } },
-      select: { chapterIndex: true, title: true, html: true },
-    }),
-    prisma.libraryChapter.findMany({
-      where: { docId: doc.id },
-      orderBy: { chapterIndex: 'asc' },
-      select: { chapterIndex: true, title: true, charCount: true },
-    }),
+  const totalChars = toc.reduce((n, c) => n + c.charCount, 0);
+  const flowAvailable = totalChars > 0 && totalChars <= FLOW_MAX_CHARS;
+  const mode: 'paged' | 'flow' =
+    view === 'flow'
+      ? flowAvailable
+        ? 'flow'
+        : 'paged'
+      : view === 'paged'
+        ? 'paged'
+        : doc.format === 'url' && flowAvailable
+          ? 'flow'
+          : 'paged';
+
+  const [chapters, highlights] = await Promise.all([
+    mode === 'flow'
+      ? prisma.libraryChapter.findMany({
+          where: { docId: doc.id },
+          orderBy: { chapterIndex: 'asc' },
+          select: { chapterIndex: true, title: true, html: true },
+        })
+      : prisma.libraryChapter
+          .findUnique({
+            where: { docId_chapterIndex: { docId: doc.id, chapterIndex: resolved } },
+            select: { chapterIndex: true, title: true, html: true },
+          })
+          .then((c) => (c ? [c] : [])),
     prisma.libraryHighlight.findMany({
-      where: { docId: doc.id, userId, chapterIndex: resolved },
-      orderBy: { charStart: 'asc' },
+      where: {
+        docId: doc.id,
+        userId,
+        // flow renders every chapter; the 原版 pdf.js view paints highlights
+        // across arbitrary pages — both need the full set.
+        ...(mode === 'flow' || doc.format === 'pdf' ? {} : { chapterIndex: resolved }),
+      },
+      orderBy: [{ chapterIndex: 'asc' }, { charStart: 'asc' }],
       select: {
         id: true,
         chapterIndex: true,
@@ -333,11 +487,15 @@ export async function getDocReaderData(
       siteName: doc.siteName,
       fileUrl: doc.fileUrl,
       chapterCount: doc.chapterCount,
+      wordCount: doc.wordCount,
       aiOverview: doc.aiOverview as AiOverview | null,
       aiIndexState: doc.aiIndexState,
       language: doc.language,
     },
-    chapter: chapter ?? null,
+    mode,
+    flowAvailable,
+    chapters,
+    initialChapter: resolved,
     toc,
     progress: progress ?? null,
     highlights,
@@ -403,4 +561,127 @@ export async function getShelfStats(
     else if (p.percent > 0) reading++;
   }
   return { total: items.length, reading, finished };
+}
+
+// ── 评论（详情页讨论，2-level flat threads — feedback board contract）──────
+
+// Includes department/lab/isPrivate — consumers MUST trim via toPublicAuthor().
+const COMMENT_AUTHOR_SELECT = AUTHOR_IDENTITY_SELECT;
+
+const COMMENT_SELECT = {
+  id: true,
+  bodyMd: true,
+  status: true,
+  replyCount: true,
+  createdAt: true,
+  author: COMMENT_AUTHOR_SELECT,
+} as const;
+
+/** All comments of a doc as 2-level threads (hard render caps, no pagination). */
+export async function getDocComments(docId: string) {
+  return prisma.libraryComment.findMany({
+    where: { docId, parentId: null },
+    orderBy: { createdAt: 'asc' },
+    take: 300,
+    select: {
+      ...COMMENT_SELECT,
+      replies: {
+        orderBy: { createdAt: 'asc' },
+        take: 100,
+        select: COMMENT_SELECT,
+      },
+    },
+  });
+}
+
+// ── 共享笔记（阅读器社区侧栏）────────────────────────────────────────────
+
+/**
+ * Shared highlights/notes of a doc: rows whose owner turned on the per-doc
+ * shareNotes toggle. Includes single-level reply threads. Authors carry the
+ * full identity select — API routes MUST map through toPublicAuthor().
+ */
+export async function getSharedNotes(docId: string, chapterIndex?: number) {
+  return prisma.libraryHighlight.findMany({
+    where: {
+      docId,
+      ...(chapterIndex !== undefined ? { chapterIndex } : {}),
+      user: { libraryProgress: { some: { docId, shareNotes: true } } },
+    },
+    orderBy: [{ chapterIndex: 'asc' }, { charStart: 'asc' }],
+    take: 500,
+    select: {
+      id: true,
+      userId: true,
+      chapterIndex: true,
+      charStart: true,
+      quote: true,
+      color: true,
+      noteText: true,
+      replyCount: true,
+      createdAt: true,
+      user: COMMENT_AUTHOR_SELECT,
+      replies: {
+        where: { status: 'visible' },
+        orderBy: { createdAt: 'asc' },
+        take: 50,
+        select: {
+          id: true,
+          bodyMd: true,
+          createdAt: true,
+          author: COMMENT_AUTHOR_SELECT,
+        },
+      },
+    },
+  });
+}
+
+// ── Dashboard（我的发布 / 我的互动）──────────────────────────────────────
+
+/** All docs the user uploaded, every status, for dashboard + edit lists. */
+export async function getMyLibraryDocs(userId: string) {
+  return prisma.libraryDoc.findMany({
+    where: { uploaderId: userId, deletedAt: null },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+    select: {
+      id: true,
+      slug: true,
+      title: true,
+      docType: true,
+      format: true,
+      status: true,
+      visibility: true,
+      featured: true,
+      shelfCount: true,
+      likeCount: true,
+      viewCount: true,
+      commentCount: true,
+      ratingCount: true,
+      avgRating: true,
+      aiIndexState: true,
+      createdAt: true,
+    },
+  });
+}
+
+/** Latest comments other people left on the viewer's docs (dashboard). */
+export async function getCommentsOnMyDocs(userId: string, limit = 6) {
+  return prisma.libraryComment.findMany({
+    where: {
+      status: 'visible',
+      authorId: { not: userId },
+      doc: { uploaderId: userId, deletedAt: null },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: Math.min(20, Math.max(1, limit)),
+    select: {
+      id: true,
+      bodyMd: true,
+      parentId: true,
+      createdAt: true,
+      author: COMMENT_AUTHOR_SELECT,
+      doc: { select: { slug: true, title: true } },
+    },
+  });
 }

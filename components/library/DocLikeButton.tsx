@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Heart } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 
@@ -15,6 +16,9 @@ export function DocLikeButton({
   initialLiked: boolean;
   initialCount: number;
 }) {
+  const t = useTranslations('library_cards');
+  const tv = useTranslations('video');
+  const tf = useTranslations('feedback');
   const router = useRouter();
   const pathname = usePathname();
   const [liked, setLiked] = useState(initialLiked);
@@ -34,7 +38,7 @@ export function DocLikeButton({
       if (res.status === 401) {
         setLiked(prev.liked);
         setCount(prev.count);
-        pushToast('error', '请先登录');
+        pushToast('error', tv('login_required'));
         router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
         return;
       }
@@ -45,7 +49,7 @@ export function DocLikeButton({
     } catch {
       setLiked(prev.liked);
       setCount(prev.count);
-      pushToast('error', '操作失败，请重试');
+      pushToast('error', tf('action_failed_retry'));
     } finally {
       setBusy(false);
     }
@@ -63,7 +67,7 @@ export function DocLikeButton({
       }`}
     >
       <Heart className={`h-4 w-4 ${liked ? 'fill-current' : ''}`} />
-      {liked ? '已喜欢' : '喜欢'}
+      {liked ? t('liked') : t('like')}
       <span className="font-mono text-xs tabular-nums">{count}</span>
     </button>
   );

@@ -4,6 +4,31 @@ import { AUTHOR_IDENTITY_FIELDS } from '@/lib/user-identity';
 
 export type SortKey = 'trending' | 'downloads' | 'newest' | 'top_rated';
 
+/** Baseline discoverability filter shared by browse and the homepages —
+ *  private skills are never discoverable; restricted ones stay listed. */
+export const DISCOVERABLE_SKILL_WHERE = {
+  status: 'published',
+  deletedAt: null,
+  visibility: { not: 'private' },
+} satisfies Prisma.SkillWhereInput;
+
+/** Fields a `SkillCard` needs — shared so homepage teasers can't drift. */
+export const SKILL_CARD_SELECT = {
+  id: true,
+  slug: true,
+  name: true,
+  summary: true,
+  sourceType: true,
+  visibility: true,
+  updatedAt: true,
+  downloadCount: true,
+  likeCount: true,
+  reviewCount: true,
+  avgRating: true,
+  tokenCostEstimate: true,
+  author: { select: { handle: true, displayName: true, avatarUrl: true } },
+} satisfies Prisma.SkillSelect;
+
 export interface BrowseFilters {
   q?: string;
   category?: string;
@@ -38,12 +63,7 @@ export async function browseSkills(filters: BrowseFilters) {
   const rawSize = Number(filters.pageSize ?? 24);
   const pageSize = Number.isFinite(rawSize) ? Math.min(48, Math.max(1, Math.trunc(rawSize))) : 24;
 
-  const where: Prisma.SkillWhereInput = {
-    status: 'published',
-    deletedAt: null,
-    // Private skills are never discoverable; restricted ones stay listed.
-    visibility: { not: 'private' },
-  };
+  const where: Prisma.SkillWhereInput = { ...DISCOVERABLE_SKILL_WHERE };
 
   if (filters.source && filters.source !== 'all') {
     where.sourceType = filters.source;
@@ -78,21 +98,7 @@ export async function browseSkills(filters: BrowseFilters) {
       orderBy: orderBy(filters.sort ?? 'trending'),
       skip: (page - 1) * pageSize,
       take: pageSize,
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        summary: true,
-        sourceType: true,
-        visibility: true,
-        updatedAt: true,
-        downloadCount: true,
-        likeCount: true,
-        reviewCount: true,
-        avgRating: true,
-        tokenCostEstimate: true,
-        author: { select: { handle: true, displayName: true, avatarUrl: true } },
-      },
+      select: SKILL_CARD_SELECT,
     }),
   ]);
 

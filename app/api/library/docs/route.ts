@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
 import { createDocFromUrl, IngestError } from '@/lib/library/ingest';
+import { cleanCategories } from '@/lib/library/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,6 +15,7 @@ const createSchema = z.object({
   docType: z
     .enum(['auto', 'book', 'paper', 'blog', 'article', 'report', 'other'])
     .default('auto'),
+  categories: z.array(z.string()).max(8).default([]),
 });
 
 const INGEST_STATUS: Record<string, number> = {
@@ -52,6 +54,7 @@ export async function POST(req: Request) {
       url: parsed.data.url,
       uploaderId: session.user.id,
       docType: parsed.data.docType,
+      categories: cleanCategories(parsed.data.categories),
     });
     return NextResponse.json({
       ok: true,

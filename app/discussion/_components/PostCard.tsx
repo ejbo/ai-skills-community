@@ -3,9 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { formatDistanceToNowStrict } from 'date-fns';
+import { useLocale, useTranslations } from 'next-intl';
 import {
-  ExternalLink,
   Link2,
   Loader2,
   MessageSquare,
@@ -23,9 +22,17 @@ import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
 import { withBasePath } from '@/lib/base-path';
 import { copyText } from '@/lib/clipboard';
+import { relativeTime } from '@/lib/i18n-date';
 import { PostMediaGallery } from './PostMediaGallery';
 import { PostComments } from './PostComments';
+import { ReactionsPanel } from './ReactionsPanel';
 import { PinnedBadge } from './badges';
+import {
+  REACTION_META,
+  REACTION_ORDER,
+  isReactionType,
+  type ReactionType,
+} from './reactions';
 import type { CurrentUser, PostView } from './types';
 
 /**
@@ -47,11 +54,19 @@ export function PostCard({
   focusId?: string;
   onRemoved?: (id: string) => void;
 }) {
+  const t = useTranslations('discussion');
+  const tc = useTranslations('common');
+  const locale = useLocale();
   const router = useRouter();
   const pathname = usePathname();
-  const [liked, setLiked] = useState(post.likedByMe);
+  const [myReaction, setMyReaction] = useState<ReactionType | null>(
+    isReactionType(post.myReaction) ? post.myReaction : null,
+  );
   const [likeCount, setLikeCount] = useState(post.likeCount);
-  const [likeBusy, setLikeBusy] = useState(false);
+  const [reactions, setReactions] = useState(post.reactions);
+  const [reactBusy, setReactBusy] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [reactorsOpen, setReactorsOpen] = useState(false);
   const [commentCount, setCommentCount] = useState(post.commentCount);
   const [commentsOpen, setCommentsOpen] = useState(detail);
   const [expanded, setExpanded] = useState(detail);
@@ -65,6 +80,8 @@ export function PostCard({
   const [busy, setBusy] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const paletteEnterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const paletteLeaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isAuthor = currentUser?.handle === post.author.handle;
   const isAdmin = Boolean(currentUser?.isAdmin);
@@ -87,38 +104,88 @@ export function PostCard({
     return () => document.removeEventListener('click', close);
   }, [menuOpen]);
 
-  async function toggleLike() {
-    if (likeBusy) return;
-    setLikeBusy(true);
-    const prev = { liked, likeCount };
-    setLiked(!liked);
-    setLikeCount(likeCount + (liked ? -1 : 1));
+  function bumpSummary(
+    list: { reaction: string; count: number }[],
+    type: string,
+    delta: 1 | -1,
+  ) {
+    const next = list.map((r) => ({ ...r }));
+    const hit = next.find((r) => r.reaction === type);
+    if (hit) hit.count += delta;
+    else if (delta > 0) next.push({ reaction: type, count: 1 });
+    return next.filter((r) => r.count > 0).sort((a, b) => b.count - a.count);
+  }
+
+  /** LinkedIn semantics: same type again removes; a different type switches. */
+  async function react(type: ReactionType) {
+    if (reactBusy) return;
+    setPaletteOpen(false);
+    setReactBusy(true);
+    const prev = { myReaction, likeCount, reactions };
+    // Optimistic flip, reconciled with the authoritative response below.
+    if (myReaction === type) {
+      setMyReaction(null);
+      setLikeCount(likeCount - 1);
+      setReactions(bumpSummary(reactions, type, -1));
+    } else if (myReaction) {
+      setMyReaction(type);
+      setReactions(bumpSummary(bumpSummary(reactions, myReaction, -1), type, 1));
+    } else {
+      setMyReaction(type);
+      setLikeCount(likeCount + 1);
+      setReactions(bumpSummary(reactions, type, 1));
+    }
     try {
-      const res = await fetch(`/api/discussion/posts/${post.id}/like`, { method: 'POST' });
+      const res = await fetch(`/api/discussion/posts/${post.id}/like`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ reaction: type }),
+      });
       if (res.status === 401) {
-        setLiked(prev.liked);
+        setMyReaction(prev.myReaction);
         setLikeCount(prev.likeCount);
-        pushToast('error', '请先登录再点赞');
+        setReactions(prev.reactions);
+        pushToast('error', t('login_to_react'));
         router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
         return;
       }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error('failed');
-      setLiked(Boolean(data.liked));
+      setMyReaction(isReactionType(data.myReaction) ? data.myReaction : null);
       setLikeCount(typeof data.likeCount === 'number' ? data.likeCount : prev.likeCount);
+      if (Array.isArray(data.reactions)) setReactions(data.reactions);
     } catch {
-      setLiked(prev.liked);
+      setMyReaction(prev.myReaction);
       setLikeCount(prev.likeCount);
-      pushToast('error', '操作失败，请重试');
+      setReactions(prev.reactions);
+      pushToast('error', t('op_failed_retry'));
     } finally {
-      setLikeBusy(false);
+      setReactBusy(false);
     }
   }
+
+  function paletteEnter() {
+    if (paletteLeaveTimer.current) clearTimeout(paletteLeaveTimer.current);
+    paletteEnterTimer.current = setTimeout(() => setPaletteOpen(true), 350);
+  }
+
+  function paletteLeave() {
+    if (paletteEnterTimer.current) clearTimeout(paletteEnterTimer.current);
+    paletteLeaveTimer.current = setTimeout(() => setPaletteOpen(false), 250);
+  }
+
+  useEffect(
+    () => () => {
+      if (paletteEnterTimer.current) clearTimeout(paletteEnterTimer.current);
+      if (paletteLeaveTimer.current) clearTimeout(paletteLeaveTimer.current);
+    },
+    [],
+  );
 
   async function share() {
     const url = `${window.location.origin}${withBasePath(`/discussion/posts/${post.id}`)}`;
     const ok = await copyText(url);
-    pushToast(ok ? 'success' : 'error', ok ? '链接已复制' : '复制失败');
+    pushToast(ok ? 'success' : 'error', ok ? t('link_copied') : tc('copy_failed'));
   }
 
   async function togglePin() {
@@ -131,11 +198,11 @@ export function PostCard({
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      pushToast('error', data.reason ?? '操作失败');
+      pushToast('error', data.reason ?? t('op_failed'));
       return;
     }
     setPinned(next);
-    pushToast('success', next ? '已置顶' : '已取消置顶');
+    pushToast('success', next ? t('pinned_toast') : t('unpinned_toast'));
     router.refresh();
   }
 
@@ -151,13 +218,13 @@ export function PostCard({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        pushToast('error', data.reason ?? '保存失败');
+        pushToast('error', data.reason ?? t('save_failed'));
         return;
       }
       setBodyMd(trimmed);
       setEditedAt(data.post?.editedAt ?? new Date().toISOString());
       setEditing(false);
-      pushToast('success', '已更新');
+      pushToast('success', t('updated_toast'));
     } finally {
       setBusy(false);
     }
@@ -165,13 +232,13 @@ export function PostCard({
 
   async function remove() {
     setMenuOpen(false);
-    if (!confirm('确定删除这条动态？所有评论和点赞会一并删除。')) return;
+    if (!confirm(t('confirm_delete_post'))) return;
     const res = await fetch(`/api/discussion/posts/${post.id}`, { method: 'DELETE' });
     if (!res.ok) {
-      pushToast('error', '删除失败');
+      pushToast('error', t('delete_failed'));
       return;
     }
-    pushToast('success', '已删除');
+    pushToast('success', t('deleted_toast'));
     if (detail) {
       router.push('/discussion');
       router.refresh();
@@ -208,19 +275,34 @@ export function PostCard({
                 <span>·</span>
               </>
             )}
-            <span>{formatDistanceToNowStrict(new Date(post.createdAt), { addSuffix: true })}</span>
-            {editedAt && <span>· 已编辑</span>}
+            <span>{relativeTime(post.createdAt, locale)}</span>
+            {editedAt && <span>· {t('edited')}</span>}
           </div>
         </div>
         <div ref={menuRef} className="relative shrink-0">
-          <button
-            onClick={() => setMenuOpen((v) => !v)}
-            aria-label="更多操作"
-            className="rounded-lg p-1.5 text-muted transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
-          >
-            <MoreHorizontal className="h-4 w-4" />
-          </button>
-          {menuOpen && (
+          {/* Feed cards: the corner button OPENS the post directly (new tab) —
+              no dropdown. Management actions live on the detail page. */}
+          {!detail ? (
+            <a
+              href={withBasePath(`/discussion/posts/${post.id}`)}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={t('open_post')}
+              title={t('open_post')}
+              className="block rounded-lg p-1.5 text-muted transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </a>
+          ) : (
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              aria-label={t('more_actions')}
+              className="rounded-lg p-1.5 text-muted transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+          )}
+          {detail && menuOpen && (
             <div className="surface absolute right-0 top-full z-30 mt-1 w-44 rounded-xl p-1 shadow-lg">
               <button
                 onClick={() => {
@@ -230,20 +312,8 @@ export function PostCard({
                 className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
               >
                 <Link2 className="h-4 w-4" />
-                复制链接
+                {t('copy_link')}
               </button>
-              {!detail && (
-                <a
-                  href={withBasePath(`/discussion/posts/${post.id}`)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => setMenuOpen(false)}
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  在新标签页打开
-                </a>
-              )}
               {isAuthor && (
                 <button
                   onClick={() => {
@@ -255,7 +325,7 @@ export function PostCard({
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
                 >
                   <Pencil className="h-4 w-4" />
-                  编辑
+                  {tc('edit')}
                 </button>
               )}
               {isAdmin && (
@@ -264,7 +334,7 @@ export function PostCard({
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
                 >
                   {pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
-                  {pinned ? '取消置顶' : '置顶'}
+                  {pinned ? t('unpin') : t('pin')}
                 </button>
               )}
               {(isAuthor || isAdmin) && (
@@ -273,7 +343,7 @@ export function PostCard({
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-danger transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
                 >
                   <Trash2 className="h-4 w-4" />
-                  删除
+                  {tc('delete')}
                 </button>
               )}
             </div>
@@ -289,7 +359,7 @@ export function PostCard({
             onChange={setEditDraft}
             variant="compact"
             maxLength={8000}
-            ariaLabel="编辑动态"
+            ariaLabel={t('edit_post_aria')}
             autoFocus
           />
           <div className="flex justify-end gap-2">
@@ -297,7 +367,7 @@ export function PostCard({
               onClick={() => setEditing(false)}
               className="h-8 rounded-lg px-3 text-xs font-medium text-muted transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
             >
-              取消
+              {tc('cancel')}
             </button>
             <button
               onClick={saveEdit}
@@ -305,7 +375,7 @@ export function PostCard({
               className="flex h-8 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-xs font-medium text-white hover:bg-accent-600 disabled:opacity-60"
             >
               {busy && <Loader2 className="h-3 w-3 animate-spin" />}
-              保存
+              {tc('save')}
             </button>
           </div>
         </div>
@@ -324,7 +394,7 @@ export function PostCard({
                 onClick={() => setExpanded(true)}
                 className="mt-1 text-sm font-medium text-muted transition hover:text-zinc-700 dark:hover:text-zinc-200"
               >
-                …展开
+                {t('expand')}
               </button>
             )}
           </div>
@@ -334,22 +404,36 @@ export function PostCard({
       {/* Media */}
       <PostMediaGallery media={post.media} />
 
-      {/* Stats */}
+      {/* Stats — reaction pills open the LinkedIn-style "who reacted" panel */}
       {(likeCount > 0 || commentCount > 0) && (
         <div className="mt-3 flex items-center justify-between text-xs text-muted">
-          <span className="flex items-center gap-1">
-            {likeCount > 0 && (
-              <>
-                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-accent-500 text-white">
-                  <ThumbsUp className="h-2.5 w-2.5" />
-                </span>
-                {likeCount}
-              </>
-            )}
-          </span>
+          {likeCount > 0 ? (
+            <button
+              onClick={() => setReactorsOpen(true)}
+              className="flex items-center gap-1.5 hover:underline"
+              aria-label={t('see_reactors')}
+            >
+              <span className="flex items-center -space-x-1">
+                {reactions.slice(0, 3).map(
+                  (r) =>
+                    isReactionType(r.reaction) && (
+                      <span
+                        key={r.reaction}
+                        className="flex h-5 w-5 items-center justify-center rounded-full text-sm leading-none"
+                      >
+                        {REACTION_META[r.reaction].emoji}
+                      </span>
+                    ),
+                )}
+              </span>
+              {likeCount}
+            </button>
+          ) : (
+            <span />
+          )}
           {commentCount > 0 && (
             <button onClick={() => setCommentsOpen((v) => !v)} className="hover:underline">
-              {commentCount} 条评论
+              {t('comment_count', { count: commentCount })}
             </button>
           )}
         </div>
@@ -357,29 +441,60 @@ export function PostCard({
 
       {/* Actions */}
       <div className="mt-2 flex items-center gap-1 border-t border-zinc-100 pt-2 dark:border-zinc-800/60">
-        <button
-          onClick={toggleLike}
-          disabled={likeBusy}
-          aria-pressed={liked}
-          className={`${actionBtn} ${
-            liked ? 'text-accent-600 dark:text-accent-300' : 'text-zinc-600 dark:text-zinc-300'
-          }`}
+        <div
+          className="relative flex-1"
+          onMouseEnter={paletteEnter}
+          onMouseLeave={paletteLeave}
         >
-          <ThumbsUp className={`h-4 w-4 ${liked ? 'fill-current' : ''}`} />
-          {liked ? '已赞' : '点赞'}
-        </button>
+          {paletteOpen && (
+            <div className="surface absolute bottom-full left-0 z-30 mb-2 flex items-center gap-0.5 rounded-full px-2 py-1.5 shadow-lg">
+              {REACTION_ORDER.map((r) => (
+                <button
+                  key={r}
+                  onClick={() => react(r)}
+                  title={t(`reaction_${r}`)}
+                  aria-label={t(`reaction_${r}`)}
+                  className={`rounded-full p-1 text-2xl leading-none transition duration-150 hover:-translate-y-1 hover:scale-125 ${
+                    myReaction === r ? 'bg-accent-500/10' : ''
+                  }`}
+                >
+                  {REACTION_META[r].emoji}
+                </button>
+              ))}
+            </div>
+          )}
+          <button
+            onClick={() => react(myReaction ?? 'like')}
+            disabled={reactBusy}
+            aria-pressed={myReaction !== null}
+            className={`${actionBtn} w-full ${
+              myReaction
+                ? 'font-medium text-accent-600 dark:text-accent-300'
+                : 'text-zinc-600 dark:text-zinc-300'
+            }`}
+          >
+            {myReaction ? (
+              <span className="text-base leading-none">{REACTION_META[myReaction].emoji}</span>
+            ) : (
+              <ThumbsUp className="h-4 w-4" />
+            )}
+            {myReaction ? t(`reaction_${myReaction}`) : t('reaction_like')}
+          </button>
+        </div>
         <button
           onClick={() => setCommentsOpen((v) => !v)}
           className={`${actionBtn} text-zinc-600 dark:text-zinc-300`}
         >
           <MessageSquare className="h-4 w-4" />
-          评论
+          {t('comment_action')}
         </button>
         <button onClick={share} className={`${actionBtn} text-zinc-600 dark:text-zinc-300`}>
           <Link2 className="h-4 w-4" />
-          分享
+          {t('share_action')}
         </button>
       </div>
+
+      {reactorsOpen && <ReactionsPanel postId={post.id} onClose={() => setReactorsOpen(false)} />}
 
       {/* Comments */}
       {commentsOpen && (

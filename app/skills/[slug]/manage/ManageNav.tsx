@@ -2,17 +2,9 @@
 
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import { useTranslations } from 'next-intl';
 
 export type ManageSection = 'overview' | 'edit' | 'versions' | 'comparison' | 'access' | 'analytics';
-
-const LABELS: Record<ManageSection, string> = {
-  overview: '概览',
-  edit: '编辑',
-  versions: '版本',
-  comparison: '对比',
-  access: '访问申请',
-  analytics: '分析',
-};
 
 const ORDER: ManageSection[] = ['overview', 'edit', 'versions', 'comparison', 'access', 'analytics'];
 
@@ -28,6 +20,17 @@ export function ManageNav({
   /** true → links stay on the detail page's Manage tab; false → the standalone /manage page. */
   inline?: boolean;
 }) {
+  const t = useTranslations('skill_manage');
+  const td = useTranslations('detail');
+  const tc = useTranslations('common');
+  const labels: Record<ManageSection, string> = {
+    overview: td('tabs.overview'),
+    edit: tc('edit'),
+    versions: td('tabs.versions'),
+    comparison: td('tabs.comparison'),
+    access: t('nav_access'),
+    analytics: t('nav_analytics'),
+  };
   return (
     <div className="flex gap-1 overflow-x-auto border-b border-zinc-200 dark:border-zinc-800 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {ORDER.map((section) => {
@@ -41,7 +44,7 @@ export function ManageNav({
               active ? 'text-zinc-900 dark:text-white' : 'text-muted hover:text-zinc-700 dark:hover:text-zinc-200'
             }`}
           >
-            {LABELS[section]}
+            {labels[section]}
             {section === 'access' && pendingCount > 0 && (
               <span className="ml-1.5 rounded-full bg-danger/15 px-1.5 py-0.5 text-[10px] font-semibold text-danger">
                 {pendingCount}

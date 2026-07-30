@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { formatDistanceToNowStrict } from 'date-fns';
+import { useLocale, useTranslations } from 'next-intl';
+import { relativeTime } from '@/lib/i18n-date';
 import { CornerDownRight, Loader2, Trash2 } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 import { RichTextEditor } from '@/components/RichTextEditor';
@@ -53,6 +54,7 @@ export function FeedbackComments({
   currentUser: CurrentUser | null;
   focusId?: string;
 }) {
+  const t = useTranslations('feedback');
   const [threads, setThreads] = useState<ThreadView[]>(initialThreads);
 
   function addThread(c: CommentView) {
@@ -98,23 +100,30 @@ export function FeedbackComments({
 
   return (
     <div className="space-y-4">
-      <h2 className="text-base font-semibold">评论（{count}）</h2>
+      <h2 className="text-base font-semibold">{t('comments_title', { count })}</h2>
 
       {currentUser ? (
-        <CommentBox feedbackId={feedbackId} onPosted={addThread} placeholder="写下你的看法…" />
+        <CommentBox
+          feedbackId={feedbackId}
+          onPosted={addThread}
+          placeholder={t('comment_placeholder')}
+        />
       ) : (
         <p className="text-sm text-muted">
-          <Link
-            href={`/auth/login?callbackUrl=${encodeURIComponent(`/feedback/${feedbackId}`)}`}
-            className="text-accent-600 underline dark:text-accent-300"
-          >
-            登录
-          </Link>
-          后参与讨论。
+          {t.rich('login_to_discuss', {
+            link: (chunks) => (
+              <Link
+                href={`/auth/login?callbackUrl=${encodeURIComponent(`/feedback/${feedbackId}`)}`}
+                className="text-accent-600 underline dark:text-accent-300"
+              >
+                {chunks}
+              </Link>
+            ),
+          })}
         </p>
       )}
 
-      {threads.length === 0 && <p className="text-sm text-muted">还没有评论，来说两句？</p>}
+      {threads.length === 0 && <p className="text-sm text-muted">{t('comments_empty')}</p>}
 
       <ul className="space-y-4">
         {threads.map((thread) => (
@@ -150,6 +159,7 @@ function ThreadBlock({
   onReplyPosted: (c: CommentView) => void;
   onRemoved: (commentId: string, tombstoned: boolean, prunedParent: boolean) => void;
 }) {
+  const t = useTranslations('feedback');
   const [replyTo, setReplyTo] = useState<CommentView | null>(null);
 
   return (
@@ -183,7 +193,7 @@ function ThreadBlock({
               parentId={thread.id}
               replyToId={replyTo.id}
               autoFocus
-              placeholder={`回复 ${replyTo.author.displayName}…`}
+              placeholder={t('reply_to_placeholder', { name: replyTo.author.displayName })}
               onPosted={(c) => {
                 onReplyPosted(c);
                 setReplyTo(null);
@@ -216,6 +226,9 @@ function CommentBlock({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const t = useTranslations('feedback');
+  const g = useTranslations();
+  const locale = useLocale();
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -234,7 +247,7 @@ function CommentBlock({
   }, [focusId, comment.id]);
 
   async function remove() {
-    if (!confirm('确定删除这条评论？')) return;
+    if (!confirm(t('delete_comment_confirm'))) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/feedback/${feedbackId}/comments/${comment.id}`, {
@@ -242,12 +255,12 @@ function CommentBlock({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        pushToast('error', '删除失败');
+        pushToast('error', t('delete_failed'));
         return;
       }
       onRemoved(comment.id, Boolean(data.tombstoned), Boolean(data.prunedParent));
     } catch {
-      pushToast('error', '删除失败，请重试');
+      pushToast('error', t('delete_failed_retry'));
     } finally {
       setBusy(false);
     }
@@ -274,10 +287,10 @@ function CommentBlock({
               {comment.author.displayName}
             </span>
             <DeptTag department={comment.author.department} lab={comment.author.lab} />
-            <span>{formatDistanceToNowStrict(created, { addSuffix: true })}</span>
+            <span>{relativeTime(created, locale)}</span>
           </div>
           {isTombstone ? (
-            <p className="mt-1 text-sm italic text-muted">该评论已删除</p>
+            <p className="mt-1 text-sm italic text-muted">{t('comment_deleted')}</p>
           ) : (
             <div className="mt-1 text-sm">
               <MarkdownRenderer content={comment.bodyMd} compact />
@@ -291,7 +304,7 @@ function CommentBlock({
                   className="flex items-center gap-1 transition hover:text-accent-600"
                 >
                   <CornerDownRight className="h-3 w-3" />
-                  回复
+                  {g('video.comments.reply')}
                 </button>
               ) : (
                 <button
@@ -301,7 +314,7 @@ function CommentBlock({
                   className="flex items-center gap-1 transition hover:text-accent-600"
                 >
                   <CornerDownRight className="h-3 w-3" />
-                  回复
+                  {g('video.comments.reply')}
                 </button>
               )}
               {canDelete && (
@@ -311,7 +324,7 @@ function CommentBlock({
                   className="flex items-center gap-1 transition hover:text-danger disabled:opacity-60"
                 >
                   <Trash2 className="h-3 w-3" />
-                  删除
+                  {g('common.delete')}
                 </button>
               )}
             </div>
@@ -341,6 +354,8 @@ function CommentBox({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const t = useTranslations('feedback');
+  const g = useTranslations();
   const [bodyMd, setBodyMd] = useState('');
   const [busy, setBusy] = useState(false);
   const tooLong = bodyMd.trim().length > 2000;
@@ -361,19 +376,19 @@ function CommentBox({
         }),
       });
       if (res.status === 401) {
-        pushToast('error', '请先登录');
+        pushToast('error', g('video.login_required'));
         router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
         return;
       }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        pushToast('error', data.reason ?? '发送失败，请重试');
+        pushToast('error', data.reason ?? t('send_failed_retry'));
         return;
       }
       setBodyMd('');
       onPosted(data.comment as CommentView);
     } catch {
-      pushToast('error', '发送失败，请重试');
+      pushToast('error', t('send_failed_retry'));
     } finally {
       setBusy(false);
     }
@@ -386,8 +401,8 @@ function CommentBox({
         onChange={setBodyMd}
         variant="compact"
         maxLength={2000}
-        placeholder={placeholder ?? '写下你的看法…'}
-        ariaLabel="评论"
+        placeholder={placeholder ?? t('comment_placeholder')}
+        ariaLabel={g('video.comments.title')}
         autoFocus={autoFocus}
       />
       <div className="flex items-center justify-end gap-2">
@@ -396,17 +411,17 @@ function CommentBox({
             onClick={onCancel}
             className="h-8 rounded-lg border border-zinc-200 px-3 text-xs dark:border-zinc-700"
           >
-            取消
+            {g('common.cancel')}
           </button>
         )}
         <button
           onClick={submit}
           disabled={busy || !bodyMd.trim() || tooLong}
-          title={tooLong ? '评论最多 2000 字' : undefined}
+          title={tooLong ? t('comment_too_long') : undefined}
           className="flex h-8 items-center gap-1.5 rounded-lg bg-accent-500 px-3 text-xs font-medium text-white hover:bg-accent-600 disabled:opacity-60"
         >
           {busy && <Loader2 className="h-3 w-3 animate-spin" />}
-          发送
+          {g('video.ai.send')}
         </button>
       </div>
     </div>

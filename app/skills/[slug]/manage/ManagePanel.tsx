@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { formatDistanceToNowStrict } from 'date-fns';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { Upload } from 'lucide-react';
+import { relativeTime } from '@/lib/i18n-date';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { isLLMConfigured } from '@/lib/llm';
@@ -97,7 +98,7 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function OverviewSection({
+async function OverviewSection({
   skill,
   versionCount,
   currentVersion,
@@ -120,37 +121,41 @@ function OverviewSection({
   currentVersion: string | null;
   inline: boolean;
 }) {
-  const statusLabel = skill.status === 'published' ? '已发布' : skill.status === 'draft' ? '草稿' : '已归档';
-  const visLabel = skill.visibility === 'public' ? '公开' : skill.visibility === 'restricted' ? '受限' : '私密';
+  const t = await getTranslations('skill_manage');
+  const tl = await getTranslations('labels');
+  const td = await getTranslations('detail');
+  const locale = await getLocale();
+  const statusLabel = tl(`skillStatus.${skill.status === 'published' || skill.status === 'draft' ? skill.status : 'archived'}`);
+  const visLabel = tl(`visibility.${skill.visibility === 'public' || skill.visibility === 'restricted' ? skill.visibility : 'private'}`);
   const versionsHref = inline ? `/skills/${skill.slug}?tab=manage&section=versions` : `/skills/${skill.slug}/manage?section=versions`;
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        <StatCard label="状态" value={statusLabel} />
-        <StatCard label="可见性" value={visLabel} />
-        <StatCard label="当前版本" value={currentVersion ? `v${currentVersion}` : '—'} />
-        <StatCard label="版本数" value={versionCount} />
-        <StatCard label="下载" value={skill.downloadCount.toLocaleString()} />
-        <StatCard label="点赞" value={skill.likeCount.toLocaleString()} />
-        <StatCard label="收藏" value={skill.favoriteCount.toLocaleString()} />
-        <StatCard label="订阅" value={skill.subscriberCount.toLocaleString()} />
+        <StatCard label={t('status')} value={statusLabel} />
+        <StatCard label={t('visibility')} value={visLabel} />
+        <StatCard label={t('current_version')} value={currentVersion ? `v${currentVersion}` : '—'} />
+        <StatCard label={t('version_count')} value={versionCount} />
+        <StatCard label={td('downloads')} value={skill.downloadCount.toLocaleString()} />
+        <StatCard label={t('likes')} value={skill.likeCount.toLocaleString()} />
+        <StatCard label={t('favorites')} value={skill.favoriteCount.toLocaleString()} />
+        <StatCard label={t('subscribers')} value={skill.subscriberCount.toLocaleString()} />
       </div>
       <div className="surface flex flex-wrap items-center justify-between gap-3 rounded-2xl p-4">
         <div className="flex items-center gap-2 text-sm text-muted">
           <TokenCostBadge tokens={skill.tokenCostEstimate} compact />
-          <span>· 最后更新 {formatDistanceToNowStrict(skill.updatedAt, { addSuffix: true })}</span>
+          <span>· {t('last_updated', { time: relativeTime(skill.updatedAt, locale) })}</span>
         </div>
         <Link
           href={versionsHref}
           className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600"
         >
           <Upload className="h-3.5 w-3.5" />
-          上传新版本
+          {t('upload_new_version')}
         </Link>
       </div>
       <div className="rounded-2xl border border-danger/30 p-4">
-        <h3 className="text-sm font-semibold text-danger">危险操作</h3>
-        <p className="mt-1 text-xs text-muted">删除后该 Skill 会被移除，无法恢复。</p>
+        <h3 className="text-sm font-semibold text-danger">{t('danger_zone')}</h3>
+        <p className="mt-1 text-xs text-muted">{t('delete_warning')}</p>
         <div className="mt-3">
           <DeleteSkillButton slug={skill.slug} />
         </div>
@@ -225,12 +230,15 @@ async function VersionsSection({
     where: { skillId },
     orderBy: [{ major: 'desc' }, { minor: 'desc' }, { patch: 'desc' }],
   });
+  const t = await getTranslations('skill_manage');
+  const tl = await getTranslations('labels');
+  const locale = await getLocale();
   return (
     <div className="space-y-5">
       <div className="surface overflow-hidden rounded-2xl">
-        <div className="border-b border-zinc-200 px-4 py-3 text-sm font-semibold dark:border-zinc-800">版本历史</div>
+        <div className="border-b border-zinc-200 px-4 py-3 text-sm font-semibold dark:border-zinc-800">{t('version_history')}</div>
         {versions.length === 0 ? (
-          <div className="px-4 py-6 text-sm text-muted">还没有任何版本。</div>
+          <div className="px-4 py-6 text-sm text-muted">{t('no_versions')}</div>
         ) : (
           <ul>
             {versions.map((v) => {
@@ -239,18 +247,18 @@ async function VersionsSection({
                 <li key={v.id} className="flex flex-wrap items-center gap-3 border-b border-zinc-100 px-4 py-3 text-sm last:border-b-0 dark:border-zinc-800/60">
                   <span className="font-mono font-semibold">v{v.version}</span>
                   {isCurrent && (
-                    <span className="rounded-full bg-accent-500/15 px-2 py-0.5 text-[10px] font-semibold text-accent-600 dark:text-accent-300">当前</span>
+                    <span className="rounded-full bg-accent-500/15 px-2 py-0.5 text-[10px] font-semibold text-accent-600 dark:text-accent-300">{t('badge_current')}</span>
                   )}
                   <span
                     className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                       v.status === 'published' ? 'bg-ok/15 text-ok' : v.status === 'yanked' ? 'bg-danger/15 text-danger' : 'bg-warn/15 text-warn'
                     }`}
                   >
-                    {v.status === 'published' ? '已发布' : v.status === 'yanked' ? '已撤回' : '草稿'}
+                    {v.status === 'published' ? tl('skillStatus.published') : v.status === 'yanked' ? t('version_yanked') : tl('skillStatus.draft')}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-xs text-muted">
                     {v.changelogMd ? `「${v.changelogMd}」 · ` : ''}
-                    {v.publishedAt ? formatDistanceToNowStrict(v.publishedAt, { addSuffix: true }) : formatDistanceToNowStrict(v.createdAt, { addSuffix: true })}
+                    {relativeTime(v.publishedAt ?? v.createdAt, locale)}
                     {' · '}⬇ {v.downloadCount}
                   </span>
                   <VersionActions slug={slug} versionId={v.id} status={v.status} isCurrent={isCurrent} />
@@ -261,7 +269,7 @@ async function VersionsSection({
         )}
       </div>
       <div className="surface rounded-2xl p-4">
-        <h3 className="mb-3 text-sm font-semibold">上传新版本</h3>
+        <h3 className="mb-3 text-sm font-semibold">{t('upload_new_version')}</h3>
         <VersionUploader slug={slug} currentVersion={currentVersion} />
       </div>
     </div>

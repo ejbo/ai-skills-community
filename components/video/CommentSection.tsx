@@ -19,6 +19,7 @@ interface Props {
 
 export function CommentSection({ slug, initialComments, initialCursor, currentUser }: Props) {
   const t = useTranslations('video');
+  const tu = useTranslations('video_ui');
   const [comments, setComments] = useState<VideoCommentView[]>(initialComments);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
   const [sort, setSort] = useState<CommentSort>('top');
@@ -62,7 +63,7 @@ export function CommentSection({ slug, initialComments, initialCursor, currentUs
         setComments((data.comments ?? []) as VideoCommentView[]);
         setCursor(data.nextCursor ?? null);
       } catch {
-        pushToast('error', '加载评论失败');
+        pushToast('error', tu('load_comments_failed'));
       } finally {
         setReloading(false);
       }
@@ -86,7 +87,7 @@ export function CommentSection({ slug, initialComments, initialCursor, currentUs
       setComments((prev) => [...prev, ...((data.comments ?? []) as VideoCommentView[])]);
       setCursor(data.nextCursor ?? null);
     } catch {
-      pushToast('error', '加载评论失败');
+      pushToast('error', tu('load_comments_failed'));
     } finally {
       setLoading(false);
     }

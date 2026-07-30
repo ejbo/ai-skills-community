@@ -142,10 +142,54 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   (per-user daily byte budget) and are served by `/api/discussion/media/[...key]` (login + Range;
   content-disposition built CJK-safe — never put a raw filename in a header). External video links
   render as link cards, NEVER iframes (intranet blocks embeds). Feed paging is an explicit keyset
-  cursor encoding `createdAt|id` — do not switch back to Prisma `cursor` (it breaks when the cursor
-  row is deleted/pinned); pinned posts are capped at `MAX_PINNED_POSTS` (enforced on pin). Authors
-  render via the identity contract (`toPublicAuthor` + `<DeptTag/>`). Admin: pin/lock/delete inline
-  on cards/topic pages + tables at `/manage/discussion`, all logAdmin'd.
+  cursor encoding `createdAt|id` for sort=new; sort=hot (engagement ordering) pages by offset
+  cursor `o:<n>` — do not switch back to Prisma `cursor` (it breaks when the cursor row is
+  deleted/pinned); pinned posts are capped at `MAX_PINNED_POSTS` (enforced on pin). **Reactions
+  (v2, migration `20260729120000_discussion_v2`)**: LinkedIn-style palette (`PostReaction` enum on
+  `PostLike.reaction`; hover the 点赞 button); `Post.likeCount` = TOTAL across types (switching
+  types never touches it); the like route returns the authoritative re-read state (races just
+  fall through, never 500); "who reacted" panel = `GET .../reactions` + `ReactionsPanel`. Forum v2:
+  AI-focused categories (`models/agents/skills/research` added; `general` is legacy — hidden via
+  `VISIBLE_CATEGORIES`, still renders on old rows), Discourse sidebar with `countTopicsByCategory`,
+  topic rows carry `excerptOf` (code-point-safe slice) + participants + `viewCount`
+  (`DiscussionTopicView` day-dedupe; anonymous key = x-real-ip / LAST XFF hop — first hop is
+  forgeable). `PostFeed` must stay keyed per stream (`key={q|sort}`) or soft navs mix cursors;
+  page searchParams may be `string[]` — always read via `firstParam`. **v3 (migration
+  `20260729150000_discussion_v3`)**: topics are MULTI-主题 (`categories DiscussionCategory[]`,
+  legacy `category` kept = `categories[0]`; filters compose `AND` of OR-groups — never assign
+  `where.OR` twice) and carry attachments (`TopicMedia`, same shape/serving as `PostMedia`).
+  Attachment validation is shared in `lib/discussion-media.ts`: `resolveMedia` (format) +
+  `mediaKeysAvailable` (a video/file key already attached elsewhere is rejected — keys are
+  visible in URLs, no ownership ledger exists) + `deleteUnreferencedMediaFiles` (refcounts
+  PostMedia+TopicMedia before unlinking — NEVER call `deletePostMediaFile` directly from a
+  delete path). The client picker is the shared `MediaPicker` (draft in a ref; reports upload
+  count outside setState and zeroes it on unmount). Authors render via the identity contract
+  (`toPublicAuthor` + `<DeptTag/>`). Admin: pin/lock/delete inline on cards/topic pages +
+  tables at `/manage/discussion`, all logAdmin'd.
+- **活动 (Events)**: Luma-style community event calendar at `/events` (`Event`/`EventSpeaker`;
+  migration `20260730120000_add_events`). 大类 = `EventKind` enum (external/internal/
+  expert_talk/seminar), 小类 = `topics String[]` from the fixed `EVENT_TOPICS` taxonomy in
+  `lib/events/types.ts` — two orthogonal facets, don't merge them. 城市 and 时区 are ALSO fixed
+  option sets there (`EVENT_CITIES`; `EVENT_TIMEZONES` = 东部/中部/西部/北京 as IANA zones).
+  **Time model**: timed events store REAL UTC instants + the organizer's IANA `timezone`
+  (`zonedWallToUtc` in `lib/events/time.ts`, Intl-based, no tz dep); the UI converts to each
+  viewer's browser zone via the `EventTime*` client leaves (SSR deterministically renders the
+  event's own zone, a post-hydration effect swaps in the viewer zone — no mismatch). ALL-DAY
+  events are date-only (UTC midnight, `timezone` null) and never converted; legacy null-zone
+  timed rows count as the default zone. Because the zone set is CLOSED, date filters compile to
+  exact per-zone SQL branches (`rangeWhere`/`upcomingWhere` in `lib/event-queries.ts`) — 即将举行
+  keeps an event until its last day ends in its OWN zone. List grouping/calendar dots key on
+  `eventLocalDayKey` (event-own-zone date); multi-day events dot every grid day (window-clamped
+  expansion) but appear ONCE in the list; a day filter collapses the list under the SELECTED
+  day header. `meetingUrl` is member-only — trimmed server-side in `toPublicEvent` for anonymous
+  viewers and left out of the .ics. Permissions: content edits author-only (the PATCH route
+  branches on `title` in the body); `pinned` admin-only (cap `MAX_PINNED_EVENTS` enforced on
+  pin; strip dedupes against the timeline); `cancelled` author-or-admin (stays visible, badge +
+  【已取消】calendar-title prefix); DELETE is soft (`deletedAt`) — any new Event read must filter
+  `deletedAt: null` (lib/search.ts does too). Speakers are replaced wholesale on edit (delete +
+  create in one transaction; detail page renders them as square-avatar profile cards).
+  添加到日历 = UTC(`Z`) Google link built client-side (needs window.origin) + `/api/events/[id]/ics`
+  — all-day DTEND is EXCLUSIVE (+1 day) and the download filename stays ASCII-only.
 - **员工名单 (Employee Directory)**: admin roster at `/manage/employees` (`EmployeeDirectory` model;
   bulk import via paste / CSV / XLSX — parsers in `lib/employee-import.ts`, merge rules in
   `lib/employee-admin.ts`; 工号 canonicalized to lowercase at write time — the DB unique index is
@@ -170,3 +214,65 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   Card/hero hover previews use ONLY the dedicated short `preview` clip (never the full source) —
   don't reintroduce a `?? videoUrl` fallback. Not yet done (needs ffmpeg on the box): `+faststart`
   remux on upload (fixes tail-`moov` first-frame delay) and HLS/adaptive transcoding.
+- **知识库 (Library)**: Readwise-style reading library at `/library` (migrations
+  `20260729120000_add_library` + `20260729150000_extend_library`). Users submit URL/PDF/EPUB (NO
+  size cap by design) → `lib/library/` extracts to chaptered sanitized HTML + chunks
+  (chunkKey `c{ch}-{ord}`, 0-based; only the retrieve PROMPT is 1-based) → AI reads ONCE
+  (per-chapter summaries + 导读, cached on rows, ≤120 chapters, checkpoint-resumable) → shared
+  two-stage retrieval chat with `[cX-Y]` citations. Non-obvious invariants: chat citations ride
+  the FIRST SSE frame `{"citations":[...]}` (a header would blow nginx `proxy_buffer_size`);
+  `fetch-url.ts` has an SSRF guard with MANUAL per-hop redirect validation (RFC1918 allowed only
+  when `ENABLE_SSO`); WeChat images need the lazy `data-src` promotion in `extract-html.ts` and
+  are RE-HOSTED locally at ingest (mmbiz blocks hotlinks); highlight anchoring matches quotes with
+  ALL whitespace stripped (DOM text nodes abut across blocks); EPUB entries stream with zip-bomb
+  caps. Visibility mirrors skills (public/restricted/private + `LibraryAccessRequest`); uploader
+  edits at `/library/<slug>/edit` set `metaPinned`/`categoriesPinned` so re-extraction/AI never
+  overwrite. 细分类 = fixed taxonomy in `lib/library/types.ts` (LIBRARY_CATEGORIES) — don't switch
+  to free tags. 评论 copies the feedback thread contract; 评分 recomputes avg in a transaction.
+  Shared reading notes = per-user-per-doc `LibraryProgress.shareNotes` (community drawer +
+  dotted `data-chl-id` marks; own marks use `data-hl-id` — keep the datasets separate). Admin AI
+  override lives in `LibrarySetting` via `getLibraryProvider()` (/manage/library), falling back
+  to env `LLM_*`. **PDF 原版 view** = self-hosted pdf.js renderer (`components/library/reader/PdfView.tsx`,
+  `pdfjs-dist`; worker + cmaps + standard_fonts copied to `public/pdfjs/` — no CDN on intranet). Canvas
+  render + pdf.js TextLayer in OUR DOM, so selection/高亮/批注/社区标注/AI 引用跳转/翻译 all work on the
+  faithful render exactly like the 精读 (extracted) view; pages are virtualized (visible ±2). Highlights
+  anchor by quote-search (charStart only a tiebreak), so a mark created in one view re-anchors in the
+  other despite different offset spaces. `LibraryChapter.pageStart/pageEnd` (0-based inclusive, PDF only)
+  map chapters↔pages for TOC/citation jumps. PDF opens in 原版 by default; 精读 is the toggle. Uploaded
+  `.html` is served `text/plain` from the file route (rendering stored user HTML on-origin = XSS). Reader
+  marks survive scrolling: PdfView repaints per page render; extracted view has a 600ms idempotent
+  scroll-repaint safety net. 选中翻译 via `/api/library/translate` (中↔英 auto-direction, LLM).
+- **i18n (中/EN/FR) — no hardcoded UI strings**: every user-visible string lives in
+  `messages/{zh-CN,en,fr}.json` (zh-CN is the source of truth; all three files must stay at
+  **key parity** — the merge script in the i18n work checks this, and a missing key renders the
+  raw key path in prod). Read via `useTranslations('<ns>')` (client) / `await getTranslations('<ns>')`
+  (server RSC); the locale comes from the `locale` cookie (设置 → 语言) with Accept-Language as the
+  first-visit default (`i18n/request.ts`). Rules that cost real time:
+  - **`labels` is the shared taxonomy namespace** — `docType.*`, `discussionCategory.*`,
+    `eventKind.*`, `eventMode.*`, `visibility.*`, `skillStatus.*`, `libCategory.*`. The Chinese
+    label maps still in `lib/**` (`DOC_TYPE_LABELS`, `CATEGORY_META`, `EVENT_KINDS`…) are kept for
+    **enumeration, slugs, colors and DB values only** — render the *display* string through
+    `` tl(`docType.${v}`) ``. Never translate a value that is stored, filtered on, or sent to an API
+    (`EVENT_CITIES` entries are Chinese *DB values* — display-only translation).
+  - **Relative dates must go through `relativeTime(date, locale)`** (`lib/i18n-date.ts`).
+    Bare `formatDistanceToNowStrict` is English-only and leaks "3 days ago" into the 中文 UI.
+  - ICU plurals for en/fr (`{count, plural, one {# comment} other {# comments}}`); the zh value is
+    the exact original Chinese. Never put a raw `'` right before `{`/`}` (it escapes the brace).
+  - `.ts` helper modules (stores, stream/parse helpers) must NOT import next-intl — callers pass
+    translated text in.
+  - **`/manage` admin UI stays Chinese by design** (internal ops tool); notification/email bodies are
+    stored data, not UI, so they don't follow the viewer's locale either.
+- **Profile vs Dashboard (deliberately different products)**: `/users/[handle]` is the **public
+  showcase** — skills, library submissions, posts, forum topics, recent comments, shelf, events —
+  every row deep-links into the real surface. `/dashboard` is the **private workspace** (drafts,
+  subscriptions with update flags, pending download requests, edit/manage buttons). Don't merge them,
+  and don't add owner-only tooling to the profile beyond the small "面板 / 隐私 / 设置" links.
+  Per-section visibility is user-controlled via six `User.showProfile*` booleans (migration
+  `20260730213610_add_profile_section_visibility`, toggles at Settings → 隐私). Same contract as
+  `isPrivate`: `lib/profile-queries.ts` gates each section **server-side** — a hidden section is
+  never queried for other viewers, so its rows never reach the client. Owner + admins always see
+  everything, marked with a 仅自己可见 badge. Shelf/comment/doc sections only ever surface
+  `visibility: public` + `status: ready` docs, even for the owner.
+- **Skill upload has exactly ONE entry**: the 上传 Skill button on `/skills` (Skills Center).
+  It was removed from the user menu on purpose — the avatar dropdown is navigation to *your own*
+  surfaces (主页 / 面板 / 书架 / 设置), not an authoring action.

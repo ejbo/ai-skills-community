@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { ChevronUp } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 
@@ -17,6 +18,7 @@ export function TopicUpvoteButton({
   initialUpvoted: boolean;
   size?: 'sm' | 'lg';
 }) {
+  const t = useTranslations('discussion_ui');
   const router = useRouter();
   const pathname = usePathname();
   const [count, setCount] = useState(initialCount);
@@ -38,7 +40,7 @@ export function TopicUpvoteButton({
       if (res.status === 401) {
         setCount(prev.count);
         setUpvoted(prev.upvoted);
-        pushToast('error', '请先登录再 +1');
+        pushToast('error', t('login_before_upvote'));
         router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
         return;
       }
@@ -49,7 +51,7 @@ export function TopicUpvoteButton({
     } catch {
       setCount(prev.count);
       setUpvoted(prev.upvoted);
-      pushToast('error', '操作失败，请重试');
+      pushToast('error', t('action_failed_retry'));
     } finally {
       setBusy(false);
     }
@@ -62,7 +64,7 @@ export function TopicUpvoteButton({
       onClick={toggle}
       disabled={busy}
       aria-pressed={upvoted}
-      title={upvoted ? '取消 +1' : '+1'}
+      title={upvoted ? t('upvote_undo') : '+1'}
       className={`flex shrink-0 flex-col items-center justify-center rounded-lg border transition ${dims} ${
         upvoted
           ? 'border-accent-500 bg-accent-500/10 font-medium text-accent-600 dark:text-accent-300'

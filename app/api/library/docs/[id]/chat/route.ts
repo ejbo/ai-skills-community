@@ -3,8 +3,10 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
-import { getProvider, LLMConfigError, toSseResponseStream } from '@/lib/llm';
+import { LLMConfigError, toSseResponseStream } from '@/lib/llm';
+import { getLibraryProvider } from '@/lib/library/llm';
 import { buildChatContext } from '@/lib/library/retrieval';
+import { canReadDoc } from '@/lib/library-queries';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -50,15 +52,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const doc = await prisma.libraryDoc.findUnique({
     where: { id: params.id },
-    select: { id: true, status: true, deletedAt: true },
+    select: { id: true, status: true, deletedAt: true, uploaderId: true, visibility: true },
   });
   if (!doc || doc.deletedAt || doc.status !== 'ready') {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
+  if (!(await canReadDoc(doc, { id: session.user.id, isAdmin: session.user.isAdmin }))) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
 
   let provider;
   try {
-    provider = getProvider();
+    provider = (await getLibraryProvider()).provider;
   } catch (e) {
     if (e instanceof LLMConfigError) {
       return NextResponse.json({ error: 'llm_unconfigured', reason: e.message }, { status: 503 });
@@ -88,10 +93,39 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     snippet: e.text.slice(0, 80),
   }));
 
-  const deltas = provider.streamDeltas({
-    system: context.system,
-    messages: messages.slice(-12),
-  });
+  // Persist the exchange once the stream finishes (finally also fires on
+  // client abort, so a partially received answer is still kept).
+  const userId = session.user.id;
+  const question = last.content;
+  async function* teeAndPersist(source: AsyncIterable<string>): AsyncIterable<string> {
+    let full = '';
+    try {
+      for await (const delta of source) {
+        full += delta;
+        yield delta;
+      }
+    } finally {
+      if (full.trim()) {
+        prisma
+          .$transaction([
+            prisma.libraryChatMessage.create({
+              data: { docId: params.id, userId, role: 'user', content: question },
+            }),
+            prisma.libraryChatMessage.create({
+              data: { docId: params.id, userId, role: 'assistant', content: full, citations },
+            }),
+          ])
+          .catch((e) => console.error('[library] chat persist failed', e));
+      }
+    }
+  }
+
+  const deltas = teeAndPersist(
+    provider.streamDeltas({
+      system: context.system,
+      messages: messages.slice(-12),
+    }),
+  );
 
   const encoder = new TextEncoder();
   const upstream = toSseResponseStream(deltas).getReader();

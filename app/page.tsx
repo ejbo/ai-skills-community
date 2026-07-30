@@ -8,7 +8,15 @@ export default async function HomePage() {
   const session = await auth();
 
   if (session?.user) {
-    return <CommunityHome displayName={session.user.displayName} />;
+    return (
+      <CommunityHome
+        user={{
+          id: session.user.id,
+          displayName: session.user.displayName,
+          isAdmin: session.user.isAdmin,
+        }}
+      />
+    );
   }
   return <Landing />;
 }

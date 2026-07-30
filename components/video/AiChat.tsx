@@ -14,6 +14,7 @@ interface Msg {
 // Content-only: the fixed-height container + the "对话" tab title live in AiPanel.
 export function AiChat({ slug }: { slug: string }) {
   const t = useTranslations('video');
+  const tu = useTranslations('video_ui');
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [pending, setPending] = useState(false);
@@ -42,11 +43,11 @@ export function AiChat({ slug }: { slug: string }) {
         scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
       });
       if (!result.ok) {
-        setError(result.error ?? '请求失败');
+        setError(result.error ?? tu('request_failed'));
         setMessages((prev) => (prev[prev.length - 1]?.content ? prev : prev.slice(0, -1)));
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : '未知错误');
+      setError(e instanceof Error ? e.message : tu('unknown_error'));
       setMessages((prev) => prev.slice(0, -1));
     } finally {
       setPending(false);

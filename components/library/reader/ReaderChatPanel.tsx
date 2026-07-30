@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Send, Sparkles, X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { Eraser, Loader2, Send, Sparkles } from 'lucide-react';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { pushToast } from '@/components/Toaster';
+import { SidePanel } from './SidePanel';
 
 export interface Citation {
   key: string;
@@ -42,16 +45,18 @@ function transformCitations(content: string): string {
   });
 }
 
-const ERROR_LABELS: Record<string, string> = {
-  no_content: '该文档没有可分析的文本',
-  rate_limited: '提问太频繁了，稍后再试',
-  llm_unconfigured: 'AI 服务未配置',
-  llm_error: 'AI 服务暂时不可用',
+// API error codes → reader.* message keys (translated at render time).
+const ERROR_KEYS: Record<string, string> = {
+  no_content: 'err_no_content',
+  rate_limited: 'err_rate_limited',
+  llm_unconfigured: 'err_llm_unconfigured',
+  llm_error: 'err_llm_error',
 };
 
 /**
- * 问问这篇文档 — SSE chat over the doc's cached retrieval index. Always mounted
- * (translated off-screen when closed) so messages survive chapter navigation.
+ * 问问这篇文档 — inline right panel. The conversation is persisted per user
+ * per doc (loaded from /chat/history on open; the chat route appends each
+ * exchange server-side).
  */
 export function ReaderChatPanel({
   open,
@@ -70,8 +75,9 @@ export function ReaderChatPanel({
   prefill: { text: string; nonce: number } | null;
   onCitationJump: (citation: Citation) => void;
 }) {
+  const t = useTranslations('reader');
   const router = useRouter();
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [messages, setMessages] = useState<ChatMsg[] | null>(null);
   const [input, setInput] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,13 +86,46 @@ export function ReaderChatPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  const errorLabel = (code: unknown): string | undefined =>
+    typeof code === 'string' && ERROR_KEYS[code] ? t(ERROR_KEYS[code]) : undefined;
+
   // Server refresh (e.g. after indexing finishes) is authoritative.
   useEffect(() => setIndexState(aiIndexState), [aiIndexState]);
+
+  // Saved conversation.
+  useEffect(() => {
+    if (!open || messages !== null) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/library/docs/${docId}/chat/history`);
+        const data = await res.json().catch(() => null);
+        if (cancelled) return;
+        const rows = Array.isArray(data?.messages) ? data.messages : [];
+        setMessages(
+          rows.map((r: { role: string; content: string; citations?: unknown }) => ({
+            role: r.role === 'assistant' ? 'assistant' : 'user',
+            content: r.content,
+            ...(r.citations ? { citations: toCitationMap(r.citations) } : {}),
+          })),
+        );
+        window.setTimeout(
+          () => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }),
+          60,
+        );
+      } catch {
+        if (!cancelled) setMessages([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, docId, messages]);
 
   useEffect(() => {
     if (!prefill) return;
     setInput(prefill.text.slice(0, 4000));
-    if (open) window.setTimeout(() => inputRef.current?.focus(), 250);
+    if (open) window.setTimeout(() => inputRef.current?.focus(), 150);
   }, [prefill, open]);
 
   useEffect(() => {
@@ -117,12 +156,24 @@ export function ReaderChatPanel({
       if (res.ok || data?.error === 'already_running') {
         setIndexState('running');
       } else {
-        setError(ERROR_LABELS[data?.error as string] ?? data?.reason ?? '触发失败，稍后再试');
+        setError(errorLabel(data?.error) ?? data?.reason ?? t('trigger_failed_retry'));
       }
     } catch {
-      setError('网络错误，稍后再试');
+      setError(t('network_error_later'));
     } finally {
       setTriggering(false);
+    }
+  }
+
+  async function clearHistory() {
+    if (!window.confirm(t('confirm_clear_chat'))) return;
+    try {
+      const res = await fetch(`/api/library/docs/${docId}/chat/history`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('failed');
+      setMessages([]);
+      pushToast('success', t('chat_cleared'));
+    } catch {
+      pushToast('error', t('clear_failed_retry'));
     }
   }
 
@@ -130,14 +181,16 @@ export function ReaderChatPanel({
     const trimmed = text.trim().slice(0, 4000);
     if (!trimmed || pending) return;
     setError(null);
-    const history: ChatMsg[] = [...messages, { role: 'user', content: trimmed }];
+    const history: ChatMsg[] = [...(messages ?? []), { role: 'user', content: trimmed }];
     setMessages([...history, { role: 'assistant', content: '' }]);
     setInput('');
     setPending(true);
 
     const scrollToEnd = () => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
     const popEmptyAssistant = () =>
-      setMessages((prev) => (prev[prev.length - 1]?.content ? prev : prev.slice(0, -1)));
+      setMessages((prev) =>
+        prev && !prev[prev.length - 1]?.content ? prev.slice(0, -1) : prev,
+      );
 
     try {
       const res = await fetch(`/api/library/docs/${docId}/chat`, {
@@ -153,15 +206,14 @@ export function ReaderChatPanel({
         if (data?.error === 'not_indexed') {
           setIndexState('none');
         } else {
-          setError(ERROR_LABELS[data?.error as string] ?? data?.reason ?? '请求失败');
+          setError(errorLabel(data?.error) ?? data?.reason ?? t('request_failed'));
         }
         popEmptyAssistant();
         return;
       }
 
-      // Citation source map arrives as the first SSE frame ({"citations": [...]}),
-      // ahead of the deltas; the remaining frames follow the normalized protocol
-      // data:{"delta"} / {"error"} / [DONE] (as in streamChat).
+      // First SSE frame carries {"citations": [...]}; the rest follow the
+      // normalized data:{"delta"} / {"error"} / [DONE] protocol.
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = '';
@@ -170,6 +222,7 @@ export function ReaderChatPanel({
 
       const append = (delta: string) => {
         setMessages((prev) => {
+          if (!prev) return prev;
           const next = [...prev];
           const last = next[next.length - 1];
           next[next.length - 1] = { ...last, content: last.content + delta };
@@ -181,6 +234,7 @@ export function ReaderChatPanel({
       const attachCitations = (arr: unknown) => {
         const citations = toCitationMap(arr);
         setMessages((prev) => {
+          if (!prev) return prev;
           const next = [...prev];
           const last = next[next.length - 1];
           if (last?.role === 'assistant') next[next.length - 1] = { ...last, citations };
@@ -228,11 +282,11 @@ export function ReaderChatPanel({
         setError(streamError);
         popEmptyAssistant();
       } else if (!doneSeen) {
-        setError('连接中断，请重试');
+        setError(t('connection_lost_retry'));
         popEmptyAssistant();
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : '未知错误');
+      setError(e instanceof Error ? e.message : t('unknown_error'));
       popEmptyAssistant();
     } finally {
       setPending(false);
@@ -249,65 +303,74 @@ export function ReaderChatPanel({
     if (citation) onCitationJump(citation);
   }
 
+  if (!open) return null;
+
   const ready = indexState === 'ready';
+  const list = messages ?? [];
 
   return (
-    <div
-      aria-hidden={!open}
-      className={`reader-panel rborder absolute inset-x-0 bottom-0 z-40 flex h-[72vh] flex-col rounded-t-2xl border-t shadow-2xl transition-transform duration-300 ease-snap md:inset-y-0 md:left-auto md:right-0 md:h-auto md:w-[400px] md:rounded-none md:border-l md:border-t-0 ${
-        open
-          ? 'translate-x-0 translate-y-0'
-          : 'pointer-events-none translate-y-full md:translate-x-full md:translate-y-0'
-      }`}
-    >
-      <div className="rborder flex shrink-0 items-center justify-between border-b px-4 py-3">
-        <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+    <SidePanel
+      side="right"
+      title={
+        <span className="flex items-center gap-1.5">
           <Sparkles className="h-4 w-4 text-accent-500" />
-          问问这篇文档
-        </h2>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="关闭"
-          className="r-muted grid h-7 w-7 place-items-center rounded-lg transition hover:bg-[var(--reader-hover)]"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-
+          {t('ask_this_doc')}
+        </span>
+      }
+      onClose={onClose}
+      widthClass="lg:w-[380px]"
+      headerExtra={
+        ready && list.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => void clearHistory()}
+            title={t('clear_chat')}
+            aria-label={t('clear_chat')}
+            className="r-muted grid h-7 w-7 shrink-0 place-items-center rounded-lg transition hover:bg-[var(--reader-hover)]"
+          >
+            <Eraser className="h-3.5 w-3.5" />
+          </button>
+        ) : null
+      }
+    >
       {!ready ? (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-8 text-center">
+        <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 px-8 text-center">
           {indexState === 'running' ? (
             <>
               <Loader2 className="h-6 w-6 animate-spin text-accent-500" />
-              <p className="text-sm font-medium">AI 正在阅读本文档…</p>
-              <p className="r-muted text-xs">只需一次，之后所有人共享。</p>
+              <p className="text-sm font-medium">{t('ai_reading_doc')}</p>
+              <p className="r-muted text-xs">{t('ai_reading_once')}</p>
             </>
           ) : (
             <>
               <Sparkles className="r-muted h-6 w-6" />
-              <p className="text-sm font-medium">AI 还没读过这篇文档</p>
-              <p className="r-muted text-xs">生成导读与检索索引后即可提问，所有人共享一次生成结果。</p>
+              <p className="text-sm font-medium">{t('ai_not_indexed')}</p>
+              <p className="r-muted text-xs">{t('ai_not_indexed_desc')}</p>
               <button
                 type="button"
                 disabled={triggering}
-                onClick={triggerIndexing}
+                onClick={() => void triggerIndexing()}
                 className="mt-1 inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
               >
                 {triggering && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                生成 AI 导读
+                {t('generate_ai_guide')}
               </button>
             </>
           )}
           {error && <p className="text-xs text-danger">{error}</p>}
         </div>
       ) : (
-        <>
+        <div className="flex h-full min-h-0 flex-col">
           <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4">
-            {messages.length === 0 ? (
+            {messages === null ? (
+              <div className="r-muted flex items-center justify-center gap-2 py-8 text-sm">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t('loading_chat')}
+              </div>
+            ) : list.length === 0 ? (
               <div className="space-y-3">
                 <p className="r-muted text-sm">
-                  基于全文检索回答，答案会附上原文出处，点击角标即可跳转。
+                  {t('chat_intro')}
                 </p>
                 {questions.length > 0 && (
                   <div className="flex flex-wrap gap-2">
@@ -328,7 +391,7 @@ export function ReaderChatPanel({
                 )}
               </div>
             ) : (
-              messages.map((msg, i) => (
+              list.map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div
                     className={`max-w-[88%] rounded-2xl px-3 py-2 text-sm ${
@@ -345,7 +408,7 @@ export function ReaderChatPanel({
                       ) : (
                         <span className="r-muted flex items-center gap-1.5">
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          正在检索原文…
+                          {t('retrieving_source')}
                         </span>
                       )
                     ) : (
@@ -369,25 +432,25 @@ export function ReaderChatPanel({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
-                  send(input);
+                  void send(input);
                 }
               }}
               rows={1}
-              placeholder="问点关于这篇文档的问题…"
+              placeholder={t('chat_placeholder')}
               className="rborder h-9 flex-1 resize-none rounded-lg border bg-transparent px-3 py-1.5 text-sm leading-6 focus:border-accent-500 focus:outline-none"
             />
             <button
               type="button"
-              onClick={() => send(input)}
+              onClick={() => void send(input)}
               disabled={pending || !input.trim()}
-              aria-label="发送"
+              aria-label={t('send')}
               className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-500 text-white transition hover:bg-accent-600 disabled:opacity-60"
             >
               {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </button>
           </div>
-        </>
+        </div>
       )}
-    </div>
+    </SidePanel>
   );
 }

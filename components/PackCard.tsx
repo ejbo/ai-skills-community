@@ -1,8 +1,9 @@
 import Link from 'next/link';
-import { formatDistanceToNowStrict } from 'date-fns';
+import { useLocale, useTranslations } from 'next-intl';
 import { Boxes, Download, Layers } from 'lucide-react';
 import { withBasePath } from '@/lib/base-path';
 import { isIconImage } from '@/lib/pack-icon';
+import { relativeTime } from '@/lib/i18n-date';
 
 export interface PackCardProps {
   slug: string;
@@ -16,6 +17,8 @@ export interface PackCardProps {
 }
 
 export function PackCard(props: PackCardProps) {
+  const t = useTranslations('ui');
+  const locale = useLocale();
   const updated = typeof props.updatedAt === 'string' ? new Date(props.updatedAt) : props.updatedAt;
   const shown = props.skills.slice(0, 3);
   const more = props.skills.length - shown.length;
@@ -44,7 +47,7 @@ export function PackCard(props: PackCardProps) {
         </div>
         <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-600 dark:text-accent-300">
           <Layers className="h-3 w-3" />
-          {props.skills.length} 个 Skill
+          {t('pack_skill_count', { count: props.skills.length })}
         </span>
       </div>
 
@@ -69,9 +72,9 @@ export function PackCard(props: PackCardProps) {
       <div className="flex items-center justify-between border-t border-zinc-100 pt-3 text-xs text-muted dark:border-zinc-800/60">
         <span className="flex items-center gap-1 font-mono tabular-nums">
           <Download className="h-3.5 w-3.5" />
-          {props.installCount.toLocaleString()} 次安装
+          {t('pack_install_count', { count: props.installCount })}
         </span>
-        <span>{formatDistanceToNowStrict(updated, { addSuffix: true })}</span>
+        <span>{relativeTime(updated, locale)}</span>
       </div>
     </Link>
   );

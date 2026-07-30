@@ -2,7 +2,10 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { PROFILE_VISIBILITY_SELECT } from '@/lib/profile-queries';
 import { PrivacyForm } from './PrivacyForm';
+import { LibraryActivityForm } from './LibraryActivityForm';
+import { ProfileSectionsForm } from './ProfileSectionsForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +16,13 @@ export default async function PrivacySettingsPage() {
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { isPrivate: true, department: true, lab: true },
+    select: {
+      isPrivate: true,
+      showLibraryActivity: true,
+      department: true,
+      lab: true,
+      ...PROFILE_VISIBILITY_SELECT,
+    },
   });
   if (!user) redirect('/auth/login?callbackUrl=/settings/privacy');
 
@@ -25,6 +34,23 @@ export default async function PrivacySettingsPage() {
 
       <div className="surface rounded-xl p-5">
         <PrivacyForm initialIsPrivate={user.isPrivate} />
+      </div>
+
+      <div className="surface rounded-xl p-5">
+        <LibraryActivityForm initialShow={user.showLibraryActivity} />
+      </div>
+
+      <div className="surface rounded-xl p-5">
+        <ProfileSectionsForm
+          initial={{
+            showProfileSkills: user.showProfileSkills,
+            showProfileDocs: user.showProfileDocs,
+            showProfilePosts: user.showProfilePosts,
+            showProfileComments: user.showProfileComments,
+            showProfileShelf: user.showProfileShelf,
+            showProfileEvents: user.showProfileEvents,
+          }}
+        />
       </div>
 
       <div className="surface rounded-xl p-5">

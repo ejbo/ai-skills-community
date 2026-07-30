@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
 import { FileDropZone } from '@/app/skills/_components/FileDropZone';
 import {
@@ -16,6 +17,8 @@ import {
 
 export function VersionUploader({ slug, currentVersion }: { slug: string; currentVersion: string | null }) {
   const router = useRouter();
+  const t = useTranslations('skill_manage');
+  const ts = useTranslations('settings');
   const [staged, setStaged] = useState<StagedFile[]>([]);
   const [changelog, setChangelog] = useState('');
   const [detected, setDetected] = useState<string | null>(null);
@@ -34,13 +37,13 @@ export function VersionUploader({ slug, currentVersion }: { slug: string; curren
 
   function submit() {
     if (!hasSkillMd(staged)) {
-      pushToast('error', '缺少 SKILL.md');
+      pushToast('error', t('missing_skill_md'));
       return;
     }
     start(async () => {
       const zip = await buildZip(staged);
       if (zip.size > MAX_PACKAGE_BYTES) {
-        pushToast('error', `打包后 ${(zip.size / 1024 / 1024).toFixed(1)}MB，超过 5MB 上限`);
+        pushToast('error', t('package_too_large', { size: (zip.size / 1024 / 1024).toFixed(1) }));
         return;
       }
       const form = new FormData();
@@ -50,16 +53,16 @@ export function VersionUploader({ slug, currentVersion }: { slug: string; curren
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const reasons: Record<string, string> = {
-          version_not_increasing: `版本号必须大于当前 v${data.current}（你给的是 v${data.got}）`,
-          version_exists: `版本 ${data.version} 已存在`,
-          invalid_version: 'SKILL.md frontmatter 里的 version 不合法（需 x.y.z）',
-          parse_failed: `解析失败：${data.reason ?? ''}`,
-          too_large: '包太大（>5MB）',
+          version_not_increasing: t('err_version_not_increasing', { current: String(data.current), got: String(data.got) }),
+          version_exists: t('err_version_exists', { version: String(data.version) }),
+          invalid_version: t('err_invalid_version'),
+          parse_failed: t('err_parse_failed', { reason: data.reason ?? '' }),
+          too_large: t('err_too_large'),
         };
-        pushToast('error', reasons[data.error] ?? data.error ?? '上传失败');
+        pushToast('error', reasons[data.error] ?? data.error ?? ts('upload_failed'));
         return;
       }
-      pushToast('success', `已发布新版本 v${data.version.version}`);
+      pushToast('success', t('version_published', { version: data.version.version }));
       setStaged([]);
       setChangelog('');
       router.refresh();
@@ -70,16 +73,17 @@ export function VersionUploader({ slug, currentVersion }: { slug: string; curren
     <div className="space-y-3">
       {detected && (
         <div className="text-xs text-muted">
-          检测到版本：<span className="font-mono text-accent-600">v{detected}</span>
+          {t('detected_version')}
+          <span className="font-mono text-accent-600">v{detected}</span>
         </div>
       )}
-      <FileDropZone staged={staged} onChange={onChange} title="上传新版本" />
+      <FileDropZone staged={staged} onChange={onChange} title={t('upload_new_version')} />
       <div>
-        <label className="mb-1 block text-xs font-medium text-muted">Changelog（可选）</label>
+        <label className="mb-1 block text-xs font-medium text-muted">{t('changelog_label')}</label>
         <input
           value={changelog}
           onChange={(e) => setChangelog(e.target.value)}
-          placeholder="这一版改了什么…"
+          placeholder={t('changelog_placeholder')}
           className="w-full rounded-lg border border-zinc-300 bg-[rgb(var(--surface))] px-3 py-2 text-sm outline-none transition focus:border-accent-500 dark:border-zinc-700"
         />
       </div>
@@ -91,7 +95,7 @@ export function VersionUploader({ slug, currentVersion }: { slug: string; curren
           className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
         >
           {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          发布新版本
+          {t('publish_new_version')}
         </button>
       </div>
     </div>

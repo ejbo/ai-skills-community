@@ -5,7 +5,9 @@ import { Search, X } from 'lucide-react';
 import { useState, useTransition, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 
-export function SearchBar() {
+// Per-tab in-page search: submits ?q= to the CURRENT pathname, so it always
+// searches the section it sits in (library, videos, skills, discussion, /search).
+export function SearchBar({ placeholder }: { placeholder?: string }) {
   const t = useTranslations('nav');
   const params = useSearchParams();
   const router = useRouter();
@@ -36,7 +38,7 @@ export function SearchBar() {
         type="search"
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder={t('search_placeholder')}
+        placeholder={placeholder ?? t('search_in_page')}
         className="h-11 w-full rounded-xl border border-zinc-200 bg-white pl-10 pr-9 text-sm transition focus:border-accent-500 focus:outline-none focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-800 dark:bg-zinc-900"
       />
       {value && (

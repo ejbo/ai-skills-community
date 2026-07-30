@@ -1,16 +1,21 @@
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { getTranslations } from 'next-intl/server';
 
-const CONTENT = `
-# 编写规范 — SKILL.md
+export default async function AuthoringDocsPage() {
+  const t = await getTranslations('docs_page');
+  // Prose is translated; the SKILL.md sample keeps its structure verbatim — only the
+  // human-readable example copy inside it is localized.
+  const content = `
+# ${t('authoring_title')}
 
-每个 Skill 本质上是一份 \`SKILL.md\` 文件 — 顶部一段 YAML frontmatter，下面是给 Claude 看的 Markdown 正文。
+${t('authoring_intro')}
 
-## 一、最小骨架
+## ${t('authoring_h_skeleton')}
 
 \`\`\`markdown
 ---
 name: pdf-form-signer
-description: 智能识别 PDF 表单字段，自动填写并放置签名。
+description: ${t('authoring_sample_description')}
 version: 1.0.0
 license: MIT
 triggers:
@@ -20,68 +25,55 @@ triggers:
 
 # PDF Form Signer
 
-## 它能做什么
-（用一两段话讲清楚 Skill 的定位）
+## ${t('authoring_sample_h_what')}
+${t('authoring_sample_what_body')}
 
-## 触发条件
-- 用户的请求里出现 "sign pdf"、"填表" 等关键词时
-- 用户上传了 PDF 附件时
+## ${t('authoring_sample_h_triggers')}
+- ${t('authoring_sample_trigger_1')}
+- ${t('authoring_sample_trigger_2')}
 
-## 工作流程
+## ${t('authoring_sample_h_flow')}
 1. ...
 2. ...
 
-## 输入 / 输出格式
+## ${t('authoring_sample_h_io')}
 ...
 \`\`\`
 
-## 二、frontmatter 字段说明
+## ${t('authoring_h_frontmatter')}
 
-| 字段 | 必填 | 说明 |
-|---|---|---|
-| \`name\` | ✓ | Skill 名称，会显示在卡片上 |
-| \`description\` | ✓ | 一行描述，最长 140 字 |
-| \`version\` | ✓ | 遵循 semver，如 1.2.0 |
-| \`license\` |  | 默认 MIT |
-| \`triggers\` |  | Claude 自动激活这个 Skill 的关键词列表 |
-| \`dependencies\` |  | 依赖的其他 skill slug，逗号分隔 |
+${t('authoring_frontmatter_table')}
 
-## 三、写好正文的几条建议
+## ${t('authoring_h_tips')}
 
-1. **直接讲怎么做，不要绕**。Skill 是给 Claude 看的，不是给人看的 marketing 文案。第一段就讲它的核心能力。
-2. **触发条件单独列**。让 Claude 一眼能识别什么时候该用这个 skill。
-3. **不要写 prompt prefix**（比如「请你扮演一个...」）。Claude 已经处于代理状态，不需要"指挥"它。直接写规则和流程。
-4. **示例放在最后**。如果有 input/output 示例，放在 Skill 末尾，标题用 \`## 示例\`。
+1. ${t('authoring_tip_1')}
+2. ${t('authoring_tip_2')}
+3. ${t('authoring_tip_3')}
+4. ${t('authoring_tip_4')}
 
-## 四、长度建议
+## ${t('authoring_h_length')}
 
-| Token 范围 | 适用 |
-|---|---|
-| < 800 | 微型工具 (utility) — 简单 prompt 重写、格式校验 |
-| 800-2K | 标准 Skill — 大部分用例 |
-| 2K-5K | 复杂 Skill — 多步流程 + 多种触发场景 |
-| > 5K | 不建议 — 拆成多个 Skill 通过 Composition 协同 |
+${t('authoring_length_table')}
 
-平台会在卡片上显示你声明的 Token 成本（创建时手动填写），用户能据此挑选。
+${t('authoring_length_note')}
 
-## 五、两种上传方式
+## ${t('authoring_h_upload')}
 
-- **表单模式**：直接在网页上填表 + 写 Markdown 正文，适合简单 Skill
-- **包上传模式**：打包成 zip（包含 SKILL.md 和可选的脚本文件），适合带辅助脚本的 Skill
+- ${t('authoring_upload_form')}
+- ${t('authoring_upload_pack')}
 
-无论用哪种方式，上传后都可以编辑、发版本（semver 单调递增），订阅者会收到更新提示。
+${t('authoring_upload_note')}
 
-## 六、Remix 礼仪
+## ${t('authoring_h_remix')}
 
-- 在你 fork 出的 Skill 里**注明来源** — 比如「基于 \`xxxxx\` 修改」
-- 如果原版本许可证有要求，保留它（MIT 等宽松协议没限制）
-- 重大改动建议改名 + 单独定位，而不是用近似名混淆视听
+- ${t('authoring_remix_1')}
+- ${t('authoring_remix_2')}
+- ${t('authoring_remix_3')}
 `;
 
-export default function AuthoringDocsPage() {
   return (
     <div className="prose prose-zinc max-w-none dark:prose-invert">
-      <MarkdownRenderer content={CONTENT} />
+      <MarkdownRenderer content={content} />
     </div>
   );
 }

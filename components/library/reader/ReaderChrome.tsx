@@ -1,111 +1,98 @@
 'use client';
 
-import Link from 'next/link';
-import { ArrowLeft, ExternalLink, Highlighter, List, Sparkles } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { ArrowLeft, ExternalLink, List, Sparkles, StickyNote } from 'lucide-react';
 import { TypographyPopover } from './TypographyPopover';
 import type { ReaderPrefs } from './reader-prefs';
 
 interface Props {
+  /** Collapses upward on scroll-down; the progress bar lives OUTSIDE (shell). */
   visible: boolean;
-  backHref: string;
+  onBack: () => void;
   title: string;
   chapterLabel: string | null;
   sourceUrl: string | null;
-  percent: number;
-  activeDrawer: 'toc' | 'highlights' | 'chat' | null;
-  onToggleDrawer: (d: 'toc' | 'highlights' | 'chat') => void;
+  tocOpen: boolean;
+  notesOpen: boolean;
+  chatOpen: boolean;
+  onToggleToc: () => void;
+  onToggleNotes: () => void;
+  onToggleChat: () => void;
   typographyOpen: boolean;
   onToggleTypography: () => void;
   onCloseTypography: () => void;
   prefs: ReaderPrefs;
   onPrefsChange: (patch: Partial<ReaderPrefs>) => void;
-  pdfMode: { view: 'original' | 'text'; onChange: (view: 'original' | 'text') => void } | null;
+  flow: { mode: 'paged' | 'flow'; available: boolean; onChange: (mode: 'paged' | 'flow') => void } | null;
 }
 
-/** Auto-hiding top bar: back, title, chapter position, tool buttons, progress. */
+/** Auto-hiding top bar: back, viewport-centered title, panel toggles. */
 export function ReaderChrome({
   visible,
-  backHref,
+  onBack,
   title,
   chapterLabel,
   sourceUrl,
-  percent,
-  activeDrawer,
-  onToggleDrawer,
+  tocOpen,
+  notesOpen,
+  chatOpen,
+  onToggleToc,
+  onToggleNotes,
+  onToggleChat,
   typographyOpen,
   onToggleTypography,
   onCloseTypography,
   prefs,
   onPrefsChange,
-  pdfMode,
+  flow,
 }: Props) {
+  const t = useTranslations('reader');
+  const td = useTranslations('detail');
   return (
     <header
-      className={`reader-chrome absolute inset-x-0 top-0 z-20 transition-transform duration-300 ease-snap ${
-        visible ? 'translate-y-0' : '-translate-y-full'
+      className={`reader-chrome relative z-30 shrink-0 overflow-visible transition-[max-height,opacity] duration-300 ease-snap ${
+        visible ? 'max-h-12 opacity-100' : 'pointer-events-none max-h-0 opacity-0'
       }`}
     >
+      {/* Title centered on the VIEWPORT (not between the asymmetric button
+          clusters) — absolutely positioned, width-clamped so it can't overlap
+          the toolbars; small screens fall back to inline centering. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 hidden h-12 flex-col items-center justify-center px-4 md:flex">
+        <p className="max-w-[min(680px,calc(100%-620px))] truncate text-sm font-medium">{title}</p>
+        {chapterLabel && (
+          <p className="r-muted max-w-[min(680px,calc(100%-620px))] truncate text-[11px] leading-tight">
+            {chapterLabel}
+          </p>
+        )}
+      </div>
       <div className="flex h-12 items-center gap-2 px-3 sm:px-4">
-        <Link
-          href={backHref}
-          aria-label="返回详情页"
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label={td('back')}
           className="r-muted grid h-8 w-8 shrink-0 place-items-center rounded-lg transition hover:bg-[var(--reader-hover)]"
         >
           <ArrowLeft className="h-4 w-4" />
-        </Link>
+        </button>
 
-        <div className="min-w-0 flex-1 text-center">
+        <div className="min-w-0 flex-1 text-center md:invisible">
           <p className="truncate text-sm font-medium">{title}</p>
           {chapterLabel && <p className="r-muted truncate text-[11px] leading-tight">{chapterLabel}</p>}
         </div>
 
         <div className="flex shrink-0 items-center gap-0.5">
-          {pdfMode && (
-            <div className="rborder mr-1.5 flex overflow-hidden rounded-lg border text-xs" role="tablist" aria-label="阅读模式">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={pdfMode.view === 'original'}
-                onClick={() => pdfMode.onChange('original')}
-                className={`px-2.5 py-1 transition ${
-                  pdfMode.view === 'original'
-                    ? 'bg-accent-500 font-medium text-white'
-                    : 'r-muted hover:bg-[var(--reader-hover)]'
-                }`}
-              >
-                原文
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={pdfMode.view === 'text'}
-                onClick={() => pdfMode.onChange('text')}
-                className={`px-2.5 py-1 transition ${
-                  pdfMode.view === 'text'
-                    ? 'bg-accent-500 font-medium text-white'
-                    : 'r-muted hover:bg-[var(--reader-hover)]'
-                }`}
-              >
-                文本
-              </button>
-            </div>
-          )}
 
-          <ChromeButton label="目录" active={activeDrawer === 'toc'} onClick={() => onToggleDrawer('toc')}>
+          <ChromeButton label={t('toc')} active={tocOpen} onClick={onToggleToc}>
             <List className="h-4 w-4" />
           </ChromeButton>
-          <ChromeButton
-            label="高亮与笔记"
-            active={activeDrawer === 'highlights'}
-            onClick={() => onToggleDrawer('highlights')}
-          >
-            <Highlighter className="h-4 w-4" />
+          <ChromeButton label={t('notes_title')} active={notesOpen} onClick={onToggleNotes}>
+            <StickyNote className="h-4 w-4" />
           </ChromeButton>
           <div className="relative">
             <button
               type="button"
               data-typo-anchor
-              aria-label="排版设置"
+              aria-label={t('typography_settings')}
               onClick={onToggleTypography}
               className={`grid h-8 w-8 place-items-center rounded-lg text-sm font-semibold transition ${
                 typographyOpen
@@ -120,9 +107,10 @@ export function ReaderChrome({
               onClose={onCloseTypography}
               prefs={prefs}
               onChange={onPrefsChange}
+              flow={flow}
             />
           </div>
-          <ChromeButton label="问问 AI" active={activeDrawer === 'chat'} onClick={() => onToggleDrawer('chat')}>
+          <ChromeButton label={t('ask_ai')} active={chatOpen} onClick={onToggleChat}>
             <Sparkles className="h-4 w-4" />
           </ChromeButton>
           {sourceUrl && (
@@ -130,20 +118,13 @@ export function ReaderChrome({
               href={sourceUrl}
               target="_blank"
               rel="noopener noreferrer nofollow"
-              aria-label="查看原文链接"
+              aria-label={t('view_source_link')}
               className="r-muted hidden h-8 w-8 place-items-center rounded-lg transition hover:bg-[var(--reader-hover)] sm:grid"
             >
               <ExternalLink className="h-4 w-4" />
             </a>
           )}
         </div>
-      </div>
-
-      <div className="absolute inset-x-0 bottom-0 h-0.5">
-        <div
-          className="h-full bg-accent-500 transition-[width] duration-200"
-          style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
-        />
       </div>
     </header>
   );

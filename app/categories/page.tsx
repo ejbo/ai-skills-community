@@ -1,10 +1,13 @@
 import Link from 'next/link';
 import { FolderOpen } from 'lucide-react';
+import { getTranslations } from 'next-intl/server';
 import { prisma } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CategoriesPage() {
+  const t = await getTranslations('skills_misc');
+  const tn = await getTranslations('nav');
   const categories = await prisma.category.findMany({
     orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     include: {
@@ -19,8 +22,8 @@ export default async function CategoriesPage() {
   return (
     <div className="container py-8">
       <header>
-        <h1 className="text-3xl font-semibold tracking-tight">类别</h1>
-        <p className="mt-1 text-sm text-muted">按场景挑选合适的 Skill。</p>
+        <h1 className="text-3xl font-semibold tracking-tight">{tn('categories')}</h1>
+        <p className="mt-1 text-sm text-muted">{t('categories_subtitle')}</p>
       </header>
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -39,7 +39,7 @@ async function loadDoc(id: string) {
 }
 
 // GET /api/library/docs/[id]/highlights (login) — the viewer's own highlights;
-// `?chapter=N` narrows to one chapter (HighlightsDrawer loads all).
+// `?chapter=N` narrows to one chapter (the 笔记 panel loads all).
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });

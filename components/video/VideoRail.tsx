@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import type { VideoCard as VideoCardType } from '@/lib/video/queries';
 import { VideoCard } from './VideoCard';
 
@@ -13,6 +14,7 @@ interface VideoRailProps {
 }
 
 export function VideoRail({ title, href, videos }: VideoRailProps) {
+  const th = useTranslations('home');
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [canLeft, setCanLeft] = useState(false);
   const [canRight, setCanRight] = useState(false);
@@ -53,7 +55,7 @@ export function VideoRail({ title, href, videos }: VideoRailProps) {
             href={href}
             className="text-sm font-medium text-muted transition-colors hover:text-accent-600"
           >
-            查看全部 →
+            {th('view_all')} →
           </Link>
         )}
       </div>

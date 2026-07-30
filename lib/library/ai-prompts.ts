@@ -5,7 +5,13 @@
 
 import { extractJsonObject } from '@/lib/skill-assist';
 import { estimateTokens } from './chunker';
-import { isDocType, type AiOverview, type LibraryDocTypeValue } from './types';
+import {
+  LIBRARY_CATEGORIES,
+  cleanCategories,
+  isDocType,
+  type AiOverview,
+  type LibraryDocTypeValue,
+} from './types';
 
 function asStr(v: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v.trim() : null;
@@ -64,12 +70,15 @@ export function overviewPrompt(input: {
   chapterSummaries: string[];
 }): { system: string; user: string; maxTokens: number } {
   const numbered = input.chapterSummaries.map((s, i) => `${i + 1}. ${s}`).join('\n');
+  const catTable = LIBRARY_CATEGORIES.map((c) => `${c.slug}（${c.name}）`).join('、');
   return {
     system:
-      '你是知识库的导读编辑。根据整篇文档的章节摘要，为读者撰写 AI 导读，并判断文档类型。' +
+      '你是知识库的导读编辑。根据整篇文档的章节摘要，为读者撰写 AI 导读，并判断文档类型与主题分类。' +
       '只输出一个 JSON 对象，格式：{"summary":"不超过200字的整体概述","outline":["3-10条内容脉络"],' +
       '"keyPoints":["3-8条核心要点"],"questions":["3-5个值得向本文档提出的问题"],' +
-      '"docType":"book|paper|blog|article|report|other"}，不要输出任何其他内容。',
+      '"docType":"book|paper|blog|article|report|other",' +
+      '"categories":["1-3个主题分类 slug"]}，不要输出任何其他内容。' +
+      `categories 只能从固定表中选：${catTable}；没有合适的就返回空数组。`,
     user: [
       `文档标题：《${input.title}》`,
       `作者：${input.author ?? '未知'}`,
@@ -144,7 +153,7 @@ export function parseChapterSummary(text: string): { summary: string; keywords: 
 
 export function parseOverview(
   text: string,
-): (AiOverview & { docType: LibraryDocTypeValue | null }) | null {
+): (AiOverview & { docType: LibraryDocTypeValue | null; categories: string[] }) | null {
   const obj = extractJsonObject(text);
   if (!obj) return null;
   const summary = asStr(obj.summary);
@@ -155,6 +164,7 @@ export function parseOverview(
     keyPoints: asStrList(obj.keyPoints, 10, 300),
     questions: asStrList(obj.questions, 6, 200),
     docType: isDocType(obj.docType) ? obj.docType : null,
+    categories: cleanCategories(obj.categories),
   };
 }
 

@@ -28,7 +28,7 @@ export function SkillCard(props: SkillCardProps) {
   return (
     <Link
       href={`/skills/${props.slug}`}
-      className="card-hover surface group flex flex-col gap-3 rounded-xl p-4"
+      className="card-hover surface group flex h-full flex-col gap-3 rounded-xl p-4"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">

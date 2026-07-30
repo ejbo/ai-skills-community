@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
-import { isDocType } from '@/lib/library/types';
+import { cleanCategories, isDocType } from '@/lib/library/types';
 import {
-  MAX_EPUB_BYTES,
-  MAX_PDF_BYTES,
   detectLibraryFormat,
   deleteLibraryFile,
+  libraryContentType,
   newLibraryKey,
   saveLibraryStream,
 } from '@/lib/library/storage';
@@ -53,32 +52,29 @@ export async function POST(req: Request) {
   const format = detectLibraryFormat(contentType, filename);
   if (!format) {
     return NextResponse.json(
-      { error: 'unsupported_type', reason: '仅支持 PDF / EPUB 文件' },
+      { error: 'unsupported_type', reason: '仅支持 PDF / EPUB / HTML / PPTX / DOCX 文件' },
       { status: 415 },
     );
   }
 
-  const maxBytes = format === 'pdf' ? MAX_PDF_BYTES : MAX_EPUB_BYTES;
-  // Reject oversized uploads up front when the client declares Content-Length;
-  // the stream cap below is the real guard.
-  const declared = Number(req.headers.get('content-length') ?? '');
-  if (Number.isFinite(declared) && declared > maxBytes) {
-    return NextResponse.json({ error: 'file_too_large' }, { status: 413 });
-  }
+  // No upload size cap by design (product decision) — the save is streamed to
+  // disk so large files never sit in memory.
   if (!req.body) return NextResponse.json({ error: 'empty_body' }, { status: 400 });
 
   const docTypeHeader = req.headers.get('x-doc-type') ?? '';
   const docType = isDocType(docTypeHeader) ? docTypeHeader : 'auto';
+  let categories: string[] = [];
+  try {
+    categories = cleanCategories(JSON.parse(req.headers.get('x-categories') ?? '[]'));
+  } catch {
+    categories = [];
+  }
 
   const key = newLibraryKey('original', format);
   let size = 0;
   try {
-    size = await saveLibraryStream(key, req.body, maxBytes);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'upload_failed';
-    if (msg === 'file_too_large') {
-      return NextResponse.json({ error: 'file_too_large' }, { status: 413 });
-    }
+    size = await saveLibraryStream(key, req.body, Number.POSITIVE_INFINITY);
+  } catch {
     return NextResponse.json({ error: 'upload_failed' }, { status: 500 });
   }
 
@@ -87,10 +83,11 @@ export async function POST(req: Request) {
       fileKey: key,
       format,
       filename,
-      mimeType: contentType || (format === 'pdf' ? 'application/pdf' : 'application/epub+zip'),
+      mimeType: contentType || libraryContentType(key),
       sizeBytes: size,
       uploaderId: session.user.id,
       docType,
+      categories,
     });
     return NextResponse.json({
       ok: true,

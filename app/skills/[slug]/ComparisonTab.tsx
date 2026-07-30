@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Pencil } from 'lucide-react';
+import { getTranslations } from 'next-intl/server';
 import { parseComparisonExample } from '@/lib/comparison';
 import { ComparisonView } from './ComparisonView';
 
@@ -14,7 +15,7 @@ export interface ComparisonRow {
 // Everyone — author included — sees the published visitor view here. Editing now
 // lives in 管理 → 对比 (ComparisonStudio), so the public tab never mounts the editor.
 // When nothing is published, the author gets a CTA into the studio.
-export function ComparisonTab({
+export async function ComparisonTab({
   slug,
   privileged,
   comparison,
@@ -23,6 +24,8 @@ export function ComparisonTab({
   privileged: boolean;
   comparison: ComparisonRow | null;
 }) {
+  const t = await getTranslations('skill_compare');
+
   if (comparison?.status === 'published') {
     return <ComparisonView bodyMd={comparison.bodyMd} example={parseComparisonExample(comparison.example)} />;
   }
@@ -30,17 +33,17 @@ export function ComparisonTab({
   if (privileged) {
     return (
       <div className="surface flex flex-col items-center gap-3 rounded-2xl px-6 py-10 text-center">
-        <p className="text-sm text-muted">还没有发布对比。</p>
+        <p className="text-sm text-muted">{t('tab_none_published')}</p>
         <Link
           href={`/skills/${slug}/manage?section=comparison`}
           className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600"
         >
           <Pencil className="h-3.5 w-3.5" />
-          去编辑对比
+          {t('tab_go_edit')}
         </Link>
       </div>
     );
   }
 
-  return <p className="text-sm text-muted">作者还没有发布对比。</p>;
+  return <p className="text-sm text-muted">{t('tab_author_none_published')}</p>;
 }

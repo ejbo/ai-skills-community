@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { isLLMConfigured } from '@/lib/llm';
@@ -13,13 +14,14 @@ export default async function NewSkillPage() {
     select: { id: true, slug: true, name: true },
   });
 
+  const t = await getTranslations('skills_misc');
+  const tUp = await getTranslations('upload');
+
   return (
     <div className="container py-8">
       <div className="mx-auto max-w-4xl">
-        <h1 className="text-3xl font-semibold tracking-tight">上传 Skill</h1>
-        <p className="mt-1 text-sm text-muted">
-          拖入你的 SKILL.md（单文件、多文件或 .zip 均可），AI 会帮你补全元信息。
-        </p>
+        <h1 className="text-3xl font-semibold tracking-tight">{tUp('title')}</h1>
+        <p className="mt-1 text-sm text-muted">{t('new_skill_subtitle')}</p>
         <div className="mt-6">
           <SkillForm mode="create" categories={categories} aiEnabled={isLLMConfigured()} />
         </div>

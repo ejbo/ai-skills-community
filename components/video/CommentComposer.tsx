@@ -21,6 +21,7 @@ interface Props {
 
 export function CommentComposer({ slug, parentId, replyToId, onPosted, autoFocus }: Props) {
   const t = useTranslations('video');
+  const tu = useTranslations('video_ui');
   const router = useRouter();
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
@@ -45,7 +46,7 @@ export function CommentComposer({ slug, parentId, replyToId, onPosted, autoFocus
           router.push('/auth/login');
           return;
         }
-        pushToast('error', '发表失败，请稍后再试');
+        pushToast('error', tu('post_failed'));
         return;
       }
       const data = await res.json();
@@ -54,7 +55,7 @@ export function CommentComposer({ slug, parentId, replyToId, onPosted, autoFocus
         setBody('');
       }
     } catch {
-      pushToast('error', '发表失败，请稍后再试');
+      pushToast('error', tu('post_failed'));
     } finally {
       setSending(false);
     }

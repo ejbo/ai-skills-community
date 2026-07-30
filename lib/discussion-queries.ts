@@ -1,6 +1,7 @@
-import { Prisma, DiscussionCategory } from '@prisma/client';
+import { createHash } from 'node:crypto';
+import { Prisma, DiscussionCategory, PostReaction } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { AUTHOR_IDENTITY_SELECT } from '@/lib/user-identity';
+import { AUTHOR_IDENTITY_FIELDS, AUTHOR_IDENTITY_SELECT } from '@/lib/user-identity';
 
 // Shared query layer for the 讨论区 (Discussion) section: the LinkedIn/HF-style
 // post feed and the Discourse-style forum. Same conventions as
@@ -40,12 +41,21 @@ const POST_SELECT = {
 
 // ─── Feed posts ─────────────────────────────────────────────────────────────
 
+export type PostSort = 'new' | 'hot';
+
 export interface ListPostsOptions {
-  /** Opaque cursor from a previous page's `nextCursor` (encodes createdAt|id). */
+  /**
+   * Opaque cursor from a previous page's `nextCursor`. For `new` it encodes
+   * the keyset `createdAt|id`; for `hot` (whose ordering shifts as people
+   * react) it is a plain offset `o:<n>`.
+   */
   cursor?: string | null;
   limit?: number;
-  /** When set, each row gets `likedByMe` for this user. */
+  sort?: PostSort;
+  /** When set, each row gets `myReaction` for this user. */
   viewerId?: string | null;
+  /** Tab 内搜索：按正文匹配；置顶不再前置（搜索结果按时间排）。 */
+  q?: string;
 }
 
 /** How many pinned posts the feed's first page can carry (enforced on pin). */
@@ -70,26 +80,41 @@ function decodePostCursor(raw: string | null | undefined): { createdAt: Date; id
 
 /**
  * Feed pagination: the first page shows all pinned posts (capped) followed by
- * the newest regular posts; subsequent pages continue the regular stream from
- * the keyset cursor. Ordering includes `id` so `createdAt` ties page stably.
+ * the regular stream. `new` pages with the keyset cursor (ordering includes
+ * `id` so `createdAt` ties page stably); `hot` (engagement ordering, shifts
+ * as people react) pages with a plain offset instead.
  */
 export async function listPosts(opts: ListPostsOptions) {
   const rawLimit = Number(opts.limit ?? 10);
   const limit = Number.isFinite(rawLimit) ? Math.min(20, Math.max(1, Math.trunc(rawLimit))) : 10;
-  const cursor = decodePostCursor(opts.cursor);
+  const sort: PostSort = opts.sort === 'hot' ? 'hot' : 'new';
+  const q = (opts.q ?? '').trim();
 
-  const pinned = cursor
-    ? []
-    : await prisma.post.findMany({
-        where: { pinned: true },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: MAX_PINNED_POSTS,
-        select: POST_SELECT,
-      });
+  const cursor = sort === 'new' ? decodePostCursor(opts.cursor) : null;
+  const rawOffset =
+    sort === 'hot' && opts.cursor?.startsWith('o:') ? Number(opts.cursor.slice(2)) : 0;
+  const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.trunc(rawOffset)) : 0;
+  const firstPage = sort === 'new' ? !cursor : offset === 0;
+
+  const pinned =
+    !firstPage || q
+      ? []
+      : await prisma.post.findMany({
+          where: { pinned: true },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: MAX_PINNED_POSTS,
+          select: POST_SELECT,
+        });
+
+  const orderBy: Prisma.PostOrderByWithRelationInput[] =
+    sort === 'hot'
+      ? [{ likeCount: 'desc' }, { commentCount: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }]
+      : [{ createdAt: 'desc' }, { id: 'desc' }];
 
   const rows = await prisma.post.findMany({
     where: {
-      pinned: false,
+      // 搜索时不区分置顶（否则置顶命中项会在关键字翻页时重复出现）。
+      ...(q ? { bodyMd: { contains: q, mode: 'insensitive' } } : { pinned: false }),
       ...(cursor
         ? {
             OR: [
@@ -99,7 +124,8 @@ export async function listPosts(opts: ListPostsOptions) {
           }
         : {}),
     },
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    orderBy,
+    ...(sort === 'hot' ? { skip: offset } : {}),
     take: limit + 1,
     select: POST_SELECT,
   });
@@ -108,16 +134,20 @@ export async function listPosts(opts: ListPostsOptions) {
   const page = rows.slice(0, limit);
   const all = [...pinned, ...page];
 
-  const liked = await viewerPostLikeSet(
+  const annotated = await annotateReactions(
+    all,
     opts.viewerId,
-    all.map((p) => p.id),
   );
-  const items = all.map((p) => ({ ...p, likedByMe: liked.has(p.id) }));
 
   return {
-    items,
+    items: annotated,
     hasMore,
-    nextCursor: hasMore && page.length > 0 ? encodePostCursor(page[page.length - 1]) : null,
+    nextCursor:
+      hasMore && page.length > 0
+        ? sort === 'hot'
+          ? `o:${offset + limit}`
+          : encodePostCursor(page[page.length - 1])
+        : null,
   };
 }
 
@@ -127,17 +157,51 @@ export async function getPostDetail(id: string, viewerId?: string | null) {
     select: { ...POST_SELECT, authorId: true },
   });
   if (!post) return null;
-  const liked = await viewerPostLikeSet(viewerId, [post.id]);
-  return { ...post, likedByMe: liked.has(post.id) };
+  const [annotated] = await annotateReactions([post], viewerId);
+  return annotated;
 }
 
-async function viewerPostLikeSet(viewerId: string | null | undefined, postIds: string[]) {
-  if (!viewerId || postIds.length === 0) return new Set<string>();
-  const rows = await prisma.postLike.findMany({
-    where: { userId: viewerId, postId: { in: postIds } },
-    select: { postId: true },
-  });
-  return new Set(rows.map((r) => r.postId));
+export interface ReactionCount {
+  reaction: PostReaction;
+  count: number;
+}
+
+/** Attach `myReaction` + per-type `reactions` summary to post rows (2 queries total). */
+async function annotateReactions<T extends { id: string }>(
+  posts: T[],
+  viewerId?: string | null,
+): Promise<(T & { myReaction: PostReaction | null; reactions: ReactionCount[] })[]> {
+  if (posts.length === 0) return [];
+  const ids = posts.map((p) => p.id);
+
+  const [mine, grouped] = await Promise.all([
+    viewerId
+      ? prisma.postLike.findMany({
+          where: { userId: viewerId, postId: { in: ids } },
+          select: { postId: true, reaction: true },
+        })
+      : Promise.resolve([] as { postId: string; reaction: PostReaction }[]),
+    prisma.postLike.groupBy({
+      by: ['postId', 'reaction'],
+      where: { postId: { in: ids } },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const myMap = new Map(mine.map((r) => [r.postId, r.reaction]));
+  const summary = new Map<string, ReactionCount[]>();
+  for (const g of grouped) {
+    const list = summary.get(g.postId) ?? [];
+    list.push({ reaction: g.reaction, count: g._count._all });
+    summary.set(g.postId, list);
+  }
+  for (const list of summary.values()) list.sort((a, b) => b.count - a.count);
+
+  return posts.map((p) => ({
+    ...p,
+    myReaction: myMap.get(p.id) ?? null,
+    reactions: summary.get(p.id) ?? [],
+  }));
 }
 
 // ─── Post comments ──────────────────────────────────────────────────────────
@@ -258,10 +322,52 @@ async function viewerCommentLikeSet(viewerId: string | null | undefined, comment
 
 // ─── Forum topics ───────────────────────────────────────────────────────────
 
-export const DISCUSSION_CATEGORIES = ['tech', 'qa', 'share', 'showcase', 'general'] as const;
+export const DISCUSSION_CATEGORIES = [
+  'tech',
+  'models',
+  'agents',
+  'skills',
+  'research',
+  'qa',
+  'share',
+  'showcase',
+  'general',
+] as const;
+
+// AI-focused set offered in the composer / filter UI. `general` (历史值) is
+// accepted by filters for old rows but no new topic can pick it.
+export const VISIBLE_DISCUSSION_CATEGORIES = [
+  'tech',
+  'models',
+  'agents',
+  'skills',
+  'research',
+  'qa',
+  'share',
+  'showcase',
+] as const;
 
 export function isDiscussionCategory(v: unknown): v is DiscussionCategory {
   return typeof v === 'string' && (DISCUSSION_CATEGORIES as readonly string[]).includes(v);
+}
+
+/**
+ * Topic count per主题 — feeds the Discourse-style sidebar. Topics are
+ * multi-category (enum array), so a topic counts toward each of its主题;
+ * groupBy can't unnest arrays, so count in JS over the tiny select.
+ */
+export async function countTopicsByCategory(): Promise<{
+  counts: Partial<Record<DiscussionCategory, number>>;
+  /** Distinct topics — NOT the sum of counts (a topic counts once per主题). */
+  total: number;
+}> {
+  const rows = await prisma.discussionTopic.findMany({ select: { categories: true, category: true } });
+  const counts: Partial<Record<DiscussionCategory, number>> = {};
+  for (const r of rows) {
+    const cats = r.categories.length > 0 ? r.categories : [r.category];
+    for (const c of new Set(cats)) counts[c] = (counts[c] ?? 0) + 1;
+  }
+  return { counts, total: rows.length };
 }
 
 export type TopicSort = 'latest' | 'top' | 'new';
@@ -273,6 +379,8 @@ export interface ListTopicsFilters {
   pageSize?: number;
   /** When set, each row gets `upvotedByMe` for this user. */
   viewerId?: string | null;
+  /** Tab 内搜索：标题/正文匹配。 */
+  q?: string;
 }
 
 export async function listTopics(filters: ListTopicsFilters) {
@@ -281,8 +389,28 @@ export async function listTopics(filters: ListTopicsFilters) {
   const rawSize = Number(filters.pageSize ?? 20);
   const pageSize = Number.isFinite(rawSize) ? Math.min(50, Math.max(1, Math.trunc(rawSize))) : 20;
 
-  const where: Prisma.DiscussionTopicWhereInput = {};
-  if (filters.category) where.category = filters.category;
+  // Both filters are OR-groups — compose with AND so they never clobber each other.
+  const and: Prisma.DiscussionTopicWhereInput[] = [];
+  // Multi-category: match the array, falling back to the legacy single column
+  // for rows created before the backfill.
+  if (filters.category) {
+    and.push({
+      OR: [
+        { categories: { has: filters.category } },
+        { categories: { isEmpty: true }, category: filters.category },
+      ],
+    });
+  }
+  const q = (filters.q ?? '').trim();
+  if (q) {
+    and.push({
+      OR: [
+        { title: { contains: q, mode: 'insensitive' } },
+        { bodyMd: { contains: q, mode: 'insensitive' } },
+      ],
+    });
+  }
+  const where: Prisma.DiscussionTopicWhereInput = and.length > 0 ? { AND: and } : {};
 
   // Pinned topics always float to the top (Discourse behavior); the sort only
   // decides the order of the regular stream below them.
@@ -304,24 +432,128 @@ export async function listTopics(filters: ListTopicsFilters) {
     select: {
       id: true,
       title: true,
+      bodyMd: true,
       category: true,
+      categories: true,
       pinned: true,
       locked: true,
       upvoteCount: true,
       replyCount: true,
+      viewCount: true,
       lastActivityAt: true,
       createdAt: true,
       author: AUTHOR_SELECT,
     },
   });
 
-  const upvoted = await viewerUpvoteSet(
-    filters.viewerId,
-    rows.map((r) => r.id),
-  );
-  const items = rows.map((r) => ({ ...r, upvotedByMe: upvoted.has(r.id) }));
+  const ids = rows.map((r) => r.id);
+  const [upvoted, participants] = await Promise.all([
+    viewerUpvoteSet(filters.viewerId, ids),
+    topicParticipants(ids),
+  ]);
+  const items = rows.map(({ bodyMd, ...r }) => ({
+    ...r,
+    // Pre-backfill rows may have an empty array — fall back to the legacy column.
+    categories: r.categories.length > 0 ? r.categories : [r.category],
+    excerpt: excerptOf(bodyMd),
+    upvotedByMe: upvoted.has(r.id),
+    // Recent repliers (raw identities — consumers trim via toPublicAuthor).
+    participants: participants.get(r.id) ?? [],
+  }));
 
   return { items, page, pageSize, total, hasMore: page * pageSize < total };
+}
+
+/** Plain-text preview of a markdown body for list rows (CocoLoop-style 阅读更多). */
+export function excerptOf(md: string, max = 140): string {
+  const text = md
+    .replace(/```[\s\S]*?```/g, ' ') // code fences
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ') // images
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // links → label
+    .replace(/[#>*_~`|-]+/g, ' ') // md syntax noise
+    .replace(/\s+/g, ' ')
+    .trim();
+  // Slice on code points, not UTF-16 units — a cut surrogate pair (emoji,
+  // CJK-Ext ideographs) would render as a lone '�'.
+  const cps = [...text];
+  return cps.length > max ? `${cps.slice(0, max).join('')}…` : text;
+}
+
+type ParticipantIdentity = {
+  handle: string;
+  displayName: string;
+  avatarUrl: string | null;
+  department: string | null;
+  lab: string | null;
+  isPrivate: boolean;
+};
+
+/** Up to 4 most-recent distinct repliers per topic (Discourse-style avatar stack). */
+async function topicParticipants(
+  topicIds: string[],
+): Promise<Map<string, ParticipantIdentity[]>> {
+  const map = new Map<string, ParticipantIdentity[]>();
+  if (topicIds.length === 0) return map;
+
+  // Per-topic budget (indexed on [topicId, createdAt]) so one hot topic can't
+  // starve the quieter topics on the page; then one shared identity fetch.
+  const perTopicRows = await Promise.all(
+    topicIds.map((id) =>
+      prisma.discussionReply.findMany({
+        where: { topicId: id, status: 'visible' },
+        orderBy: { createdAt: 'desc' },
+        take: 12,
+        select: { topicId: true, authorId: true },
+      }),
+    ),
+  );
+
+  const perTopic = new Map<string, string[]>();
+  for (const r of perTopicRows.flat()) {
+    const list = perTopic.get(r.topicId) ?? [];
+    if (list.length < 4 && !list.includes(r.authorId)) list.push(r.authorId);
+    perTopic.set(r.topicId, list);
+  }
+
+  const authorIds = [...new Set([...perTopic.values()].flat())];
+  if (authorIds.length === 0) return map;
+  const users = await prisma.user.findMany({
+    where: { id: { in: authorIds } },
+    select: { id: true, ...AUTHOR_IDENTITY_FIELDS },
+  });
+  const byId = new Map(users.map((u) => [u.id, u]));
+
+  for (const [topicId, list] of perTopic) {
+    map.set(
+      topicId,
+      list
+        .map((id) => byId.get(id))
+        .filter((u): u is NonNullable<typeof u> => Boolean(u))
+        .map(({ id: _id, ...identity }) => ({ ...identity, avatarUrl: identity.avatarUrl ?? null })),
+    );
+  }
+  return map;
+}
+
+/**
+ * Count one view per viewer per topic per UTC day (mirrors VideoView's
+ * sessionHash dedupe). Array transaction: a duplicate insert rolls the
+ * increment back with it. Best-effort — never throws.
+ */
+export async function recordTopicView(topicId: string, viewerKey: string): Promise<void> {
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    const sessionHash = createHash('sha256').update(`${viewerKey}:${topicId}:${day}`).digest('hex');
+    await prisma.$transaction([
+      prisma.discussionTopicView.create({ data: { topicId, sessionHash } }),
+      prisma.discussionTopic.update({
+        where: { id: topicId },
+        data: { viewCount: { increment: 1 } },
+      }),
+    ]);
+  } catch {
+    /* already viewed today, or topic deleted — fine */
+  }
 }
 
 /**
@@ -334,6 +566,7 @@ export async function getTopicDetail(id: string, viewerId?: string | null) {
     where: { id },
     include: {
       author: AUTHOR_SELECT,
+      media: MEDIA_SELECT,
       replies: {
         where: { parentId: null },
         orderBy: { createdAt: 'asc' },
@@ -365,7 +598,11 @@ export async function getTopicDetail(id: string, viewerId?: string | null) {
   if (!topic) return null;
 
   const upvoted = await viewerUpvoteSet(viewerId, [topic.id]);
-  return { ...topic, upvotedByMe: upvoted.has(topic.id) };
+  return {
+    ...topic,
+    categories: topic.categories.length > 0 ? topic.categories : [topic.category],
+    upvotedByMe: upvoted.has(topic.id),
+  };
 }
 
 async function viewerUpvoteSet(viewerId: string | null | undefined, topicIds: string[]) {

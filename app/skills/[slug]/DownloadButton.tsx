@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Download, Loader2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
 
 /**
@@ -21,6 +22,7 @@ export function DownloadButton({
   version?: string;
   className?: string;
 }) {
+  const t = useTranslations('skill_detail');
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
@@ -33,12 +35,12 @@ export function DownloadButton({
       if (!res.ok) {
         const data = await res.json().catch(() => ({}) as { error?: string; message?: string });
         if (res.status === 401) {
-          pushToast('error', '登录态已失效，请重新登录后再下载');
+          pushToast('error', t('session_expired'));
           router.push(`/auth/login?callbackUrl=/skills/${slug}`);
         } else if (res.status === 403) {
-          pushToast('error', data.message ?? '该技能为「受限下载」，需作者批准后才能获取。');
+          pushToast('error', data.message ?? t('restricted_need_approval'));
         } else {
-          pushToast('error', data.message ?? data.error ?? '下载失败，请稍后重试。');
+          pushToast('error', data.message ?? data.error ?? t('download_failed'));
         }
         return;
       }
@@ -57,7 +59,7 @@ export function DownloadButton({
       a.remove();
       URL.revokeObjectURL(objectUrl);
     } catch {
-      pushToast('error', '下载失败，请检查网络后重试。');
+      pushToast('error', t('download_failed_network'));
     } finally {
       setBusy(false);
     }
@@ -66,7 +68,7 @@ export function DownloadButton({
   return (
     <button type="button" onClick={download} disabled={busy} className={className}>
       {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-      下载技能包 (.zip)
+      {t('download_zip')}
     </button>
   );
 }

@@ -1,3 +1,4 @@
+import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { NotificationPreferenceForm, type PrefValues } from '../NotificationPreferenceForm';
@@ -17,6 +18,7 @@ const DEFAULTS: PrefValues = {
 };
 
 export default async function NotificationSettingsPage() {
+  const t = await getTranslations('settings');
   const session = await auth();
   if (!session?.user) return null;
 
@@ -37,8 +39,8 @@ export default async function NotificationSettingsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold">通知</h2>
-        <p className="mt-1 text-sm text-muted">选择你想接收哪些通知，以及是否同时发送邮件。</p>
+        <h2 className="text-lg font-semibold">{t('nav_notifications')}</h2>
+        <p className="mt-1 text-sm text-muted">{t('notifications_desc')}</p>
       </div>
       <NotificationPreferenceForm initial={values} />
     </div>

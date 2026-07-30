@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { logAdmin } from '@/lib/audit';
-import { deletePostMediaFile } from '@/lib/uploads/post-media-storage';
+import { deleteUnreferencedMediaFiles } from '@/lib/discussion-media';
 import { MAX_PINNED_POSTS } from '@/lib/discussion-queries';
 
 export const dynamic = 'force-dynamic';
@@ -99,14 +99,12 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
 
   await prisma.post.delete({ where: { id: before.id } });
 
-  // Uploaded videos/attachments can be large — reclaim the disk best-effort.
-  // (Editor images are shared infrastructure and are never GC'd, same as
-  // images embedded in skill/feedback markdown.)
-  for (const m of before.media) {
-    if ((m.kind === 'video' || m.kind === 'file') && m.key) {
-      void deletePostMediaFile(m.key);
-    }
-  }
+  // Uploaded videos/attachments can be large — reclaim the disk best-effort
+  // (refcounted: a key still referenced by any post/topic keeps its file;
+  // editor images are shared infrastructure and are never GC'd).
+  void deleteUnreferencedMediaFiles(
+    before.media.filter((m) => m.kind === 'video' || m.kind === 'file').map((m) => m.key),
+  );
 
   if (!isAuthor) {
     await logAdmin({

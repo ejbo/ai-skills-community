@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Copy, StickyNote, Sparkles, Trash2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { Copy, Languages, StickyNote, Sparkles, Trash2 } from 'lucide-react';
 import { copyText } from '@/lib/clipboard';
 import { pushToast } from '@/components/Toaster';
 import { getTextOffsetOfPoint } from './anchoring';
@@ -10,35 +11,46 @@ export const HIGHLIGHT_COLORS = ['yellow', 'green', 'blue', 'pink'] as const;
 export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number];
 
 export interface SelectionPayload {
+  chapterIndex: number;
   quote: string;
   charStart: number;
   charEnd: number;
 }
 
-/** Floating menu above a text selection inside the article. */
+export interface SelectionContext {
+  root: HTMLElement;
+  chapterIndex: number;
+}
+
+/** Floating menu above a text selection inside a chapter article. */
 export function SelectionMenu({
-  articleRef,
+  getContext,
   onHighlight,
   onNote,
   onAskAi,
+  onTranslate,
 }: {
-  articleRef: React.RefObject<HTMLElement>;
+  /** Resolve the chapter root containing a DOM node (null = outside articles). */
+  getContext: (node: Node) => SelectionContext | null;
   onHighlight: (payload: SelectionPayload, color: HighlightColor) => void;
   onNote: (payload: SelectionPayload) => void;
   onAskAi: (quote: string) => void;
+  /** Selection translation — anchored near the menu position. */
+  onTranslate: (text: string, anchor: { top: number; left: number }) => void;
 }) {
+  const t = useTranslations('reader');
+  const tc = useTranslations('common');
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(() => {
     const sel = window.getSelection();
-    const article = articleRef.current;
-    if (!sel || sel.isCollapsed || sel.rangeCount === 0 || !article) {
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
       setPos(null);
       return;
     }
     const range = sel.getRangeAt(0);
-    if (!article.contains(range.commonAncestorContainer) || !sel.toString().trim()) {
+    if (!getContext(range.commonAncestorContainer) || !sel.toString().trim()) {
       setPos(null);
       return;
     }
@@ -47,7 +59,7 @@ export function SelectionMenu({
       top: Math.max(64, rect.top - 10),
       left: Math.min(Math.max(rect.left + rect.width / 2, 130), window.innerWidth - 130),
     });
-  }, [articleRef]);
+  }, [getContext]);
 
   useEffect(() => {
     const onUp = (e: Event) => {
@@ -71,24 +83,24 @@ export function SelectionMenu({
 
   function capture(): SelectionPayload | null {
     const sel = window.getSelection();
-    const article = articleRef.current;
-    if (!sel || sel.isCollapsed || sel.rangeCount === 0 || !article) return null;
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
     const range = sel.getRangeAt(0);
     // Re-validate containment: the selection may have escaped the article since
     // refresh() (Ctrl+A / Shift+End extend without a mouseup) — offsets computed
     // against outside points would store a permanently unanchorable highlight.
-    if (!article.contains(range.commonAncestorContainer)) return null;
+    const ctx = getContext(range.commonAncestorContainer);
+    if (!ctx) return null;
     const full = sel.toString().replace(/\s+/g, ' ').trim();
     if (!full) return null;
     const quote = full.slice(0, 300);
-    const charStart = getTextOffsetOfPoint(article, range.startContainer, range.startOffset);
-    let charEnd = getTextOffsetOfPoint(article, range.endContainer, range.endOffset);
+    const charStart = getTextOffsetOfPoint(ctx.root, range.startContainer, range.startOffset);
+    let charEnd = getTextOffsetOfPoint(ctx.root, range.endContainer, range.endOffset);
     if (full.length > 300) {
       // Keep the stored span consistent with the truncated (= painted) quote.
       charEnd = Math.min(charEnd, charStart + quote.length);
-      pushToast('info', '划线最长 300 字，已截取开头部分');
+      pushToast('info', t('highlight_truncated'));
     }
-    return { quote, charStart, charEnd: Math.max(charEnd, charStart + 1) };
+    return { chapterIndex: ctx.chapterIndex, quote, charStart, charEnd: Math.max(charEnd, charStart + 1) };
   }
 
   function dismiss(clearSelection: boolean) {
@@ -102,7 +114,7 @@ export function SelectionMenu({
     <div
       ref={menuRef}
       role="toolbar"
-      aria-label="选中文本操作"
+      aria-label={t('selection_toolbar')}
       className="reader-panel rborder fixed z-50 flex -translate-x-1/2 -translate-y-full items-center gap-1.5 rounded-xl border px-2.5 py-2 shadow-xl"
       style={{ top: pos.top, left: pos.left }}
       onMouseDown={(e) => e.preventDefault()}
@@ -111,7 +123,7 @@ export function SelectionMenu({
         <button
           key={color}
           type="button"
-          aria-label={`高亮（${color}）`}
+          aria-label={t('highlight_color', { color })}
           onClick={() => {
             const payload = capture();
             if (!payload) return dismiss(true);
@@ -123,7 +135,7 @@ export function SelectionMenu({
       ))}
       <span className="rborder mx-0.5 h-4 w-px border-l" />
       <MenuButton
-        label="笔记"
+        label={t('note')}
         onClick={() => {
           const payload = capture();
           if (!payload) return dismiss(true);
@@ -134,18 +146,29 @@ export function SelectionMenu({
         <StickyNote className="h-4 w-4" />
       </MenuButton>
       <MenuButton
-        label="复制"
+        label={tc('copy')}
         onClick={async () => {
           const text = window.getSelection()?.toString() ?? '';
           const ok = text ? await copyText(text) : false;
-          pushToast(ok ? 'success' : 'error', ok ? '已复制' : '复制失败');
+          pushToast(ok ? 'success' : 'error', ok ? tc('copied') : tc('copy_failed'));
           dismiss(false);
         }}
       >
         <Copy className="h-4 w-4" />
       </MenuButton>
       <MenuButton
-        label="问 AI"
+        label={t('translate')}
+        onClick={() => {
+          const text = (window.getSelection()?.toString() ?? '').trim().slice(0, 3000);
+          if (!text || !pos) return dismiss(true);
+          onTranslate(text, { top: pos.top, left: pos.left });
+          dismiss(false);
+        }}
+      >
+        <Languages className="h-4 w-4" />
+      </MenuButton>
+      <MenuButton
+        label={t('ask_ai_short')}
         onClick={() => {
           const payload = capture();
           if (!payload) return dismiss(true);
@@ -199,6 +222,8 @@ export function MarkPopover({
   onDelete: () => void;
   onClose: () => void;
 }) {
+  const t = useTranslations('reader');
+  const tc = useTranslations('common');
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -218,7 +243,7 @@ export function MarkPopover({
     <div
       ref={ref}
       role="toolbar"
-      aria-label="高亮操作"
+      aria-label={t('highlight_toolbar')}
       className="reader-panel rborder fixed z-50 flex -translate-x-1/2 items-center gap-1.5 rounded-xl border px-2.5 py-2 shadow-xl"
       style={{
         top: Math.min(top, typeof window !== 'undefined' ? window.innerHeight - 56 : top),
@@ -229,7 +254,7 @@ export function MarkPopover({
         <button
           key={color}
           type="button"
-          aria-label={`改为${color}`}
+          aria-label={t('recolor_to', { color })}
           onClick={() => onRecolor(color)}
           className={`hl-dot-${color} h-5 w-5 rounded-full transition hover:scale-110 ${
             currentColor === color ? 'ring-2 ring-accent-500/60 ring-offset-1' : ''
@@ -237,18 +262,12 @@ export function MarkPopover({
         />
       ))}
       <span className="rborder mx-0.5 h-4 w-px border-l" />
-      <MenuButton label="笔记" onClick={onNote}>
+      <MenuButton label={t('note')} onClick={onNote}>
         <StickyNote className="h-4 w-4" />
       </MenuButton>
-      <button
-        type="button"
-        aria-label="删除高亮"
-        title="删除高亮"
-        onClick={onDelete}
-        className="grid h-7 w-7 place-items-center rounded-lg text-danger transition hover:bg-danger/10"
-      >
+      <MenuButton label={tc('delete')} onClick={onDelete}>
         <Trash2 className="h-4 w-4" />
-      </button>
+      </MenuButton>
     </div>
   );
 }

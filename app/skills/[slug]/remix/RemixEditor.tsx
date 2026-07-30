@@ -4,6 +4,7 @@ import { useState, useTransition, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Loader2, GitFork, Eye, Code } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
 
 interface Source {
@@ -45,6 +46,10 @@ function diffLines(orig: string, modified: string): Array<{ kind: 'same' | 'add'
 }
 
 export function RemixEditor({ source, categories }: { source: Source; categories: Category[] }) {
+  const t = useTranslations('skill_compare');
+  const tCommon = useTranslations('common');
+  const tUpload = useTranslations('upload');
+  const tBrowse = useTranslations('browse');
   const router = useRouter();
   const [name, setName] = useState(`${source.name} (Remix)`);
   const [slug, setSlug] = useState(slugify(`${source.slug}-remix`));
@@ -63,7 +68,7 @@ export function RemixEditor({ source, categories }: { source: Source; categories
 
   function publish(action: 'draft' | 'publish') {
     if (!name || !slug || !summary) {
-      pushToast('error', '请填写名称、slug 和描述');
+      pushToast('error', t('remix_fill_required'));
       return;
     }
     startTransition(async () => {
@@ -84,10 +89,10 @@ export function RemixEditor({ source, categories }: { source: Source; categories
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        pushToast('error', data.error ?? '发布失败');
+        pushToast('error', data.error ?? t('remix_publish_failed'));
         return;
       }
-      pushToast('success', action === 'publish' ? 'Remix 已发布' : '草稿已保存');
+      pushToast('success', action === 'publish' ? t('remix_published') : t('remix_draft_saved'));
       router.push(`/skills/${data.skill.slug}`);
     });
   }
@@ -96,29 +101,29 @@ export function RemixEditor({ source, categories }: { source: Source; categories
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_280px]">
       <div className="space-y-3">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <Field label="新名称">
+          <Field label={t('remix_new_name')}>
             <input value={name} onChange={(e) => setName(e.target.value)} className="input" />
           </Field>
-          <Field label="新 slug">
+          <Field label={t('remix_new_slug')}>
             <input value={slug} onChange={(e) => setSlug(slugify(e.target.value))} className="input font-mono text-xs" />
           </Field>
         </div>
-        <Field label="一行描述">
+        <Field label={tUpload('description')}>
           <input value={summary} onChange={(e) => setSummary(e.target.value.slice(0, 140))} maxLength={140} className="input" />
         </Field>
-        <Field label="Overview / 公开简介（可选，所有人可见）">
+        <Field label={t('remix_overview_label')}>
           <textarea
             value={overview}
             onChange={(e) => setOverview(e.target.value)}
             rows={4}
-            placeholder="介绍用途、关键能力、适用场景…"
+            placeholder={t('remix_overview_placeholder')}
             className="input font-mono text-[13px]"
           />
         </Field>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <Field label="类别">
+          <Field label={tUpload('category')}>
             <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="input">
-              <option value="">未分类</option>
+              <option value="">{t('remix_uncategorized')}</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -126,14 +131,14 @@ export function RemixEditor({ source, categories }: { source: Source; categories
               ))}
             </select>
           </Field>
-          <Field label="许可证">
+          <Field label={tUpload('license_label')}>
             <select value={license} onChange={(e) => setLicense(e.target.value)} className="input">
               {['MIT', 'Apache-2.0', 'BSD-3-Clause', 'GPL-3.0', 'Proprietary'].map((l) => (
                 <option key={l}>{l}</option>
               ))}
             </select>
           </Field>
-          <Field label="Token 成本">
+          <Field label={tBrowse('token_cost_label')}>
             <input
               type="number"
               min={0}
@@ -158,7 +163,7 @@ export function RemixEditor({ source, categories }: { source: Source; categories
             >
               <span className="flex items-center gap-1">
                 {m === 'edit' ? <Code className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                {m === 'edit' ? '编辑' : 'Diff vs 原版'}
+                {m === 'edit' ? tCommon('edit') : t('remix_diff_tab')}
               </span>
               {view === m && (
                 <motion.span
@@ -210,7 +215,7 @@ export function RemixEditor({ source, categories }: { source: Source; categories
             onClick={() => publish('draft')}
             className="rounded-lg border border-zinc-300 px-4 py-1.5 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
           >
-            存为草稿
+            {t('remix_save_draft')}
           </button>
           <button
             type="button"
@@ -219,7 +224,7 @@ export function RemixEditor({ source, categories }: { source: Source; categories
             className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
           >
             {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitFork className="h-3.5 w-3.5" />}
-            发布 Remix
+            {t('remix_publish_btn')}
           </button>
         </div>
 
@@ -243,7 +248,7 @@ export function RemixEditor({ source, categories }: { source: Source; categories
       </div>
 
       <aside className="surface space-y-3 rounded-2xl p-4 text-sm">
-        <div className="text-xs font-semibold uppercase tracking-wider text-muted">原 Skill</div>
+        <div className="text-xs font-semibold uppercase tracking-wider text-muted">{t('remix_source_skill')}</div>
         <div className="rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
           <div className="font-medium">{source.name}</div>
           <div className="mt-1 text-xs text-muted">{source.summary}</div>

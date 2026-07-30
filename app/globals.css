@@ -74,11 +74,77 @@
   }
 }
 
+/* Homepage motion utilities. Defined here (not tailwind.config keyframes) so
+   they ship whenever the class is used — config-declared keyframes are only
+   emitted for `animate-*` utilities, which bit the `.shimmer` class above.
+   @layer utilities keeps variant support (motion-safe: etc.). */
+@layer utilities {
+  /* Above-the-fold entrance; `both` keeps content hidden through a staggered
+     animation-delay, then visible after. */
+  .animate-rise {
+    animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .animate-glow-a {
+    animation: glowA 16s ease-in-out infinite;
+  }
+  .animate-glow-b {
+    animation: glowB 19s ease-in-out infinite;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Hero glow drift. The element keeps a static -translate-x-1/2 utility for
+   the reduced-motion case (motion-safe: means this animation may never
+   apply); while running, the keyframes' full transform overrides it, resting
+   at the same -50% so there is no jump. */
+@keyframes glowA {
+  0%,
+  100% {
+    transform: translate(-50%, 0) scale(1);
+  }
+  50% {
+    transform: translate(-44%, 18px) scale(1.08);
+  }
+}
+
+@keyframes glowB {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-26px, 16px) scale(1.1);
+  }
+}
+
+/* Keyframes for the `.shimmer` component class above — the tailwind.config
+   `shimmer` keyframes are only emitted when `animate-shimmer` is used, so the
+   skeletons' animation silently never ran. */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.001ms !important;
+    animation-delay: 0.001ms !important;
     transition-duration: 0.001ms !important;
   }
 }

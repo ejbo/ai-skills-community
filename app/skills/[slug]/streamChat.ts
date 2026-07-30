@@ -9,12 +9,24 @@ export interface StreamChatResult {
   error?: string;
 }
 
+// This module is framework-free (no next-intl), so the caller — always a
+// component that has a translator — passes the localized fallback copy in.
+// The English defaults only ever show if a caller forgets to.
+export interface StreamChatStrings {
+  requestFailed?: string;
+  connectionLost?: string;
+}
+
 export async function streamChat(
   url: string,
   payload: unknown,
   onDelta: (delta: string) => void,
   signal?: AbortSignal,
+  strings?: StreamChatStrings,
 ): Promise<StreamChatResult> {
+  const requestFailed = strings?.requestFailed ?? 'Request failed';
+  const connectionLost = strings?.connectionLost ?? 'Connection interrupted, please try again';
+
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -23,7 +35,7 @@ export async function streamChat(
   });
   if (!res.ok || !res.body) {
     const data = await res.json().catch(() => ({}));
-    return { ok: false, error: data.reason ?? data.error ?? '请求失败' };
+    return { ok: false, error: data.reason ?? data.error ?? requestFailed };
   }
 
   const reader = res.body.getReader();
@@ -75,6 +87,6 @@ export async function streamChat(
   // interrupted (network drop / server crash) — surface it rather than masking
   // it as success.
   if (streamError) return { ok: false, error: streamError };
-  if (!doneSeen) return { ok: false, error: '连接中断，请重试' };
+  if (!doneSeen) return { ok: false, error: connectionLost };
   return { ok: true };
 }

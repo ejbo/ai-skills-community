@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Boxes, Download, Layers, Pencil } from 'lucide-react';
-import { formatDistanceToNowStrict } from 'date-fns';
+import { getLocale, getTranslations } from 'next-intl/server';
+import { relativeTime } from '@/lib/i18n-date';
 import { auth } from '@/lib/auth';
 import { getPackBySlug } from '@/lib/pack-queries';
 import { InstallSnippet } from '@/components/InstallSnippet';
@@ -23,6 +24,11 @@ export default async function PackDetailPage({ params }: { params: { slug: strin
   if (!pack.isPublished && !isAdmin) notFound();
 
   const skills = pack.items.map((i) => i.skill);
+  const t = await getTranslations('skills_misc');
+  const tb = await getTranslations('browse');
+  const tn = await getTranslations('nav');
+  const tu = await getTranslations('ui');
+  const locale = await getLocale();
 
   return (
     <div className="container py-8">
@@ -35,15 +41,15 @@ export default async function PackDetailPage({ params }: { params: { slug: strin
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1 rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-600 dark:text-accent-300">
               <Boxes className="h-3 w-3" />
-              合集包
+              {tb('packs')}
             </span>
             <span className="inline-flex items-center gap-1 rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-muted dark:border-zinc-800">
               <Layers className="h-3 w-3" />
-              {skills.length} 个 Skill
+              {tu('pack_skill_count', { count: skills.length })}
             </span>
             {!pack.isPublished && (
               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
-                草稿（仅管理员可见）
+                {t('pack_draft_admin_only')}
               </span>
             )}
             {isAdmin && (
@@ -52,7 +58,7 @@ export default async function PackDetailPage({ params }: { params: { slug: strin
                 className="inline-flex items-center gap-1 rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-muted transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-800"
               >
                 <Pencil className="h-3 w-3" />
-                管理
+                {tn('manage')}
               </Link>
             )}
           </div>
@@ -77,19 +83,16 @@ export default async function PackDetailPage({ params }: { params: { slug: strin
           {skills.length > 0 && (
             <>
               <InstallSnippet slug={`pack:${pack.slug}`} />
-              <p className="text-xs text-muted">
-                一条命令依次安装包内全部 {skills.length} 个 skills（也可以到各 skill 页面单独安装）。
-                受限下载的 skill 需先在其页面申请通过后才会安装成功。
-              </p>
+              <p className="text-xs text-muted">{t('pack_install_note', { count: skills.length })}</p>
             </>
           )}
 
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-muted">
             <span className="flex items-center gap-1 font-mono tabular-nums">
               <Download className="h-3.5 w-3.5" />
-              {pack.installCount.toLocaleString()} 次安装
+              {tu('pack_install_count', { count: pack.installCount })}
             </span>
-            <span>更新于 {formatDistanceToNowStrict(pack.updatedAt, { addSuffix: true })}</span>
+            <span>{t('pack_updated_at', { time: relativeTime(pack.updatedAt, locale) })}</span>
           </div>
         </div>
 
@@ -100,9 +103,9 @@ export default async function PackDetailPage({ params }: { params: { slug: strin
         )}
 
         <div className="space-y-3">
-          <h2 className="text-xl font-semibold tracking-tight">包含的 Skills</h2>
+          <h2 className="text-xl font-semibold tracking-tight">{t('pack_included_skills')}</h2>
           {skills.length === 0 ? (
-            <p className="text-sm text-muted">这个合集包还没有可安装的 skill。</p>
+            <p className="text-sm text-muted">{t('pack_empty')}</p>
           ) : (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {skills.map((skill) => (

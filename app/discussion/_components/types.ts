@@ -33,13 +33,16 @@ export interface PostView {
   id: string;
   bodyMd: string;
   pinned: boolean;
-  likeCount: number;
+  likeCount: number; // TOTAL reactions across all types
   commentCount: number;
   editedAt: string | Date | null;
   createdAt: string | Date;
   author: AuthorView;
   media: MediaView[];
-  likedByMe: boolean;
+  /** The viewer's reaction type, null when they haven't reacted. */
+  myReaction: string | null;
+  /** Per-type counts, sorted desc — feeds the summary pills. */
+  reactions: { reaction: string; count: number }[];
 }
 
 export interface PostCommentView {

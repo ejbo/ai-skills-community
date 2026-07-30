@@ -1,22 +1,13 @@
 'use client';
 
 import { Globe, ShieldCheck, Lock } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import type { SkillVisibility } from '@prisma/client';
 
-const OPTIONS: { value: SkillVisibility; label: string; Icon: typeof Globe; help: string }[] = [
-  { value: 'public', label: '公开', Icon: Globe, help: '所有登录用户都能发现并自由下载。' },
-  {
-    value: 'restricted',
-    label: '受限下载',
-    Icon: ShieldCheck,
-    help: '任何人可见介绍，但下载 / 查看文件需向你申请，你审批后才能获取。',
-  },
-  {
-    value: 'private',
-    label: '私密',
-    Icon: Lock,
-    help: '仅你本人可见、编辑、下载和测试；其他人完全看不到（管理员可在后台看到）。',
-  },
+const OPTIONS: { value: SkillVisibility; Icon: typeof Globe }[] = [
+  { value: 'public', Icon: Globe },
+  { value: 'restricted', Icon: ShieldCheck },
+  { value: 'private', Icon: Lock },
 ];
 
 export function VisibilitySelector({
@@ -26,11 +17,15 @@ export function VisibilitySelector({
   value: SkillVisibility;
   onChange: (v: SkillVisibility) => void;
 }) {
-  const current = OPTIONS.find((o) => o.value === value) ?? OPTIONS[0];
+  const t = useTranslations('skills_misc');
+  const tl = useTranslations('labels');
+  // "受限下载" is intentionally more explicit than the generic labels.visibility.restricted.
+  const label = (v: SkillVisibility) =>
+    v === 'restricted' ? t('visibility_restricted_label') : tl(`visibility.${v}`);
   return (
     <div>
       <div className="grid grid-cols-3 gap-2">
-        {OPTIONS.map(({ value: v, label, Icon }) => (
+        {OPTIONS.map(({ value: v, Icon }) => (
           <button
             key={v}
             type="button"
@@ -42,11 +37,11 @@ export function VisibilitySelector({
             }`}
           >
             <Icon className="h-3.5 w-3.5" />
-            {label}
+            {label(v)}
           </button>
         ))}
       </div>
-      <p className="mt-1.5 text-xs text-muted">{current.help}</p>
+      <p className="mt-1.5 text-xs text-muted">{t(`visibility_help_${value}`)}</p>
     </div>
   );
 }

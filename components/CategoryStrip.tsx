@@ -1,8 +1,10 @@
 'use client';
 
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 export function CategoryStrip({ categories }: { categories: Array<{ slug: string; name: string }> }) {
+  const t = useTranslations('browse');
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -19,7 +21,7 @@ export function CategoryStrip({ categories }: { categories: Array<{ slug: string
   return (
     <div className="relative -mx-2 overflow-x-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div className="flex gap-1.5 pb-1">
-        <Pill active={!selected} onClick={() => select(null)} label="全部" />
+        <Pill active={!selected} onClick={() => select(null)} label={t('all')} />
         {categories.map((c) => (
           <Pill
             key={c.slug}

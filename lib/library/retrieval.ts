@@ -5,7 +5,8 @@
 // system prompt. The chat route streams the actual answer.
 
 import { prisma } from '@/lib/db';
-import { getProvider, type LLMProvider } from '@/lib/llm';
+import { type LLMProvider } from '@/lib/llm';
+import { getLibraryProvider } from './llm';
 import { answerSystem, parseRetrieve, retrievePrompt } from './ai-prompts';
 
 const CONTEXT_BUDGET_TOKENS = 10_000;
@@ -65,7 +66,7 @@ export async function buildChatContext(
 
   let provider: LLMProvider;
   try {
-    provider = getProvider();
+    provider = (await getLibraryProvider()).provider;
   } catch {
     return { ok: false, error: 'llm_error' };
   }

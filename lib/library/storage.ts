@@ -24,18 +24,28 @@ export const MAX_COVER_BYTES = 5 * 1024 * 1024; // 5 MB
 export type LibraryFileKind = 'original' | 'cover' | 'image';
 
 // Extensions we will ever write/serve — a bogus filename can never make us
-// store an arbitrary (e.g. .html / .svg) extension.
-const ALLOWED_EXT = new Set(['pdf', 'epub', 'jpg', 'jpeg', 'png', 'webp', 'gif']);
+// store an arbitrary (e.g. .svg) extension. .html originals are stored but the
+// file route serves them as text/plain (never renderable — stored user HTML
+// executing on our origin would be XSS).
+const ALLOWED_EXT = new Set(['pdf', 'epub', 'html', 'pptx', 'docx', 'jpg', 'jpeg', 'png', 'webp', 'gif']);
 
-/** Doc format from MIME (octet-stream falls back to the .pdf/.epub filename ext). */
-export function detectLibraryFormat(mime: string, filename: string): 'pdf' | 'epub' | null {
+export type LibraryUploadFormat = 'pdf' | 'epub' | 'html' | 'pptx' | 'docx';
+
+/** Doc format from MIME (octet-stream falls back to the filename ext). */
+export function detectLibraryFormat(mime: string, filename: string): LibraryUploadFormat | null {
   const type = (mime ?? '').split(';')[0].trim().toLowerCase();
   if (type === 'application/pdf') return 'pdf';
   if (type === 'application/epub+zip') return 'epub';
+  if (type === 'text/html') return 'html';
+  if (type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') return 'pptx';
+  if (type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
   const m = (filename ?? '').match(/\.([a-zA-Z0-9]{1,5})$/);
   const ext = m ? m[1].toLowerCase() : '';
   if (ext === 'pdf') return 'pdf';
   if (ext === 'epub') return 'epub';
+  if (ext === 'html' || ext === 'htm') return 'html';
+  if (ext === 'pptx') return 'pptx';
+  if (ext === 'docx') return 'docx';
   return null;
 }
 
@@ -63,6 +73,10 @@ export function libraryContentType(key: string): string {
   const map: Record<string, string> = {
     pdf: 'application/pdf',
     epub: 'application/epub+zip',
+    // Deliberately text/plain: rendering stored user HTML on our origin = XSS.
+    html: 'text/plain; charset=utf-8',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     jpg: 'image/jpeg',
     jpeg: 'image/jpeg',
     png: 'image/png',

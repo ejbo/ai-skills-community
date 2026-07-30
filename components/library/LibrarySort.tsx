@@ -1,6 +1,7 @@
 'use client';
 
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { ChevronDown, TrendingUp } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
@@ -9,15 +10,16 @@ import { useEffect, useRef, useState } from 'react';
 const SORTS = ['newest', 'featured', 'shelved', 'views'] as const;
 type Sort = (typeof SORTS)[number];
 
-const LABELS: Record<Sort, string> = {
-  newest: '最新',
-  featured: '推荐',
-  shelved: '最多收藏',
-  views: '最多浏览',
-};
-
 /** 排序下拉（SortMenu 式样）：写 `?sort=`，默认 newest 删参。 */
 export function LibrarySort() {
+  const t = useTranslations('library_cards');
+  const tb = useTranslations('browse');
+  const LABELS: Record<Sort, string> = {
+    newest: tb('sort_newest'),
+    featured: t('sort_featured'),
+    shelved: t('sort_shelved'),
+    views: t('sort_views'),
+  };
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();

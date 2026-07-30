@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Loader2, MessageSquarePlus, X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import type { FeedbackCategory } from '@prisma/client';
 import { pushToast } from '@/components/Toaster';
 import { RichTextEditor } from '@/components/RichTextEditor';
@@ -17,6 +18,8 @@ const CATEGORIES = Object.entries(CATEGORY_META) as [
 export function FeedbackComposer({ loggedIn }: { loggedIn: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
+  const t = useTranslations('feedback');
+  const g = useTranslations();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<FeedbackCategory>('feature');
@@ -25,7 +28,7 @@ export function FeedbackComposer({ loggedIn }: { loggedIn: boolean }) {
 
   function openForm() {
     if (!loggedIn) {
-      pushToast('error', '请先登录再提交反馈');
+      pushToast('error', t('login_before_submit'));
       router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
       return;
     }
@@ -34,7 +37,7 @@ export function FeedbackComposer({ loggedIn }: { loggedIn: boolean }) {
 
   async function submit() {
     if (title.trim().length < 4) {
-      pushToast('error', '标题至少 4 个字');
+      pushToast('error', t('title_min'));
       return;
     }
     if (busy) return;
@@ -47,15 +50,15 @@ export function FeedbackComposer({ loggedIn }: { loggedIn: boolean }) {
       });
       const data = await res.json().catch(() => ({}));
       if (res.status === 401) {
-        pushToast('error', '请先登录');
+        pushToast('error', g('video.login_required'));
         router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
         return;
       }
       if (!res.ok) {
-        pushToast('error', data.reason ?? '提交失败，请重试');
+        pushToast('error', data.reason ?? t('submit_failed_retry'));
         return;
       }
-      pushToast('success', '已提交，感谢反馈！');
+      pushToast('success', t('submitted_thanks'));
       router.push(`/feedback/${data.feedback.id}`);
     } finally {
       setBusy(false);
@@ -69,7 +72,7 @@ export function FeedbackComposer({ loggedIn }: { loggedIn: boolean }) {
         className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-4 text-sm font-medium text-zinc-800 transition hover:border-accent-500 hover:text-accent-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-accent-400 dark:hover:text-accent-300"
       >
         <MessageSquarePlus className="h-4 w-4" />
-        提交反馈
+        {t('submit_feedback')}
       </button>
     );
   }
@@ -77,10 +80,10 @@ export function FeedbackComposer({ loggedIn }: { loggedIn: boolean }) {
   return (
     <div className="surface w-full space-y-3 rounded-2xl p-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">提交反馈</h3>
+        <h3 className="text-sm font-semibold">{t('submit_feedback')}</h3>
         <button
           onClick={() => setOpen(false)}
-          aria-label="收起"
+          aria-label={g('video.detail.collapse')}
           className="rounded p-1 text-muted hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           <X className="h-4 w-4" />
@@ -89,7 +92,7 @@ export function FeedbackComposer({ loggedIn }: { loggedIn: boolean }) {
 
       <input
         autoFocus
-        placeholder="一句话说清楚问题或建议（必填）"
+        placeholder={t('title_placeholder')}
         value={title}
         maxLength={120}
         onChange={(e) => setTitle(e.target.value)}
@@ -107,7 +110,7 @@ export function FeedbackComposer({ loggedIn }: { loggedIn: boolean }) {
                 : `${meta.className} hover:border-accent-400`
             }`}
           >
-            {meta.label}
+            {t(`category_${key}`)}
           </button>
         ))}
       </div>
@@ -117,8 +120,8 @@ export function FeedbackComposer({ loggedIn }: { loggedIn: boolean }) {
         onChange={setBodyMd}
         variant="compact"
         maxLength={10000}
-        placeholder="补充细节：现状、期望、复现步骤…（可选）"
-        ariaLabel="反馈正文"
+        placeholder={t('body_placeholder')}
+        ariaLabel={t('body_aria')}
       />
 
       <div className="flex justify-end">
@@ -128,7 +131,7 @@ export function FeedbackComposer({ loggedIn }: { loggedIn: boolean }) {
           className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white hover:bg-accent-600 disabled:opacity-60"
         >
           {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          提交
+          {t('submit')}
         </button>
       </div>
     </div>

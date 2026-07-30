@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { ExternalLink } from 'lucide-react';
+import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { BackButton } from '@/components/BackButton';
@@ -30,6 +31,8 @@ export default async function ManageSkillPage({
   }
 
   const section = coerceSection(searchParams.section);
+  const t = await getTranslations('skill_manage');
+  const td = await getTranslations('dashboard');
 
   return (
     <div className="container py-8">
@@ -39,20 +42,20 @@ export default async function ManageSkillPage({
         </div>
         <div className="text-xs text-muted">
           <Link href="/dashboard" className="hover:text-accent-600">
-            我的面板
+            {td('title')}
           </Link>{' '}
           / {skill.name}
         </div>
         <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">
-            {skill.name} <span className="text-muted">· 管理</span>
+            {skill.name} <span className="text-muted">· {td('manage')}</span>
           </h1>
           <Link
             href={`/skills/${params.slug}`}
             className="inline-flex items-center gap-1.5 text-sm text-accent-600 hover:text-accent-700"
           >
             <ExternalLink className="h-3.5 w-3.5" />
-            查看公开页
+            {t('view_public_page')}
           </Link>
         </div>
         <div className="mt-5">

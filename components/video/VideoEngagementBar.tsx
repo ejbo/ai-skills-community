@@ -18,6 +18,8 @@ interface Props {
 
 export function VideoEngagementBar(props: Props) {
   const t = useTranslations('video');
+  const tu = useTranslations('video_ui');
+  const tc = useTranslations('common');
   const router = useRouter();
   const [liked, setLiked] = useState(props.initialLiked);
   const [favorited, setFavorited] = useState(props.initialFavorited);
@@ -55,7 +57,7 @@ export function VideoEngagementBar(props: Props) {
         pushToast('info', t('login_required'));
         router.push('/auth/login');
       } else {
-        pushToast('error', '操作失败，请稍后再试');
+        pushToast('error', tu('action_failed'));
       }
     }
   }
@@ -65,7 +67,7 @@ export function VideoEngagementBar(props: Props) {
       await navigator.clipboard.writeText(window.location.href);
       pushToast('success', t('detail.copied'));
     } catch {
-      pushToast('error', '复制失败');
+      pushToast('error', tc('copy_failed'));
     }
   }
 

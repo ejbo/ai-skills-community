@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Lock, LockOpen, Pencil, Pin, PinOff, Trash2 } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 
@@ -23,6 +24,8 @@ export function TopicActions({
   isAdmin: boolean;
   isAuthor: boolean;
 }) {
+  const t = useTranslations('discussion_ui');
+  const tc = useTranslations('common');
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
@@ -36,7 +39,7 @@ export function TopicActions({
         body: JSON.stringify(data),
       });
       if (!res.ok) {
-        pushToast('error', '操作失败');
+        pushToast('error', t('action_failed'));
         return;
       }
       pushToast('success', okMsg);
@@ -47,16 +50,16 @@ export function TopicActions({
   }
 
   async function remove() {
-    if (!confirm('确定删除这个帖子？所有回复和 +1 会一并删除。')) return;
+    if (!confirm(t('delete_topic_confirm'))) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/discussion/topics/${topicId}`, { method: 'DELETE' });
       if (!res.ok) {
-        pushToast('error', '删除失败');
+        pushToast('error', t('delete_failed'));
         setBusy(false);
         return;
       }
-      pushToast('success', '已删除');
+      pushToast('success', t('deleted'));
       router.push('/discussion?tab=forum');
       router.refresh();
     } catch {
@@ -74,32 +77,32 @@ export function TopicActions({
       {isAuthor && (
         <Link href={`/discussion/topics/${topicId}/edit`} className={btn}>
           <Pencil className="h-3.5 w-3.5" />
-          编辑
+          {tc('edit')}
         </Link>
       )}
       {isAdmin && (
         <>
           <button
-            onClick={() => patch({ pinned: !pinned }, pinned ? '已取消置顶' : '已置顶')}
+            onClick={() => patch({ pinned: !pinned }, pinned ? t('unpinned') : t('pinned_done'))}
             disabled={busy}
             className={btn}
           >
             {pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-            {pinned ? '取消置顶' : '置顶'}
+            {pinned ? t('unpin') : t('pin')}
           </button>
           <button
-            onClick={() => patch({ locked: !locked }, locked ? '已解锁' : '已锁定')}
+            onClick={() => patch({ locked: !locked }, locked ? t('unlocked') : t('locked_done'))}
             disabled={busy}
             className={btn}
           >
             {locked ? <LockOpen className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
-            {locked ? '解锁' : '锁定'}
+            {locked ? t('unlock') : t('lock')}
           </button>
         </>
       )}
       <button onClick={remove} disabled={busy} className={`${btn} hover:!border-danger hover:!text-danger`}>
         <Trash2 className="h-3.5 w-3.5" />
-        删除
+        {tc('delete')}
       </button>
     </div>
   );

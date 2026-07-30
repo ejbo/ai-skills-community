@@ -3,6 +3,7 @@
 import { useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
 
 type Action = 'set_current' | 'yank' | 'restore';
@@ -19,6 +20,7 @@ export function VersionActions({
   isCurrent: boolean;
 }) {
   const router = useRouter();
+  const t = useTranslations('skill_manage');
   const [pending, start] = useTransition();
 
   function act(action: Action, confirmMsg?: string) {
@@ -30,10 +32,10 @@ export function VersionActions({
         body: JSON.stringify({ action }),
       });
       if (!res.ok) {
-        pushToast('error', '操作失败');
+        pushToast('error', t('action_failed'));
         return;
       }
-      pushToast('success', '已更新');
+      pushToast('success', t('updated'));
       router.refresh();
     });
   }
@@ -45,21 +47,21 @@ export function VersionActions({
       {pending && <Loader2 className="h-3 w-3 animate-spin text-muted" />}
       {!isCurrent && status !== 'yanked' && (
         <button type="button" disabled={pending} onClick={() => act('set_current')} className={btn}>
-          设为当前
+          {t('set_current')}
         </button>
       )}
       {status === 'yanked' ? (
         <button type="button" disabled={pending} onClick={() => act('restore')} className={btn}>
-          恢复
+          {t('restore')}
         </button>
       ) : (
         <button
           type="button"
           disabled={pending}
-          onClick={() => act('yank', isCurrent ? '这是当前版本，撤回后将回退到上一个已发布版本。确定？' : '确定撤回该版本？')}
+          onClick={() => act('yank', isCurrent ? t('confirm_yank_current') : t('confirm_yank'))}
           className={btn}
         >
-          撤回
+          {t('yank')}
         </button>
       )}
     </span>

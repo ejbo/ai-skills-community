@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { browseSkills, listCategories } from '@/lib/skill-queries';
 import { browsePacks } from '@/lib/pack-queries';
@@ -44,11 +44,16 @@ export default async function BrowseSkillsPage({
     return (
       <div className="container py-6">
         <div className="space-y-4">
-          <h1 className="text-3xl font-semibold tracking-tight">{t('title')}</h1>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="text-3xl font-semibold tracking-tight">{t('title')}</h1>
+            <UploadCta label={t('upload_cta')} />
+          </div>
           <SearchBar />
           <div className="flex flex-wrap items-end justify-between gap-3">
             <SourceTabs />
-            <span className="ml-auto text-xs text-muted">共 {total.toLocaleString()} 个合集包</span>
+            <span className="ml-auto text-xs text-muted">
+              {t('total_packs', { count: total })}
+            </span>
           </div>
         </div>
 
@@ -110,12 +115,15 @@ export default async function BrowseSkillsPage({
   return (
     <div className="container py-6">
       <div className="space-y-4">
-        <h1 className="text-3xl font-semibold tracking-tight">{t('title')}</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-3xl font-semibold tracking-tight">{t('title')}</h1>
+          <UploadCta label={t('upload_cta')} />
+        </div>
         <SearchBar />
         <div className="flex flex-wrap items-end justify-between gap-3">
           <SourceTabs />
           <div className="ml-auto flex items-center gap-3">
-            <span className="text-xs text-muted">共 {total.toLocaleString()} 个 Skill</span>
+            <span className="text-xs text-muted">{t('total_skills', { count: total })}</span>
             <SortMenu />
           </div>
         </div>
@@ -174,6 +182,19 @@ export default async function BrowseSkillsPage({
         </div>
       </div>
     </div>
+  );
+}
+
+// The one canonical upload entry — the user menu deliberately has none.
+function UploadCta({ label }: { label: string }) {
+  return (
+    <Link
+      href="/skills/new"
+      className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600"
+    >
+      <Upload className="h-3.5 w-3.5" />
+      {label}
+    </Link>
   );
 }
 

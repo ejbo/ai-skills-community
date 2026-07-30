@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, MessageSquare } from 'lucide-react';
-import { formatDistanceToNowStrict } from 'date-fns';
+import { getLocale, getTranslations } from 'next-intl/server';
+import { relativeTime } from '@/lib/i18n-date';
 import { auth } from '@/lib/auth';
 import { listFeedback, isFeedbackStatus, type FeedbackSort } from '@/lib/feedback-queries';
 import { toPublicAuthor } from '@/lib/user-identity';
@@ -31,6 +32,9 @@ function pageHref(sp: SearchParams, patch: Partial<SearchParams>) {
 }
 
 export default async function FeedbackPage({ searchParams }: { searchParams: SearchParams }) {
+  const t = await getTranslations('feedback');
+  const g = await getTranslations();
+  const locale = await getLocale();
   const session = await auth();
   const viewerIsAdmin = session?.user?.isAdmin ?? false;
   const status = isFeedbackStatus(searchParams.status) ? searchParams.status : undefined;
@@ -44,14 +48,14 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
   });
 
   const statusChips = [
-    { key: 'all', label: '全部' },
-    ...Object.entries(STATUS_META).map(([key, meta]) => ({ key, label: meta.label })),
+    { key: 'all', label: g('browse.all') },
+    ...Object.keys(STATUS_META).map((key) => ({ key, label: t(`status_${key}`) })),
   ];
 
   return (
     <div className="container max-w-4xl py-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-3xl font-semibold tracking-tight">意见反馈</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">{g('nav.feedback')}</h1>
         <FeedbackComposer loggedIn={Boolean(session?.user)} />
       </div>
 
@@ -81,8 +85,8 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
         <div className="flex items-center gap-3 pb-2 text-xs">
           {(
             [
-              { key: 'newest', label: '最新' },
-              { key: 'top', label: '最热' },
+              { key: 'newest', label: g('browse.sort_newest') },
+              { key: 'top', label: t('sort_top') },
             ] as const
           ).map((s) => {
             const active = sort === s.key;
@@ -106,8 +110,8 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
       <div className="mt-4">
         {items.length === 0 ? (
           <EmptyState
-            title={status ? `暂无「${STATUS_META[status].label}」的反馈` : '暂无反馈'}
-            actionLabel={status ? '查看全部' : undefined}
+            title={status ? t('empty_status', { status: t(`status_${status}`) }) : t('empty')}
+            actionLabel={status ? g('home.view_all') : undefined}
             actionHref={status ? '/feedback' : undefined}
           />
         ) : (
@@ -137,7 +141,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
                       <span className="truncate">{author.displayName}</span>
                       <DeptTag department={author.department} lab={author.lab} />
                       <span>·</span>
-                      <span>{formatDistanceToNowStrict(f.createdAt, { addSuffix: true })}</span>
+                      <span>{relativeTime(f.createdAt, locale)}</span>
                     </div>
                   </div>
                   <span className="flex shrink-0 items-center gap-1 text-xs text-muted">
@@ -159,12 +163,12 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
                 className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 font-medium text-zinc-700 transition hover:border-accent-500 hover:text-accent-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
               >
                 <ChevronLeft className="h-4 w-4" />
-                上一页
+                {g('browse.prev_page')}
               </Link>
             ) : (
               <span className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 px-3 font-medium text-muted opacity-40 dark:border-zinc-800">
                 <ChevronLeft className="h-4 w-4" />
-                上一页
+                {g('browse.prev_page')}
               </span>
             )}
             <span className="text-muted tabular-nums">
@@ -175,12 +179,12 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
                 href={pageHref(searchParams, { page: String(page + 1) })}
                 className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 font-medium text-zinc-700 transition hover:border-accent-500 hover:text-accent-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
               >
-                下一页
+                {g('browse.next_page')}
                 <ChevronRight className="h-4 w-4" />
               </Link>
             ) : (
               <span className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 px-3 font-medium text-muted opacity-40 dark:border-zinc-800">
-                下一页
+                {g('browse.next_page')}
                 <ChevronRight className="h-4 w-4" />
               </span>
             )}
