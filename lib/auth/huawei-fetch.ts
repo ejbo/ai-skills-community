@@ -23,6 +23,8 @@
  * unit-testable without loading the app's env.
  */
 
+import { Agent, ProxyAgent } from 'undici';
+
 export interface HuaweiFetchConfig {
   clientId: string;
   clientSecret: string;
@@ -154,46 +156,35 @@ function jsonResponse(obj: unknown): Response {
 }
 
 /**
- * Global fetch, optionally wrapped with an undici dispatcher for the Huawei intranet:
- * a ProxyAgent (USE_PROXY) or a TLS-verify-off Agent (SSO_VERIFY_SSL=false). undici is
- * imported lazily and the whole thing degrades to plain fetch if it can't be resolved.
+ * Global fetch wrapped with an undici dispatcher for the Huawei intranet.
+ *
+ * The two knobs are INDEPENDENT and must compose: uniportal presents an internal
+ * chain (`verifySsl:false`) AND may need the corporate proxy. The previous
+ * `if (proxy) … else if (!verifySsl) …` meant turning the proxy on silently
+ * re-enabled cert verification, so enabling USE_PROXY for 知识库 broke W3 login.
+ *
+ * Note that uniportal is an INTRANET host: callers normally leave `useProxy`
+ * false for it (lib/auth.ts derives it from the per-host bypass list) — the
+ * proxy refuses internal destinations.
  */
 function buildBaseFetch(cfg: HuaweiFetchConfig): typeof fetch {
-  const needsDispatcher = cfg.useProxy || !cfg.verifySsl;
-  if (!needsDispatcher) return fetch;
+  const proxyUri =
+    cfg.useProxy && cfg.proxyHost
+      ? /^https?:\/\//i.test(cfg.proxyHost)
+        ? cfg.proxyHost
+        : `http://${cfg.proxyHost}${/:\d+$/.test(cfg.proxyHost) ? '' : `:${cfg.proxyPort ?? '8080'}`}`
+      : null;
+  if (!proxyUri && cfg.verifySsl) return fetch;
 
-  let dispatcher: unknown | null | undefined;
-  const ensureDispatcher = async (): Promise<unknown | null> => {
-    if (dispatcher !== undefined) return dispatcher;
-    dispatcher = null;
-    try {
-      // Indirect specifier so TS/bundlers don't statically resolve undici (it's an
-      // optional transitive dep, not a direct one). The try/catch handles absence.
-      const undiciSpecifier = 'undici';
-      const undici = (await import(/* @vite-ignore */ /* webpackIgnore: true */ undiciSpecifier)) as {
-        Agent: new (opts: unknown) => unknown;
-        ProxyAgent: new (uri: string) => unknown;
-      };
-      if (cfg.useProxy && cfg.proxyHost) {
-        dispatcher = new undici.ProxyAgent(`http://${cfg.proxyHost}:${cfg.proxyPort ?? '8080'}`);
-      } else if (!cfg.verifySsl) {
-        dispatcher = new undici.Agent({ connect: { rejectUnauthorized: false } });
-      }
-    } catch {
-      // undici not resolvable — fall back to plain fetch. If uniportal's cert fails to
-      // validate, set NODE_EXTRA_CA_CERTS (preferred) or NODE_TLS_REJECT_UNAUTHORIZED=0.
-      // eslint-disable-next-line no-console
-      console.warn('[huawei-sso] undici unavailable; outbound TLS/proxy options ignored.');
-      dispatcher = null;
-    }
-    return dispatcher;
-  };
+  const dispatcher = proxyUri
+    ? // Object form: the string form drops requestTls, leaving the tunnelled
+      // request verified against Node's bundled roots.
+      new ProxyAgent({ uri: proxyUri, requestTls: { rejectUnauthorized: cfg.verifySsl } })
+    : new Agent({ connect: { rejectUnauthorized: false } });
 
   return (async (input: FetchInput, init?: FetchInit): Promise<Response> => {
-    const d = await ensureDispatcher();
-    if (!d) return fetch(input, init);
     const opts: FetchInit & { dispatcher?: unknown } = { ...(init ?? {}) };
-    opts.dispatcher = d;
+    opts.dispatcher = dispatcher;
     return fetch(input, opts as FetchInit);
   }) as typeof fetch;
 }

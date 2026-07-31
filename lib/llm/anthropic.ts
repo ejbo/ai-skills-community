@@ -23,6 +23,12 @@ export interface AnthropicProviderOptions {
   apiKey: string;
   baseUrl: string;
   model: string;
+  /**
+   * Injected so this module stays env-free/testable. Callers on the intranet
+   * pass `egressFetch` (lib/net/proxy) — api.anthropic.com is only reachable
+   * through the corporate proxy there.
+   */
+  fetchImpl?: typeof fetch;
 }
 
 const DEFAULT_MAX_TOKENS = 1024;
@@ -32,11 +38,13 @@ export class AnthropicProvider implements LLMProvider {
   readonly model: string;
   private readonly apiKey: string;
   private readonly baseUrl: string;
+  private readonly fetchImpl: typeof fetch;
 
   constructor(opts: AnthropicProviderOptions) {
     this.apiKey = opts.apiKey;
     this.baseUrl = opts.baseUrl.replace(/\/$/, '');
     this.model = opts.model;
+    this.fetchImpl = opts.fetchImpl ?? fetch;
   }
 
   private body(opts: LLMCompleteOptions, stream: boolean) {
@@ -54,7 +62,7 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   private async post(opts: LLMCompleteOptions, stream: boolean): Promise<Response> {
-    const res = await fetch(`${this.baseUrl}/v1/messages`, {
+    const res = await this.fetchImpl(`${this.baseUrl}/v1/messages`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

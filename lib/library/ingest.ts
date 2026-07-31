@@ -185,6 +185,7 @@ const epubImageSaver = async (data: Buffer, ext: string): Promise<string | null>
 
 const MAX_ARTICLE_IMAGES = 24;
 const MAX_ARTICLE_IMAGE_BYTES = 8 * 1024 * 1024;
+const REHOST_TOTAL_BUDGET_MS = 60_000;
 const IMAGE_EXT_BY_MIME: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/jpg': 'jpg',
@@ -215,9 +216,17 @@ async function rehostArticleImages(chapters: ExtractedDoc['chapters']): Promise<
 
   const rewritten = new Map<string, string>();
   let saved = 0;
+  // One shared budget for the whole batch: 24 sequential 20s timeouts would
+  // otherwise push the submit past nginx's 300s read timeout, turning a slow
+  // 图床 into a bare "网络错误，请重试" with no server-side trace.
+  const deadlineAt = Date.now() + REHOST_TOTAL_BUDGET_MS;
   for (const [escaped, url] of urlByEscaped) {
     if (saved >= MAX_ARTICLE_IMAGES) break;
-    const fetched = await fetchBinary(url, MAX_ARTICLE_IMAGE_BYTES);
+    if (Date.now() >= deadlineAt) {
+      console.warn('[library] image re-hosting budget exhausted', { saved, total: urlByEscaped.size });
+      break;
+    }
+    const fetched = await fetchBinary(url, MAX_ARTICLE_IMAGE_BYTES, { deadlineAt });
     if (!fetched) continue;
     const mime = fetched.contentType.toLowerCase();
     const ext =

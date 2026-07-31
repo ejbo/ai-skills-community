@@ -1,36 +1,26 @@
-import Link from 'next/link';
-import { BookOpen, Terminal, FileCode } from 'lucide-react';
+import { BookOpen } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
+import { DOC_GROUPS } from './_nav';
+import { DocsNav } from './_components/DocsNav';
 
 export default async function DocsLayout({ children }: { children: React.ReactNode }) {
   const t = await getTranslations('docs_page');
   const tNav = await getTranslations('nav');
-  const links = [
-    { href: '/docs/cli', label: t('nav_cli'), icon: <Terminal className="h-4 w-4" /> },
-    { href: '/docs/authoring', label: t('nav_authoring'), icon: <FileCode className="h-4 w-4" /> },
-  ];
+  const groups = DOC_GROUPS.map((g) => ({
+    label: t(g.labelKey),
+    items: g.items.map((i) => ({ href: i.href, label: t(i.labelKey) })),
+  }));
   return (
     <div className="container py-8">
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[200px_1fr]">
-        <aside>
-          <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[210px_minmax(0,1fr)]">
+        <aside className="lg:sticky lg:top-20 lg:self-start">
+          <div className="mb-4 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted">
             <BookOpen className="h-3.5 w-3.5" />
             {tNav('docs')}
           </div>
-          <nav className="flex flex-col gap-0.5">
-            {links.map((l) => (
-              <Link
-                key={l.href}
-                href={l.href}
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
-              >
-                {l.icon}
-                {l.label}
-              </Link>
-            ))}
-          </nav>
+          <DocsNav groups={groups} />
         </aside>
-        <article>{children}</article>
+        <article className="min-w-0">{children}</article>
       </div>
     </div>
   );

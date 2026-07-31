@@ -22,8 +22,12 @@ WorkingDirectory=/opt/cari_projects/ai-skills-community
 # `next start` as well as build time.
 Environment=NODE_ENV=production
 Environment=NEXT_BASE_PATH=/ai-community
-# If the box needs a CA bundle to trust uniportal's cert, uncomment (preferred over
-# NODE_TLS_REJECT_UNAUTHORIZED=0):
+# CA bundle for uniportal's cert AND for the TLS-intercepting corporate proxy
+# (proxyca re-signs every https response with an internal CA). Preferred over
+# NODE_TLS_REJECT_UNAUTHORIZED=0. This MUST live here, not in .env: Node builds
+# its trust store at process start, long before Next loads .env, so a
+# NODE_EXTRA_CA_CERTS line in .env has zero effect. (lib/env.ts's PROXY_CA_FILE
+# is the .env-friendly alternative — it is read by the app, not by Node.)
 # Environment=NODE_EXTRA_CA_CERTS=/etc/ssl/certs/huawei-ca-bundle.pem
 #
 # Call node directly (robust; avoids pnpm's `--` arg forwarding). The path below is this

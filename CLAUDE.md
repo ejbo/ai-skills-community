@@ -99,7 +99,23 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
 - Store media URLs root-relative; apply `withBasePath()` (`lib/base-path.ts`) at render time
   so content stays portable across root vs `/ai-community` deploys.
 - Env is validated by `lib/env.ts` (zod). Read config via `env`, not `process.env`
-  (except `NEXT_PUBLIC_*`, which are build-time inlined).
+  (except `NEXT_PUBLIC_*`, which are build-time inlined). Env changes need a **restart**,
+  never a rebuild — `lib/env.ts` parses the whole `process.env` object at import, so nothing
+  outside `NEXT_PUBLIC_*` / `NEXT_BASE_PATH` is baked into the build.
+- **Outbound egress** (`lib/net/proxy.ts`): the intranet box has NO direct route to the public
+  internet, so every server-side call that leaves it must go through `egressFor(url)` (undici)
+  or `egressFetch` (global fetch) — never a bare `fetch`/`undiciRequest`. Routing is **per host,
+  not a global switch**: external → corporate proxy, `PROXY_BYPASS` hosts (default
+  `.huawei.com` + RFC1918 + loopback) → direct, because the proxy refuses internal destinations.
+  That's what keeps W3 SSO (`lib/auth.ts` derives `useProxy` from `hostBypassesProxy`) and the
+  10.x vLLM working while 知识库 fetches the public web. Three non-obvious traps: undici ignores
+  `HTTP(S)_PROXY` (we parse them ourselves); `new ProxyAgent('http://…')` — the **string** form —
+  silently drops `requestTls`, so the MITM cert is checked against Mozilla roots and every https
+  fetch dies with `unable to verify the first certificate` (use the object form); and
+  `NODE_EXTRA_CA_CERTS` only works as a systemd `Environment=` line — Node builds its trust store
+  before Next loads `.env`, so `PROXY_CA_FILE` is the `.env`-friendly alternative. Diagnose live
+  at 管理后台 → 知识库 → "网络出口 (Proxy) 诊断" (`/api/admin/egress-test`), which reports the raw
+  errno + `cause` + chosen route that the user-facing toasts collapse.
 - **Notifications** (`lib/notifications.ts`): in-app `Notification` rows + best-effort email,
   both gated per-user by `NotificationPreference` (Settings → 通知). Emit from the mutation
   site (comment reply, access request/decision, announcement fan-out) — never let a
@@ -258,6 +274,10 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
     Bare `formatDistanceToNowStrict` is English-only and leaks "3 days ago" into the 中文 UI.
   - ICU plurals for en/fr (`{count, plural, one {# comment} other {# comments}}`); the zh value is
     the exact original Chinese. Never put a raw `'` right before `{`/`}` (it escapes the brace).
+  - **A literal `<…>` in a message value must be written `'<…>'`.** next-intl parses `<slug>` as a
+    rich-text tag and fails the WHOLE message with `INVALID_MESSAGE: UNCLOSED_TAG`, silently
+    rendering the raw key path (`docs_page.foo`) in the UI. The quotes are consumed by ICU, so the
+    reader still sees `<slug>`. This bites the docs pages, which are full of `<slug>` placeholders.
   - `.ts` helper modules (stores, stream/parse helpers) must NOT import next-intl — callers pass
     translated text in.
   - **`/manage` admin UI stays Chinese by design** (internal ops tool); notification/email bodies are

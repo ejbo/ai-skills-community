@@ -19,6 +19,12 @@ export interface OpenAiProviderOptions {
   apiKey?: string;
   baseUrl: string;
   model: string;
+  /**
+   * Injected so this module stays env-free/testable. Callers pass `egressFetch`
+   * (lib/net/proxy), which keeps an internal 10.x vLLM on the direct route even
+   * when the corporate proxy is enabled.
+   */
+  fetchImpl?: typeof fetch;
 }
 
 const DEFAULT_MAX_TOKENS = 1024;
@@ -28,11 +34,13 @@ export class OpenAiProvider implements LLMProvider {
   readonly model: string;
   private readonly apiKey: string | undefined;
   private readonly baseUrl: string;
+  private readonly fetchImpl: typeof fetch;
 
   constructor(opts: OpenAiProviderOptions) {
     this.apiKey = opts.apiKey;
     this.baseUrl = opts.baseUrl.replace(/\/$/, '');
     this.model = opts.model;
+    this.fetchImpl = opts.fetchImpl ?? fetch;
   }
 
   private body(opts: LLMCompleteOptions, stream: boolean) {
@@ -53,7 +61,7 @@ export class OpenAiProvider implements LLMProvider {
     // Only send Authorization when a key is configured — keyless internal servers can reject
     // a bare "Bearer " header.
     if (this.apiKey) headers.authorization = `Bearer ${this.apiKey}`;
-    const res = await fetch(`${this.baseUrl}/chat/completions`, {
+    const res = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers,
       body: JSON.stringify(this.body(opts, stream)),

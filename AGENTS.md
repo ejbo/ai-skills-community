@@ -98,6 +98,16 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
 
 - Store media URLs root-relative; apply `withBasePath()` (`lib/base-path.ts`) at render time
   so content stays portable across root vs `/ai-community` deploys.
+- **Outbound egress** (`lib/net/proxy.ts`): the intranet box has NO direct route to the public
+  internet, so every server-side call that leaves it must go through `egressFor(url)` (undici)
+  or `egressFetch` (global fetch) — never a bare `fetch`/`undiciRequest`. Routing is **per host,
+  not a global switch**: external → corporate proxy, `PROXY_BYPASS` hosts (default
+  `.huawei.com` + RFC1918 + loopback) → direct, because the proxy refuses internal destinations.
+  Traps: undici ignores `HTTP(S)_PROXY` (we parse them ourselves); `new ProxyAgent('http://…')`
+  — the **string** form — silently drops `requestTls` so the MITM cert fails against Mozilla
+  roots (use the object form); `NODE_EXTRA_CA_CERTS` only works as a systemd `Environment=`
+  line (Node builds its trust store before Next loads `.env`) — use `PROXY_CA_FILE` from `.env`.
+  Diagnose at 管理后台 → 知识库 → "网络出口 (Proxy) 诊断".
 - Env is validated by `lib/env.ts` (zod). Read config via `env`, not `process.env`
   (except `NEXT_PUBLIC_*`, which are build-time inlined).
 - **Notifications** (`lib/notifications.ts`): in-app `Notification` rows + best-effort email,

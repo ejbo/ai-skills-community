@@ -6,6 +6,7 @@ import { verifyPassword } from '@/lib/auth/password';
 import { syncDirectoryToUserAtLogin } from '@/lib/employee-directory';
 import { env } from '@/lib/env';
 import { createHuaweiFetch } from '@/lib/auth/huawei-fetch';
+import { hostBypassesProxy } from '@/lib/net/proxy';
 
 declare module 'next-auth' {
   interface Session {
@@ -84,7 +85,11 @@ function buildProviders(): Provider[] {
         tokenUrl: env.SSO_ACCESS_TOKEN_URL!,
         userinfoUrl: env.SSO_USERINFO_URL!,
         verifySsl: env.SSO_VERIFY_SSL,
-        useProxy: env.USE_PROXY,
+        // Per-host, NOT the raw USE_PROXY flag: uniportal is an intranet host and
+        // the corporate proxy refuses internal destinations, so turning the proxy
+        // on for 知识库 must not drag W3 login through it. The default bypass list
+        // (.huawei.com) already sends uniportal direct.
+        useProxy: env.USE_PROXY && !hostBypassesProxy(new URL(env.SSO_ACCESS_TOKEN_URL!).hostname),
         proxyHost: env.HUAWEI_PROXY_HOST,
         proxyPort: env.HUAWEI_PROXY_PORT,
       }),

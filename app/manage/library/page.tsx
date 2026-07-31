@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { LibraryManager } from './LibraryManager';
 import { AiSettingsCard } from './AiSettingsCard';
+import { EgressTestPanel } from './EgressTestPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +35,7 @@ export default async function AdminLibraryPage() {
         管理用户收录的网页 / PDF / EPUB 文档：调整类型、推荐、重跑提取或重建 AI 导读。删除为软删除，可随时恢复。
       </p>
       <AiSettingsCard />
+      <EgressTestPanel />
       <LibraryManager
         docs={docs.map((d) => ({
           id: d.id,

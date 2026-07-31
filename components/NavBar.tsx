@@ -14,21 +14,23 @@ export async function NavBar({ session }: { session: Session | null }) {
   const t = await getTranslations('nav');
   return (
     <NavBarShell>
-      <header className="flex h-14 w-full items-center gap-7 rounded-2xl border border-zinc-200/70 bg-white/70 px-5 shadow-lg shadow-black/5 backdrop-blur-xl supports-[backdrop-filter]:bg-white/60 dark:border-zinc-800/70 dark:bg-zinc-950/70 dark:shadow-black/30 dark:supports-[backdrop-filter]:bg-zinc-950/60 sm:px-6">
+      {/* Gaps/padding are deliberately tight: at 14" (≈1440–1512 logical) the
+          logo + 6 nav links + action cluster have to fit one 56px row. */}
+      <header className="flex h-14 w-full items-center gap-3 rounded-2xl border border-zinc-200/70 bg-white/70 px-4 shadow-lg shadow-black/5 backdrop-blur-xl supports-[backdrop-filter]:bg-white/60 dark:border-zinc-800/70 dark:bg-zinc-950/70 dark:shadow-black/30 dark:supports-[backdrop-filter]:bg-zinc-950/60 sm:px-5 lg:gap-5">
         <Link href="/" className="flex shrink-0 items-center gap-3 pr-1 font-semibold tracking-tight">
           {/* withBasePath so it resolves under a subpath deploy (/ai-community/CARI_logo.webp) */}
           <img src={withBasePath('/CARI_logo.webp')} alt="CARI" className="h-8 w-auto" />
           <span className="whitespace-nowrap">AI Community</span>
         </Link>
-        <nav className="hidden items-center gap-1 md:flex">
+        <nav className="hidden min-w-0 items-center gap-0.5 md:flex lg:gap-1">
           <NavLink href="/skills">{t('browse')}</NavLink>
           <NavLink href="/videos">{t('videos')}</NavLink>
           <NavLink href="/library">{t('library')}</NavLink>
           <NavLink href="/discussion">{t('discussion')}</NavLink>
           <NavLink href="/events">{t('events')}</NavLink>
-          <NavLink href="/docs/cli">{t('docs')}</NavLink>
+          <NavLink href="/docs">{t('docs')}</NavLink>
         </nav>
-        <div className="flex flex-1 items-center justify-end gap-2">
+        <div className="flex flex-1 items-center justify-end gap-1">
           <SearchTrigger />
           <ThemeToggle />
           <Link

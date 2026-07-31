@@ -7,6 +7,7 @@ import { prisma } from '@/lib/db';
 import { getProvider, type LLMProvider } from '@/lib/llm';
 import { AnthropicProvider } from '@/lib/llm/anthropic';
 import { OpenAiProvider } from '@/lib/llm/openai';
+import { egressFetch } from '@/lib/net/proxy';
 
 const CACHE_MS = 60_000;
 
@@ -39,11 +40,13 @@ function buildOverride(s: SettingRow): LLMProvider | null {
   const model = s.llmModel?.trim();
   const apiKey = s.llmApiKey?.trim() || undefined;
   if (!baseUrl || !model) return null;
+  // egressFetch: the base URL is admin-editable, so it may be an external
+  // endpoint (needs the corporate proxy) or an internal one (must stay direct).
   if (s.llmProvider === 'anthropic') {
     if (!apiKey) return null;
-    return new AnthropicProvider({ apiKey, baseUrl, model });
+    return new AnthropicProvider({ apiKey, baseUrl, model, fetchImpl: egressFetch });
   }
-  return new OpenAiProvider({ apiKey, baseUrl, model });
+  return new OpenAiProvider({ apiKey, baseUrl, model, fetchImpl: egressFetch });
 }
 
 /**

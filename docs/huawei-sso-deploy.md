@@ -25,7 +25,7 @@ is registered (备案) in IDaaS. Ready-to-use artifacts:
 | `NEXT_BASE_PATH` | `/ai-community` |
 | Callback to register/confirm | `https://cari.rnd.huawei.com/ai-community/api/auth/callback/huawei` |
 | `client_id` / `secret` | the registration whose 应用域名 covers `cari.rnd.huawei.com` (D2) |
-| `USE_PROXY` | `false` (direct) — `SSO_VERIFY_SSL=false` |
+| `USE_PROXY` | `true` for public-internet features; uniportal still goes **direct** via the bypass list. `SSO_VERIFY_SSL=false` |
 | App upstream port | `127.0.0.1:3100` (any free port; must match nginx + the `next start -p`) |
 
 **Steps**
@@ -160,11 +160,33 @@ SSO_USERINFO_URL=https://uniportal.huawei.com/saaslogin1/oauth2/userinfo
 SSO_SCOPE=base.profile
 SSO_VERIFY_SSL=false                                        # uniportal's internal cert often won't validate
 
-# Only if the app's server cannot reach uniportal.huawei.com directly:
-USE_PROXY=false
-HUAWEI_PROXY_HOST=proxyca.huawei.com
+# Outbound egress. NOT an SSO-only knob: 知识库 URL 导入 and any external LLM have no
+# route off this box without it. Routing is PER HOST (lib/net/proxy.ts) — the default
+# bypass list keeps uniportal/w3/10.x direct, so enabling this cannot break W3 login.
+USE_PROXY=true
+HUAWEI_PROXY_HOST=proxyca.huawei.com      # host only — no scheme, no ":8080"
 HUAWEI_PROXY_PORT=8080
+# PROXY_BYPASS unset ⇒ localhost,127.0.0.1,::1,.huawei.com,10/8,172.16/12,192.168/16,169.254/16
+# proxyca TLS-intercepts; trust its CA one of three ways (see below).
+# PROXY_CA_FILE=/etc/ssl/certs/huawei-ca-bundle.pem
+PROXY_TLS_INSECURE=false
 ```
+
+**Trusting the proxy's CA.** proxyca re-signs every https response with an internal
+CA, so a tunnelled request fails with `unable to verify the first certificate` until
+one of these is in place:
+
+1. `PROXY_CA_FILE=<pem>` in `.env` — read by the app, so `.env` works.
+2. `Environment=NODE_EXTRA_CA_CERTS=<pem>` in `deploy/ai-community.service`.
+   ⚠️ **This one must NOT go in `.env`** — Node builds its trust store at process
+   start, before Next loads `.env`, so a `.env` line has zero effect.
+3. `PROXY_TLS_INSECURE=true` — blunt fallback. Skips verification for **proxied**
+   requests only; direct requests stay strict.
+
+Env changes here take effect on `systemctl restart` — **no rebuild needed** (they are
+parsed from `process.env` at runtime). Verify the result at
+管理后台 → 知识库 → **网络出口 (Proxy) 诊断**, which shows the resolved proxy URI, the
+bypass list, which CA is in use, and the raw errno of a live probe.
 
 `NEXT_BASE_PATH` must be present **at build time** (`next build`), not just runtime —
 Next bakes `basePath` into the build.
@@ -224,7 +246,12 @@ NEXT_BASE_PATH=/<SUBPATH> pnpm exec next start -p 3100 -H 127.0.0.1   # NOT `pnp
 |---------|-------------|
 | `E_10004` redirect_uri error | The callback isn't a subdirectory of a registered 应用域名 (subdomain/port/path mismatch). Register the exact host, or add it to 应用域名. |
 | `E_10001` client_id error | Wrong env (prod vs test `uniportal` vs `uniportal-beta`) or wrong client_id. |
-| TLS / cert verification error reaching uniportal | Keep `SSO_VERIFY_SSL=false` (uses an undici verify-off agent). If undici isn't resolvable in your runtime, set `NODE_EXTRA_CA_CERTS=<huawei CA bundle>` (preferred) or `NODE_TLS_REJECT_UNAUTHORIZED=0` on the process. |
+| TLS / cert verification error reaching uniportal | Keep `SSO_VERIFY_SSL=false` (uses an undici verify-off agent). Preferred alternative: `Environment=NODE_EXTRA_CA_CERTS=<huawei CA bundle>` in the systemd unit (never in `.env`). |
+| 知识库 上传链接 报 `无法解析域名 …（当前为直连出口）` | No egress configured. Set `USE_PROXY=true` + `HUAWEI_PROXY_HOST` and `systemctl restart`. |
+| 知识库 报 `代理证书未被信任` | proxyca's MITM CA isn't trusted — set `PROXY_CA_FILE`, or `NODE_EXTRA_CA_CERTS` in the systemd unit, or `PROXY_TLS_INSECURE=true`. |
+| 知识库 报 `代理拒绝了该目标（HTTP 403）` | An intranet target was pushed through the proxy. Add its host to `PROXY_BYPASS` (`.huawei.com` and RFC1918 are bypassed by default). |
+| W3 login breaks right after enabling the proxy | Should no longer happen — `lib/auth.ts` derives `useProxy` per host from the bypass list. If it does, check `PROXY_BYPASS` was overridden without re-adding `.huawei.com`. |
+| Proxy settings appear to have no effect | `HTTP_PROXY`/`HTTPS_PROXY` alone are inert for undici; the app reads them explicitly but only after a **restart** (`lib/env.ts` snapshots `process.env` at import). Confirm with 管理后台 → 知识库 → 网络出口 (Proxy) 诊断. |
 | Assets 404 / login redirects to `/` instead of `/<SUBPATH>/` | `NEXT_BASE_PATH` / `AUTH_URL` / nginx `<SUBPATH>` disagree, or `proxy_pass` has a trailing slash. Make all four identical. |
 | Login/logout buttons hit `<origin>/api/auth/*` (404 / lands on the neighbour app) instead of `…/<SUBPATH>/api/auth/*` | The next-auth React client can't read `AUTH_URL` in the browser, so it must be told the basePath. `components/AuthProvider.tsx` sets `SessionProvider basePath = NEXT_PUBLIC_BASE_PATH + /api/auth`. Ensure `NEXT_PUBLIC_BASE_PATH` is present **at build time** (next.config derives it from `NEXT_BASE_PATH`). |
 | `UnknownAction: Cannot parse action at /api/auth/…` + "Bad request" on every login (W3 *and* password) | Next strips `NEXT_BASE_PATH` from inbound route-handler URLs, so @auth/core (basePath `<SUBPATH>/api/auth`) sees `/api/auth/…` and can't match. `lib/auth-handlers.ts` re-adds the basePath to inbound requests. If you see this, that wrapper is missing/edited — restore it. |

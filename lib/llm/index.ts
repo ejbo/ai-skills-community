@@ -1,4 +1,5 @@
 import { env } from '@/lib/env';
+import { egressFetch } from '@/lib/net/proxy';
 import { resolveLLMConfig } from './config';
 import { AnthropicProvider } from './anthropic';
 import { OpenAiProvider } from './openai';
@@ -41,10 +42,20 @@ export function getProvider(): LLMProvider {
     if (!cfg.apiKey) {
       throw new LLMConfigError('服务端未配置 LLM API key（设置 LLM_API_KEY 或 ANTHROPIC_API_KEY）');
     }
-    cached = new AnthropicProvider({ apiKey: cfg.apiKey, baseUrl: cfg.baseUrl, model: cfg.model });
+    cached = new AnthropicProvider({
+      apiKey: cfg.apiKey,
+      baseUrl: cfg.baseUrl,
+      model: cfg.model,
+      fetchImpl: egressFetch,
+    });
   } else {
     // OpenAI-compatible: apiKey may be undefined/empty (internal keyless model).
-    cached = new OpenAiProvider({ apiKey: cfg.apiKey, baseUrl: cfg.baseUrl, model: cfg.model });
+    cached = new OpenAiProvider({
+      apiKey: cfg.apiKey,
+      baseUrl: cfg.baseUrl,
+      model: cfg.model,
+      fetchImpl: egressFetch,
+    });
   }
   return cached;
 }
