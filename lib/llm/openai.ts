@@ -1,5 +1,5 @@
-import type { LLMCompleteOptions, LLMProvider, LLMUsage } from './types';
-import { iterateSseDeltas } from './sse';
+import type { LLMCompleteOptions, LLMCompletion, LLMProvider } from './types';
+import { iterateSseDeltas, stripThinkDeltas } from './sse';
 
 /** Extract a text fragment from a parsed OpenAI-compatible stream event, or null. */
 export function extractOpenAiDelta(event: unknown): string | null {
@@ -10,7 +10,19 @@ export function extractOpenAiDelta(event: unknown): string | null {
 }
 
 interface OpenAiChatResponse {
-  choices: Array<{ message?: { content?: string } }>;
+  choices: Array<{
+    message?: {
+      content?: string;
+      /**
+       * vLLM/SGLang running a --reasoning-parser split the <think> block out of
+       * `content` into this field. When the budget is exhausted inside it,
+       * `content` comes back as "" and the request looks like a silent failure.
+       */
+      reasoning_content?: string;
+      reasoning?: string;
+    };
+    finish_reason?: string;
+  }>;
   usage?: { prompt_tokens: number; completion_tokens: number };
 }
 
@@ -20,14 +32,20 @@ export interface OpenAiProviderOptions {
   baseUrl: string;
   model: string;
   /**
-   * Injected so this module stays env-free/testable. Callers pass `egressFetch`
-   * (lib/net/proxy), which keeps an internal 10.x vLLM on the direct route even
-   * when the corporate proxy is enabled.
+   * Injected so this module stays env-free/testable. Callers pass `llmFetch`
+   * (lib/llm/egress), which keeps the internal model on the direct route.
    */
   fetchImpl?: typeof fetch;
+  /**
+   * SELF-HOSTED vLLM/SGLang only. Sends `chat_template_kwargs.enable_thinking=false`
+   * so a reasoning model answers directly instead of spending its budget inside
+   * <think>. vLLM accepts-and-ignores unknown fields; api.openai.com returns a
+   * 400, which is why this is opt-in per deployment and off by default.
+   */
+  disableThinking?: boolean;
+  /** Ask for `response_format: json_object` (vLLM guided decoding). Same caveat. */
+  jsonMode?: boolean;
 }
-
-const DEFAULT_MAX_TOKENS = 1024;
 
 export class OpenAiProvider implements LLMProvider {
   readonly id = 'openai-compatible' as const;
@@ -35,12 +53,16 @@ export class OpenAiProvider implements LLMProvider {
   private readonly apiKey: string | undefined;
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly disableThinking: boolean;
+  private readonly jsonMode: boolean;
 
   constructor(opts: OpenAiProviderOptions) {
     this.apiKey = opts.apiKey;
     this.baseUrl = opts.baseUrl.replace(/\/$/, '');
     this.model = opts.model;
     this.fetchImpl = opts.fetchImpl ?? fetch;
+    this.disableThinking = opts.disableThinking ?? false;
+    this.jsonMode = opts.jsonMode ?? false;
   }
 
   private body(opts: LLMCompleteOptions, stream: boolean) {
@@ -50,7 +72,14 @@ export class OpenAiProvider implements LLMProvider {
       : opts.messages;
     return {
       model: opts.model ?? this.model,
-      max_tokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
+      // Omitted when unset: an explicit cap is what truncated reasoning models
+      // mid-<think>, and vLLM/SGLang default to the remaining context window,
+      // which is the behaviour we want. Callers only set it for tiny probes.
+      ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
+      // Top-level, NOT nested under `extra_body` — that key is an artifact of the
+      // OpenAI Python SDK and a raw fetch client must not reproduce it.
+      ...(this.disableThinking ? { chat_template_kwargs: { enable_thinking: false } } : {}),
+      ...(this.jsonMode && opts.json ? { response_format: { type: 'json_object' } } : {}),
       stream,
       messages,
     };
@@ -73,20 +102,27 @@ export class OpenAiProvider implements LLMProvider {
     return res;
   }
 
-  async complete(opts: LLMCompleteOptions): Promise<{ text: string; usage: LLMUsage | null }> {
+  async complete(opts: LLMCompleteOptions): Promise<LLMCompletion> {
     const res = await this.post(opts, false);
     const json = (await res.json()) as OpenAiChatResponse;
-    const text = json.choices?.[0]?.message?.content ?? '';
+    const choice = json.choices?.[0];
+    const message = choice?.message;
     return {
-      text,
+      text: message?.content ?? '',
       usage: json.usage
         ? { input: json.usage.prompt_tokens, output: json.usage.completion_tokens }
         : null,
+      finishReason: choice?.finish_reason ?? null,
+      reasoning: message?.reasoning_content ?? message?.reasoning ?? null,
     };
   }
 
   async *streamDeltas(opts: LLMCompleteOptions): AsyncIterable<string> {
     const res = await this.post(opts, true);
-    yield* iterateSseDeltas(res.body as ReadableStream<Uint8Array>, extractOpenAiDelta);
+    // A server without a --reasoning-parser streams <think> inline; strip it so
+    // the chain of thought never lands in the user's chat bubble.
+    yield* stripThinkDeltas(
+      iterateSseDeltas(res.body as ReadableStream<Uint8Array>, extractOpenAiDelta),
+    );
   }
 }

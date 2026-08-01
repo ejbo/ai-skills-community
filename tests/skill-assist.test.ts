@@ -37,6 +37,94 @@ describe('extractJsonObject', () => {
   it('returns null when there is no object', () => {
     expect(extractJsonObject('no json here')).toBeNull();
   });
+
+  // ── reasoning models cut off by max_tokens (the 知识库 indexing failure) ──
+  it('returns null when <think> was never closed', () => {
+    // Budget exhausted inside the reasoning: the answer never arrived, and the
+    // brace the model quoted while thinking is NOT it.
+    const text = '<think>好的，我需要输出 {"summary":"…","keywords":[…]} 这样的对象。先读正文：这一章讲';
+    expect(extractJsonObject(text)).toBeNull();
+  });
+  it('prefers the answer after the LAST </think>, not a brace inside the thinking', () => {
+    const text =
+      '<think>格式应该是 {"summary":"x","keywords":["a"]}，我先想想…</think>\n' +
+      '{"summary":"真正的概要","keywords":["检索"]}';
+    expect(extractJsonObject(text)).toEqual({ summary: '真正的概要', keywords: ['检索'] });
+  });
+  it('skips a non-JSON brace in prose and finds the real object', () => {
+    const text = '按照 {格式} 输出如下：\n{"summary":"内容"}';
+    expect(extractJsonObject(text)).toEqual({ summary: '内容' });
+  });
+  it('repairs an object truncated inside an array', () => {
+    expect(extractJsonObject('{"summary":"做 PDF 签名","keywords":["pdf","签名"')).toEqual({
+      summary: '做 PDF 签名',
+      keywords: ['pdf', '签名'],
+    });
+  });
+  it('repairs an object truncated inside a string', () => {
+    expect(extractJsonObject('{"summary":"这一章讲的是检索')).toEqual({
+      summary: '这一章讲的是检索',
+    });
+  });
+  it('drops a dangling key with no value when repairing', () => {
+    expect(extractJsonObject('{"summary":"完整的概要","keywords":')).toEqual({
+      summary: '完整的概要',
+    });
+  });
+  it('still returns null when the truncation leaves nothing valid', () => {
+    expect(extractJsonObject('{"summ')).toBeNull();
+  });
+  it('strips a fence with a non-json language tag', () => {
+    expect(extractJsonObject('```JSON5\n{"a":1}\n```')).toEqual({ a: 1 });
+  });
+
+  // ── regressions found by the reasoning-model audit ──
+  it('returns null when an unterminated <thinking> alias holds only the schema', () => {
+    // /<think\b/ does not match <thinking> (both sides are word chars), so the
+    // reasoning's own example object used to be returned as the answer.
+    expect(extractJsonObject('<thinking>需要输出 {"summary":"…"} 先读正文')).toBeNull();
+  });
+  it('returns null for an unterminated <think> carrying attributes', () => {
+    expect(extractJsonObject('<think id="1">格式是 {"name":"x"} 先想想')).toBeNull();
+  });
+  it('finds the answer when only the CLOSING tag is emitted (GLM prefills the opener)', () => {
+    expect(extractJsonObject('先分析 {"a":1} 然后</think>\n{"name":"x"}')).toEqual({ name: 'x' });
+  });
+  it('prefers the real answer over a schema echo that precedes it', () => {
+    expect(extractJsonObject('例如 {"name": "..."} — 我的答案:\n{"name":"PDF Signer"}')).toEqual({
+      name: 'PDF Signer',
+    });
+  });
+  it('prefers the real answer over a {} mentioned in prose', () => {
+    expect(extractJsonObject('这是你要的 JSON（注意 {} 结构）:\n{"name":"x"}')).toEqual({ name: 'x' });
+  });
+  it('preserves ``` fences inside a descriptionMd string value', () => {
+    // The old blanket fence strip silently destroyed generated code blocks and
+    // persisted the damage as the skill's public Overview.
+    expect(extractJsonObject('{"descriptionMd":"run:\\n```bash\\nls\\n```\\ndone"}')).toEqual({
+      descriptionMd: 'run:\n```bash\nls\n```\ndone',
+    });
+  });
+  it('tolerates a trailing comma', () => {
+    expect(extractJsonObject('{"tags":["a","b",],}')).toEqual({ tags: ['a', 'b'] });
+  });
+  it('escapes a raw newline inside a string value', () => {
+    expect(extractJsonObject('{"summary":"line1\nline2"}')).toEqual({ summary: 'line1\nline2' });
+  });
+  it('promotes smart quotes only when there is no ASCII quote', () => {
+    expect(extractJsonObject('{“name”:“x”}')).toEqual({ name: 'x' });
+    expect(extractJsonObject('{"summary":"他说“你好”"}')).toEqual({ summary: '他说“你好”' });
+  });
+  it('takes the final harmony channel, not the analysis channel', () => {
+    const t =
+      '<|channel|>analysis<|message|>they want {"summary":"..."}<|end|>' +
+      '<|channel|>final<|message|>{"summary":"真答案"}';
+    expect(extractJsonObject(t)).toEqual({ summary: '真答案' });
+  });
+  it('stays fast with many decoy braces (prefilter guard)', () => {
+    const t = 'lorem {ipsum} '.repeat(20000) + '{"name":"x"}';
+    expect(extractJsonObject(t)).toEqual({ name: 'x' });
+  });
 });
 
 describe('buildAssistContext', () => {

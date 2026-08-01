@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
+import { explainParseFailure } from '@/lib/llm/explain';
 import { auth } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
-import { getProvider, LLMConfigError } from '@/lib/llm';
+import { getProvider, LLMConfigError, type LLMCompletion } from '@/lib/llm';
 import {
   assistInputSchema,
   buildAssistContext,
@@ -80,14 +81,14 @@ export async function POST(req: Request) {
       : buildAssistContext({ skillMd: skillMd ?? '', readme, files }, ASSIST_CONTEXT_CHARS[action]);
   const prompt = buildAssistPrompt(action, context, current ?? {});
 
-  let text: string;
+  let out: LLMCompletion;
   try {
-    const out = await provider.complete({
+    out = await provider.complete({
       system: prompt.system,
       messages: [{ role: 'user', content: prompt.user }],
       maxTokens: prompt.maxTokens,
+      json: true,
     });
-    text = out.text;
   } catch (e) {
     return NextResponse.json(
       { error: 'llm_error', reason: e instanceof Error ? e.message.slice(0, 200) : 'unknown' },
@@ -95,15 +96,18 @@ export async function POST(req: Request) {
     );
   }
 
-  const result = parseAssistResult(action, text, context);
-  // An empty result means the model returned no parseable JSON (common with
-  // local/reasoning models that ignore the "JSON only" instruction). Surface it
-  // clearly + echo a snippet so it's debuggable, instead of returning a silent
-  // empty result the UI reads as a generic failure. (`tokens` never gets here —
-  // it short-circuits above without an LLM call.)
+  const result = parseAssistResult(action, out.text, context);
+  // An empty result means the model returned no parseable JSON. explainParseFailure
+  // separates the three causes — budget truncation, reasoning-only reply, or a real
+  // format violation — because "模型未返回可用的 JSON 结果" sent everyone hunting the
+  // wrong one. (`tokens` never gets here — it short-circuits above with no LLM call.)
   if (Object.keys(result).length === 0) {
     return NextResponse.json(
-      { error: 'llm_no_result', reason: '模型未返回可用的 JSON 结果', raw: text.slice(0, 300) },
+      {
+        error: 'llm_no_result',
+        reason: explainParseFailure('AI 生成失败', out),
+        raw: (out.text || out.reasoning || '').slice(0, 300),
+      },
       { status: 502 },
     );
   }

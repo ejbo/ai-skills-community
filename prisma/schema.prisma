@@ -1490,6 +1490,13 @@ model LibrarySetting {
   llmBaseUrl  String?
   llmApiKey   String?
   llmModel    String?
+  // Wire flags for a SELF-HOSTED OpenAI-compatible server (vLLM/SGLang) only.
+  // vLLM accepts and ignores unknown request fields; api.openai.com hard-400s
+  // them, so they are opt-in per deployment and never sent to Anthropic.
+  // disableThinking sends chat_template_kwargs.enable_thinking=false, which is
+  // the root-cause fix for a reasoning model burning its budget inside <think>.
+  llmDisableThinking Boolean @default(false)
+  llmJsonMode        Boolean @default(false)
   updatedAt   DateTime @updatedAt
 }
 

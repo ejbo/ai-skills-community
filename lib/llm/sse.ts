@@ -69,6 +69,100 @@ export async function* iterateSseDeltas(
   }
 }
 
+// ── Reasoning-block stripping ────────────────────────────────────────────────
+
+// Same alias set as lib/skill-assist.ts's parser: models disagree on the tag
+// (<think>, <thinking>, <reasoning>, <thought>), and some emit attributes.
+const THINK_OPEN_RE = /<(?:thinking|think|reasoning|thought)(?:\s[^>]*)?>/i;
+const THINK_CLOSE_RE = /<\/(?:thinking|think|reasoning|thought)\s*>/i;
+const OPEN_TAGS = ['<thinking>', '<think>', '<reasoning>', '<thought>'];
+const CLOSE_TAGS = ['</thinking>', '</think>', '</reasoning>', '</thought>'];
+
+/** Longest suffix of `s` that is a proper prefix of `tag` (a tag split across chunks). */
+function partialTagTail(s: string, tag: string): string {
+  const max = Math.min(tag.length - 1, s.length);
+  const lower = s.toLowerCase();
+  const tagLower = tag.toLowerCase();
+  for (let n = max; n > 0; n--) {
+    if (lower.slice(lower.length - n) === tagLower.slice(0, n)) return s.slice(s.length - n);
+  }
+  return '';
+}
+
+/** Hold-back for whichever alias could still be completing at the tail. */
+function longestPartialTail(s: string, tags: string[]): string {
+  let best = '';
+  for (const tag of tags) {
+    const t = partialTagTail(s, tag);
+    if (t.length > best.length) best = t;
+  }
+  return best;
+}
+
+/**
+ * Stateful `<think>…</think>` remover for a streamed answer.
+ *
+ * Reasoning models (GLM, Qwen-thinking, DeepSeek-R1) emit their chain of thought
+ * inline unless the server runs a `--reasoning-parser` that splits it into
+ * `reasoning_content`. Without this the thinking is streamed straight into the
+ * user's chat bubble. Tags can straddle chunk boundaries, so a possible partial
+ * tag is held back and re-joined with the next chunk; `flush()` releases it if
+ * the stream ends mid-guess.
+ */
+export function createThinkStripper(): { push: (chunk: string) => string; flush: () => string } {
+  let inThink = false;
+  let pending = '';
+
+  return {
+    push(chunk: string): string {
+      let s = pending + chunk;
+      pending = '';
+      let out = '';
+      for (;;) {
+        if (inThink) {
+          const close = THINK_CLOSE_RE.exec(s);
+          if (!close) {
+            pending = longestPartialTail(s, CLOSE_TAGS);
+            return out;
+          }
+          s = s.slice(close.index + close[0].length);
+          inThink = false;
+          continue;
+        }
+        const open = THINK_OPEN_RE.exec(s);
+        if (!open) {
+          const keep = longestPartialTail(s, OPEN_TAGS);
+          out += s.slice(0, s.length - keep.length);
+          pending = keep;
+          return out;
+        }
+        out += s.slice(0, open.index);
+        s = s.slice(open.index + open[0].length);
+        inThink = true;
+      }
+    },
+    // Held-back text was only ever a *guess* at a tag; if the stream ended it
+    // was real content and must not be swallowed. Anything still inside an
+    // unterminated <think> stays dropped.
+    flush(): string {
+      const rest = inThink ? '' : pending;
+      pending = '';
+      return rest;
+    },
+  };
+}
+
+/** Wrap a delta stream so inline `<think>` reasoning never reaches the client. */
+export async function* stripThinkDeltas(deltas: AsyncIterable<string>): AsyncIterable<string> {
+  const stripper = createThinkStripper();
+  for await (const delta of deltas) {
+    const out = stripper.push(delta);
+    if (out) yield out;
+  }
+  const tail = stripper.flush();
+  if (tail) yield tail;
+}
+
 // ── Normalized client-facing SSE frames ──────────────────────────────────────
 // Clients only ever parse `{ delta }` and `{ error }`, never provider events.
 

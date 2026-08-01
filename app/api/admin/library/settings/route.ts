@@ -21,6 +21,8 @@ export async function GET() {
       llmBaseUrl: row?.llmBaseUrl ?? null,
       llmModel: row?.llmModel ?? null,
       hasApiKey: Boolean(row?.llmApiKey),
+      llmDisableThinking: row?.llmDisableThinking ?? false,
+      llmJsonMode: row?.llmJsonMode ?? false,
     },
     envFallback: {
       provider: env.LLM_PROVIDER ?? 'anthropic',
@@ -36,6 +38,9 @@ const putSchema = z.object({
   llmModel: z.string().trim().max(200).nullable(),
   // '__keep__' preserves the stored key; null/'' clears it.
   llmApiKey: z.string().max(500).nullable(),
+  // Self-hosted vLLM/SGLang wire flags — api.openai.com 400s on these.
+  llmDisableThinking: z.boolean().optional(),
+  llmJsonMode: z.boolean().optional(),
 });
 
 // PUT /api/admin/library/settings — save the override (null everything to
@@ -48,7 +53,8 @@ export async function PUT(req: Request) {
   const parsed = putSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
 
-  const { llmProvider, llmBaseUrl, llmModel, llmApiKey } = parsed.data;
+  const { llmProvider, llmBaseUrl, llmModel, llmApiKey, llmDisableThinking, llmJsonMode } =
+    parsed.data;
   const keepKey = llmApiKey === '__keep__';
 
   await prisma.librarySetting.upsert({
@@ -59,12 +65,16 @@ export async function PUT(req: Request) {
       llmBaseUrl: llmBaseUrl || null,
       llmModel: llmModel || null,
       llmApiKey: keepKey ? null : llmApiKey || null,
+      llmDisableThinking: llmDisableThinking ?? false,
+      llmJsonMode: llmJsonMode ?? false,
     },
     update: {
       llmProvider,
       llmBaseUrl: llmBaseUrl || null,
       llmModel: llmModel || null,
       ...(keepKey ? {} : { llmApiKey: llmApiKey || null }),
+      llmDisableThinking: llmDisableThinking ?? false,
+      llmJsonMode: llmJsonMode ?? false,
     },
   });
   bustLibraryLlmCache();

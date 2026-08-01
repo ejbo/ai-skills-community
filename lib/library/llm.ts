@@ -16,6 +16,8 @@ interface SettingRow {
   llmBaseUrl: string | null;
   llmApiKey: string | null;
   llmModel: string | null;
+  llmDisableThinking: boolean;
+  llmJsonMode: boolean;
 }
 
 let cache: { provider: LLMProvider; model: string | null; at: number } | null = null;
@@ -28,7 +30,14 @@ async function loadSetting(): Promise<SettingRow | null> {
   try {
     return await prisma.librarySetting.findUnique({
       where: { id: 'default' },
-      select: { llmProvider: true, llmBaseUrl: true, llmApiKey: true, llmModel: true },
+      select: {
+        llmProvider: true,
+        llmBaseUrl: true,
+        llmApiKey: true,
+        llmModel: true,
+        llmDisableThinking: true,
+        llmJsonMode: true,
+      },
     });
   } catch {
     return null; // table missing (migration not applied) → env fallback
@@ -46,7 +55,15 @@ function buildOverride(s: SettingRow): LLMProvider | null {
     if (!apiKey) return null;
     return new AnthropicProvider({ apiKey, baseUrl, model, fetchImpl: llmFetch });
   }
-  return new OpenAiProvider({ apiKey, baseUrl, model, fetchImpl: llmFetch });
+  return new OpenAiProvider({
+    apiKey,
+    baseUrl,
+    model,
+    fetchImpl: llmFetch,
+    // Self-hosted-only wire flags; never reach the Anthropic branch above.
+    disableThinking: s.llmDisableThinking,
+    jsonMode: s.llmJsonMode,
+  });
 }
 
 /**

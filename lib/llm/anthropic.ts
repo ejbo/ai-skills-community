@@ -1,4 +1,4 @@
-import type { LLMCompleteOptions, LLMProvider, LLMUsage } from './types';
+import type { LLMCompleteOptions, LLMCompletion, LLMProvider } from './types';
 import { iterateSseDeltas } from './sse';
 
 /** Extract a text fragment from a parsed Anthropic stream event, or null. */
@@ -16,6 +16,8 @@ export function extractAnthropicDelta(event: unknown): string | null {
 
 interface AnthropicMessagesResponse {
   content: Array<{ type: string; text?: string }>;
+  /** 'end_turn' | 'max_tokens' | 'stop_sequence' | … — 'max_tokens' means truncated. */
+  stop_reason?: string | null;
   usage?: { input_tokens: number; output_tokens: number };
 }
 
@@ -24,14 +26,16 @@ export interface AnthropicProviderOptions {
   baseUrl: string;
   model: string;
   /**
-   * Injected so this module stays env-free/testable. Callers on the intranet
-   * pass `egressFetch` (lib/net/proxy) — api.anthropic.com is only reachable
-   * through the corporate proxy there.
+   * Injected so this module stays env-free/testable. Callers pass `llmFetch`
+   * (lib/llm/egress); on the intranet an external api.anthropic.com additionally
+   * needs LLM_USE_PROXY=true.
    */
   fetchImpl?: typeof fetch;
 }
 
-const DEFAULT_MAX_TOKENS = 1024;
+// Anthropic's Messages API REQUIRES max_tokens, so unlike the OpenAI-compatible
+// provider this one cannot omit it. Kept generous so it never truncates an answer.
+const DEFAULT_MAX_TOKENS = 8192;
 
 export class AnthropicProvider implements LLMProvider {
   readonly id = 'anthropic' as const;
@@ -78,7 +82,7 @@ export class AnthropicProvider implements LLMProvider {
     return res;
   }
 
-  async complete(opts: LLMCompleteOptions): Promise<{ text: string; usage: LLMUsage | null }> {
+  async complete(opts: LLMCompleteOptions): Promise<LLMCompletion> {
     const res = await this.post(opts, false);
     const json = (await res.json()) as AnthropicMessagesResponse;
     const text = json.content
@@ -88,6 +92,7 @@ export class AnthropicProvider implements LLMProvider {
     return {
       text,
       usage: json.usage ? { input: json.usage.input_tokens, output: json.usage.output_tokens } : null,
+      finishReason: json.stop_reason ?? null,
     };
   }
 

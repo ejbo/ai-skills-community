@@ -42,7 +42,7 @@ export async function POST(req: Request) {
         '你是精准的翻译引擎。判断输入语言：中文则翻译为英文，其他语言则翻译为简体中文。' +
         '保留术语、代码与专有名词的原文形态。只输出译文，不要任何解释或前后缀。',
       messages: [{ role: 'user', content: parsed.data.text }],
-      maxTokens: 1500,
+      maxTokens: 4000, // headroom for a reasoning model's <think> block
     });
     const translation = out.text.trim();
     if (!translation) return NextResponse.json({ error: 'llm_no_result' }, { status: 502 });

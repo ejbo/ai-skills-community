@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolveLLMConfig, DEFAULT_ANTHROPIC_MODEL } from '@/lib/llm/config';
-import { parseSseData, encodeSseDelta, encodeSseError, iterateSseDeltas } from '@/lib/llm/sse';
+import { parseSseData, encodeSseDelta, encodeSseError, iterateSseDeltas, createThinkStripper } from '@/lib/llm/sse';
 import { extractAnthropicDelta } from '@/lib/llm/anthropic';
 import { extractOpenAiDelta } from '@/lib/llm/openai';
 
@@ -175,5 +175,39 @@ describe('iterateSseDeltas', () => {
     const out: string[] = [];
     for await (const d of iterateSseDeltas(byteBody, extractOpenAiDelta)) out.push(d);
     expect(out.join('')).toBe('😀');
+  });
+});
+
+describe('createThinkStripper', () => {
+  const run = (chunks: string[]) => {
+    const s = createThinkStripper();
+    return chunks.map((c) => s.push(c)).join('') + s.flush();
+  };
+
+  it('removes an inline reasoning block', () => {
+    expect(run(['<think>让我想想…</think>答案是 42'])).toBe('答案是 42');
+  });
+  it('handles a tag split across chunks', () => {
+    expect(run(['<thi', 'nk>思考中', '</thi', 'nk>正文'])).toBe('正文');
+  });
+  it('passes ordinary text through untouched', () => {
+    expect(run(['hello ', 'world'])).toBe('hello world');
+  });
+  it('does not swallow a trailing "<" that was never a tag', () => {
+    expect(run(['a < b'])).toBe('a < b');
+    expect(run(['ends with <'])).toBe('ends with <');
+  });
+  it('drops everything after an unterminated <think> (truncated stream)', () => {
+    expect(run(['<think>还没想完就断了'])).toBe('');
+  });
+  it('keeps content that follows a second reasoning block', () => {
+    expect(run(['A<think>x</think>B<think>y</think>C'])).toBe('ABC');
+  });
+  it('handles the <thinking> alias and tag attributes', () => {
+    expect(run(['<thinking>想…</thinking>正文'])).toBe('正文');
+    expect(run(['<think id="1">想…</think>正文'])).toBe('正文');
+  });
+  it('holds back a partial <thinking> across chunks without losing it', () => {
+    expect(run(['<thin', 'king>想…</thinking>正文'])).toBe('正文');
   });
 });

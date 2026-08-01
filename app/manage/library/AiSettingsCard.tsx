@@ -9,6 +9,8 @@ interface SettingState {
   llmBaseUrl: string | null;
   llmModel: string | null;
   hasApiKey: boolean;
+  llmDisableThinking: boolean;
+  llmJsonMode: boolean;
 }
 
 interface EnvInfo {
@@ -25,6 +27,8 @@ interface TestResult {
   name?: string;
   message?: string;
   cause?: string | null;
+  finishReason?: string | null;
+  reasoningChars?: number;
   ms?: number;
   route?: { via: string; proxyUri: string | null; useProxy: boolean } | null;
 }
@@ -40,6 +44,8 @@ export function AiSettingsCard() {
   const [baseUrl, setBaseUrl] = useState('');
   const [model, setModel] = useState('');
   const [apiKey, setApiKey] = useState('__keep__');
+  const [disableThinking, setDisableThinking] = useState(false);
+  const [jsonMode, setJsonMode] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
@@ -72,6 +78,8 @@ export function AiSettingsCard() {
         setBaseUrl(data.setting.llmBaseUrl ?? '');
         setModel(data.setting.llmModel ?? '');
         setApiKey(data.setting.hasApiKey ? '__keep__' : '');
+        setDisableThinking(Boolean(data.setting.llmDisableThinking));
+        setJsonMode(Boolean(data.setting.llmJsonMode));
       } catch {
         /* leave empty */
       }
@@ -87,12 +95,21 @@ export function AiSettingsCard() {
     setSaving(true);
     try {
       const body = clear
-        ? { llmProvider: null, llmBaseUrl: null, llmModel: null, llmApiKey: null }
+        ? {
+            llmProvider: null,
+            llmBaseUrl: null,
+            llmModel: null,
+            llmApiKey: null,
+            llmDisableThinking: false,
+            llmJsonMode: false,
+          }
         : {
             llmProvider: provider || null,
             llmBaseUrl: baseUrl.trim() || null,
             llmModel: model.trim() || null,
             llmApiKey: apiKey,
+            llmDisableThinking: disableThinking,
+            llmJsonMode: jsonMode,
           };
       const res = await fetch('/api/admin/library/settings', {
         method: 'PUT',
@@ -106,6 +123,8 @@ export function AiSettingsCard() {
         setBaseUrl('');
         setModel('');
         setApiKey('');
+        setDisableThinking(false);
+        setJsonMode(false);
         setSetting((s) => (s ? { ...s, hasApiKey: false } : s));
       }
     } catch {
@@ -173,6 +192,35 @@ export function AiSettingsCard() {
           />
         </div>
       </div>
+      <div className="mt-3 space-y-1.5 rounded-lg border border-zinc-200 p-2.5 dark:border-zinc-700">
+        <p className="text-[11px] font-medium text-muted">
+          自建推理服务（vLLM / SGLang）专用 —— 这两个开关会在请求体里加非标准字段，
+          <span className="text-danger">指向 api.openai.com 时会被 400 拒绝</span>，Anthropic 分支不受影响。
+        </p>
+        <label className="flex items-center gap-2 text-[12px]">
+          <input
+            type="checkbox"
+            checked={disableThinking}
+            onChange={(e) => setDisableThinking(e.target.checked)}
+            className="h-3.5 w-3.5"
+          />
+          关闭思考（chat_template_kwargs.enable_thinking=false）
+          <span className="text-muted">
+            —— 推理模型会先输出 &lt;think&gt; 思考过程，吃光预算就拿不到 JSON；关掉它是治本方案
+          </span>
+        </label>
+        <label className="flex items-center gap-2 text-[12px]">
+          <input
+            type="checkbox"
+            checked={jsonMode}
+            onChange={(e) => setJsonMode(e.target.checked)}
+            className="h-3.5 w-3.5"
+          />
+          强制 JSON 输出（response_format: json_object）
+          <span className="text-muted">—— 仅对需要 JSON 的调用生效</span>
+        </label>
+      </div>
+
       <div className="mt-3 flex items-center gap-2">
         <button
           type="button"
@@ -211,7 +259,10 @@ export function AiSettingsCard() {
         >
           <div>
             {testResult.ok
-              ? `✓ ${testResult.provider} · ${testResult.model} · ${testResult.ms}ms · 回复「${testResult.reply}」`
+              ? `✓ ${testResult.provider} · ${testResult.model} · ${testResult.ms}ms · 回复「${testResult.reply}」` +
+                (testResult.finishReason ? ` · finish=${testResult.finishReason}` : '') +
+                // >0 ⇒ 服务端配了 --reasoning-parser，思考不会混进正文
+                (testResult.reasoningChars ? ` · 思考 ${testResult.reasoningChars} 字(已分离)` : '')
               : `✗ ${testResult.name ?? '失败'} · ${testResult.ms}ms`}
             {testResult.route
               ? ` · ${testResult.route.via === 'proxy' ? `经代理 ${testResult.route.proxyUri}` : '直连'}`

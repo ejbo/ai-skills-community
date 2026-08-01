@@ -193,7 +193,14 @@ function emptyList(current: AssistCurrent): string[] {
 export interface AssistPrompt {
   system: string;
   user: string;
-  maxTokens: number;
+  /**
+   * Omitted for the short actions on purpose — an explicit cap is what truncated
+   * reasoning models mid-<think>, and lib/llm/openai.ts leaves max_tokens off the
+   * wire when unset so the server uses the remaining context window. Only the
+   * long-form generators keep a (generous) ceiling, where a runaway reply is a
+   * real cost risk.
+   */
+  maxTokens?: number;
 }
 
 /** Build the {system,user} prompt + token budget for one assist action. */
@@ -209,13 +216,11 @@ export function buildAssistPrompt(
       return {
         system: BASE_SYSTEM,
         user: `${head}请为它起一个简洁、准确的名称（2-6 个词）。只返回 JSON：{"name": "..."}`,
-        maxTokens: 200,
       };
     case 'summary':
       return {
         system: BASE_SYSTEM,
         user: `${head}请写一句话描述（summary），不超过 40 个汉字、突出它能做什么。只返回 JSON：{"summary": "..."}`,
-        maxTokens: 300,
       };
     case 'overview':
       return {
@@ -223,13 +228,12 @@ export function buildAssistPrompt(
         user:
           `${head}请生成面向所有访问者的「公开简介 Overview」（Markdown，3-8 行，介绍用途、关键能力、适用场景），` +
           `同时给出一句话描述 summary。只返回 JSON：{"summary": "...", "descriptionMd": "..."}`,
-        maxTokens: 1200,
+        maxTokens: 4000,
       };
     case 'tags':
       return {
         system: BASE_SYSTEM,
         user: `${head}请给出 3-6 个小写、简短的标签（英文或中文单词，不带 # 号）。只返回 JSON：{"tags": ["...", "..."]}`,
-        maxTokens: 300,
       };
     case 'triggers':
       return {
@@ -237,7 +241,6 @@ export function buildAssistPrompt(
         user:
           `${head}请给出 3-6 个「触发词/触发场景」——即用户说什么、或遇到什么任务时应该用这个 skill。` +
           `简短短语即可。只返回 JSON：{"triggers": ["...", "..."]}`,
-        maxTokens: 400,
       };
     case 'tokens':
       return {
@@ -245,7 +248,6 @@ export function buildAssistPrompt(
         user:
           `${head}请估算「当这个 skill 被加载进上下文时大约消耗多少 tokens」（统计 SKILL.md 正文及随附文本文件的体量，` +
           `按约 4 字符≈1 token 估算，取整数）。只返回 JSON：{"tokenCost": 1234}`,
-        maxTokens: 200,
       };
     case 'autofill': {
       const missing = emptyList(current);
@@ -258,7 +260,7 @@ export function buildAssistPrompt(
           `tags=3-6个小写短标签数组；triggers=3-6个触发短语数组。\n` +
           `只返回包含这些字段的 JSON 对象，不要包含未要求的字段。例如：` +
           `{"name":"...","summary":"...","descriptionMd":"...","tags":["..."],"triggers":["..."]}`,
-        maxTokens: 1600,
+        maxTokens: 6000,
       };
     }
     case 'pack': {
@@ -276,28 +278,185 @@ export function buildAssistPrompt(
           `descriptionMd=Markdown 介绍，依次包含：1-2 句总述；「### 包含内容」小节逐条列出每个 skill 及其作用（一行一个）；` +
           `「### 适用场景」小节给出 3-5 条什么情况下应该安装这个包。\n` +
           `只返回 JSON：${shape}`,
-        maxTokens: 1500,
+        maxTokens: 4000,
       };
     }
   }
 }
 
 /** Strip code fences and extract the first balanced JSON object. */
-export function extractJsonObject(text: string): Record<string, unknown> | null {
-  const cleaned = text
-    // Reasoning models (GLM, DeepSeek, Qwen-thinking, …) emit a <think>…</think> block
-    // before the answer; it can contain braces that derail JSON extraction. Drop it first.
-    .replace(/<think>[\s\S]*?<\/think>/gi, '')
-    .replace(/<\/?think>/gi, '')
-    .replace(/```(?:json)?/gi, '')
-    .trim();
-  const start = cleaned.indexOf('{');
-  if (start < 0) return null;
-  let depth = 0;
+// Reasoning-tag aliases, longest-first so the alternation matches </thinking> whole.
+const REASON_TAGS = 'thinking|think|reasoning|thought';
+// Give up after this many object-shaped braces before the answer.
+const MAX_JSON_CANDIDATES = 64;
+
+function asJsonObject(raw: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Return the part of a reply that could plausibly be the answer, or null when
+ * the answer never arrived.
+ *
+ * Everything after the LAST closing reasoning tag is the answer by definition —
+ * the thinking usually quotes the requested JSON shape, so the FIRST `{` in the
+ * raw reply commonly belongs to the reasoning. GLM prefills the OPENING
+ * `<think>` into the prompt and never emits it, so the open tag must not be
+ * required. An UNTERMINATED open tag means the budget ran out inside the
+ * reasoning: there is no answer to find, and saying so lets the caller report
+ * truncation instead of "bad JSON".
+ *
+ * Deliberately does NOT strip ``` fences: `indexOf('{')` already skips a
+ * leading ```json, while a global strip silently deleted ``` sequences INSIDE
+ * generated Markdown (a skill's descriptionMd) and persisted the damage.
+ */
+function stripReasoning(text: string): string | null {
+  let s = text;
+  // gpt-oss / harmony transcripts put the answer in the final channel.
+  const chan = s.lastIndexOf('<|channel|>final');
+  if (chan >= 0) {
+    const m = s.indexOf('<|message|>', chan);
+    if (m >= 0) s = s.slice(m + '<|message|>'.length);
+  }
+  const close = new RegExp(`</(?:${REASON_TAGS})\\s*>`, 'gi');
+  let lastEnd = -1;
+  for (let m = close.exec(s); m; m = close.exec(s)) lastEnd = m.index + m[0].length;
+  if (lastEnd >= 0) return s.slice(lastEnd).trim();
+  if (new RegExp(`<(?:${REASON_TAGS})(?:\\s[^>]*)?>`, 'i').test(s)) return null;
+  return s.trim();
+}
+
+const PLACEHOLDER = /^[.．。…\s]*$/;
+
+/** `"..."`, `"…"`, `"<不超过120字>"` — the model echoing the requested shape. */
+function isPlaceholderLeaf(v: unknown): boolean {
+  if (typeof v === 'string') {
+    const t = v.trim();
+    return PLACEHOLDER.test(t) || /^<[^>]*>$/.test(t);
+  }
+  if (Array.isArray(v)) return v.every(isPlaceholderLeaf);
+  if (v && typeof v === 'object') return Object.values(v).every(isPlaceholderLeaf);
+  return false; // numbers / booleans / null carry information
+}
+
+/** An empty object, or one whose every leaf is a placeholder — a schema echo. */
+function isSchemaEcho(obj: Record<string, unknown>): boolean {
+  const values = Object.values(obj);
+  return values.length === 0 || values.every(isPlaceholderLeaf);
+}
+
+/** O(1) prefilter: a JSON object always continues with a key or `}`. */
+function looksLikeObjectStart(s: string, i: number): boolean {
+  for (let j = i + 1; j < s.length; j++) {
+    const c = s[j];
+    if (c === ' ' || c === '\n' || c === '\r' || c === '\t') continue;
+    return c === '"' || c === '}' || c === '“' || c === '‘' || c === "'";
+  }
+  return false;
+}
+
+/**
+ * Best-effort close of a JSON object cut off mid-flight (the model hit
+ * max_tokens). Salvaging complete leading fields beats discarding the reply —
+ * a truncated `keywords` array shouldn't cost us the `summary`.
+ */
+function repairTruncated(fragment: string, open: string[], inStr: boolean, esc: boolean): string {
+  let s = fragment;
+  if (esc) s = s.slice(0, -1); // dangling escape
+  if (inStr) s += '"'; // close the open string
+  // Peel any incomplete trailing member: a dangling comma, or a key with no value.
+  for (;;) {
+    const next = s.replace(/\s+$/, '').replace(/,$/, '').replace(/(?:,\s*)?"[^"]*"\s*:$/, '');
+    if (next === s) break;
+    s = next;
+  }
+  for (let i = open.length - 1; i >= 0; i--) s += open[i] === '{' ? '}' : ']';
+  return s;
+}
+
+/**
+ * Second-chance repair of near-JSON, applied string-aware so legitimate values
+ * are never touched: escape raw control chars inside strings, drop a trailing
+ * comma before `}`/`]`, and promote smart/single quotes ONLY when the fragment
+ * contains no ASCII `"` at all (so 中文 “引号” inside a real value survive).
+ * Returns null when nothing needed changing.
+ */
+function sanitizeFragment(fragment: string): string | null {
+  let out = '';
   let inStr = false;
   let esc = false;
-  for (let i = start; i < cleaned.length; i++) {
-    const ch = cleaned[i];
+  let changed = false;
+  const noAsciiQuote = !fragment.includes('"');
+  for (let i = 0; i < fragment.length; i++) {
+    const ch = fragment[i];
+    if (inStr) {
+      if (esc) {
+        esc = false;
+        out += ch;
+        continue;
+      }
+      if (ch === '\\') {
+        esc = true;
+        out += ch;
+        continue;
+      }
+      if (ch === '"' || (noAsciiQuote && (ch === '”' || ch === '’' || ch === "'"))) {
+        inStr = false;
+        out += '"';
+        if (ch !== '"') changed = true;
+        continue;
+      }
+      if (ch === '\n') {
+        out += '\\n';
+        changed = true;
+        continue;
+      }
+      if (ch === '\r') {
+        out += '\\r';
+        changed = true;
+        continue;
+      }
+      if (ch === '\t') {
+        out += '\\t';
+        changed = true;
+        continue;
+      }
+      out += ch;
+      continue;
+    }
+    if (ch === '"' || (noAsciiQuote && (ch === '“' || ch === '‘' || ch === "'"))) {
+      inStr = true;
+      out += '"';
+      if (ch !== '"') changed = true;
+      continue;
+    }
+    if (ch === ',') {
+      let j = i + 1;
+      while (j < fragment.length && /\s/.test(fragment[j])) j++;
+      if (fragment[j] === '}' || fragment[j] === ']') {
+        changed = true;
+        continue;
+      }
+    }
+    out += ch;
+  }
+  return changed ? out : null;
+}
+
+/** Parse a JSON object starting at `start`; null if this candidate isn't one. */
+function parseObjectAt(s: string, start: number): Record<string, unknown> | null {
+  const open: string[] = [];
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
     if (inStr) {
       if (esc) esc = false;
       else if (ch === '\\') esc = true;
@@ -305,20 +464,68 @@ export function extractJsonObject(text: string): Record<string, unknown> | null 
       continue;
     }
     if (ch === '"') inStr = true;
-    else if (ch === '{') depth++;
-    else if (ch === '}') {
-      depth--;
-      if (depth === 0) {
-        try {
-          const parsed = JSON.parse(cleaned.slice(start, i + 1));
-          return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
-        } catch {
-          return null;
-        }
+    else if (ch === '{' || ch === '[') open.push(ch);
+    else if (ch === '}' || ch === ']') {
+      open.pop();
+      if (open.length === 0) {
+        const raw = s.slice(start, i + 1);
+        const direct = asJsonObject(raw);
+        if (direct) return direct;
+        const fixed = sanitizeFragment(raw);
+        return fixed ? asJsonObject(fixed) : null;
       }
     }
   }
-  return null;
+  if (open.length === 0) return null;
+  // Never closed ⇒ truncated. Try to repair rather than lose the whole reply.
+  const frag = s.slice(start);
+  const direct = asJsonObject(repairTruncated(frag, open, inStr, esc));
+  if (direct) return direct;
+  const fixed = sanitizeFragment(frag);
+  return fixed ? asJsonObject(repairTruncated(fixed, open, inStr, esc)) : null;
+}
+
+const FULL_WIDTH: Record<string, string> = {
+  '｛': '{',
+  '｝': '}',
+  '［': '[',
+  '］': ']',
+  '：': ':',
+  '，': ',',
+  '＂': '"',
+};
+
+/**
+ * Last-resort rescue for a fully full-width reply. Only fires when the region
+ * contains no ASCII `{` at all, so Chinese punctuation in real values is safe.
+ */
+function normalizeFullWidth(region: string): string | null {
+  if (region.includes('{') || !region.includes('｛')) return null;
+  return region.replace(/[｛｝［］：，＂]/g, (c) => FULL_WIDTH[c] ?? c);
+}
+
+/** Try every candidate `{`; a schema echo or `{}` is only ever a fallback. */
+function mineJsonObject(region: string): Record<string, unknown> | null {
+  let echo: Record<string, unknown> | null = null;
+  let tried = 0;
+  for (let i = region.indexOf('{'); i >= 0; i = region.indexOf('{', i + 1)) {
+    if (!looksLikeObjectStart(region, i)) continue;
+    if (++tried > MAX_JSON_CANDIDATES) break;
+    const obj = parseObjectAt(region, i);
+    if (!obj) continue;
+    if (!isSchemaEcho(obj)) return obj;
+    if (echo === null) echo = obj;
+  }
+  return echo;
+}
+
+export function extractJsonObject(text: string): Record<string, unknown> | null {
+  const region = stripReasoning(text);
+  if (region === null) return null;
+  const hit = mineJsonObject(region);
+  if (hit) return hit;
+  const fullWidth = normalizeFullWidth(region);
+  return fullWidth ? mineJsonObject(fullWidth) : null;
 }
 
 function asString(v: unknown): string | undefined {

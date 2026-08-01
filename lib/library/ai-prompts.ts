@@ -46,7 +46,7 @@ export function chapterSummaryPrompt(input: {
   docTitle: string;
   chapterTitle: string | null;
   chapterText: string;
-}): { system: string; user: string; maxTokens: number } {
+}): { system: string; user: string; maxTokens?: number } {
   return {
     system:
       '你是知识库的索引编辑，负责为文档的每个章节生成检索索引条目。' +
@@ -59,7 +59,6 @@ export function chapterSummaryPrompt(input: {
       '章节正文：',
       input.chapterText,
     ].join('\n'),
-    maxTokens: 300,
   };
 }
 
@@ -68,7 +67,7 @@ export function overviewPrompt(input: {
   author: string | null;
   tocLine: string;
   chapterSummaries: string[];
-}): { system: string; user: string; maxTokens: number } {
+}): { system: string; user: string; maxTokens?: number } {
   const numbered = input.chapterSummaries.map((s, i) => `${i + 1}. ${s}`).join('\n');
   const catTable = LIBRARY_CATEGORIES.map((c) => `${c.slug}（${c.name}）`).join('、');
   return {
@@ -87,7 +86,6 @@ export function overviewPrompt(input: {
       '各章节摘要：',
       numbered || '（无）',
     ].join('\n'),
-    maxTokens: 1200,
   };
 }
 
@@ -95,7 +93,7 @@ export function retrievePrompt(input: {
   question: string;
   history: { role: string; content: string }[];
   indexLines: string[];
-}): { system: string; user: string; maxTokens: number } {
+}): { system: string; user: string; maxTokens?: number } {
   const history = input.history
     .slice(-6)
     .map((m) => `${m.role === 'user' ? '用户' : '助手'}：${m.content.slice(0, 300)}`)
@@ -113,7 +111,6 @@ export function retrievePrompt(input: {
       ...(history ? ['最近对话：', history, ''] : []),
       `用户问题：${input.question}`,
     ].join('\n'),
-    maxTokens: 300,
   };
 }
 

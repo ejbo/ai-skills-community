@@ -7,6 +7,7 @@
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
 import { LLMConfigError, type LLMProvider } from '@/lib/llm';
+import { explainParseFailure, type ReplyShape } from '@/lib/llm/explain';
 import { getLibraryProvider } from './llm';
 import {
   chapterSummaryPrompt,
@@ -23,21 +24,9 @@ const CHAPTER_SAMPLE_TOKENS = 12_000;
 // retrieval index lines are capped at 80 chapters anyway).
 const MAX_INDEX_CHAPTERS = 120;
 
-/**
- * A short, log-safe excerpt of what the model actually replied. An unterminated
- * `<think>` block (a reasoning model cut off by maxTokens) is the usual cause of
- * a JSON parse failure, and it is invisible unless the reply itself is shown.
- */
-function modelReplySample(text: string): string {
-  const trimmed = text.trim();
-  if (!trimmed) return '（空响应）';
-  const flat = trimmed.replace(/\s+/g, ' ');
-  return flat.length > 200 ? `${flat.slice(0, 200)}…` : flat;
-}
-
 export async function runDocIndexing(docId: string, opts?: { force?: boolean }): Promise<void> {
   const usage = { input: 0, output: 0 };
-  let firstBadReply: string | null = null;
+  let firstBadReply: ReplyShape | null = null;
   const fail = async (message: string) => {
     await prisma.libraryDoc
       .update({
@@ -93,6 +82,17 @@ export async function runDocIndexing(docId: string, opts?: { force?: boolean }):
     });
     if (claim.count === 0) return;
 
+    if (opts?.force) {
+      // '' is the parse-failure checkpoint written below, and the resume guard
+      // (`aiSummary !== null`) treats it as done forever. Without this reset an
+      // admin who fixes the model and clicks 重新索引 sees nothing change.
+      // Genuinely empty chapters are re-skipped cheaply via charCount === 0.
+      await prisma.libraryChapter.updateMany({
+        where: { docId, aiSummary: '' },
+        data: { aiSummary: null, aiKeywords: [] },
+      });
+    }
+
     let provider: LLMProvider;
     let overrideModel: string | null = null;
     try {
@@ -132,14 +132,15 @@ export async function runDocIndexing(docId: string, opts?: { force?: boolean }):
         chapterTitle: chapter.title,
         chapterText: sampleChapterText(chapterText, CHAPTER_SAMPLE_TOKENS),
       });
-      let text: string;
+      let reply: ReplyShape;
       try {
         const out = await provider.complete({
           system: prompt.system,
           messages: [{ role: 'user', content: prompt.user }],
           maxTokens: prompt.maxTokens,
+          json: true,
         });
-        text = out.text;
+        reply = out;
         if (out.usage) {
           usage.input += out.usage.input;
           usage.output += out.usage.output;
@@ -151,11 +152,11 @@ export async function runDocIndexing(docId: string, opts?: { force?: boolean }):
         return;
       }
       // Empty-string placeholder on parse failure so reruns don't loop on it.
-      const parsed = parseChapterSummary(text);
+      const parsed = parseChapterSummary(reply.text);
       // Keep the first unparseable reply: if EVERY chapter fails we'd otherwise
       // report a bare "章节摘要解析失败" with no way to tell whether the model
       // ignored the JSON instruction or ran out of tokens mid-<think>.
-      if (!parsed && firstBadReply === null) firstBadReply = text;
+      if (!parsed && firstBadReply === null) firstBadReply = reply;
       await prisma.libraryChapter.update({
         where: { id: chapter.id },
         data: { aiSummary: parsed?.summary ?? '', aiKeywords: parsed?.keywords ?? [] },
@@ -166,10 +167,20 @@ export async function runDocIndexing(docId: string, opts?: { force?: boolean }):
     const chapterSummaries = chapters
       .filter((c) => c.aiSummary)
       .map((c) => `${c.title ? `《${c.title}》：` : ''}${c.aiSummary}`);
+    // A doc where 119/120 chapters failed to parse used to be written as fully
+    // `ready` with aiError: null — indistinguishable from a clean run.
+    const indexable = chapters.slice(0, MAX_INDEX_CHAPTERS).filter((c) => c.charCount > 0);
+    const missing = indexable.length - chapterSummaries.length;
+    const partialWarning =
+      indexable.length > 0 && missing / indexable.length > 0.3
+        ? `部分章节未能解析：${missing}/${indexable.length} 章缺少摘要` +
+          (firstBadReply ? `。${explainParseFailure('示例', firstBadReply)}` : '')
+        : null;
     if (chapterSummaries.length === 0) {
       await fail(
-        '章节摘要解析失败：模型没有按要求返回 JSON。' +
-          (firstBadReply ? ` 模型实际返回：${modelReplySample(firstBadReply)}` : ''),
+        firstBadReply
+          ? explainParseFailure('章节摘要解析失败', firstBadReply)
+          : '章节摘要解析失败：没有可用的章节内容',
       );
       return;
     }
@@ -185,14 +196,15 @@ export async function runDocIndexing(docId: string, opts?: { force?: boolean }):
       tocLine,
       chapterSummaries,
     });
-    let text: string;
+    let reply: ReplyShape;
     try {
       const out = await provider.complete({
         system: prompt.system,
         messages: [{ role: 'user', content: prompt.user }],
         maxTokens: prompt.maxTokens,
+          json: true,
       });
-      text = out.text;
+      reply = out;
       if (out.usage) {
         usage.input += out.usage.input;
         usage.output += out.usage.output;
@@ -202,9 +214,9 @@ export async function runDocIndexing(docId: string, opts?: { force?: boolean }):
       return;
     }
 
-    const parsed = parseOverview(text);
+    const parsed = parseOverview(reply.text);
     if (!parsed) {
-      await fail(`AI 导读解析失败：模型没有按要求返回 JSON。模型实际返回：${modelReplySample(text)}`);
+      await fail(explainParseFailure('AI 导读解析失败', reply));
       return;
     }
 
@@ -222,7 +234,9 @@ export async function runDocIndexing(docId: string, opts?: { force?: boolean }):
         aiIndexedAt: new Date(),
         aiSourceHash: doc.contentHash,
         aiIndexState: 'ready',
-        aiError: null,
+        // Non-null on a partial success so /manage/library can badge it rather
+        // than reporting a half-indexed doc as healthy.
+        aiError: partialWarning,
         aiTokensInput: { increment: usage.input },
         aiTokensOutput: { increment: usage.output },
       },

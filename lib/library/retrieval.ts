@@ -78,12 +78,24 @@ export async function buildChatContext(
       system: prompt.system,
       messages: [{ role: 'user', content: prompt.user }],
       maxTokens: prompt.maxTokens,
+      json: true,
     });
     planText = out.text;
   } catch {
     return { ok: false, error: 'llm_error' };
   }
   const plan = parseRetrieve(planText);
+  if (plan.chapters.length === 0 && plan.terms.length === 0) {
+    // parseRetrieve is deliberately tolerant, so a model that answered with
+    // reasoning-only (or nothing) degrades to the whole-question substring
+    // fallback below with no error anywhere. Log it — silently bad retrieval
+    // reads as "the AI gives useless answers", not as a model problem.
+    console.warn('[library] retrieval plan empty — falling back to keyword scan', {
+      docId,
+      replyLength: planText.length,
+      sample: planText.trim().replace(/\s+/g, ' ').slice(0, 160),
+    });
+  }
 
   const validChapters = new Set(chapters.map((c) => c.chapterIndex));
   const selected = [...new Set(plan.chapters.map((n) => n - 1))].filter((n) =>

@@ -19,13 +19,34 @@ export interface LLMCompleteOptions {
   maxTokens?: number;
   /** Override the provider's configured model for this call. */
   model?: string;
+  /**
+   * This call's reply must be a JSON object. Only acted on by providers that
+   * can enforce it (OpenAI-compatible + jsonMode); everything still goes
+   * through extractJsonObject, so it is a hint, never a guarantee.
+   */
+  json?: boolean;
+}
+
+export interface LLMCompletion {
+  text: string;
+  usage: LLMUsage | null;
+  /**
+   * Raw stop reason ('stop' | 'length' | 'max_tokens' | …), when the provider
+   * reports one. `length`/`max_tokens` means the answer was CUT OFF — with a
+   * reasoning model that usually means the whole budget went into <think> and
+   * `text` is empty or half-written JSON, which is otherwise indistinguishable
+   * from "the model ignored the format instruction".
+   */
+  finishReason?: string | null;
+  /** Separated reasoning text, when the server splits it out (vLLM reasoning parser). */
+  reasoning?: string | null;
 }
 
 export interface LLMProvider {
   readonly id: 'anthropic' | 'openai-compatible';
   readonly model: string;
   /** One-shot, non-streaming completion. */
-  complete(opts: LLMCompleteOptions): Promise<{ text: string; usage: LLMUsage | null }>;
+  complete(opts: LLMCompleteOptions): Promise<LLMCompletion>;
   /** Streaming completion as a sequence of normalized text deltas. */
   streamDeltas(opts: LLMCompleteOptions): AsyncIterable<string>;
 }

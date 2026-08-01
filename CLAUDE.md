@@ -123,7 +123,29 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   up on the doc row instead of a blank 解析失败. Test it live with 测试连接 in the 知识库 AI 模型
   card (`/api/admin/library/llm-test` — real completion, raw error). When the model DOES answer
   but the JSON won't parse (a reasoning model cut off mid-`<think>` is the usual cause),
-  `lib/library/indexer.ts` now stores an excerpt of the actual reply in `aiError`.
+  `explainParseFailure` (`lib/llm/explain.ts`) stores an excerpt of the actual reply in `aiError`.
+- **Reasoning models (GLM / Qwen-thinking / DeepSeek-R1) are the default on the intranet**, and
+  nearly every 知识库 AI failure traces to their `<think>` block. The invariants:
+  - **Never cap `max_tokens` for a JSON-returning call.** `lib/llm/openai.ts` omits the field
+    entirely when `maxTokens` is unset so the server uses the remaining context window; a cap is
+    what truncated the reply mid-thought and produced "模型没有按要求返回 JSON". Anthropic's API
+    *requires* the field, so that provider alone keeps a (generous, 8192) default.
+  - **`extractJsonObject` (`lib/skill-assist.ts`) is the single JSON gate** for indexing, retrieval
+    and skill assist. It takes everything after the LAST closing reasoning tag (`</think>`,
+    `</thinking>`, `</reasoning>`, `</thought>` — GLM prefills the OPENER so it may never be
+    emitted), returns null on an unterminated opener (the answer never arrived — let the caller
+    report truncation), tries EVERY candidate `{`, deprioritizes schema echoes (`{"name":"..."}`)
+    and `{}`, and repairs truncated/near JSON. It deliberately does NOT strip ``` fences —
+    a blanket strip destroyed code blocks inside a generated `descriptionMd`.
+  - **Streamed answers go through `stripThinkDeltas`** (`lib/llm/sse.ts`) on the OpenAI-compatible
+    path only — Anthropic already filters to `text_delta`. Without it the chain of thought lands in
+    the chat bubble AND is persisted into `LibraryChatMessage`, then re-sent as context.
+  - **The real fix is server-side**: 管理后台 → 知识库 → 关闭思考 sets
+    `chat_template_kwargs.enable_thinking=false` (top-level, NOT `extra_body`). It is an admin
+    toggle, not env, because it is a per-model wire detail — and it MUST stay opt-in: vLLM
+    accepts-and-ignores unknown fields, but `api.openai.com` hard-400s them.
+  - `force: true` on reindex clears the `aiSummary: ''` parse-failure checkpoints; without that
+    reset 重新索引 is a no-op on exactly the chapters that failed.
 - **Notifications** (`lib/notifications.ts`): in-app `Notification` rows + best-effort email,
   both gated per-user by `NotificationPreference` (Settings → 通知). Emit from the mutation
   site (comment reply, access request/decision, announcement fan-out) — never let a

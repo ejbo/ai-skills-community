@@ -5,7 +5,7 @@ import { AnthropicProvider } from './anthropic';
 import { OpenAiProvider } from './openai';
 import type { LLMProvider } from './types';
 
-export type { LLMProvider, LLMMessage, LLMCompleteOptions, LLMUsage } from './types';
+export type { LLMProvider, LLMMessage, LLMCompleteOptions, LLMCompletion, LLMUsage } from './types';
 export { toSseResponseStream } from './sse';
 export { resolveLLMConfig } from './config';
 
