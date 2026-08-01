@@ -116,6 +116,14 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   before Next loads `.env`, so `PROXY_CA_FILE` is the `.env`-friendly alternative. Diagnose live
   at 管理后台 → 知识库 → "网络出口 (Proxy) 诊断" (`/api/admin/egress-test`), which reports the raw
   errno + `cause` + chosen route that the user-facing toasts collapse.
+  **LLM calls are the exception**: `lib/llm/egress.ts` (`llmFetch`) is DIRECT unless
+  `LLM_USE_PROXY=true`, because the intranet model may sit on a non-RFC1918 internal range that
+  no bypass list can classify — proxying it is what breaks 知识库 AI 解析. It also rewrites the
+  useless `TypeError: fetch failed` into endpoint + route + errno, so an unreachable model shows
+  up on the doc row instead of a blank 解析失败. Test it live with 测试连接 in the 知识库 AI 模型
+  card (`/api/admin/library/llm-test` — real completion, raw error). When the model DOES answer
+  but the JSON won't parse (a reasoning model cut off mid-`<think>` is the usual cause),
+  `lib/library/indexer.ts` now stores an excerpt of the actual reply in `aiError`.
 - **Notifications** (`lib/notifications.ts`): in-app `Notification` rows + best-effort email,
   both gated per-user by `NotificationPreference` (Settings → 通知). Emit from the mutation
   site (comment reply, access request/decision, announcement fan-out) — never let a

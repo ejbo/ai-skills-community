@@ -119,6 +119,15 @@ const schema = z.object({
   LLM_BASE_URL: z.string().optional(),
   LLM_API_KEY: z.string().optional(),
   LLM_MODEL: z.string().optional(),
+  /**
+   * Route LLM calls through the corporate proxy. OFF by default: on the
+   * intranet deploy the model is an internal endpoint that the proxy cannot
+   * reach, and internal networks don't necessarily use RFC1918 addresses, so a
+   * bypass list can't be relied on to classify them. Turn this on only when the
+   * model lives on the public internet (e.g. api.anthropic.com); routing is
+   * then per-host as usual, so a bypass-listed model still goes direct.
+   */
+  LLM_USE_PROXY: bool(),
 });
 
 function loadEnv() {

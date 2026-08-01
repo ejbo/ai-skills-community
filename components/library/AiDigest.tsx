@@ -146,7 +146,6 @@ export function AiDigest({
         <Sparkles className="h-4 w-4 text-accent-500" />
         <h2 className="text-sm font-semibold">{t('ai_digest')}</h2>
       </div>
-      <p className="mt-2 text-xs text-muted">{t('ai_digest_intro')}</p>
       {state === 'failed' && aiError && <p className="mt-2 text-xs text-danger">{aiError}</p>}
       {canTrigger ? (
         <button

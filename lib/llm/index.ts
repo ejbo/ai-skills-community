@@ -1,5 +1,5 @@
 import { env } from '@/lib/env';
-import { egressFetch } from '@/lib/net/proxy';
+import { llmFetch } from './egress';
 import { resolveLLMConfig } from './config';
 import { AnthropicProvider } from './anthropic';
 import { OpenAiProvider } from './openai';
@@ -46,7 +46,7 @@ export function getProvider(): LLMProvider {
       apiKey: cfg.apiKey,
       baseUrl: cfg.baseUrl,
       model: cfg.model,
-      fetchImpl: egressFetch,
+      fetchImpl: llmFetch,
     });
   } else {
     // OpenAI-compatible: apiKey may be undefined/empty (internal keyless model).
@@ -54,7 +54,7 @@ export function getProvider(): LLMProvider {
       apiKey: cfg.apiKey,
       baseUrl: cfg.baseUrl,
       model: cfg.model,
-      fetchImpl: egressFetch,
+      fetchImpl: llmFetch,
     });
   }
   return cached;

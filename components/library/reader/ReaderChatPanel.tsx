@@ -339,7 +339,6 @@ export function ReaderChatPanel({
             <>
               <Loader2 className="h-6 w-6 animate-spin text-accent-500" />
               <p className="text-sm font-medium">{t('ai_reading_doc')}</p>
-              <p className="r-muted text-xs">{t('ai_reading_once')}</p>
             </>
           ) : (
             <>

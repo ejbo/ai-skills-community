@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Loader2, Sparkles } from 'lucide-react';
+import { Loader2, Plug, Sparkles } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 
 interface SettingState {
@@ -17,6 +17,18 @@ interface EnvInfo {
   baseUrl: string | null;
 }
 
+interface TestResult {
+  ok: boolean;
+  provider?: string;
+  model?: string;
+  reply?: string;
+  name?: string;
+  message?: string;
+  cause?: string | null;
+  ms?: number;
+  route?: { via: string; proxyUri: string | null; useProxy: boolean } | null;
+}
+
 const inputCls =
   'h-8 w-full rounded-lg border border-zinc-200 bg-white px-2.5 text-[13px] dark:border-zinc-700 dark:bg-zinc-900';
 
@@ -29,7 +41,23 @@ export function AiSettingsCard() {
   const [model, setModel] = useState('');
   const [apiKey, setApiKey] = useState('__keep__');
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<TestResult | null>(null);
   const savingRef = useRef(false);
+
+  /** Real one-shot completion through the live provider — raw error, no toast. */
+  async function test() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch('/api/admin/library/llm-test', { method: 'POST' });
+      setTestResult(await res.json().catch(() => ({ ok: false, message: '响应解析失败' })));
+    } catch (e) {
+      setTestResult({ ok: false, message: e instanceof Error ? e.message : '请求失败' });
+    } finally {
+      setTesting(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -163,7 +191,40 @@ export function AiSettingsCard() {
         >
           恢复环境配置
         </button>
+        <button
+          type="button"
+          disabled={testing}
+          onClick={() => void test()}
+          className="flex h-8 items-center gap-1.5 rounded-lg border border-zinc-200 px-3.5 text-[13px] font-medium transition hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          title="用当前配置真实调用一次模型，直接显示底层错误"
+        >
+          {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />}
+          测试连接
+        </button>
       </div>
+
+      {testResult && (
+        <div
+          className={`mt-3 space-y-1 rounded-lg px-3 py-2 font-mono text-[11px] ${
+            testResult.ok ? 'bg-ok/10 text-ok' : 'bg-danger/10 text-danger'
+          }`}
+        >
+          <div>
+            {testResult.ok
+              ? `✓ ${testResult.provider} · ${testResult.model} · ${testResult.ms}ms · 回复「${testResult.reply}」`
+              : `✗ ${testResult.name ?? '失败'} · ${testResult.ms}ms`}
+            {testResult.route
+              ? ` · ${testResult.route.via === 'proxy' ? `经代理 ${testResult.route.proxyUri}` : '直连'}`
+              : ''}
+          </div>
+          {!testResult.ok && testResult.message && (
+            <div className="break-all">{testResult.message}</div>
+          )}
+          {!testResult.ok && testResult.cause && (
+            <div className="break-all">↳ cause: {testResult.cause}</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

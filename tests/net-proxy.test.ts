@@ -138,6 +138,35 @@ describe('hostBypassesProxy', () => {
   });
 });
 
+describe('LLM egress', () => {
+  async function loadLlm(overrides: Record<string, string>) {
+    vi.resetModules();
+    for (const [k, v] of Object.entries({ ...BASE_ENV, ...overrides })) vi.stubEnv(k, v);
+    return import('@/lib/llm/egress');
+  }
+
+  it('never proxies the model by default, even for a public host', async () => {
+    // The intranet model may sit on a non-RFC1918 internal range, so the bypass
+    // list cannot classify it — LLM traffic is direct until explicitly opted in.
+    const { describeLlmRoute } = await loadLlm({
+      USE_PROXY: 'true',
+      HUAWEI_PROXY_HOST: 'proxyca.huawei.com',
+    });
+    expect(describeLlmRoute('http://7.183.4.10:8001/v1').via).toBe('direct');
+    expect(describeLlmRoute('https://api.anthropic.com').via).toBe('direct');
+  });
+
+  it('routes per host once LLM_USE_PROXY is on', async () => {
+    const { describeLlmRoute } = await loadLlm({
+      USE_PROXY: 'true',
+      HUAWEI_PROXY_HOST: 'proxyca.huawei.com',
+      LLM_USE_PROXY: 'true',
+    });
+    expect(describeLlmRoute('https://api.anthropic.com').via).toBe('proxy');
+    expect(describeLlmRoute('http://10.212.16.36:8001/v1').via).toBe('direct');
+  });
+});
+
 describe('INTERNAL_TLS_INSECURE', () => {
   it('relaxes TLS for intranet hosts only', async () => {
     const { egressFor } = await loadProxy({
