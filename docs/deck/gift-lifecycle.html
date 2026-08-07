@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>一件礼品的一生 · 库存管理办法</title>
+<style>
+:root{
+  --red:#C7000B; --red-br:#E60012; --red-dk:#8C0008; --red-tint:#FBEDED;
+  --blue:#0A4A7A; --blue-dk:#1A2942; --violet:#6A3D8F; --amber:#B26A00; --green:#2E6B33;
+  --ink:#1F1F1F; --body:#2A2A2A; --sub:#666; --line:#D2D2D2; --zebra:#F6F8FB;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#8A8A8A;color:var(--ink);
+  font-family:"Microsoft YaHei","PingFang SC","Source Han Sans SC","Segoe UI",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.deck{display:flex;flex-direction:column;align-items:center;gap:20px;padding:20px 0}
+.slide{position:relative;width:1280px;height:720px;background:#fff;overflow:hidden;
+  display:flex;flex-direction:column;padding:20px 34px 0;box-shadow:0 3px 16px rgba(0,0,0,.3)}
+
+.hdr{flex:none;height:21px;display:flex;align-items:center;justify-content:space-between}
+.tabs{display:flex;gap:4px}
+.tab{font-size:12px;line-height:20px;padding:0 12px;background:#EDEDED;color:#555;border:1px solid #DCDCDC}
+.tab.on{background:var(--red);color:#fff;border-color:var(--red);font-weight:700}
+.corner{font-size:11px;color:var(--sub)}
+.corner b{color:var(--red)}
+
+.h1{flex:none;margin-top:10px;font-size:28px;line-height:1.2;font-weight:700;color:var(--red)}
+.sub{flex:none;margin-top:5px;font-size:13.5px;color:var(--sub);line-height:1.45}
+.rule{flex:none;height:3px;background:var(--red);margin-top:7px}
+.body{flex:1 1 auto;min-height:0;display:flex;gap:11px;padding:10px 0 7px}
+.col{display:flex;flex-direction:column;gap:9px;min-width:0}
+
+.mod{border:1px solid var(--line);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.mod>h3{flex:none;font-size:14px;font-weight:700;color:#fff;background:var(--red);padding:6px 11px;
+  display:flex;align-items:center;justify-content:space-between;gap:9px}
+.mod>h3 span{font-weight:400;font-size:11px;opacity:.93}
+.mod.b>h3{background:var(--blue)} .mod.d>h3{background:var(--blue-dk)}
+.mod.g>h3{background:var(--green)} .mod.a>h3{background:var(--amber)} .mod.v>h3{background:var(--violet)}
+.mod>.in{flex:1 1 auto;min-height:0;padding:8px 10px;overflow:hidden}
+.mod>.in.p0{padding:0}
+
+ul.b{list-style:none}
+ul.b>li{position:relative;padding-left:13px;font-size:13px;line-height:1.5;margin-bottom:6px;color:var(--body)}
+ul.b>li:before{content:"";position:absolute;left:0;top:7px;width:5px;height:5px;background:var(--red)}
+ul.b>li:last-child{margin-bottom:0}
+ul.b.blue>li:before{background:var(--blue)}
+ul.b.amber>li:before{background:var(--amber)}
+ul.b.violet>li:before{background:var(--violet)}
+ul.b.grey>li:before{background:#777}
+b{font-weight:700} .r{color:var(--red);font-weight:700} .rd{color:var(--red-dk);font-weight:700}
+.ph{color:#8A5A00;font-weight:700;background:#FFF3D6;border:1px solid #EBD199;padding:0 4px;border-radius:2px}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+table.fill{height:100%}
+th{background:var(--blue);color:#fff;font-weight:700;text-align:left;padding:6px 9px;border:1px solid #fff;font-size:12.5px}
+td{border:1px solid var(--line);padding:6px 9px;vertical-align:middle;line-height:1.45}
+tbody tr:nth-child(odd){background:var(--zebra)}
+table.rh th{background:var(--red)}
+
+/* 生命周期主图 */
+.life{flex:none;display:flex;align-items:stretch;gap:0}
+.life .stg{flex:1;border:1.5px solid #C8C8C8;padding:7px 10px;display:flex;flex-direction:column;gap:2px;min-width:0;background:#fff}
+.life .stg .k{font-size:10.5px;font-weight:700;color:#fff;padding:1.5px 7px;align-self:flex-start}
+.life .stg .t{font-size:14.5px;font-weight:700;line-height:1.25}
+.life .stg .d{font-size:11.5px;color:#555;line-height:1.4}
+.life .ar{flex:none;width:19px;display:flex;align-items:center;justify-content:center;color:var(--red);font-size:13px}
+.life .ar:after{content:"▶"}
+.life .exit{flex:1.55;border:2px solid var(--red);display:flex;flex-direction:column;min-width:0}
+.life .exit .eh{background:var(--red);color:#fff;font-size:12px;font-weight:700;padding:3px 9px}
+.life .exit .er{display:flex;align-items:center;gap:8px;padding:4px 9px;border-bottom:1px solid #EEE;font-size:12px}
+.life .exit .er:last-child{border-bottom:0}
+.life .exit .er b{flex:none;width:52px;font-size:12.5px}
+.life .exit .er span{color:#555;font-size:11.5px;line-height:1.35}
+.s1{background:var(--amber)}.s2{background:var(--violet)}.s3{background:var(--blue)}
+
+.trace{flex:none;background:var(--blue-dk);color:#fff;padding:6px 12px;font-size:12.5px;
+  display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.trace b{color:#FFD34D}
+
+.rl{border:2px solid var(--red);background:var(--red-tint);padding:8px 11px;display:flex;gap:10px;align-items:flex-start}
+.rl .n{flex:none;width:24px;height:24px;border-radius:50%;background:var(--red);color:#fff;
+  font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.rl .tx{font-size:13.5px;line-height:1.4;font-weight:700;color:var(--red-dk)}
+.rl .tx small{display:block;font-size:12px;font-weight:400;color:#6B4A4B;margin-top:2px;line-height:1.4}
+
+.scene{background:var(--red-tint);border-left:4px solid var(--red);padding:7px 11px;font-size:12.5px;line-height:1.5}
+.note{background:#F1F6FB;border-left:4px solid var(--blue);padding:7px 11px;font-size:12.5px;line-height:1.5}
+
+.bar{flex:none;background:var(--red);color:#fff;padding:9px 15px 10px;margin:0 -34px;
+  font-size:14px;line-height:1.45;font-weight:600}
+.bar em{font-style:normal;background:rgba(255,255,255,.24);padding:0 4px}
+.ft{flex:none;height:29px;display:flex;align-items:center;justify-content:space-between;font-size:10.5px;color:var(--sub)}
+.ft img{height:18px;display:block}
+
+@page{size:1280px 720px;margin:0}
+@media print{html,body{background:#fff}.deck{gap:0;padding:0}
+  .slide{page-break-after:always;box-shadow:none}.slide:last-child{page-break-after:auto}}
+</style>
+<!-- deck-editor:css:begin -->
+<style>
+/* ==========================================================================
+   deck-editor — 让任意「一页一个 .slide」的 HTML 胶片变成可视化可编辑
+   纯原生，无依赖。打印时全部隐藏。
+   ========================================================================== */
+
+.dke-bar{
+  position:fixed; left:0; right:0; top:0; z-index:9999;
+  display:flex; flex-direction:column; gap:0;
+  font:12px/1.4 "Microsoft YaHei","PingFang SC",Arial,sans-serif;
+  background:#fff; border-bottom:1px solid #D8D8D8; box-shadow:0 2px 10px rgba(0,0,0,.14);
+  user-select:none;
+}
+.dke-row{display:flex; align-items:center; gap:5px; padding:6px 10px; flex-wrap:wrap}
+.dke-row + .dke-row{border-top:1px solid #EDEDED; background:#FAFAFA}
+.dke-row.hidden{display:none}
+.dke-sep{width:1px; height:20px; background:#DDD; margin:0 3px}
+.dke-lbl{font-size:11px; color:#777; margin-right:2px}
+
+.dke-btn{
+  font:600 12px/1 "Microsoft YaHei","PingFang SC",Arial,sans-serif;
+  padding:6px 10px; border:1px solid #CFCFCF; background:#fff; color:#333;
+  border-radius:2px; cursor:pointer; white-space:nowrap;
+}
+.dke-btn:hover{border-color:#C7000B; color:#C7000B}
+.dke-btn:active{background:#F6F6F6}
+.dke-btn.on{background:#C7000B; border-color:#C7000B; color:#fff}
+.dke-btn.primary{background:#C7000B; border-color:#C7000B; color:#fff}
+.dke-btn.primary:hover{background:#A80009}
+.dke-btn.icon{min-width:30px; text-align:center; padding:6px 8px}
+.dke-btn[disabled]{opacity:.4; cursor:default}
+.dke-sel,.dke-num{font:12px "Microsoft YaHei","PingFang SC",Arial,sans-serif;
+  padding:5px 6px; border:1px solid #CFCFCF; border-radius:2px; background:#fff}
+.dke-num{width:52px}
+
+.dke-swatches{display:flex; gap:3px; align-items:center}
+.dke-sw{width:18px; height:18px; border:1px solid rgba(0,0,0,.25); cursor:pointer; border-radius:2px}
+.dke-sw:hover{outline:2px solid #C7000B; outline-offset:1px}
+
+.dke-saved{font-size:11px; color:#2E6B33; font-weight:700; white-space:nowrap; margin-left:2px}
+.dke-saved.dirty{color:#B26A00}
+.dke-btn.need::after{content:"●"; color:#FFD34D; margin-left:5px; font-size:10px}
+
+.dke-hint{font-size:11px; color:#888; margin-left:auto; white-space:nowrap}
+.dke-hint b{color:#C7000B}
+
+/* 工具条是 fixed，任何时候都让出它的高度，避免盖住第一页 */
+body.dke-ready{padding-top:var(--dke-h,44px)}
+body.dke-on .slide{outline:1px dashed rgba(199,0,11,.35); outline-offset:-1px}
+body.dke-on .slide.dke-cur{outline:2px solid rgba(199,0,11,.55)}
+body.dke-on [contenteditable="true"]:focus{outline:2px solid #E60012; outline-offset:1px; background:rgba(255,248,248,.6)}
+
+/* 浮动元素（图片 / 文本框 / 标注） */
+.dke-el{position:absolute; z-index:20; box-sizing:border-box}
+.dke-el img{display:block; width:100%; height:100%; object-fit:fill; pointer-events:none}
+.dke-el.fitmode img{object-fit:contain}
+.dke-el.txt{padding:4px 6px; font-size:14px; line-height:1.5; color:#1F1F1F; min-width:40px}
+body.dke-on .dke-el{cursor:move}
+body.dke-on .dke-el:hover{outline:1px dashed #E60012; outline-offset:1px}
+.dke-el.sel{outline:2px solid #E60012 !important; outline-offset:1px}
+
+.dke-h{position:absolute; width:9px; height:9px; background:#fff; border:1.5px solid #E60012;
+  border-radius:1px; z-index:30}
+.dke-h.nw{left:-5px;top:-5px;cursor:nwse-resize}   .dke-h.n{left:50%;top:-5px;margin-left:-4.5px;cursor:ns-resize}
+.dke-h.ne{right:-5px;top:-5px;cursor:nesw-resize}  .dke-h.e{right:-5px;top:50%;margin-top:-4.5px;cursor:ew-resize}
+.dke-h.se{right:-5px;bottom:-5px;cursor:nwse-resize} .dke-h.s{left:50%;bottom:-5px;margin-left:-4.5px;cursor:ns-resize}
+.dke-h.sw{left:-5px;bottom:-5px;cursor:nesw-resize} .dke-h.w{left:-5px;top:50%;margin-top:-4.5px;cursor:ew-resize}
+
+/* 排版模式：点静态元素把它「脱离文档流」变成可拖动 */
+body.dke-layout .slide{cursor:crosshair}
+body.dke-layout .dke-hot{outline:2px solid #0A4A7A !important; outline-offset:1px;
+  background:rgba(10,74,122,.06)}
+body.dke-layout .dke-hot::after{content:attr(data-dke-tag); position:absolute; z-index:40;
+  transform:translateY(-100%); background:#0A4A7A; color:#fff; font:10px/1.6 Arial,sans-serif;
+  padding:1px 6px; white-space:nowrap; pointer-events:none}
+.dke-spacer{pointer-events:none}
+.dke-el.dke-freed{background:#fff}
+
+/* 拖放提示 */
+.slide.dke-drop{box-shadow:inset 0 0 0 3px #E60012}
+
+/* 浮层提示条 */
+.dke-toast{position:fixed; left:50%; bottom:26px; transform:translateX(-50%); z-index:10000;
+  background:rgba(30,30,30,.92); color:#fff; padding:9px 16px; border-radius:3px;
+  font:12px "Microsoft YaHei","PingFang SC",Arial,sans-serif; pointer-events:none; opacity:0;
+  transition:opacity .18s}
+.dke-toast.show{opacity:1}
+
+@media print{
+  .dke-bar,.dke-toast,.dke-h{display:none !important}
+  body.dke-ready,body.dke-on{padding-top:0 !important}
+  body.dke-on .slide,body.dke-on .slide.dke-cur{outline:none}
+  .dke-el.sel{outline:none !important}
+}
+</style>
+<!-- deck-editor:css:end -->
+</head>
+<body>
+<div class="deck" id="deck">
+
+<!-- ═════════ 第 1 页 ═════════ -->
+<section class="slide">
+  <div class="hdr">
+    <div class="tabs"><div class="tab on">它从哪来，到哪去</div><div class="tab">它一路留下什么</div></div>
+    <div class="corner"><b>CARI</b> · 礼品库存管理办法</div>
+  </div>
+  <div class="h1">一件礼品的一生（一）：它从哪来，会走到哪去</div>
+  <div class="sub">从到货那天起，每一件礼品都要能回答三个问题：现在在哪、归谁管、下一步去哪。<span class="ph">黄底</span>是待确认的数值。</div>
+  <div class="rule"></div>
+
+  <div class="body" style="flex-direction:column;gap:9px">
+
+    <!-- 生命周期主图 -->
+    <div class="life">
+      <div class="stg"><div class="k s1">第一站</div><div class="t">验收入库</div>
+        <div class="d">到货当日清点建档，贴编号</div></div>
+      <div class="ar"></div>
+      <div class="stg"><div class="k s2">第二站</div><div class="t">分类打标</div>
+        <div class="d">四个维度一次性打完</div></div>
+      <div class="ar"></div>
+      <div class="stg"><div class="k s3">第三站</div><div class="t">在库等待</div>
+        <div class="d">盯住临期与节令，别放到过期</div></div>
+      <div class="ar"></div>
+      <div class="exit">
+        <div class="eh">终点 —— 只有三条路，没有第四条</div>
+        <div class="er"><b class="rd">发 放</b><span>新员工 · 总部与兄弟单位来访 · 内部活动 · 员工里程碑</span></div>
+        <div class="er"><b class="rd">报 废</b><span>损坏 / 过期 / 失效，须申请与审批</span></div>
+        <div class="er"><b class="rd">结 转</b><span>年末未发完，封账转次年，不重复采购</span></div>
+      </div>
+    </div>
+
+    <div class="trace">
+      <span>全程留痕：</span><b>入库有验收单</b><span>·</span><b>发放有签收</b><span>·</span>
+      <b>报废有照片与双签</b><span>·</span><b>在库有盘点表</b>
+      <span style="margin-left:auto;opacity:.85">缺任何一环，这件礼品的去向就说不清</span>
+    </div>
+
+    <div style="display:flex;gap:11px;flex:1;min-height:0">
+
+      <!-- 第一站 -->
+      <div class="mod a" style="flex:1">
+        <h3>第一站 · 验收入库 <span>行政管理员 + 验收人</span></h3>
+        <div class="in">
+          <ul class="b amber" style="margin:0">
+            <li>到货 <span class="ph">当日</span> 开箱清点，与采购单、发票核对品名与数量</li>
+            <li><b class="rd">采购人不得兼任验收人</b>，双人签字后方可入库</li>
+            <li><b>无发票不入库</b> —— 没有单价，日后报废与对账都核销不了</li>
+            <li>台账建档：编号、品名、规格、数量、单价、金额、来源单号、入库日期、经手人</li>
+            <li>实物<b>贴编号标签</b>，标签号与台账号一一对应，当日完成登记</li>
+            <li><b class="rd">非采购来源同样走入库</b> —— 总部下发、活动赠品、退换货一律先入库建档，<b>不得绕过台账直接发放</b></li>
+            <li>入库后与实物复核一次，确认编号、数量、库位无误，复核人签字</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 第二站 -->
+      <div class="mod v" style="flex:1">
+        <h3>第二站 · 分类打标 <span>四个维度，入库时一次打完</span></h3>
+        <div class="in p0">
+          <table class="fill">
+            <thead><tr><th style="width:24%">维度</th><th>怎么分</th></tr></thead>
+            <tbody>
+              <tr><td><b class="rd">按用途</b></td><td>新员工礼 · 接待礼 · 活动奖品 · 日常文创，<b>分区上架</b></td></tr>
+              <tr><td><b class="rd">按时效</b></td><td>无时限 · <b>节令限定</b>（标最晚发放日）· 有保质期</td></tr>
+              <tr><td><b class="rd">按标识</b></td><td><b class="rd">含公司 logo 的单独存放、台账标红</b>，禁止带出园区</td></tr>
+              <tr><td><b class="rd">按价值</b></td><td>普通 / 高值（高值对应更高审批层级）</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 第三站 -->
+      <div class="mod b" style="flex:1">
+        <h3>第三站 · 在库等待 <span>库存管理的功夫都在这一段</span></h3>
+        <div class="in">
+          <ul class="b blue" style="margin:0">
+            <li>每月 <span class="ph">初</span> 导出<b>三个月内到期清单</b>，报主管确定去向</li>
+            <li>临期与节令礼品<b>单独标记、货架前排</b>，优先出库</li>
+            <li>每月末盘点<b>临期与高值</b>，每 <span class="ph">季度</span> 全库盘点</li>
+            <li>做到<b>账、卡、物三相符</b>，差异当月书面说明</li>
+            <li>人员变动时<b>双人清点交接</b>，交接单双方签字存档</li>
+            <li><b class="rd">采购前先看结存</b> —— 库存能覆盖的不再新采，否则边积压边采购</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="bar">
+    一件礼品从进门那天起就有编号、有归属、有去向。<em>它可以被发掉、被报废、被结转，但不能凭空消失。</em>
+  </div>
+  <div class="ft"><div>CARI · 行政　|　配套附件：新员工礼包与接待礼的标准清单（品项 · 件数 · 单价上限）</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<!-- ═════════ 第 2 页 ═════════ -->
+<section class="slide">
+  <div class="hdr">
+    <div class="tabs"><div class="tab">它从哪来，到哪去</div><div class="tab on">它一路留下什么</div></div>
+    <div class="corner"><b>CARI</b> · 礼品库存管理办法</div>
+  </div>
+  <div class="h1">一件礼品的一生（二）：它怎么出去，一路留下什么</div>
+  <div class="sub">出去只有发放和报废两条路，两条路都要留下能查的记录；有一条路是封死的。</div>
+  <div class="rule"></div>
+
+  <div class="body">
+
+    <!-- 左：出去 -->
+    <div class="col" style="width:704px;flex:none">
+      <div class="mod" style="flex:none">
+        <h3>终点其一 · 发放 <span>先定给谁，再定谁批、留什么</span></h3>
+        <div class="in p0">
+          <table>
+            <thead><tr><th style="width:23%">发给谁</th><th style="width:30%">标准</th><th style="width:22%">谁批</th><th>留什么记录</th></tr></thead>
+            <tbody>
+              <tr><td><b class="rd">新员工</b></td><td>固定礼包，入职当周</td><td>按名单，无需单批</td><td>本人签收</td></tr>
+              <tr><td><b class="rd">总部 / 兄弟单位来访</b></td><td>按接待规格</td><td><span class="ph">部门主管</span></td><td>接待清单 + 审批邮件</td></tr>
+              <tr><td><b class="rd">内部活动奖品</b></td><td>随活动方案一并申请</td><td>活动审批人</td><td>方案 + 领取名单</td></tr>
+              <tr><td><b class="rd">员工里程碑</b></td><td>周年 · 转正 · 专利 · 论文</td><td>行政备案</td><td>本人签收</td></tr>
+              <tr style="background:#FBEDED"><td><b class="r">客户 / 供应商 / 外部</b></td><td colspan="3"><b class="r">一律不发 —— 见右侧红线一</b></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="mod b" style="flex:none">
+        <h3>发放顺序 <span>决定库存能不能真正清掉</span></h3>
+        <div class="in" style="display:flex;gap:9px">
+          <div style="flex:1" class="scene"><b>① 临期优先</b><br>每月导出三个月内到期清单，优先从这批里发</div>
+          <div style="flex:1" class="scene"><b>② 节令当季清</b><br>春节、中秋类必须在节点前发完；<b>节后不得再发，也不得挪作他用</b></div>
+          <div style="flex:1" class="scene"><b>③ 先进先出</b><br>同类同批，早入库的先出；高值礼品不作常规发放</div>
+        </div>
+      </div>
+
+      <div class="mod g" style="flex:1">
+        <h3>终点其二 · 报废 <span>损坏 / 过期 / 失效</span></h3>
+        <div class="in">
+          <ul class="b" style="margin:0">
+            <li><b>申请</b>：保管人填报废单 —— 编号、数量、原值、原因，附<b>实物照片</b></li>
+            <li><b>审批</b>：行政主管 + <span class="ph">财务 / 内控</span> <b>双签</b>，单签不予受理</li>
+            <li><b>处置</b>：集中销毁并留销毁记录，<b class="rd">不得私自留用、带走或转赠</b></li>
+            <li><b>核销</b>：台账同步冲减，报废单号与<b>原入库批次号关联</b>，可追溯到是哪一批</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右：记录 + 红线 -->
+    <div class="col" style="flex:1">
+      <div class="mod d" style="flex:none">
+        <h3>它一路留下的记录 <span>一物一档，出入双向登记</span></h3>
+        <div class="in p0">
+          <table>
+            <thead><tr><th style="width:26%">经过哪一站</th><th>台账与单据记什么</th></tr></thead>
+            <tbody>
+              <tr><td><b class="rd">入库</b></td><td>验收单 · 发票 · 编号 · 数量 · 单价 · 金额 · 来源</td></tr>
+              <tr><td><b class="rd">分类</b></td><td>用途类别 · 时效标记 · 最晚发放日 · 库位</td></tr>
+              <tr><td><b class="rd">发放</b></td><td>领用人 · 部门 · 用途 · 数量 · 审批人 · 签收</td></tr>
+              <tr><td><b class="rd">报废</b></td><td>报废单 · 照片 · 原值 · 双签 · 销毁记录</td></tr>
+              <tr><td><b class="rd">盘点</b></td><td>账面数 · 实盘数 · 差异 · 原因说明 · 签字</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="note" style="flex:none">
+        <b class="rd">科目与对账：</b>礼品支出只入<b>内部福利科目</b>，<b>不得列支招待费</b>
+        —— 记成招待费等于书面承认对外使用。每月 <span class="ph">5</span> 日前与财务对平，差异不跨月挂账。
+      </div>
+
+      <div class="rl" style="flex:none">
+        <div class="n">1</div>
+        <div class="tx">一律不得对外使用
+          <small>严禁赠予客户、供应商、合作方及外部个人；严禁销售、折价转让或私自带出园区。</small>
+        </div>
+      </div>
+      <div class="rl" style="flex:none">
+        <div class="n">2</div>
+        <div class="tx">每笔出库都要有签字
+          <small>核验在职身份、记录工号、本人签收。不打白条、不事后补记。</small>
+        </div>
+      </div>
+      <div class="rl" style="flex:1;align-items:center">
+        <div class="n">3</div>
+        <div class="tx">发现外流即刻上报
+          <small>行政岗 <span class="ph">24</span> 小时内上报内控，全额追缴并按廉洁条例处理。</small>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="bar">
+    这三条不设例外：<em>不看金额大小，不看对方身份，不接受事后补单。</em>其余环节可以商量，这三条不行。
+  </div>
+  <div class="ft"><div>CARI · 行政</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+</div>
+<!-- deck-editor:js:begin -->
+<script>
+/* ==========================================================================
+ * deck-editor — 把任意「一页一个 .slide」的静态 HTML 胶片变成可视化编辑器
+ *
+ * 无任何依赖。引入本文件 + deck-editor.css 即可，不需要改胶片的结构。
+ *
+ * 实现要点（回答「这是怎么实现的」）：
+ *  1) 文字        —— 给容器加 contenteditable，用 document.execCommand 做加粗/颜色/字体；
+ *                    字号用「execCommand('fontSize',7) 再把 <font size=7> 换成 span 内联样式」
+ *                    这个通用技巧，绕开 execCommand 只支持 1~7 档的限制。
+ *  2) 浮动元素     —— 图片 / 文本框 / 标注都是 position:absolute 的 .dke-el，
+ *                    坐标与尺寸一律存成**百分比**，因此换分辨率、缩放、打印都不跑位。
+ *  3) 拖动/缩放    —— mousedown 记录起点 → mousemove 改 style → mouseup 落盘。
+ *                    八个手柄各自决定改 left/top/width/height 的哪几项；角手柄按住 Shift 锁比例。
+ *  4) 粘贴图片     —— 监听 paste，从 e.clipboardData.items 里取出 image/* 的 File，
+ *                    FileReader.readAsDataURL 转成 data URI 塞进 <img>，所以保存出来的
+ *                    单个 HTML 文件自带图片，不依赖任何外部路径。
+ *  5) 撤销         —— 每次结构性改动前把 .deck 的 innerHTML 压入快照栈（最多 60 步）。
+ *  6) 保存         —— 克隆整份文档 → 去掉编辑期的临时类和手柄 → Blob + <a download>。
+ *                    因为编辑器本身也在这份 HTML 里，导出的文件再打开仍然可编辑。
+ *
+ * 约定：胶片里每一页是一个 .slide；所有页装在 .deck 里。仅此而已。
+ * ========================================================================== */
+(function () {
+  'use strict';
+
+  var CFG = window.DECK_EDITOR_CONFIG || {};
+  var DECK_SEL = CFG.deck || '.deck';
+  var SLIDE_SEL = CFG.slide || '.slide';
+  var FILENAME = CFG.filename || (document.title || 'deck').replace(/\s+/g, '-') + '.html';
+  var FONTS = CFG.fonts || ['微软雅黑', '苹方 PingFang SC', '思源黑体 Source Han Sans SC', 'Arial', 'Consolas'];
+  var COLORS = CFG.colors || ['#C7000B', '#E60012', '#8C0008', '#1F1F1F', '#6B6B6B',
+                              '#0A4A7A', '#2E6B33', '#B26A00', '#6A3D8F', '#FFFFFF'];
+
+  var deck = document.querySelector(DECK_SEL);
+  if (!deck) { console.warn('[deck-editor] 找不到 ' + DECK_SEL); return; }
+
+  var editing = false;
+  var layout = false;          // 排版模式：点静态元素可解锁
+  var hot = null;             // 排版模式下当前悬停的块
+  var sel = null;            // 当前选中的浮动元素
+  var curSlide = null;       // 当前页
+  var undoStack = [], redoStack = [];
+  var bar, row2;
+  var fileHandle = null;      // File System Access 的文件句柄，保存过一次后一直复用
+  var dirty = false;          // 有没有未保存的改动
+  var savedTag;               // 工具条上的「已保存 …」提示
+
+  /* ---------------------------------------------------------------- 工具 */
+
+  function $(t, cls, txt) { var e = document.createElement(t); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
+  function slides() { return Array.prototype.slice.call(deck.querySelectorAll(SLIDE_SEL)); }
+
+  var toastEl;
+  function toast(msg) {
+    if (!toastEl) { toastEl = $('div', 'dke-toast'); document.body.appendChild(toastEl); }
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastEl._t);
+    toastEl._t = setTimeout(function () { toastEl.classList.remove('show'); }, 1600);
+  }
+
+  function snapshot() {
+    undoStack.push(deck.innerHTML);
+    if (undoStack.length > 60) undoStack.shift();
+    redoStack.length = 0;
+    autosave();
+  }
+  function restore(html) {
+    deselect();
+    deck.innerHTML = html;
+    if (editing) markEditable(true);
+    bindAll();
+  }
+  function undo() { if (!undoStack.length) return; redoStack.push(deck.innerHTML); restore(undoStack.pop()); }
+  function redo() { if (!redoStack.length) return; undoStack.push(deck.innerHTML); restore(redoStack.pop()); }
+
+  function markDirty() {
+    dirty = true;
+    if (savedTag) { savedTag.textContent = '未保存'; savedTag.className = 'dke-saved dirty'; }
+    if (bar && bar._bSave) bar._bSave.classList.add('need');
+  }
+  function markSaved() {
+    dirty = false;
+    var t = new Date();
+    var hh = ('0' + t.getHours()).slice(-2), mm = ('0' + t.getMinutes()).slice(-2), ss = ('0' + t.getSeconds()).slice(-2);
+    if (savedTag) { savedTag.textContent = '已保存 ' + hh + ':' + mm + ':' + ss; savedTag.className = 'dke-saved'; }
+    if (bar && bar._bSave) bar._bSave.classList.remove('need');
+  }
+
+  var saveTimer;
+  function autosave() {
+    markDirty();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      try { localStorage.setItem('dke:' + location.pathname, deck.innerHTML); } catch (e) {}
+    }, 800);
+  }
+
+  /* ------------------------------------------------- 文字：内联样式工具 */
+
+  // execCommand('fontSize') 只认 1~7 档，这里用 7 档占位再替换成真实 px / 字体族
+  function applyInline(styleObj) {
+    document.execCommand('styleWithCSS', false, true);
+    document.execCommand('fontSize', false, '7');
+    var fonts = deck.querySelectorAll('font[size="7"]');
+    for (var i = 0; i < fonts.length; i++) {
+      var f = fonts[i], s = document.createElement('span');
+      for (var k in styleObj) s.style[k] = styleObj[k];
+      while (f.firstChild) s.appendChild(f.firstChild);
+      f.parentNode.replaceChild(s, f);
+    }
+  }
+
+  function currentFontPx() {
+    var s = window.getSelection();
+    if (!s || !s.rangeCount) return 12;
+    var n = s.getRangeAt(0).startContainer;
+    if (n.nodeType === 3) n = n.parentNode;
+    return Math.round(parseFloat(window.getComputedStyle(n).fontSize)) || 12;
+  }
+
+  function bumpFont(delta) {
+    var px = Math.max(6, Math.min(96, currentFontPx() + delta));
+    applyInline({ fontSize: px + 'px' });
+    numSize.value = px;
+  }
+
+  function cmd(name, val) { document.execCommand('styleWithCSS', false, true); document.execCommand(name, false, val || null); }
+
+  /* ------------------------------------------------- 浮动元素：创建 */
+
+  function slideOf(node) { while (node && node !== document.body) { if (node.matches && node.matches(SLIDE_SEL)) return node; node = node.parentNode; } return null; }
+
+  function targetSlide() {
+    if (curSlide && document.contains(curSlide)) return curSlide;
+    // 取视口中央那一页
+    var mid = window.innerHeight / 2, best = null, bd = 1e9;
+    slides().forEach(function (s) {
+      var r = s.getBoundingClientRect(), d = Math.abs((r.top + r.bottom) / 2 - mid);
+      if (d < bd) { bd = d; best = s; }
+    });
+    return best || slides()[0];
+  }
+
+  function addFloat(slide, node, opts) {
+    opts = opts || {};
+    var el = $('div', 'dke-el' + (opts.cls ? ' ' + opts.cls : ''));
+    el.setAttribute('contenteditable', 'false');
+    el.style.left = (opts.left != null ? opts.left : 30) + '%';
+    el.style.top = (opts.top != null ? opts.top : 30) + '%';
+    if (opts.width != null) el.style.width = opts.width + '%';
+    if (opts.height != null) el.style.height = opts.height + '%';
+    if (node) el.appendChild(node);
+    slide.appendChild(el);
+    bindFloat(el);
+    return el;
+  }
+
+  function insertImage(src, slide, atPct) {
+    var img = new Image();
+    img.onload = function () {
+      var s = slide || targetSlide();
+      var sw = s.clientWidth, sh = s.clientHeight;
+      var w = Math.min(img.naturalWidth, sw * 0.45);
+      var h = w * img.naturalHeight / img.naturalWidth;
+      if (h > sh * 0.7) { h = sh * 0.7; w = h * img.naturalWidth / img.naturalHeight; }
+      snapshot();
+      var el = addFloat(s, img, {
+        left: atPct ? atPct.x : (50 - w / sw * 50),
+        top: atPct ? atPct.y : (50 - h / sh * 50),
+        width: w / sw * 100, height: h / sh * 100
+      });
+      select(el);
+      toast('图片已插入 —— 拖动移动，拖角缩放（按住 Shift 锁定比例），Delete 删除');
+    };
+    img.src = src;
+  }
+
+  function insertTextBox() {
+    var s = targetSlide();
+    snapshot();
+    var inner = $('div');
+    inner.textContent = '双击编辑文字';
+    var el = addFloat(s, inner, { cls: 'txt', left: 35, top: 40, width: 26 });
+    el.style.background = 'rgba(255,255,255,.92)';
+    el.style.border = '1px solid #C7000B';
+    select(el);
+  }
+
+  function insertPin() {
+    var s = targetSlide();
+    snapshot();
+    var n = s.querySelectorAll('.pin').length + 1;
+    var p = $('div', 'pin dke-el dke-pin', String(n));
+    p.setAttribute('contenteditable', 'false');
+    p.style.left = '50%'; p.style.top = '50%';
+    s.appendChild(p);
+    bindFloat(p);
+    select(p);
+    toast('标注已添加 —— 拖到截图上要指的位置');
+  }
+
+  /* --------------------------------- 把静态排版元素变成可拖动的浮动元素 */
+
+  // 点排版元素时向上找到「有意义的块」，避免选中一个孤零零的 <b>
+  var BLOCK_SEL = '.mod, .card, .proj, .shot, .scene, .note, .cards, .kpis, .tl, .ag, .agi, ' +
+                  '.pipe, .bar, .ft, .hdr, .h1, .sub, .fill-box, .cap, table, svg, img, section > div';
+
+  function blockOf(node) {
+    var s = slideOf(node);
+    if (!s) return null;
+    var n = node;
+    while (n && n !== s) {
+      if (n.classList && (n.classList.contains('dke-el') || n.classList.contains('dke-bar'))) return n;
+      if (n.matches && n.matches(BLOCK_SEL)) return n;
+      n = n.parentNode;
+    }
+    return null;
+  }
+
+  function tagOf(el) {
+    if (el.classList.contains('mod')) return 'module';
+    if (el.classList.contains('shot')) return 'screenshot';
+    if (el.classList.contains('card')) return 'card';
+    if (el.classList.contains('proj')) return 'row';
+    if (el.tagName === 'TABLE') return 'table';
+    if (el.tagName === 'IMG') return 'image';
+    if (el.tagName === 'svg' || el.tagName === 'SVG') return 'diagram';
+    return el.tagName.toLowerCase();
+  }
+
+  /** 脱离文档流：原位留一个等尺寸占位块，元素本身改成绝对定位的 .dke-el */
+  function freeElement(el) {
+    if (!el) return;
+    if (el.classList.contains('dke-el')) { select(el); return; }
+    var s = slideOf(el);
+    if (!s || el === s) return;
+    snapshot();
+
+    var r = el.getBoundingClientRect(), sr = s.getBoundingClientRect();
+    var spacer = document.createElement('div');
+    spacer.className = 'dke-spacer';
+    spacer.style.cssText = 'width:' + r.width + 'px;height:' + r.height + 'px;flex:0 0 auto;visibility:hidden';
+    el.parentNode.insertBefore(spacer, el);
+
+    s.appendChild(el);
+    el.classList.add('dke-el', 'dke-freed');
+    el.classList.remove('dke-hot');
+    el.removeAttribute('data-dke-tag');
+    el.setAttribute('contenteditable', 'false');
+    el.style.position = 'absolute';
+    el.style.margin = '0';
+    el.style.left = ((r.left - sr.left) / sr.width * 100).toFixed(2) + '%';
+    el.style.top = ((r.top - sr.top) / sr.height * 100).toFixed(2) + '%';
+    el.style.width = (r.width / sr.width * 100).toFixed(2) + '%';
+    el.style.height = (r.height / sr.height * 100).toFixed(2) + '%';
+    bindFloat(el);
+    select(el);
+    toast('已解锁：拖动移动，拖角缩放，Delete 删除。Ctrl+Z 可还原');
+  }
+
+  /* ------------------------------------------------- 选中 / 手柄 */
+
+  function deselect() {
+    if (sel) { sel.classList.remove('sel'); clearHandles(sel); }
+    sel = null;
+    syncElBar();
+  }
+  function clearHandles(el) {
+    var hs = el.querySelectorAll(':scope > .dke-h');
+    for (var i = 0; i < hs.length; i++) hs[i].remove();
+  }
+  function select(el) {
+    if (sel === el) return;
+    deselect();
+    sel = el;
+    el.classList.add('sel');
+    // .pin 是圆点，只移动不缩放
+    if (!el.classList.contains('dke-pin')) {
+      ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach(function (d) {
+        var h = $('div', 'dke-h ' + d); h.dataset.dir = d; el.appendChild(h);
+      });
+    }
+    curSlide = slideOf(el);
+    syncElBar();
+  }
+
+  /* ------------------------------------------------- 拖动 / 缩放 */
+
+  function pct(v, total) { return (v / total) * 100; }
+
+  function bindFloat(el) {
+    if (el._dkeBound) return;
+    el._dkeBound = true;
+
+    el.addEventListener('mousedown', function (e) {
+      if (!editing) return;
+      if (el.isContentEditable && e.target.isContentEditable && el.classList.contains('dke-editing')) return;
+      var handle = e.target.classList && e.target.classList.contains('dke-h') ? e.target.dataset.dir : null;
+      e.preventDefault();
+      e.stopPropagation();
+      select(el);
+
+      var s = slideOf(el), sr = s.getBoundingClientRect();
+      var r = el.getBoundingClientRect();
+      var isPin = el.classList.contains('dke-pin');
+      var start = {
+        mx: e.clientX, my: e.clientY,
+        l: r.left - sr.left, t: r.top - sr.top, w: r.width, h: r.height,
+        ratio: r.width / (r.height || 1), sw: sr.width, sh: sr.height
+      };
+      var moved = false;
+
+      function onMove(ev) {
+        if (!moved) { snapshot(); moved = true; }
+        var dx = ev.clientX - start.mx, dy = ev.clientY - start.my;
+        if (!handle) {
+          var l = start.l + dx, t = start.t + dy;
+          if (isPin) { l += start.w / 2; t += start.h / 2; }   // pin 用中心定位
+          el.style.left = pct(l, start.sw).toFixed(2) + '%';
+          el.style.top = pct(t, start.sh).toFixed(2) + '%';
+          return;
+        }
+        var l2 = start.l, t2 = start.t, w2 = start.w, h2 = start.h;
+        if (handle.indexOf('e') > -1) w2 = start.w + dx;
+        if (handle.indexOf('s') > -1) h2 = start.h + dy;
+        if (handle.indexOf('w') > -1) { w2 = start.w - dx; l2 = start.l + dx; }
+        if (handle.indexOf('n') > -1) { h2 = start.h - dy; t2 = start.t + dy; }
+        if (ev.shiftKey && handle.length === 2) {          // 角手柄 + Shift = 锁比例
+          if (Math.abs(dx) > Math.abs(dy)) h2 = w2 / start.ratio; else w2 = h2 * start.ratio;
+          if (handle.indexOf('n') > -1) t2 = start.t + (start.h - h2);
+          if (handle.indexOf('w') > -1) l2 = start.l + (start.w - w2);
+        }
+        w2 = Math.max(16, w2); h2 = Math.max(12, h2);
+        el.style.left = pct(l2, start.sw).toFixed(2) + '%';
+        el.style.top = pct(t2, start.sh).toFixed(2) + '%';
+        el.style.width = pct(w2, start.sw).toFixed(2) + '%';
+        el.style.height = pct(h2, start.sh).toFixed(2) + '%';
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        if (moved) autosave();
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
+    // 双击进入文字编辑（文本框 / 标注）
+    el.addEventListener('dblclick', function (e) {
+      if (!editing || el.querySelector('img')) return;
+      e.stopPropagation();
+      el.classList.add('dke-editing');
+      el.setAttribute('contenteditable', 'true');
+      el.focus();
+      var r = document.createRange(); r.selectNodeContents(el);
+      var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    });
+    el.addEventListener('blur', function () {
+      el.classList.remove('dke-editing');
+      el.setAttribute('contenteditable', 'false');
+    }, true);
+  }
+
+  function bindAll() {
+    var els = deck.querySelectorAll('.dke-el, .pin');
+    for (var i = 0; i < els.length; i++) {
+      var e = els[i];
+      if (e.classList.contains('pin') && !e.classList.contains('dke-el')) {
+        e.classList.add('dke-el', 'dke-pin');
+        e.setAttribute('contenteditable', 'false');
+      }
+      bindFloat(e);
+    }
+  }
+
+  /* --------------------------------- 图片：拉伸 / 适应 / 还原比例 */
+
+  function selImg() { return sel ? sel.querySelector('img') : null; }
+
+  function toggleFit() {
+    if (!sel || !selImg()) { toast('先选中一张图片'); return; }
+    snapshot();
+    var on = sel.classList.toggle('fitmode');
+    toast(on ? '适应：保持比例，框内可能留白' : '拉伸：图片跟着框变形，无留白');
+  }
+
+  function resetRatio() {
+    var img = selImg();
+    if (!img) { toast('先选中一张图片'); return; }
+    if (!img.naturalWidth) { toast('图片还没加载完'); return; }
+    snapshot();
+    var s = slideOf(sel), sr = s.getBoundingClientRect();
+    var w = sel.getBoundingClientRect().width;
+    var h = w * img.naturalHeight / img.naturalWidth;
+    sel.style.height = (h / sr.height * 100).toFixed(2) + '%';
+    sel.classList.remove('fitmode');
+    toast('已按图片原始比例调整高度');
+  }
+
+  /* ------------------------------------------------- 表格操作 */
+
+  function cellAtCaret() {
+    var s = window.getSelection();
+    if (!s || !s.rangeCount) return null;
+    var n = s.getRangeAt(0).startContainer;
+    while (n && n !== deck) { if (n.nodeName === 'TD' || n.nodeName === 'TH') return n; n = n.parentNode; }
+    return null;
+  }
+  function tableOp(op) {
+    var td = cellAtCaret();
+    if (!td) { toast('请先把光标放进表格的某个单元格'); return; }
+    snapshot();
+    var tr = td.parentNode, tbl = tr.closest('table'), idx = Array.prototype.indexOf.call(tr.children, td);
+    if (op === 'rowAfter' || op === 'rowBefore') {
+      var nr = tr.cloneNode(true);
+      for (var i = 0; i < nr.children.length; i++) nr.children[i].innerHTML = '&nbsp;';
+      tr.parentNode.insertBefore(nr, op === 'rowAfter' ? tr.nextSibling : tr);
+    } else if (op === 'rowDel') {
+      if (tr.parentNode.children.length > 1) tr.remove(); else toast('至少保留一行');
+    } else if (op === 'colAfter' || op === 'colBefore') {
+      Array.prototype.forEach.call(tbl.rows, function (r) {
+        var c = r.children[idx]; if (!c) return;
+        var n2 = document.createElement(c.nodeName); n2.innerHTML = '&nbsp;';
+        r.insertBefore(n2, op === 'colAfter' ? c.nextSibling : c);
+      });
+    } else if (op === 'colDel') {
+      Array.prototype.forEach.call(tbl.rows, function (r) { if (r.children.length > 1 && r.children[idx]) r.children[idx].remove(); });
+    }
+    autosave();
+  }
+
+  /* ------------------------------------------------- 幻灯片操作 */
+
+  function slideOp(op) {
+    var s = targetSlide();
+    if (!s) return;
+    snapshot();
+    if (op === 'dup') {
+      var c = s.cloneNode(true);
+      c.classList.remove('dke-cur');
+      s.parentNode.insertBefore(c, s.nextSibling);
+      bindAll(); curSlide = c; c.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if (op === 'del') {
+      if (slides().length <= 1) { toast('至少保留一页'); return; }
+      var nx = s.nextElementSibling || s.previousElementSibling;
+      s.remove(); curSlide = nx;
+    } else if (op === 'blank') {
+      var b = document.createElement('section');
+      b.className = s.className;
+      b.style.cssText = 'position:relative';
+      b.innerHTML = '<div style="padding:60px;font:700 24px \'Microsoft YaHei\';color:#C7000B">新建页面 —— 双击编辑</div>';
+      s.parentNode.insertBefore(b, s.nextSibling);
+      curSlide = b; b.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    autosave();
+  }
+
+  /* ------------------------------------------------- 保存 / 导出 */
+
+  /** 产出一份干净的整页 HTML —— 保存和导出共用 */
+  function serialize() {
+    var wasEditing = editing;
+    if (wasEditing) setEditing(false);
+    var clone = document.documentElement.cloneNode(true);
+    // 清掉编辑期的痕迹
+    clone.querySelectorAll('.dke-bar,.dke-toast,.dke-h').forEach(function (n) { n.remove(); });
+    clone.querySelectorAll('.sel,.dke-cur,.dke-editing,.dke-hot').forEach(function (n) {
+      n.classList.remove('sel', 'dke-cur', 'dke-editing', 'dke-hot');
+      n.removeAttribute('data-dke-tag');
+    });
+    clone.querySelectorAll('[contenteditable]').forEach(function (n) {
+      if (n.classList.contains('dke-el')) n.setAttribute('contenteditable', 'false');
+      else n.removeAttribute('contenteditable');
+    });
+    var body = clone.querySelector('body');
+    if (body) body.classList.remove('dke-on', 'dke-layout', 'dke-ready');
+    if (wasEditing) setEditing(true);
+    return '<!DOCTYPE html>\n' + clone.outerHTML;
+  }
+
+  /* --------------------------------- 保存：写回同一个文件 */
+
+  // 句柄存进 IndexedDB，重开文件后还能接着用（file:// 下可能被禁，静默降级）
+  function idb(fn) {
+    return new Promise(function (res) {
+      try {
+        var rq = indexedDB.open('dke-handles', 1);
+        rq.onupgradeneeded = function () { rq.result.createObjectStore('h'); };
+        rq.onsuccess = function () { fn(rq.result, res); };
+        rq.onerror = function () { res(null); };
+      } catch (e) { res(null); }
+    });
+  }
+  var HKEY = 'handle:' + location.pathname;
+  function saveHandle(h) {
+    return idb(function (db, res) {
+      var tx = db.transaction('h', 'readwrite');
+      tx.objectStore('h').put(h, HKEY);
+      tx.oncomplete = function () { res(true); };
+      tx.onerror = function () { res(null); };
+    });
+  }
+  function loadHandle() {
+    return idb(function (db, res) {
+      var rq = db.transaction('h', 'readonly').objectStore('h').get(HKEY);
+      rq.onsuccess = function () { res(rq.result || null); };
+      rq.onerror = function () { res(null); };
+    });
+  }
+
+  async function saveToDisk(saveAs) {
+    if (!window.showSaveFilePicker) {          // Firefox / Safari：退回下载
+      exportHtml();
+      return;
+    }
+    try {
+      if (saveAs || !fileHandle) {
+        fileHandle = await window.showSaveFilePicker({
+          suggestedName: FILENAME,
+          types: [{ description: 'HTML', accept: { 'text/html': ['.html'] } }]
+        });
+        saveHandle(fileHandle);
+      } else {
+        var perm = await fileHandle.queryPermission({ mode: 'readwrite' });
+        if (perm !== 'granted') {
+          perm = await fileHandle.requestPermission({ mode: 'readwrite' });
+          if (perm !== 'granted') { toast('没有写入权限，改用「另存为」'); return; }
+        }
+      }
+      var w = await fileHandle.createWritable();
+      await w.write(serialize());
+      await w.close();
+      markSaved();
+      toast('已保存到 ' + (fileHandle.name || FILENAME) + ' —— 之后按 Ctrl+S 直接覆盖，不再弹窗');
+    } catch (e) {
+      if (e.name === 'AbortError') return;     // 用户取消
+      toast('保存失败：' + e.message);
+    }
+  }
+
+  function exportHtml() {
+    var html = serialize();
+    var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = FILENAME; a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+    markSaved();
+    toast('已下载 ' + FILENAME + '（' + (blob.size / 1024 / 1024).toFixed(2) + ' MB）');
+  }
+
+  /* ------------------------------------------------- 工具条 */
+
+  function btn(label, title, fn, cls) {
+    var b = $('button', 'dke-btn' + (cls ? ' ' + cls : ''), label);
+    b.type = 'button'; b.title = title || label;
+    b.addEventListener('mousedown', function (e) { e.preventDefault(); });  // 别丢选区
+    b.addEventListener('click', fn);
+    return b;
+  }
+
+  var numSize, elBarItems = [];
+  function syncElBar() {
+    elBarItems.forEach(function (n) { n.disabled = !sel; });
+  }
+
+  function buildBar() {
+    bar = $('div', 'dke-bar');
+
+    /* --- 第一行：模式 / 插入 / 页面 / 保存 --- */
+    var r1 = $('div', 'dke-row');
+    var bEdit = btn('✎ 进入编辑', '在预览与编辑之间切换', function () { setEditing(!editing); }, 'primary');
+    r1.appendChild(bEdit);
+    r1.appendChild($('div', 'dke-sep'));
+
+    r1.appendChild($('span', 'dke-lbl', '插入'));
+    r1.appendChild(btn('🖼 图片', '从文件选择图片（也可直接 Ctrl+V 粘贴 / 拖文件进来）', pickImage));
+    r1.appendChild(btn('T 文本框', '插入一个可拖动的浮动文本框', insertTextBox));
+    r1.appendChild(btn('① 标注', '插入红色编号圆点，拖到截图上', insertPin));
+    r1.appendChild($('div', 'dke-sep'));
+
+    var bLayout = btn('🔓 移动排版元素', '点开后，页面里的方框 / 表格 / 图都可以点选、拖动、拉伸',
+                      function () { setLayout(!layout); });
+    r1.appendChild(bLayout);
+    r1.appendChild($('div', 'dke-sep'));
+
+    r1.appendChild($('span', 'dke-lbl', '页面'));
+    r1.appendChild(btn('复制本页', '在当前页后面插入一份副本', function () { slideOp('dup'); }));
+    r1.appendChild(btn('新建空白页', '', function () { slideOp('blank'); }));
+    r1.appendChild(btn('删除本页', '', function () { if (confirm('确定删除当前这一页？')) slideOp('del'); }));
+    r1.appendChild($('div', 'dke-sep'));
+
+    r1.appendChild(btn('↶', '撤销 Ctrl+Z', undo, 'icon'));
+    r1.appendChild(btn('↷', '重做 Ctrl+Shift+Z', redo, 'icon'));
+    r1.appendChild($('div', 'dke-sep'));
+    var bSave = btn('💾 保存', '保存回同一个文件（Ctrl+S）。第一次会让你选文件，之后直接覆盖',
+                    function () { saveToDisk(false); }, 'primary');
+    r1.appendChild(bSave);
+    r1.appendChild(btn('另存为…', '存成新文件（Ctrl+Shift+S）', function () { saveToDisk(true); }));
+    savedTag = $('span', 'dke-saved', '未保存');
+    r1.appendChild(savedTag);
+    r1.appendChild($('div', 'dke-sep'));
+    r1.appendChild(btn('⎙ 打印 / PDF', '', function () { window.print(); }));
+
+    var hint = $('div', 'dke-hint');
+    hint.innerHTML = '拖角缩放会<b>拉伸</b>图片（按 <b>Shift</b> 才锁比例）· <b>Delete</b> 删除 · 方向键微调';
+    r1.appendChild(hint);
+    bar.appendChild(r1);
+
+    /* --- 第二行：文字格式 / 表格 / 层级（仅编辑态显示） --- */
+    row2 = $('div', 'dke-row hidden');
+
+    var selFont = $('select', 'dke-sel');
+    selFont.title = '字体';
+    selFont.appendChild(new Option('字体', ''));
+    FONTS.forEach(function (f) { selFont.appendChild(new Option(f.split(' ')[0], f.replace(/^\S+\s/, '') || f)); });
+    selFont.addEventListener('change', function () { if (selFont.value) { applyInline({ fontFamily: selFont.value }); } });
+    row2.appendChild(selFont);
+
+    row2.appendChild(btn('A−', '缩小字号', function () { bumpFont(-1); }, 'icon'));
+    numSize = $('input', 'dke-num'); numSize.type = 'number'; numSize.min = 6; numSize.max = 96; numSize.value = 12;
+    numSize.title = '字号 px（回车应用）';
+    numSize.addEventListener('keydown', function (e) { if (e.key === 'Enter') { applyInline({ fontSize: numSize.value + 'px' }); } });
+    numSize.addEventListener('change', function () { applyInline({ fontSize: numSize.value + 'px' }); });
+    row2.appendChild(numSize);
+    row2.appendChild(btn('A+', '放大字号', function () { bumpFont(1); }, 'icon'));
+    row2.appendChild($('div', 'dke-sep'));
+
+    row2.appendChild(btn('B', '加粗', function () { cmd('bold'); }, 'icon'));
+    var bi = btn('I', '斜体', function () { cmd('italic'); }, 'icon'); bi.style.fontStyle = 'italic'; row2.appendChild(bi);
+    var bu = btn('U', '下划线', function () { cmd('underline'); }, 'icon'); bu.style.textDecoration = 'underline'; row2.appendChild(bu);
+    row2.appendChild(btn('S', '删除线', function () { cmd('strikeThrough'); }, 'icon'));
+    row2.appendChild($('div', 'dke-sep'));
+
+    row2.appendChild($('span', 'dke-lbl', '字色'));
+    var sw1 = $('div', 'dke-swatches');
+    COLORS.forEach(function (c) {
+      var s = $('div', 'dke-sw'); s.style.background = c; s.title = c;
+      s.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      s.addEventListener('click', function () { cmd('foreColor', c); });
+      sw1.appendChild(s);
+    });
+    row2.appendChild(sw1);
+
+    row2.appendChild($('span', 'dke-lbl', '底色'));
+    var sw2 = $('div', 'dke-swatches');
+    ['#FBEDED', '#FFF3CD', '#E8F1F8', '#EAF5EA', '#F2F2F2', 'transparent'].forEach(function (c) {
+      var s = $('div', 'dke-sw');
+      s.style.background = c === 'transparent' ? 'repeating-linear-gradient(45deg,#fff,#fff 4px,#ddd 4px,#ddd 8px)' : c;
+      s.title = c === 'transparent' ? '清除底色' : c;
+      s.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      s.addEventListener('click', function () { cmd('hiliteColor', c === 'transparent' ? 'inherit' : c); });
+      sw2.appendChild(s);
+    });
+    row2.appendChild(sw2);
+    row2.appendChild($('div', 'dke-sep'));
+
+    row2.appendChild(btn('⯇', '左对齐', function () { cmd('justifyLeft'); }, 'icon'));
+    row2.appendChild(btn('≡', '居中', function () { cmd('justifyCenter'); }, 'icon'));
+    row2.appendChild(btn('⯈', '右对齐', function () { cmd('justifyRight'); }, 'icon'));
+    row2.appendChild(btn('⌫格式', '清除所选文字的格式', function () { cmd('removeFormat'); }));
+    row2.appendChild($('div', 'dke-sep'));
+
+    row2.appendChild($('span', 'dke-lbl', '表格'));
+    row2.appendChild(btn('+行', '在光标所在行下方插入一行', function () { tableOp('rowAfter'); }));
+    row2.appendChild(btn('−行', '删除光标所在行', function () { tableOp('rowDel'); }));
+    row2.appendChild(btn('+列', '在光标所在列右侧插入一列', function () { tableOp('colAfter'); }));
+    row2.appendChild(btn('−列', '删除光标所在列', function () { tableOp('colDel'); }));
+    row2.appendChild($('div', 'dke-sep'));
+
+    row2.appendChild($('span', 'dke-lbl', '图片'));
+    var bi1 = btn('拉伸 / 适应', '拉伸=图片跟着框变形不留白（默认）；适应=保持比例，框内可能留白', toggleFit);
+    var bi2 = btn('还原比例', '把框的高度调回图片的原始宽高比', resetRatio);
+    row2.appendChild(bi1); row2.appendChild(bi2);
+    row2.appendChild($('div', 'dke-sep'));
+
+    row2.appendChild($('span', 'dke-lbl', '选中元素'));
+    var b1 = btn('置顶层', '把选中的图片/文本框移到最上层', function () { if (sel) { snapshot(); sel.style.zIndex = 60; } });
+    var b2 = btn('置底层', '', function () { if (sel) { snapshot(); sel.style.zIndex = 5; } });
+    var b3 = btn('删除', '删除选中的元素（Delete）', function () { if (sel) { snapshot(); sel.remove(); deselect(); } });
+    elBarItems = [b1, b2, b3, bi1, bi2];
+    row2.appendChild(b1); row2.appendChild(b2); row2.appendChild(b3);
+    syncElBar();
+
+    bar.appendChild(row2);
+    document.body.appendChild(bar);
+
+    bar._bEdit = bEdit;
+    bar._bLayout = bLayout;
+    bar._bSave = bSave;
+    document.body.classList.add('dke-ready');
+    requestAnimationFrame(function () {
+      document.body.style.setProperty('--dke-h', bar.getBoundingClientRect().height + 'px');
+    });
+  }
+
+  function pickImage() {
+    var inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true;
+    inp.addEventListener('change', function () {
+      Array.prototype.forEach.call(inp.files, function (f) {
+        var fr = new FileReader();
+        fr.onload = function () { insertImage(fr.result); };
+        fr.readAsDataURL(f);
+      });
+    });
+    inp.click();
+  }
+
+  /* ------------------------------------------------- 模式切换 */
+
+  function markEditable(on) {
+    slides().forEach(function (s) {
+      if (on) s.setAttribute('contenteditable', 'true');
+      else s.removeAttribute('contenteditable');
+    });
+    // 浮动元素本身不参与文字流编辑
+    deck.querySelectorAll('.dke-el').forEach(function (e) { e.setAttribute('contenteditable', 'false'); });
+  }
+
+  function setLayout(on) {
+    layout = on;
+    document.body.classList.toggle('dke-layout', on);
+    if (!on && hot) { hot.classList.remove('dke-hot'); hot.removeAttribute('data-dke-tag'); hot = null; }
+    // 排版模式下关掉文字编辑，否则点一下就落光标
+    slides().forEach(function (x) {
+      if (on) x.removeAttribute('contenteditable');
+      else if (editing) x.setAttribute('contenteditable', 'true');
+    });
+    if (bar._bLayout) {
+      bar._bLayout.classList.toggle('on', on);
+      bar._bLayout.textContent = on ? '🔓 排版中（点此退出）' : '🔓 移动排版元素';
+    }
+    if (on) toast('点任意方框 / 表格 / 图 —— 它会脱离排版，之后可以随意拖动和拉伸');
+  }
+
+  function setEditing(on) {
+    editing = on;
+    if (!on && layout) setLayout(false);
+    document.body.classList.toggle('dke-on', on);
+    row2.classList.toggle('hidden', !on);
+    markEditable(on);
+    if (!on) deselect();
+    bar._bEdit.textContent = on ? '✓ 编辑中（点此退出）' : '✎ 进入编辑';
+    bar._bEdit.classList.toggle('on', on);
+    requestAnimationFrame(function () {
+      document.body.style.setProperty('--dke-h', bar.getBoundingClientRect().height + 'px');
+    });
+    if (on) toast('编辑模式：直接改字；Ctrl+V 粘贴图片；拖图片文件进页面也可以');
+  }
+
+  /* ------------------------------------------------- 全局事件 */
+
+  function bindGlobal() {
+    // 排版模式：悬停高亮候选块
+    document.addEventListener('mousemove', function (e) {
+      if (!editing || !layout) return;
+      var b = blockOf(e.target);
+      if (b === hot) return;
+      if (hot) { hot.classList.remove('dke-hot'); hot.removeAttribute('data-dke-tag'); }
+      hot = b;
+      if (hot && !hot.classList.contains('dke-el')) {
+        hot.classList.add('dke-hot');
+        hot.setAttribute('data-dke-tag', tagOf(hot) + ' — click to unlock');
+      } else { hot = null; }
+    });
+
+    // 排版模式：点一下就解锁
+    document.addEventListener('click', function (e) {
+      if (!editing || !layout) return;
+      if (e.target.closest('.dke-bar')) return;
+      var b = blockOf(e.target);
+      if (!b) return;
+      e.preventDefault(); e.stopPropagation();
+      freeElement(b);
+    }, true);
+
+    // 记录当前页 + 点空白处取消选中
+    document.addEventListener('mousedown', function (e) {
+      var s = slideOf(e.target);
+      if (s) { slides().forEach(function (x) { x.classList.remove('dke-cur'); }); s.classList.add('dke-cur'); curSlide = s; }
+      if (!editing) return;
+      if (!e.target.closest('.dke-el') && !e.target.closest('.dke-bar')) deselect();
+    }, true);
+
+    // 粘贴图片
+    document.addEventListener('paste', function (e) {
+      if (!editing) return;
+      var items = (e.clipboardData || {}).items || [];
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].type && items[i].type.indexOf('image') === 0) {
+          e.preventDefault();
+          var f = items[i].getAsFile();
+          var fr = new FileReader();
+          fr.onload = function () { insertImage(fr.result); };
+          fr.readAsDataURL(f);
+          return;
+        }
+      }
+    });
+
+    // 拖文件进来
+    document.addEventListener('dragover', function (e) {
+      if (!editing) return;
+      var s = slideOf(e.target); if (!s) return;
+      e.preventDefault();
+      slides().forEach(function (x) { x.classList.remove('dke-drop'); });
+      s.classList.add('dke-drop');
+    });
+    document.addEventListener('dragleave', function (e) {
+      var s = slideOf(e.target); if (s) s.classList.remove('dke-drop');
+    });
+    document.addEventListener('drop', function (e) {
+      if (!editing) return;
+      var s = slideOf(e.target); if (!s) return;
+      e.preventDefault();
+      s.classList.remove('dke-drop');
+      var r = s.getBoundingClientRect();
+      var at = { x: (e.clientX - r.left) / r.width * 100, y: (e.clientY - r.top) / r.height * 100 };
+      Array.prototype.forEach.call(e.dataTransfer.files || [], function (f) {
+        if (f.type.indexOf('image') !== 0) return;
+        var fr = new FileReader();
+        fr.onload = function () { insertImage(fr.result, s, at); };
+        fr.readAsDataURL(f);
+      });
+    });
+
+    // 键盘
+    document.addEventListener('keydown', function (e) {
+      if (!editing) return;
+      var mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+      if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); saveToDisk(e.shiftKey); return; }
+      if (!sel) return;
+      var inText = sel.classList.contains('dke-editing');
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !inText) {
+        e.preventDefault(); snapshot(); sel.remove(); deselect(); return;
+      }
+      var step = e.shiftKey ? 2 : 0.4, dx = 0, dy = 0;
+      if (e.key === 'ArrowLeft') dx = -step; else if (e.key === 'ArrowRight') dx = step;
+      else if (e.key === 'ArrowUp') dy = -step; else if (e.key === 'ArrowDown') dy = step;
+      if ((dx || dy) && !inText) {
+        e.preventDefault();
+        sel.style.left = (parseFloat(sel.style.left || 0) + dx).toFixed(2) + '%';
+        sel.style.top = (parseFloat(sel.style.top || 0) + dy).toFixed(2) + '%';
+        autosave();
+      }
+    });
+
+    // 输入时记快照（按段落节流）
+    var typeTimer;
+    deck.addEventListener('input', function () {
+      clearTimeout(typeTimer);
+      typeTimer = setTimeout(function () { undoStack.push(deck.innerHTML); if (undoStack.length > 60) undoStack.shift(); autosave(); }, 900);
+    });
+
+    // 选区变化时同步字号显示
+    document.addEventListener('selectionchange', function () {
+      if (!editing) return;
+      var px = currentFontPx();
+      if (px && document.activeElement !== numSize) numSize.value = px;
+    });
+
+    window.addEventListener('beforeunload', function (e) {
+      if (dirty) { e.preventDefault(); e.returnValue = ''; }
+    });
+  }
+
+  /* ------------------------------------------------- 本地草稿恢复 */
+
+  function offerRestore() {
+    var key = 'dke:' + location.pathname, saved;
+    try { saved = localStorage.getItem(key); } catch (e) { return; }
+    if (!saved || saved === deck.innerHTML) return;
+    setTimeout(function () {
+      if (confirm('检测到上次未导出的本地修改，是否恢复？\n（选「取消」则使用文件里的原始内容，草稿保留不删）')) {
+        deck.innerHTML = saved;
+        if (editing) markEditable(true);
+        bindAll();
+        toast('已恢复本地草稿');
+      }
+    }, 400);
+  }
+
+  /* ------------------------------------------------- 启动 */
+
+  buildBar();
+  if (window.showSaveFilePicker) {
+    loadHandle().then(function (h) {
+      if (h) { fileHandle = h; if (savedTag) savedTag.textContent = '已连到 ' + (h.name || '文件'); }
+    });
+  } else if (savedTag) {
+    savedTag.textContent = '此浏览器只能下载';
+  }
+  bindAll();
+  bindGlobal();
+  offerRestore();
+  window.DeckEditor = { setEditing: setEditing, setLayout: setLayout, freeElement: freeElement,
+    save: saveToDisk, serialize: serialize, isDirty: function () { return dirty; },
+    toggleFit: toggleFit, resetRatio: resetRatio, export: exportHtml, undo: undo, redo: redo, insertImage: insertImage };
+})();
+</script>
+<!-- deck-editor:js:end -->
+</body>
+</html>

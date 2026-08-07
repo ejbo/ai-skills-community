@@ -53,6 +53,8 @@ export interface EventFilters {
   to?: Date;
   /** Single-day filter from a calendar click; wins over from/to. */
   day?: Date;
+  /** 我参加的 view: only events this user joined (viewer id, never client input). */
+  mineFor?: string;
 }
 
 interface Viewer {
@@ -140,6 +142,7 @@ function facetWhere(f: Omit<EventFilters, 'tab' | 'from' | 'to' | 'day'>): Prism
   if (f.topic) and.push({ topics: { has: f.topic } });
   if (f.mode) and.push({ mode: f.mode });
   if (f.city) and.push({ city: f.city });
+  if (f.mineFor) and.push({ attendees: { some: { userId: f.mineFor } } });
   const q = f.q?.trim();
   if (q) {
     and.push({
@@ -182,7 +185,17 @@ function toSpeakerData(s: EventRow['speakers'][number]): EventSpeakerData {
   return { name: s.name, title: s.title, org: s.org, avatarUrl: s.avatarUrl, link: s.link, bio: s.bio };
 }
 
-export function toPublicEvent(row: EventRow, viewer: Viewer): PublicEventItem {
+/** Which of these events the viewer has joined — one IN query, house pattern. */
+async function attendingIdsFor(viewerId: string | null, eventIds: string[]): Promise<Set<string>> {
+  if (!viewerId || eventIds.length === 0) return new Set();
+  const rows = await prisma.eventAttendee.findMany({
+    where: { userId: viewerId, eventId: { in: eventIds } },
+    select: { eventId: true },
+  });
+  return new Set(rows.map((r) => r.eventId));
+}
+
+export function toPublicEvent(row: EventRow, viewer: Viewer, attending = false): PublicEventItem {
   return {
     id: row.id,
     title: row.title,
@@ -203,6 +216,8 @@ export function toPublicEvent(row: EventRow, viewer: Viewer): PublicEventItem {
     coverUrl: row.coverUrl,
     pinned: row.pinned,
     cancelled: row.cancelledAt != null,
+    attendeeCount: row.attendeeCount,
+    attending,
     speakers: row.speakers.map(toSpeakerData),
     author: toPublicAuthor(row.author as AuthorIdentity, viewer.isAdmin),
     isOwner: viewer.isAdmin || (viewer.id != null && viewer.id === row.authorId),
@@ -254,8 +269,9 @@ export async function listEvents(
     const d = a.startAt.getTime() - b.startAt.getTime();
     return asc ? d : -d;
   });
+  const attending = await attendingIdsFor(viewer.id, rows.map((r) => r.id));
   return {
-    items: rows.map((r) => toPublicEvent(r, viewer)),
+    items: rows.map((r) => toPublicEvent(r, viewer, attending.has(r.id))),
     total,
     page: safePage,
     pageCount,
@@ -270,7 +286,8 @@ export async function listPinnedUpcoming(viewer: Viewer): Promise<PublicEventIte
     orderBy: { startAt: 'asc' },
     take: MAX_PINNED_EVENTS,
   });
-  return rows.map((r) => toPublicEvent(r, viewer));
+  const attending = await attendingIdsFor(viewer.id, rows.map((r) => r.id));
+  return rows.map((r) => toPublicEvent(r, viewer, attending.has(r.id)));
 }
 
 export async function getEventDetail(id: string, viewer: Viewer): Promise<PublicEventDetail | null> {
@@ -279,8 +296,9 @@ export async function getEventDetail(id: string, viewer: Viewer): Promise<Public
     include: EVENT_INCLUDE,
   });
   if (!row) return null;
+  const attending = await attendingIdsFor(viewer.id, [row.id]);
   return {
-    ...toPublicEvent(row, viewer),
+    ...toPublicEvent(row, viewer, attending.has(row.id)),
     descriptionMd: row.descriptionMd,
     createdAt: row.createdAt.toISOString(),
   };
@@ -350,7 +368,14 @@ export async function getCalendarMonth(
   const rows = await prisma.event.findMany({
     where: {
       AND: [
-        facetWhere({ kind: filters.kind, topic: filters.topic, mode: filters.mode, city: filters.city, q: filters.q }),
+        facetWhere({
+          kind: filters.kind,
+          topic: filters.topic,
+          mode: filters.mode,
+          city: filters.city,
+          q: filters.q,
+          mineFor: filters.mineFor,
+        }),
         rangeWhere(gridStart, gridEndExclusive),
       ],
     },

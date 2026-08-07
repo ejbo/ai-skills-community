@@ -5,7 +5,7 @@
 
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { ExternalLink, MapPin, Video } from 'lucide-react';
+import { CalendarCheck2, ExternalLink, MapPin, Users, Video } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { withBasePath } from '@/lib/base-path';
@@ -19,7 +19,12 @@ export async function EventCard({ event, showDate = false }: { event: PublicEven
     event.mode === 'online' ? t('online_event') : [event.venue, event.city].filter(Boolean).join(' · ');
   const websiteHref = eventLinkHref(event.websiteUrl);
   return (
-    <article className="card-hover surface relative flex gap-4 rounded-2xl p-4">
+    // 我要参加的活动：accent 边框 + 徽章，让「这是我加入的」一眼可辨。
+    <article
+      className={`card-hover surface relative flex gap-4 rounded-2xl p-4 ${
+        event.attending ? '!border-accent-500/60 ring-1 ring-accent-500/25' : ''
+      }`}
+    >
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2 text-[13px] text-muted">
           <span className="font-medium tabular-nums">
@@ -32,6 +37,12 @@ export async function EventCard({ event, showDate = false }: { event: PublicEven
             />
           </span>
           {event.cancelled && <CancelledBadge />}
+          {event.attending && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-600 dark:text-accent-400">
+              <CalendarCheck2 className="h-3 w-3" />
+              {t('attending_badge')}
+            </span>
+          )}
         </div>
         <h3 className={`mt-1 truncate text-base font-semibold ${event.cancelled ? 'text-muted line-through' : ''}`}>
           <Link href={`/events/${event.id}`} className="after:absolute after:inset-0">
@@ -69,6 +80,12 @@ export async function EventCard({ event, showDate = false }: { event: PublicEven
             <span className="inline-flex items-center gap-1">
               {event.mode === 'online' ? <Video className="h-3.5 w-3.5" /> : <MapPin className="h-3.5 w-3.5" />}
               <span className="max-w-[14rem] truncate">{location}</span>
+            </span>
+          )}
+          {event.attendeeCount > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <Users className="h-3.5 w-3.5" />
+              {t('attendee_count', { count: event.attendeeCount })}
             </span>
           )}
         </div>

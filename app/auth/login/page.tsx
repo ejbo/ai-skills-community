@@ -4,6 +4,7 @@ import { Sparkles, ShieldCheck, Mail } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { LoginForm } from './LoginForm';
 import { HuaweiLoginButton } from './HuaweiLoginButton';
+import { PasswordLoginSection } from './PasswordLoginSection';
 import { auth, isSsoEnabled } from '@/lib/auth';
 
 export default async function LoginPage({
@@ -25,7 +26,25 @@ export default async function LoginPage({
           <h1 className="text-2xl font-semibold tracking-tight">{t('choose_method')}</h1>
         </div>
 
-        <div className="space-y-4">
+        {isSsoEnabled ? (
+          // SSO deploy: W3 is THE way in. Password login stays available but
+          // collapsed (admin/service accounts), and self-service signup is
+          // closed — no link here, /auth/signup redirects, the API 403s.
+          <div className="space-y-4">
+            <div className="surface rounded-2xl p-5">
+              <div className="mb-4 flex items-center gap-2 text-sm font-medium text-muted">
+                <ShieldCheck className="h-4 w-4" />
+                {t('huawei_login')}
+              </div>
+              <HuaweiLoginButton callbackUrl={searchParams.callbackUrl} />
+            </div>
+            <PasswordLoginSection
+              callbackUrl={searchParams.callbackUrl}
+              error={searchParams.error}
+            />
+          </div>
+        ) : (
+          // External deploy (no SSO): email/password with self-service signup.
           <div className="surface rounded-2xl p-5">
             <div className="mb-4 flex items-center gap-2 text-sm font-medium text-muted">
               <Mail className="h-4 w-4" />
@@ -41,30 +60,7 @@ export default async function LoginPage({
               </Link>
             </p>
           </div>
-
-          {isSsoEnabled && (
-            <>
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center" aria-hidden>
-                  <div className="w-full border-t border-zinc-200 dark:border-zinc-800" />
-                </div>
-                <div className="relative flex justify-center">
-                  <span className="bg-[rgb(var(--bg))] px-3 text-xs uppercase tracking-wider text-muted">
-                    {t('or_divider')}
-                  </span>
-                </div>
-              </div>
-
-              <div className="surface rounded-2xl p-5">
-                <div className="mb-4 flex items-center gap-2 text-sm font-medium text-muted">
-                  <ShieldCheck className="h-4 w-4" />
-                  {t('huawei_login')}
-                </div>
-                <HuaweiLoginButton callbackUrl={searchParams.callbackUrl} />
-              </div>
-            </>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );

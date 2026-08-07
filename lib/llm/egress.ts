@@ -14,6 +14,7 @@
  * the endpoint, the route taken and the underlying errno.
  */
 
+import { fetch as undiciFetch } from 'undici';
 import { env } from '@/lib/env';
 import { egressFor } from '@/lib/net/proxy';
 
@@ -44,10 +45,15 @@ export const llmFetch: typeof fetch = (async (
     : ({ dispatcher: undefined, via: 'direct', proxyUri: null } as const);
 
   try {
-    return await fetch(
-      input,
-      eg.dispatcher ? ({ ...(init ?? {}), dispatcher: eg.dispatcher } as RequestInit) : init,
-    );
+    if (eg.dispatcher) {
+      // npm-undici dispatcher ⇒ npm-undici fetch; Node's built-in fetch rejects
+      // it with UND_ERR_INVALID_ARG (bundled-undici handler contract drift).
+      const opts = { ...(init ?? {}), dispatcher: eg.dispatcher } as Parameters<
+        typeof undiciFetch
+      >[1];
+      return (await undiciFetch(url, opts)) as unknown as Response;
+    }
+    return await fetch(input, init);
   } catch (e) {
     const err = e as NodeJS.ErrnoException & { cause?: unknown };
     const cause = err?.cause instanceof Error ? (err.cause as NodeJS.ErrnoException) : undefined;

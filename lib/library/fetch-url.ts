@@ -45,8 +45,10 @@ const MAX_REFRESH_HOPS = 2;
 const MAX_HTTP_REDIRECTS = 5;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
+// Desktop Chrome UA — more sites serve full server-rendered content to a
+// desktop browser than to a mobile one, and fewer bot walls trip on it.
 const USER_AGENT =
-  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
 // ── SSRF target validation ───────────────────────────────────────────────────
 
@@ -240,8 +242,15 @@ async function guardedGet(
         method: 'GET',
         headers: {
           'user-agent': USER_AGENT,
-          accept: opts.accept,
+          accept:
+            opts.accept === 'text/html,*/*'
+              ? 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+              : opts.accept,
           'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          // undici's `request` does not decompress; ask for plain bytes so a
+          // gzip/br-only server can't hand us unreadable HTML.
+          'accept-encoding': 'identity',
+          'upgrade-insecure-requests': '1',
         },
         // undici request never follows redirects itself — REDIRECT_STATUSES
         // below are handled manually with per-hop SSRF validation.

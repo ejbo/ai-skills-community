@@ -195,6 +195,7 @@
     "or_signup": "Ou créer un compte",
     "or_login": "Déjà un compte ? Se connecter",
     "or_divider": "ou",
+    "password_login_toggle": "Se connecter par e-mail et mot de passe",
     "w3_button": "Se connecter avec W3",
     "invalid_credentials": "E-mail ou mot de passe invalide",
     "email_in_use": "E-mail déjà enregistré"
@@ -1422,7 +1423,19 @@
     "date_from": "Date de début",
     "date_to": "Date de fin",
     "apply_range": "Appliquer la plage de dates",
-    "cancelled_calendar_title": "[Annulé] {title}"
+    "cancelled_calendar_title": "[Annulé] {title}",
+    "my_events": "Mes participations",
+    "attending_badge": "Inscrit",
+    "attendee_count": "{count, plural, one {# participant} other {# participants}}",
+    "attend_join": "Participer",
+    "attend_joined": "Inscrit · cliquer pour annuler",
+    "attend_login": "Connectez-vous pour participer",
+    "attend_failed": "Échec de l'opération — veuillez réessayer",
+    "attend_reminder_hint": "Rappel par e-mail et sur le site 30 minutes avant le début",
+    "toast_joined": "Ajouté — rappel 30 minutes avant le début",
+    "toast_left": "Participation annulée",
+    "empty_mine_title": "Aucun événement ajouté",
+    "empty_mine_hint": "Cliquez sur « Participer » sur la page d'un événement et il apparaîtra ici"
   },
   "library_cards": {
     "like": "J'aime",
@@ -2025,7 +2038,11 @@
     "translate_failed_retry": "Échec de la traduction, réessayez",
     "no_readable_text": "Ce document ne contient pas encore de texte lisible",
     "translating": "Traduction en cours…",
-    "view_image": "Voir l'image"
+    "view_image": "Voir l'image",
+    "pdf_view_mode": "Mode PDF",
+    "pdf_original": "Original",
+    "pdf_reader": "Lecture",
+    "pdf_annotate_hint": "Vue texte extrait — surlignage / notes / traduction / citations IA"
   },
   "skills_misc": {
     "categories_subtitle": "Choisissez le Skill adapté à votre besoin.",

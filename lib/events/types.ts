@@ -159,6 +159,9 @@ export interface PublicEventItem {
   coverUrl: string | null;
   pinned: boolean;
   cancelled: boolean;
+  attendeeCount: number;
+  /** Viewer clicked 我要参加 (always false for anonymous viewers). */
+  attending: boolean;
   speakers: EventSpeakerData[];
   author: PublicAuthor;
   /** Author or admin — may cancel / delete. */

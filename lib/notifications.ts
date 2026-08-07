@@ -15,6 +15,7 @@ import {
   notifyPostReplyEmail,
   notifyTopicReplyEmail,
   notifyAnnouncementEmail,
+  notifyEventReminderEmail,
 } from '@/lib/email';
 
 // Mirrors the @default(...) values on NotificationPreference. Used when a user
@@ -481,5 +482,46 @@ export async function notifyLibraryAccessDecision(opts: {
     });
   } catch (e) {
     console.error('[notify] library access decision failed:', e);
+  }
+}
+
+// ─── 活动提醒 ──────────────────────────────────────────────────────────────
+
+/**
+ * An event the user joined (我要参加) starts in ~`minutesLeft` minutes.
+ * Deliberately NOT gated by NotificationPreference: clicking 我要参加 on that
+ * specific event IS the opt-in (leaving the event revokes it). In-app + email
+ * both best-effort; the caller has already claimed the attendee row.
+ */
+export async function notifyEventReminder(opts: {
+  recipientId: string;
+  recipientEmail: string;
+  eventId: string;
+  eventTitle: string;
+  minutesLeft: number;
+  timeLabel: string; // e.g. '14:00（北京时间）'
+  location: string; // venue/city or 线上
+  meetingUrl: string | null;
+}): Promise<void> {
+  const link = `/events/${opts.eventId}`;
+  try {
+    await createInApp({
+      recipientId: opts.recipientId,
+      type: 'event_reminder',
+      title: `「${truncate(opts.eventTitle, 40)}」${opts.minutesLeft} 分钟后开始`,
+      body: `${opts.timeLabel} · ${opts.location}`,
+      link,
+    });
+    notifyEventReminderEmail({
+      to: opts.recipientEmail,
+      eventTitle: opts.eventTitle,
+      minutesLeft: opts.minutesLeft,
+      timeLabel: opts.timeLabel,
+      location: opts.location,
+      meetingUrl: opts.meetingUrl,
+      link: appUrl(link),
+    });
+  } catch (e) {
+    console.error('[notify] event reminder failed:', e);
   }
 }

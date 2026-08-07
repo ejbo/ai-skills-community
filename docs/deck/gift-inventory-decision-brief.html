@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>礼品库存管理办法 · 决策征询</title>
+<style>
+:root{
+  --red:#C7000B; --red-br:#E60012; --red-dk:#8C0008; --red-tint:#FBEDED;
+  --blue:#0A4A7A; --blue-dk:#1A2942; --amber:#B26A00; --green:#2E6B33;
+  --ink:#1F1F1F; --body:#2A2A2A; --sub:#6B6B6B; --line:#D8D8D8; --zebra:#F7F9FB;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:#EDEDED}
+body{color:var(--ink);font-family:"Microsoft YaHei","PingFang SC","Source Han Sans SC",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;line-height:1.7;font-size:14.5px;padding:28px 16px}
+.doc{max-width:880px;margin:0 auto;background:#fff;padding:44px 52px 40px;
+  box-shadow:0 2px 14px rgba(0,0,0,.14)}
+
+/* 页眉 */
+.top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+.badge{font-size:12px;font-weight:700;color:#fff;background:var(--red);padding:3px 12px;letter-spacing:.5px}
+.top img{height:22px;display:block}
+h1{font-size:27px;line-height:1.25;font-weight:700;color:var(--red);margin:14px 0 0}
+.lead{font-size:14.5px;color:#444;margin-top:9px;line-height:1.65}
+.rule{height:3px;background:var(--red);margin:16px 0 0}
+
+.meta{display:flex;flex-wrap:wrap;gap:0;margin-top:18px;border:1px solid var(--line)}
+.meta div{flex:1 1 33%;padding:8px 12px;font-size:13px;border-right:1px solid var(--line)}
+.meta div:last-child{border-right:0}
+.meta b{color:var(--sub);font-weight:400;display:block;font-size:11.5px;margin-bottom:2px}
+.fill{color:#8A5A00;background:#FFF3D6;border:1px solid #EBD199;padding:0 5px;border-radius:2px;font-weight:700}
+
+h2{font-size:19px;font-weight:700;margin:34px 0 4px;padding-left:12px;border-left:6px solid var(--red)}
+h2 .n{color:var(--red)}
+h3{font-size:15.5px;font-weight:700;margin:20px 0 6px}
+p{margin:9px 0}
+ul{margin:9px 0 9px 20px}
+li{margin-bottom:6px}
+.muted{color:var(--sub);font-size:13.5px}
+
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin:11px 0}
+th{background:var(--blue);color:#fff;text-align:left;padding:7px 10px;font-size:13px;border:1px solid #fff}
+td{border:1px solid var(--line);padding:8px 10px;vertical-align:top;line-height:1.55}
+tbody tr:nth-child(odd){background:var(--zebra)}
+table.rh th{background:var(--red)}
+
+/* 决策卡 */
+.dec{border:1px solid var(--line);border-left:6px solid var(--blue);margin:16px 0;padding:0}
+.dec > .q{background:#F2F6FA;padding:10px 14px;font-size:15.5px;font-weight:700;
+  display:flex;gap:10px;align-items:baseline}
+.dec > .q .tag{flex:none;font-size:12px;font-weight:700;color:#fff;background:var(--blue);padding:2px 9px}
+.dec > .in{padding:12px 14px}
+.dec table{margin:0}
+.pick{margin-top:11px;padding:9px 12px;background:#FFFDF5;border:1px dashed #E0C98C;font-size:13.5px}
+.pick b{color:var(--amber)}
+.rec{display:inline-block;font-size:11.5px;font-weight:700;color:#fff;background:var(--green);
+  padding:1px 7px;margin-left:6px;vertical-align:middle}
+
+.warn{border:2px solid var(--red);background:var(--red-tint);padding:12px 15px;margin:16px 0}
+.warn .t{font-weight:700;color:var(--red-dk);font-size:15px;margin-bottom:5px}
+.note{background:#F1F6FB;border-left:5px solid var(--blue);padding:10px 14px;margin:14px 0;font-size:13.5px}
+.ask{background:#FFF8F8;border-left:5px solid var(--red);padding:10px 14px;margin:14px 0;font-size:13.5px}
+
+.ck{display:inline-block;width:13px;height:13px;border:1.5px solid #999;margin-right:7px;
+  vertical-align:-2px;background:#fff}
+
+.foot{margin-top:40px;padding-top:14px;border-top:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;font-size:11.5px;color:var(--sub)}
+.foot img{height:18px;display:block}
+
+@page{size:A4;margin:16mm 14mm}
+@media print{
+  html{background:#fff}
+  body{padding:0;font-size:11pt;line-height:1.6}
+  .doc{max-width:none;box-shadow:none;padding:0}
+  h2{page-break-after:avoid} .dec,.warn,table{page-break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div class="doc">
+
+  <div class="top">
+    <div class="badge">决策征询 · 请回复</div>
+    <img src="img/huawei-logo.png" alt="HUAWEI">
+  </div>
+
+  <h1>礼品库存管理办法 —— 需要各位拍板的几件事</h1>
+  <p class="lead">
+    我们准备把礼品的入库、分类、发放、报废和记账固化成一份管理办法，目标有两个：
+    <b>把现有库存合理用完</b>，以及<b>让每一件礼品的去向都查得到</b>。
+    办法的框架已经想好，但有几处只能由各位定 —— 定完我就出正式版。
+  </p>
+  <div class="rule"></div>
+
+  <div class="meta">
+    <div><b>发起</b><span class="fill">姓名 / 部门</span></div>
+    <div><b>请回复至</b><span class="fill">邮箱</span></div>
+    <div><b>希望回复截止</b><span class="fill">YYYY-MM-DD</span></div>
+  </div>
+
+  <div class="note">
+    <b>怎么用这份文件：</b>第 3 节有 6 个决策点，每个都给了选项和我的建议。
+    您只需要在「我选」那一行写上选项字母，或者直接回邮件说结论。
+    第 2 节是我还缺的信息，麻烦对应的同事补一下。其余部分供参考，不需要逐条回复。
+  </div>
+
+  <!-- ══════════ 1 ══════════ -->
+  <h2><span class="n">1.</span> 为什么现在提这件事</h2>
+
+  <div class="ask">
+    <b>这一节需要补充事实后才成立。</b>下面是需要填的空 —— 有数据填数据，没有就写大概情况。
+    这一节写得实，后面的决策才有依据；写不实，整份办法就会像从模板抄来的。
+  </div>
+
+  <table>
+    <thead><tr><th style="width:34%">要说清的</th><th>目前填写</th></tr></thead>
+    <tbody>
+      <tr><td>库存规模</td><td><span class="fill">约 __ 种 / __ 件，占用 __ 平方米或 __ 个柜子</span></td></tr>
+      <tr><td>积压情况</td><td><span class="fill">其中 __ 件已超过 __ 年未动，约占 __%</span></td></tr>
+      <tr><td>过期 / 损坏</td><td><span class="fill">已过节令或破损的约 __ 件，估值 __</span></td></tr>
+      <tr><td>目前谁在管</td><td><span class="fill">专人 / 兼职 / 无固定负责人；有无固定库房</span></td></tr>
+      <tr><td>现有台账</td><td><span class="fill">有 Excel / 有但不全 / 没有</span></td></tr>
+      <tr><td>触发事件</td><td><span class="fill">最近发生的具体一两件事（找不到、过期扔掉、有人问能否送客户等）</span></td></tr>
+    </tbody>
+  </table>
+
+  <p class="muted">
+    如果有一件具体的事（比如"上个月清出 __ 件过期礼盒只能报废"），
+    放在开头比任何论证都有说服力，建议优先补这一条。
+  </p>
+
+  <!-- ══════════ 2 ══════════ -->
+  <h2><span class="n">2.</span> 我还需要的信息</h2>
+
+  <table>
+    <thead><tr><th style="width:52%">需要确认</th><th style="width:26%">谁提供</th><th>状态</th></tr></thead>
+    <tbody>
+      <tr><td>研究所 / 公司现有的礼品或廉洁相关规定，可否直接挂靠引用</td><td><span class="fill">合规 / 内控</span></td><td><span class="ck"></span>待提供</td></tr>
+      <tr><td>财务上礼品目前记在哪个科目，是否已有明确要求</td><td><span class="fill">财务</span></td><td><span class="ck"></span>待提供</td></tr>
+      <tr><td>现有礼品清单（品名、数量、有无公司标识、有无时效）</td><td><span class="fill">行政</span></td><td><span class="ck"></span>待提供</td></tr>
+      <tr><td>年度礼品采购预算与采购节奏</td><td><span class="fill">行政 / 财务</span></td><td><span class="ck"></span>待提供</td></tr>
+      <tr><td>是否已有新员工礼包的既定标准</td><td><span class="fill">HR / 行政</span></td><td><span class="ck"></span>待提供</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ══════════ 3 ══════════ -->
+  <h2><span class="n">3.</span> 需要各位拍板的 6 件事</h2>
+
+  <!-- D1 -->
+  <div class="dec">
+    <div class="q"><span class="tag">决策 1</span>这份办法的定位是什么</div>
+    <div class="in">
+      <table>
+        <thead><tr><th style="width:12%">选项</th><th style="width:38%">含义</th><th>影响</th></tr></thead>
+        <tbody>
+          <tr><td><b>A</b></td><td>提建议，由领导拍板后再定稿</td><td>正式版摆选项、留空位，会上定完再固化</td></tr>
+          <tr><td><b>B</b></td><td>方案已定，走审批</td><td>正式版写结论 + 依据 + 预计效果</td></tr>
+          <tr><td><b>C</b></td><td>制度已批，向全员宣讲</td><td>正式版讲怎么办、找谁办、什么不能做，重点在好记</td></tr>
+        </tbody>
+      </table>
+      <div class="pick"><b>我选：</b><span class="fill">A / B / C</span>　　补充：<span class="fill">　　　　　　　　　　　　　</span></div>
+    </div>
+  </div>
+
+  <!-- D2 -->
+  <div class="dec">
+    <div class="q"><span class="tag">决策 2</span>库存的出口开哪几个</div>
+    <div class="in">
+      <p class="muted">目标是把现有库存用完。出口越少，积压越难清。请勾选采纳哪些。</p>
+      <table>
+        <thead><tr><th style="width:8%"></th><th style="width:30%">出口</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td><span class="ck"></span></td><td><b>新员工入职礼</b></td><td>固定标准，最稳定的消耗口</td></tr>
+          <tr><td><span class="ck"></span></td><td><b>总部 / 兄弟单位来访</b></td><td>需明确审批人与留档要求</td></tr>
+          <tr><td><span class="ck"></span></td><td><b>内部活动奖品</b></td><td>技术分享、竞赛、团建；随活动方案一并申请</td></tr>
+          <tr><td><span class="ck"></span></td><td><b>员工里程碑</b></td><td>入职周年、转正、专利授权、论文录用、项目结项</td></tr>
+          <tr><td><span class="ck"></span></td><td><b>内部清库集市</b><span class="rec">建议</span></td><td>长期积压的低值品定期开放员工自选领取，一次清一批 —— 对"用完"最直接</td></tr>
+          <tr><td><span class="ck"></span></td><td><b>AI Community 社区激励</b></td><td>发布 Skill、办分享、贡献文档的奖励。库存有出口，社区有激励，两件事互相带</td></tr>
+          <tr><td><span class="ck"></span></td><td><b>招聘宣讲 / 校园活动伴手礼</b></td><td class="muted">⚠ 先看决策 3 —— 这可能属于对外</td></tr>
+        </tbody>
+      </table>
+      <div class="pick"><b>采纳：</b><span class="fill">上面勾选</span>　　补充出口：<span class="fill">　　　　　　　　　　</span></div>
+    </div>
+  </div>
+
+  <!-- D3 -->
+  <div class="dec">
+    <div class="q"><span class="tag">决策 3</span>「对外」的边界划在哪里</div>
+    <div class="in">
+      <p>「不能对外使用」是这份办法的硬约束。但有几类对象需要明确归到哪一边，否则一线没法执行。</p>
+      <table>
+        <thead><tr><th style="width:34%">对象</th><th style="width:22%">建议</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>内部同事、跨 lab / 跨所</td><td><b class="rd">可以</b></td><td>属内部流转</td></tr>
+          <tr><td>总部、兄弟单位来访</td><td><b class="rd">可以，需审批</b></td><td>集团内部，但要留接待清单</td></tr>
+          <tr><td>客户、供应商、合作方</td><td><b class="rd">一律不可</b></td><td>合规红线，无例外</td></tr>
+          <tr><td><b>高校教授、外部讲者</b></td><td><span class="fill">？</span></td><td>请专家来做分享时，能否给纪念品</td></tr>
+          <tr><td><b>实习生、校招候选人</b></td><td><span class="fill">？</span></td><td>宣讲会伴手礼算不算对外</td></tr>
+          <tr><td><b>员工家属</b>（家庭日等）</td><td><span class="fill">？</span></td><td>公司活动中发放是否允许</td></tr>
+        </tbody>
+      </table>
+      <div class="pick"><b>三个「？」的结论：</b><span class="fill">　　　　　　　　　　　　　　　　　　　　　　</span></div>
+    </div>
+  </div>
+
+  <!-- D4 -->
+  <div class="dec">
+    <div class="q"><span class="tag">决策 4</span>审批门槛定在哪</div>
+    <div class="in">
+      <table>
+        <thead><tr><th style="width:30%">事项</th><th style="width:34%">选项</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>新员工礼配额</td><td><span class="fill">1 件 / 2 件 / 按单价上限</span></td><td>建议按单价上限，比按件数灵活</td></tr>
+          <tr><td>接待用礼审批人</td><td><span class="fill">部门主管 / 行政部长 / 分级</span></td><td>分级 = 小额主管批、大额部长批</td></tr>
+          <tr><td>触发上级审批的金额</td><td><span class="fill">__ 加元 / 不设</span></td><td>不设的话就靠配额约束</td></tr>
+          <tr><td>触发上级审批的件数</td><td><span class="fill">__ 件 / 不设</span></td><td></td></tr>
+          <tr><td>报废单第二签字人</td><td><span class="fill">财务 / 内控 / 只要主管</span></td><td>建议双签，单签容易出问题</td></tr>
+        </tbody>
+      </table>
+      <div class="pick"><b>结论：</b><span class="fill">　　　　　　　　　　　　　　　　　　　　　　　　　　</span></div>
+    </div>
+  </div>
+
+  <!-- D5 -->
+  <div class="dec">
+    <div class="q"><span class="tag">决策 5</span>台账怎么记、多久盘一次</div>
+    <div class="in">
+      <table>
+        <thead><tr><th style="width:12%">选项</th><th style="width:30%">方式</th><th>代价与好处</th></tr></thead>
+        <tbody>
+          <tr><td><b>A</b></td><td>共享 Excel / SharePoint 表</td><td>零成本，马上能用；靠人自觉，容易漏记</td></tr>
+          <tr><td><b>B</b></td><td>贴编号标签 + 表格<span class="rec">建议</span></td><td>实物和台账对得上，找东西快；需要一次性贴标</td></tr>
+          <tr><td><b>C</b></td><td>二维码扫码出入库</td><td>最准，但要投入工具和培训，量不大时不划算</td></tr>
+        </tbody>
+      </table>
+      <p class="muted">盘点频率：<span class="fill">月 / 季 / 半年</span>
+        台账与单据保存年限：<span class="fill">__ 年</span>
+        月度对账截止日：<span class="fill">每月 __ 日</span></p>
+      <div class="pick"><b>我选：</b><span class="fill">A / B / C</span>　　其余：<span class="fill">　　　　　　　　　　　</span></div>
+    </div>
+  </div>
+
+  <!-- D6 -->
+  <div class="dec">
+    <div class="q"><span class="tag">决策 6</span>已经积压很久的怎么处理</div>
+    <div class="in">
+      <table>
+        <thead><tr><th style="width:12%">选项</th><th style="width:34%">处理方式</th><th>适用</th></tr></thead>
+        <tbody>
+          <tr><td><b>A</b></td><td>转内部活动奖品，慢慢消化</td><td>还在保质期、品相好的</td></tr>
+          <tr><td><b>B</b></td><td>开一次清库集市，员工自选领取<span class="rec">建议</span></td><td>低值、量大、久压不动的</td></tr>
+          <tr><td><b>C</b></td><td>集中报废</td><td>已过期或破损，只能走这条</td></tr>
+          <tr><td><b>D</b></td><td>先不动，等新办法生效后按规则消化</td><td>量不大时可以</td></tr>
+        </tbody>
+      </table>
+      <div class="pick"><b>我选：</b><span class="fill">A / B / C / D，可多选</span>　　范围：<span class="fill">　　　　　　　　</span></div>
+    </div>
+  </div>
+
+  <!-- ══════════ 4 ══════════ -->
+  <h2><span class="n">4.</span> 已经确定、不需要讨论的部分</h2>
+
+  <div class="warn">
+    <div class="t">这三条按硬约束写，不设例外，不在上面的决策范围内</div>
+    <ul style="margin-bottom:0">
+      <li><b>礼品仅限对内使用</b> —— 严禁赠予客户、供应商、外部单位，严禁销售、折价转让或私自带出</li>
+      <li><b>每笔出库都要有签字</b> —— 核验在职身份、记录工号、本人签收；不打白条、不事后补记</li>
+      <li><b>报废须有照片和审批</b> —— 无审批记录不得在台账核销</li>
+    </ul>
+  </div>
+
+  <p class="muted">
+    如果各位认为其中某条需要留口子，请在回复里说明 —— 但这三条一旦有例外，
+    整套记录链就没有意义了，所以建议不留。
+  </p>
+
+  <!-- ══════════ 5 ══════════ -->
+  <h2><span class="n">5.</span> 办法的框架（供参考，不需要逐条回复）</h2>
+
+  <p>决策点定完之后，正式版会按这个框架写成两页：</p>
+
+  <table>
+    <thead><tr><th style="width:16%">环节</th><th>要点</th></tr></thead>
+    <tbody>
+      <tr><td><b class="rd">入库</b></td><td>到货限时清点，采购人与验收人分离，无发票不入库，一物一编号，台账标「内部专用」</td></tr>
+      <tr><td><b class="rd">分类</b></td><td>按用途分区；<b>含公司标识的单独存放</b>（带 logo 的流到外部等同公司对外赠礼）；节令与保质期标最晚发放日</td></tr>
+      <tr><td><b class="rd">发放</b></td><td>按决策 2 的出口 + 决策 4 的审批门槛；<b>临期优先、先到期先发</b>；每月导出临期清单</td></tr>
+      <tr><td><b class="rd">报废</b></td><td>拍照 + 填单 → 审批 → 销账；实物集中处置并留记录，不得带离</td></tr>
+      <tr><td><b class="rd">记账</b></td><td>出入双向登记；<b>只入内部福利科目，不列支招待费</b>（记成招待费等于书面承认对外使用）；月度对账，差异不跨月挂账</td></tr>
+      <tr><td><b class="rd">盘点</b></td><td>按决策 5 的频率；账、卡、物三相符；人员变动时双人交接签字</td></tr>
+      <tr><td><b class="rd">采购联动</b></td><td><b>采购前先看结存</b>，库存能覆盖的品类不再新采 —— 否则边积压边采购，永远清不完</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ══════════ 6 ══════════ -->
+  <h2><span class="n">6.</span> 下一步</h2>
+
+  <table>
+    <thead><tr><th style="width:46%">事项</th><th style="width:26%">谁</th><th>时间</th></tr></thead>
+    <tbody>
+      <tr><td>补齐第 1、2 节的现状与资料</td><td><span class="fill">行政 / 财务</span></td><td><span class="fill">　　　</span></td></tr>
+      <tr><td>回复第 3 节的 6 个决策点</td><td><span class="fill">各位</span></td><td><span class="fill">　　　</span></td></tr>
+      <tr><td>出正式版两页管理办法</td><td><span class="fill">发起人</span></td><td><span class="fill">　　　</span></td></tr>
+      <tr><td>附件：新员工礼包与接待礼的标准清单</td><td><span class="fill">行政</span></td><td><span class="fill">　　　</span></td></tr>
+      <tr><td>发布 / 宣讲</td><td><span class="fill">　　　</span></td><td><span class="fill">　　　</span></td></tr>
+    </tbody>
+  </table>
+
+  <div class="foot">
+    <div>CARI · 行政　|　本文用于内部决策征询，请勿外发</div>
+    <img src="img/huawei-logo.png" alt="HUAWEI">
+  </div>
+
+</div>
+</body>
+</html>

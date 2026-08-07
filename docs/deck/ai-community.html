@@ -1,0 +1,1587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Internal models &amp; AI Community</title>
+<style>
+:root{
+  --red:#C7000B; --red-br:#E60012; --red-dk:#8C0008; --red-tint:#FBEDED;
+  --blue:#0A4A7A; --blue-dk:#1A2942; --violet:#6A3D8F; --amber:#B26A00; --green:#2E6B33;
+  --ink:#1F1F1F; --body:#2A2A2A; --sub:#666; --line:#D2D2D2; --zebra:#F6F8FB;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#8A8A8A;color:var(--ink);
+  font-family:"Segoe UI","Helvetica Neue",Arial,"Microsoft YaHei","PingFang SC",sans-serif;
+  -webkit-font-smoothing:antialiased}
+.deck{display:flex;flex-direction:column;align-items:center;gap:20px;padding:20px 0}
+.slide{position:relative;width:1280px;height:720px;background:#fff;overflow:hidden;
+  display:flex;flex-direction:column;padding:22px 36px 0;box-shadow:0 3px 16px rgba(0,0,0,.3)}
+
+.hdr{flex:none;height:22px;display:flex;align-items:center;justify-content:space-between}
+.tabs{display:flex;gap:4px}
+.tab{font-size:12px;line-height:21px;padding:0 12px;background:#EDEDED;color:#555;border:1px solid #DCDCDC}
+.tab.on{background:var(--red);color:#fff;border-color:var(--red);font-weight:700}
+.corner{font-size:11.5px;color:var(--sub);letter-spacing:.4px}
+.corner b{color:var(--red)}
+
+.h1{flex:none;margin-top:12px;font-size:31px;line-height:1.18;font-weight:700;color:var(--red)}
+.sub{flex:none;margin-top:7px;font-size:15px;color:var(--sub);line-height:1.4}
+.rule{flex:none;height:3px;background:var(--red);margin-top:9px}
+.body{flex:1 1 auto;min-height:0;display:flex;gap:14px;padding:14px 0 9px}
+.col{display:flex;flex-direction:column;gap:11px;min-width:0}
+
+.mod{border:1px solid var(--line);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.mod>h3{flex:none;font-size:15px;font-weight:700;color:#fff;background:var(--red);padding:7px 12px;
+  display:flex;align-items:center;justify-content:space-between;gap:10px}
+.mod>h3 span{font-weight:400;font-size:12.5px;opacity:.92}
+.mod.b>h3{background:var(--blue)} .mod.d>h3{background:var(--blue-dk)}
+.mod.v>h3{background:var(--violet)} .mod.g>h3{background:var(--green)}
+.mod>.in{flex:1 1 auto;min-height:0;padding:11px 12px;overflow:hidden}
+.mod>.in.p0{padding:0}
+
+ul.b{list-style:none}
+ul.b>li{position:relative;padding-left:15px;font-size:15px;line-height:1.5;margin-bottom:9px;color:var(--body)}
+ul.b>li:before{content:"";position:absolute;left:0;top:8px;width:7px;height:7px;background:var(--red)}
+ul.b>li:last-child{margin-bottom:0}
+b{font-weight:700} .r{color:var(--red);font-weight:700} .rd{color:var(--red-dk);font-weight:700}
+.mono{font-family:Consolas,Menlo,monospace;font-size:13.5px;background:#F2F2F2;border:1px solid #E4E4E4;padding:1px 5px}
+
+table{width:100%;border-collapse:collapse;font-size:14px}
+table.fill{height:100%}
+th{background:var(--blue);color:#fff;font-weight:700;text-align:left;padding:7px 10px;border:1px solid #fff;font-size:13.5px}
+td{border:1px solid var(--line);padding:7px 10px;vertical-align:middle;line-height:1.4}
+tbody tr:nth-child(odd){background:var(--zebra)}
+table.rh th{background:var(--red)}
+table.sm{font-size:13.5px} table.sm td{padding:5px 9px}
+
+.shot{position:relative;flex:none;line-height:0;background:#111;border:1px solid #BBB;overflow:hidden}
+.shot img{width:100%;display:block}
+.shot .pin{position:absolute;width:26px;height:26px;border-radius:50%;background:var(--red-br);color:#fff;
+  font-size:14px;font-weight:700;line-height:26px;text-align:center;transform:translate(-50%,-50%);
+  box-shadow:0 0 0 3px rgba(255,255,255,.95),0 1px 5px rgba(0,0,0,.5);font-family:Arial,sans-serif}
+.cap{flex:none;font-size:12.5px;color:var(--sub);line-height:1.45;padding-top:6px}
+.cap b{color:var(--red-dk)}
+
+/* placeholder for screenshots the presenter will paste in */
+.ph-shot{flex:1;min-height:0;border:2px dashed #C9A6A8;background:#FDF7F7;display:flex;
+  flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:14px;gap:6px}
+.ph-shot .big{font-size:15px;font-weight:700;color:var(--red)}
+.ph-shot .sm2{font-size:12.5px;color:#8A6E70;line-height:1.4}
+
+.scene{background:var(--red-tint);border-left:5px solid var(--red);padding:9px 13px;font-size:14.5px;line-height:1.45}
+.scene b{color:var(--red-dk)}
+.note{background:#F1F6FB;border-left:5px solid var(--blue);padding:9px 13px;font-size:14.5px;line-height:1.45}
+
+.cards{display:flex;gap:13px}
+.card{flex:1;border:1px solid var(--line);border-top:5px solid var(--red);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;text-align:center;padding:16px 15px}
+.card .ic{margin-bottom:14px}
+.card .t{font-size:18px;font-weight:700;line-height:1.25}
+.card .d{font-size:14.5px;color:#555;line-height:1.5;margin-top:10px}
+.card .tagline{margin-top:16px;font-size:13.5px;color:var(--red);font-weight:700;
+  border-top:1px solid #E8E8E8;padding-top:12px;width:100%}
+.card.blue{border-top-color:var(--blue)} .card.green{border-top-color:var(--green)}
+
+.bar{flex:none;background:var(--red);color:#fff;padding:11px 16px 12px;margin:0 -36px;
+  font-size:15px;line-height:1.45;font-weight:600}
+.bar em{font-style:normal;background:rgba(255,255,255,.24);padding:0 4px}
+
+.ft{flex:none;height:32px;display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--sub)}
+.ft img{height:19px;display:block}
+
+.end{padding:0;display:block}
+.end .ct{height:100%;padding:120px 60px 36px}
+.end .ty{font-size:62px;font-weight:700;letter-spacing:-1px}
+.end .ms{margin-top:26px;font-size:17px;line-height:1.7;max-width:800px}
+.end .ms .en{display:block;color:var(--sub);font-size:14px;margin-top:7px}
+.end .cp{position:absolute;left:60px;right:60px;bottom:24px;font-size:8.5px;color:#8A8A8A;line-height:1.55}
+.end .lg{position:absolute;right:56px;bottom:64px}
+.end .lg img{height:44px;display:block}
+
+@page{size:1280px 720px;margin:0}
+@media print{
+  html,body{background:#fff}.deck{gap:0;padding:0}
+  .slide{page-break-after:always;box-shadow:none}.slide:last-child{page-break-after:auto}
+}
+</style>
+<!-- deck-editor:css:begin -->
+<style>
+/* ==========================================================================
+   deck-editor — 让任意「一页一个 .slide」的 HTML 胶片变成可视化可编辑
+   纯原生，无依赖。打印时全部隐藏。
+   ========================================================================== */
+
+.dke-bar{
+  position:fixed; left:0; right:0; top:0; z-index:9999;
+  display:flex; flex-direction:column; gap:0;
+  font:12px/1.4 "Microsoft YaHei","PingFang SC",Arial,sans-serif;
+  background:#fff; border-bottom:1px solid #D8D8D8; box-shadow:0 2px 10px rgba(0,0,0,.14);
+  user-select:none;
+}
+.dke-row{display:flex; align-items:center; gap:5px; padding:6px 10px; flex-wrap:wrap}
+.dke-row + .dke-row{border-top:1px solid #EDEDED; background:#FAFAFA}
+.dke-row.hidden{display:none}
+.dke-sep{width:1px; height:20px; background:#DDD; margin:0 3px}
+.dke-lbl{font-size:11px; color:#777; margin-right:2px}
+
+.dke-btn{
+  font:600 12px/1 "Microsoft YaHei","PingFang SC",Arial,sans-serif;
+  padding:6px 10px; border:1px solid #CFCFCF; background:#fff; color:#333;
+  border-radius:2px; cursor:pointer; white-space:nowrap;
+}
+.dke-btn:hover{border-color:#C7000B; color:#C7000B}
+.dke-btn:active{background:#F6F6F6}
+.dke-btn.on{background:#C7000B; border-color:#C7000B; color:#fff}
+.dke-btn.primary{background:#C7000B; border-color:#C7000B; color:#fff}
+.dke-btn.primary:hover{background:#A80009}
+.dke-btn.icon{min-width:30px; text-align:center; padding:6px 8px}
+.dke-btn[disabled]{opacity:.4; cursor:default}
+.dke-sel,.dke-num{font:12px "Microsoft YaHei","PingFang SC",Arial,sans-serif;
+  padding:5px 6px; border:1px solid #CFCFCF; border-radius:2px; background:#fff}
+.dke-num{width:52px}
+
+.dke-swatches{display:flex; gap:3px; align-items:center}
+.dke-sw{width:18px; height:18px; border:1px solid rgba(0,0,0,.25); cursor:pointer; border-radius:2px}
+.dke-sw:hover{outline:2px solid #C7000B; outline-offset:1px}
+
+.dke-saved{font-size:11px; color:#2E6B33; font-weight:700; white-space:nowrap; margin-left:2px}
+.dke-saved.dirty{color:#B26A00}
+.dke-btn.need::after{content:"●"; color:#FFD34D; margin-left:5px; font-size:10px}
+
+.dke-hint{font-size:11px; color:#888; margin-left:auto; white-space:nowrap}
+.dke-hint b{color:#C7000B}
+
+/* 工具条是 fixed，任何时候都让出它的高度，避免盖住第一页 */
+body.dke-ready{padding-top:var(--dke-h,44px)}
+body.dke-on .slide{outline:1px dashed rgba(199,0,11,.35); outline-offset:-1px}
+body.dke-on .slide.dke-cur{outline:2px solid rgba(199,0,11,.55)}
+body.dke-on [contenteditable="true"]:focus{outline:2px solid #E60012; outline-offset:1px; background:rgba(255,248,248,.6)}
+
+/* 浮动元素（图片 / 文本框 / 标注） */
+.dke-el{position:absolute; z-index:20; box-sizing:border-box}
+.dke-el img{display:block; width:100%; height:100%; object-fit:fill; pointer-events:none}
+.dke-el.fitmode img{object-fit:contain}
+.dke-el.txt{padding:4px 6px; font-size:14px; line-height:1.5; color:#1F1F1F; min-width:40px}
+body.dke-on .dke-el{cursor:move}
+body.dke-on .dke-el:hover{outline:1px dashed #E60012; outline-offset:1px}
+.dke-el.sel{outline:2px solid #E60012 !important; outline-offset:1px}
+
+.dke-h{position:absolute; width:9px; height:9px; background:#fff; border:1.5px solid #E60012;
+  border-radius:1px; z-index:30}
+.dke-h.nw{left:-5px;top:-5px;cursor:nwse-resize}   .dke-h.n{left:50%;top:-5px;margin-left:-4.5px;cursor:ns-resize}
+.dke-h.ne{right:-5px;top:-5px;cursor:nesw-resize}  .dke-h.e{right:-5px;top:50%;margin-top:-4.5px;cursor:ew-resize}
+.dke-h.se{right:-5px;bottom:-5px;cursor:nwse-resize} .dke-h.s{left:50%;bottom:-5px;margin-left:-4.5px;cursor:ns-resize}
+.dke-h.sw{left:-5px;bottom:-5px;cursor:nesw-resize} .dke-h.w{left:-5px;top:50%;margin-top:-4.5px;cursor:ew-resize}
+
+/* 排版模式：点静态元素把它「脱离文档流」变成可拖动 */
+body.dke-layout .slide{cursor:crosshair}
+body.dke-layout .dke-hot{outline:2px solid #0A4A7A !important; outline-offset:1px;
+  background:rgba(10,74,122,.06)}
+body.dke-layout .dke-hot::after{content:attr(data-dke-tag); position:absolute; z-index:40;
+  transform:translateY(-100%); background:#0A4A7A; color:#fff; font:10px/1.6 Arial,sans-serif;
+  padding:1px 6px; white-space:nowrap; pointer-events:none}
+.dke-spacer{pointer-events:none}
+.dke-el.dke-freed{background:#fff}
+
+/* 拖放提示 */
+.slide.dke-drop{box-shadow:inset 0 0 0 3px #E60012}
+
+/* 浮层提示条 */
+.dke-toast{position:fixed; left:50%; bottom:26px; transform:translateX(-50%); z-index:10000;
+  background:rgba(30,30,30,.92); color:#fff; padding:9px 16px; border-radius:3px;
+  font:12px "Microsoft YaHei","PingFang SC",Arial,sans-serif; pointer-events:none; opacity:0;
+  transition:opacity .18s}
+.dke-toast.show{opacity:1}
+
+@media print{
+  .dke-bar,.dke-toast,.dke-h{display:none !important}
+  body.dke-ready,body.dke-on{padding-top:0 !important}
+  body.dke-on .slide,body.dke-on .slide.dke-cur{outline:none}
+  .dke-el.sel{outline:none !important}
+}
+</style>
+<!-- deck-editor:css:end -->
+</head>
+<body>
+<div class="deck" id="deck">
+
+<!-- ═══════════ 1 · Two parts ═══════════ -->
+<section class="slide">
+  <div class="hdr">
+    <div class="tabs"><div class="tab on">Overview</div><div class="tab">Internal models</div><div class="tab">Skills</div><div class="tab">Library · Geek Hub</div><div class="tab">Discussion · Events</div></div>
+    <div class="corner"><b>CARI</b> · AI Community</div>
+  </div>
+  <div class="h1">Two things, both already running</div>
+  <div class="sub">Twenty minutes. Stop me any time.</div>
+  <div class="rule"></div>
+
+  <div class="body"><div class="cards" style="flex:1">
+    <div class="card blue">
+      <div style="font-size:15px;font-weight:700;color:var(--blue);letter-spacing:1px">PART 1</div>
+      <div class="t" style="font-size:26px;margin-top:10px">Internal models</div>
+      <div class="d" style="font-size:15.5px;margin-top:14px">
+        We host five models on the internal network. Any team can call them —
+        no proxy, nothing leaves the network.
+      </div>
+      <div style="margin-top:20px;width:100%;text-align:left;font-size:14.5px;line-height:2;color:#333">
+        · Which models are up, and what each is good for<br>
+        · How to connect: endpoint, web UI, coding agents<br>
+        · What a few teams have built with it already
+      </div>
+      <div class="tagline" style="color:var(--blue);margin-top:26px">≈ 8 minutes</div>
+    </div>
+    <div class="card">
+      <div style="font-size:15px;font-weight:700;color:var(--red);letter-spacing:1px">PART 2</div>
+      <div class="t" style="font-size:26px;margin-top:10px">AI Community</div>
+      <div class="d" style="font-size:15.5px;margin-top:14px">
+        A place to put the things we work out, so the next person can find them
+        instead of redoing them.
+      </div>
+      <div style="margin-top:20px;width:100%;text-align:left;font-size:14.5px;line-height:2;color:#333">
+        · <b>Skills Center</b> — agent skills you can install<br>
+        · <b>Library · Geek Hub</b> — articles, papers, videos<br>
+        · <b>Discussion · Events</b> — what people are trying, and what is on
+      </div>
+      <div class="tagline" style="margin-top:26px">≈ 10 minutes</div>
+    </div>
+  </div></div>
+
+  <div class="bar">
+    Both are live today. The last two minutes are what we would like back from you and your team.
+  </div>
+  <div class="ft"><div>CARI · AI Community</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<!-- ═══════════ 2 · Internal models — what and how ═══════════ -->
+<section class="slide">
+  <div class="hdr">
+    <div class="tabs"><div class="tab">Overview</div><div class="tab on">Internal models</div><div class="tab">Skills</div><div class="tab">Library · Geek Hub</div><div class="tab">Discussion · Events</div></div>
+    <div class="corner"><b>CARI</b> · Internal models</div>
+  </div>
+  <div class="h1">Five models on the internal network — open to every team</div>
+  <div class="sub">One OpenAI-compatible endpoint. If your tool takes a base URL and a key, it works.</div>
+  <div class="rule"></div>
+
+  <div class="body">
+    <div class="col" style="width:640px;flex:none">
+      <div class="mod b" style="flex:1">
+        <h3>What is deployed <span>internal network, no proxy</span></h3>
+        <div class="in p0">
+          <table class="fill sm">
+            <thead><tr><th style="width:26%">Name</th><th style="width:40%">Model</th><th>Use it for</th></tr></thead>
+            <tbody>
+              <tr><td><b class="r">GPT-OSS</b></td><td><span class="mono">openai/gpt-oss-120b</span></td><td>General chat and code. The default choice.</td></tr>
+              <tr><td><b class="r">GLM-5.1</b></td><td><span class="mono">zai-org/GLM-5.1-FP8</span></td><td>Strongest of the local ones. Reasoning, longer tasks.</td></tr>
+              <tr><td><b class="r">GLM-4.6V</b></td><td><span class="mono">zai-org/GLM-4.6V</span></td><td>Reads images. Screenshots, diagrams, scanned pages.</td></tr>
+              <tr><td><b class="r">MiniMax M2.7</b></td><td><span class="mono">MiniMaxAI/MiniMax-M2.7</span></td><td>Long documents.</td></tr>
+              <tr><td><b class="r">Gemma 4</b></td><td><span class="mono">gemma-4-31B</span></td><td>Small and fast. Good for bulk jobs.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="note" style="flex:none">
+        The same gateway also reaches the external models — GPT-5.5, Gemini 3.1 Pro, Grok 4.20, Qwen3-Max —
+        with the corporate proxy already handled. Same call, different model name.
+      </div>
+    </div>
+
+    <div class="col" style="flex:1">
+      <div class="mod" style="flex:none">
+        <h3>Three ways in</h3>
+        <div class="in">
+          <ul class="b" style="margin:0">
+            <li><b>From code.</b> Base URL <span class="mono">https://ai4news.rnd.huawei.com/model/v1</span>, OpenAI SDK, done.</li>
+            <li><b>From the browser.</b> The multi-model chat on ai4news — pick several models, ask once, compare the answers.</li>
+            <li><b>From a coding agent.</b> Anything that accepts an OpenAI base URL: Claude Code, Cline, Continue, Cursor, aider.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="mod d" style="flex:none">
+        <h3>Where the docs are</h3>
+        <div class="in" style="font-size:14.5px;line-height:1.75">
+          Wiki: <span class="mono">&lt;wiki link — fill in&gt;</span><br>
+          Getting a key: <span class="mono">&lt;how to request — fill in&gt;</span><br>
+          Agent setup examples: <span class="mono">&lt;link — fill in&gt;</span>
+        </div>
+      </div>
+      <div class="scene" style="flex:1;display:flex;align-items:center">
+        <div>Usage is metered per person, with a daily token budget. Nobody has to share a key,
+        and nobody gets a surprise bill at the end of the month.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bar">
+    The point of the gateway: switching model or provider should be a config change, not a piece of work.
+  </div>
+  <div class="ft"><div>ai4news · multillm</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<!-- ═══════════ 3 · What teams built ═══════════ -->
+<section class="slide">
+  <div class="hdr">
+    <div class="tabs"><div class="tab">Overview</div><div class="tab on">Internal models</div><div class="tab">Skills</div><div class="tab">Library · Geek Hub</div><div class="tab">Discussion · Events</div></div>
+    <div class="corner"><b>CARI</b> · Internal models</div>
+  </div>
+  <div class="h1">What teams have done with it</div>
+  <div class="sub">Not demos. These are jobs people needed done anyway.</div>
+  <div class="rule"></div>
+
+  <div class="body"><div class="col" style="flex:1;gap:12px">
+    <div style="display:flex;gap:13px;flex:1;min-height:0">
+      <div class="mod" style="flex:1">
+        <h3>① Code refactoring <span>team name</span></h3>
+        <div class="in" style="display:flex;flex-direction:column;gap:8px">
+          <div class="ph-shot">
+            <div class="big">Screenshot goes here</div>
+            <div class="sm2">Paste with the editor: click <b>Enter edit</b>, then Ctrl+V<br>or drag the image file onto this box</div>
+          </div>
+          <div style="flex:none;font-size:14px;line-height:1.45;color:#444">
+            Pointed a coding agent at the internal model and worked through an old codebase.
+            <b>&lt;one line on what changed — fill in&gt;</b>
+          </div>
+        </div>
+      </div>
+      <div class="mod b" style="flex:1">
+        <h3>② Model evaluation <span>team name</span></h3>
+        <div class="in" style="display:flex;flex-direction:column;gap:8px">
+          <div class="ph-shot" style="border-color:#A8BFD0;background:#F6FAFD">
+            <div class="big" style="color:var(--blue)">Screenshot goes here</div>
+            <div class="sm2" style="color:#5F7889">Evaluation runs, comparison table, whatever you have</div>
+          </div>
+          <div style="flex:none;font-size:14px;line-height:1.45;color:#444">
+            Ran their own task set against several models to decide which one to build on.
+            <b>&lt;what they found — fill in&gt;</b>
+          </div>
+        </div>
+      </div>
+      <div class="mod g" style="flex:1">
+        <h3>③ Training / fine-tuning <span>team name</span></h3>
+        <div class="in" style="display:flex;flex-direction:column;gap:8px">
+          <div class="ph-shot" style="border-color:#A9C4A9;background:#F6FBF6">
+            <div class="big" style="color:var(--green)">Screenshot goes here</div>
+            <div class="sm2" style="color:#5C7A5C">Training curve, config, sample output</div>
+          </div>
+          <div style="flex:none;font-size:14px;line-height:1.45;color:#444">
+            Used the hosted models as a baseline while training their own.
+            <b>&lt;result — fill in&gt;</b>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="scene" style="flex:none">
+      <b>Worth saying out loud:</b> none of these teams asked anyone for a key, a quota or a deployment.
+      They pointed their tool at the endpoint and started.
+    </div>
+  </div></div>
+
+  <div class="bar">
+    If your team is doing something similar, tell us — we would rather put your screenshot on this slide than mine.
+  </div>
+  <div class="ft"><div>ai4news · multillm</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<!-- ═══════════ 4 · Skills Center ═══════════ -->
+<section class="slide">
+  <div class="hdr">
+    <div class="tabs"><div class="tab">Overview</div><div class="tab">Internal models</div><div class="tab on">Skills</div><div class="tab">Library · Geek Hub</div><div class="tab">Discussion · Events</div></div>
+    <div class="corner"><b>CARI</b> · AI Community</div>
+  </div>
+  <div class="h1">Skills Center — stop writing the same instructions twice</div>
+  <div class="sub">A skill is a folder you hand an agent: what to do, when to do it, which conventions to follow. Most of us have two or three that work well, sitting on one laptop.</div>
+  <div class="rule"></div>
+
+  <div class="body">
+    <div class="col" style="width:492px;flex:none">
+      <div class="mod" style="flex:none">
+        <h3>Two of ours</h3>
+        <div class="in" style="display:flex;flex-direction:column;gap:9px">
+          <div style="border:1px solid var(--line);border-left:5px solid var(--red);padding:9px 12px">
+            <div style="font-size:16px;font-weight:700">Huawei SSO integration</div>
+            <div style="font-size:14px;color:#555;line-height:1.45;margin-top:4px">
+              W3 / UniPortal login. Django drop-in, an Auth.js provider for Next.js, or raw OAuth2 for
+              anything else. It also carries the subpath-behind-nginx traps that cost us about a week.
+            </div>
+          </div>
+          <div style="border:1px solid var(--line);border-left:5px solid var(--red);padding:9px 12px">
+            <div style="font-size:16px;font-weight:700">Huawei PPT style</div>
+            <div style="font-size:14px;color:#555;line-height:1.45;margin-top:4px">
+              Writes decks in the CARI internal report style — layout, colours, the red bar at the bottom.
+              These slides were made with it.
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mod b" style="flex:1">
+        <h3>Once it is up there</h3>
+        <div class="in">
+          <ul class="b" style="margin:0">
+            <li><b>Public, Restricted or Private.</b> Restricted = everyone sees what it is, you approve each download.</li>
+            <li><b>Remix.</b> Copy someone's skill, change it, publish as yours. The original is credited.</li>
+            <li><b>You see who uses it.</b> Downloads, distinct people, which version they are on.</li>
+            <li><b>CLI install.</b> <span class="mono">skills install &lt;name&gt;</span> · <span class="mono">skills update</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="col" style="flex:1">
+      <div class="mod" style="flex:none">
+        <h3>What is on a skill's page <span>one line each</span></h3>
+        <div class="in p0">
+          <table class="sm">
+            <tbody>
+              <tr><td style="width:24%"><b class="rd">Overview</b></td><td>What it does and when the agent should reach for it</td></tr>
+              <tr><td><b class="rd">Readme</b></td><td>The author's own notes</td></tr>
+              <tr><td><b class="rd">Files</b></td><td>Read every file in the package before you install it</td></tr>
+              <tr><td><b class="rd">Versions</b></td><td>History; you can install a specific version</td></tr>
+              <tr><td><b class="rd">Reviews</b></td><td>Ratings and comments from people who used it</td></tr>
+              <tr><td><b class="rd">Composition</b></td><td>What people tend to install alongside it</td></tr>
+              <tr><td><b class="rd">Comparison</b></td><td>The same task run with and without the skill</td></tr>
+              <tr><td><b class="rd">Playground</b></td><td>Talk to an assistant that already has it loaded, without installing</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="shot" style="flex:1">
+        <img src="img/skills.jpg" alt="Skills Center">
+      </div>
+    </div>
+  </div>
+
+  <div class="bar">
+    Why bother publishing: the work is already done. Uploading it takes ten minutes and stops three other people repeating it.
+  </div>
+  <div class="ft"><div>AI Community · Skills Center</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<!-- ═══════════ 5 · Library + Geek Hub ═══════════ -->
+<section class="slide">
+  <div class="hdr">
+    <div class="tabs"><div class="tab">Overview</div><div class="tab">Internal models</div><div class="tab">Skills</div><div class="tab on">Library · Geek Hub</div><div class="tab">Discussion · Events</div></div>
+    <div class="corner"><b>CARI</b> · AI Community</div>
+  </div>
+  <div class="h1">Library and Geek Hub — pool the good stuff</div>
+  <div class="sub">Everyone reads different things. Nobody sees the whole picture on their own.</div>
+  <div class="rule"></div>
+
+  <div class="body">
+    <div class="col" style="flex:1">
+      <div class="mod" style="flex:none">
+        <h3>Library — articles, papers, tutorials</h3>
+        <div class="in" style="font-size:14.5px;line-height:1.55">
+          AI moves fast and the good material is scattered — blogs, arXiv, newsletters, internal reports.
+          Each of us finds a few. If we all drop the good ones in one place, everyone ends up with a better
+          reading list than they would put together alone.
+        </div>
+      </div>
+      <div class="shot" style="flex:none">
+        <img src="img/library.jpg" alt="Library">
+      </div>
+      <div class="mod b" style="flex:1">
+        <h3>How it works</h3>
+        <div class="in">
+          <ul class="b" style="margin:0">
+            <li><b>Paste a link or upload a PDF</b> — AI writes a chapter-by-chapter summary.</li>
+            <li><b>Highlight and annotate.</b> Private by default, or share so colleagues can reply.</li>
+            <li><b>Add it to your shelf</b> — it remembers where you stopped.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="col" style="flex:1">
+      <div class="mod g" style="flex:none">
+        <h3>Geek Hub — talks and videos</h3>
+        <div class="in" style="font-size:14.5px;line-height:1.55">
+          Same idea for video. Our own sessions, plus the good external talks and summaries people find.
+          A link in a chat is gone in a day; here it stays, with the discussion under it.
+        </div>
+      </div>
+      <div class="ph-shot" style="flex:1;border-color:#A9C4A9;background:#F6FBF6">
+        <div class="big" style="color:var(--green)">Geek Hub screenshot goes here</div>
+        <div class="sm2" style="color:#5C7A5C">The library has content already; Geek Hub is still filling up.<br>Paste a screenshot once there are a few videos in.</div>
+      </div>
+      <div class="mod g" style="flex:none">
+        <h3>AI on top of the video</h3>
+        <div class="in">
+          <ul class="b" style="margin:0">
+            <li><b>A summary per video</b> — one line plus the key points, so you can tell in half a minute whether the hour is worth it.</li>
+            <li><b>Ask questions about that video.</b> Answers come from that talk only; if it was not covered, it says so.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bar">
+    One person reads a sixty-page report carefully. After that everyone else can just ask it questions.
+  </div>
+  <div class="ft"><div>AI Community · Library · Geek Hub</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<!-- ═══════════ 6 · Discussion + Events ═══════════ -->
+<section class="slide">
+  <div class="hdr">
+    <div class="tabs"><div class="tab">Overview</div><div class="tab">Internal models</div><div class="tab">Skills</div><div class="tab">Library · Geek Hub</div><div class="tab on">Discussion · Events</div></div>
+    <div class="corner"><b>CARI</b> · AI Community</div>
+  </div>
+  <div class="h1">Discussion and Events</div>
+  <div class="sub">One place to talk about what people are trying, and one place to find out what is actually on.</div>
+  <div class="rule"></div>
+
+  <div class="body">
+    <div class="col" style="width:452px;flex:none">
+      <div class="mod" style="flex:none">
+        <h3>Discussion — two halves</h3>
+        <div class="in" style="display:flex;flex-direction:column;gap:9px">
+          <div style="border-left:5px solid var(--red);padding:6px 0 6px 12px">
+            <div style="font-size:16px;font-weight:700">Feed</div>
+            <div style="font-size:14px;color:#555;line-height:1.45;margin-top:3px">
+              Short posts, closer to a moments feed. Something you tried this afternoon, a screenshot,
+              a link, an AI event worth flagging. Images, video and files all work. People react and comment.
+            </div>
+          </div>
+          <div style="border-left:5px solid var(--blue);padding:6px 0 6px 12px">
+            <div style="font-size:16px;font-weight:700">Topics</div>
+            <div style="font-size:14px;color:#555;line-height:1.45;margin-top:3px">
+              Longer threads. A new model release and whether it is worth switching to. Someone's paper
+              in progress and what the reviewers will say. Filed by board, so it is still there in six months.
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mod b" style="flex:1">
+        <h3>Events — the problem it fixes</h3>
+        <div class="in" style="font-size:14.5px;line-height:1.55">
+          We put real effort into getting a professor or an expert to come and speak. Then it goes out in
+          one mailing list and a couple of group chats.
+          <br><br>
+          People in another lab often never hear about it. Sometimes people in the same lab don't either.
+          The talk happens, and half the people who would have wanted it were never told.
+        </div>
+      </div>
+    </div>
+
+    <div class="col" style="flex:1">
+      <div style="display:flex;gap:12px;flex:none;align-items:stretch">
+        <div style="width:300px;flex:none;display:flex;flex-direction:column;gap:5px">
+          <div style="font-size:13px;font-weight:700;color:#777;letter-spacing:.5px">BEFORE</div>
+          <div style="border:1px solid #CFCFCF;background:#FAFAFA;flex:1;padding:10px 12px;font-size:12.5px;line-height:1.5;color:#444">
+            <div style="border-bottom:1px solid #E2E2E2;padding-bottom:6px;margin-bottom:7px">
+              <div style="font-weight:700;color:#222;font-size:13px">Talk on Thursday — Prof. X</div>
+              <div style="color:#888;font-size:11.5px;margin-top:2px">to: lab-list@…　·　Tue 09:41</div>
+            </div>
+            <div style="color:#666">Hi all, we have a guest speaker on Thursday at 3pm, meeting room …</div>
+            <div style="margin-top:9px;height:5px;background:#E4E4E4;width:88%"></div>
+            <div style="margin-top:5px;height:5px;background:#E4E4E4;width:70%"></div>
+            <div style="margin-top:12px;padding:6px 8px;background:#FBEDED;border-left:3px solid var(--red);
+                        font-size:12px;color:#8C0008;line-height:1.4">
+              Only reaches one list. No time zone. Nothing to search later.
+            </div>
+          </div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:5px">
+          <div style="font-size:13px;font-weight:700;color:var(--red);letter-spacing:.5px">NOW</div>
+          <div class="shot" style="flex:1">
+            <img src="img/events.jpg" alt="Events page">
+          </div>
+        </div>
+      </div>
+      <div class="mod" style="flex:1">
+        <h3>What changes</h3>
+        <div class="in">
+          <ul class="b" style="margin:0">
+            <li><b>Everyone can see it</b>, not only the list it was sent to. Cross-lab and cross-institute both work.</li>
+            <li><b>Filter by what you care about</b> — date, topic, city, online or in person.</li>
+            <li><b>Times show in your own zone.</b> The event's own time is in brackets next to it.</li>
+            <li><b>Past events stay.</b> You can go back and see who spoke on what.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bar">
+    Anyone can publish an event. It does not have to come from an organising committee — a reading group counts.
+  </div>
+  <div class="ft"><div>AI Community · Discussion · Events</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<!-- ═══════════ 7 · Get involved ═══════════ -->
+<section class="slide">
+  <div class="hdr">
+    <div class="tabs"><div class="tab">Overview</div><div class="tab">Internal models</div><div class="tab">Skills</div><div class="tab">Library · Geek Hub</div><div class="tab">Discussion · Events</div></div>
+    <div class="corner"><b>CARI</b> · AI Community</div>
+  </div>
+  <div class="h1">What we would like back from you</div>
+  <div class="sub">All of this is built. Whether it is worth maintaining depends on how many teams actually use it.</div>
+  <div class="rule"></div>
+
+  <div class="body"><div class="col" style="flex:1">
+    <div class="cards" style="flex:none;height:250px">
+      <div class="card">
+        <div class="ic"><svg width="70" height="70" viewBox="0 0 52 52" fill="none" stroke="#C7000B" stroke-width="2.6">
+          <circle cx="22" cy="22" r="14"/><path d="M33 33l13 13"/></svg></div>
+        <div class="t">Try one thing this week</div>
+        <div class="d">Point an agent at the internal model, install one skill, or put the next paper you have to read into the Library.</div>
+      </div>
+      <div class="card blue">
+        <div class="ic"><svg width="70" height="70" viewBox="0 0 52 52" fill="none" stroke="#0A4A7A" stroke-width="2.6">
+          <path d="M6 10h40v26H22l-10 9v-9H6z"/><path d="M15 20h22M15 27h14"/></svg></div>
+        <div class="t">Tell us what is missing</div>
+        <div class="d">Which model you need and cannot get. What broke. What you went looking for and did not find.</div>
+      </div>
+      <div class="card green">
+        <div class="ic"><svg width="70" height="70" viewBox="0 0 52 52" fill="none" stroke="#2E6B33" stroke-width="2.6">
+          <rect x="6" y="8" width="18" height="14" rx="2"/><rect x="6" y="30" width="18" height="14" rx="2"/>
+          <rect x="32" y="19" width="14" height="14" rx="2"/><path d="M24 15h5v11h3M24 37h5V26"/></svg></div>
+        <div class="t">Bring your team's work</div>
+        <div class="d">A skill worth sharing, a model endpoint you want reachable, a talk worth recording. We will help with the wiring.</div>
+      </div>
+    </div>
+
+    <div class="mod d" style="flex:1">
+      <h3>What actually happens when you tell us something</h3>
+      <div class="in p0">
+        <table class="fill">
+          <thead><tr><th style="width:32%">You say</th><th>What we do</th></tr></thead>
+          <tbody>
+            <tr><td><b class="rd">"We need model X"</b></td><td>We deploy it internally or enable it on the gateway. It is a config change, so it is days, not a project.</td></tr>
+            <tr><td><b class="rd">"This is broken / missing"</b></td><td>It goes on the list with your name against it. Small things get fixed in the same week.</td></tr>
+            <tr><td><b class="rd">"My team already built this"</b></td><td>We help you publish it so the other teams stop building it again.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div></div>
+
+  <div class="bar">
+    Feedback is the part we cannot do ourselves. If nobody tells us what is wrong, we will keep guessing.
+  </div>
+  <div class="ft"><div>AI Community</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<!-- ═══════════ 8 · Thank you ═══════════ -->
+<section class="slide end">
+  <div class="ct">
+    <div class="ty">Thank you.</div>
+    <div class="ms">Questions — or come find me afterwards and I will get you set up.
+      <span class="en">ai4news.rnd.huawei.com　·　AI Community</span>
+    </div>
+  </div>
+  <div class="lg"><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+  <div class="cp">
+    Copyright©2018 HUAWEI TECHNOLOGIES CO., LTD. All Rights Reserved.<br><br>
+    The information in this document may contain predictive statements including, without limitation, statements regarding the future financial and operating results, future product portfolio, new technology, etc. There are a number of factors that could cause actual results and developments to differ materially from those expressed or implied in the predictive statements. Therefore, such information is provided for reference purpose only and constitutes neither an offer nor an acceptance. Huawei may change the information at any time without notice.
+  </div>
+</section>
+
+</div>
+<!-- deck-editor:js:begin -->
+<script>
+/* ==========================================================================
+ * deck-editor — 把任意「一页一个 .slide」的静态 HTML 胶片变成可视化编辑器
+ *
+ * 无任何依赖。引入本文件 + deck-editor.css 即可，不需要改胶片的结构。
+ *
+ * 实现要点（回答「这是怎么实现的」）：
+ *  1) 文字        —— 给容器加 contenteditable，用 document.execCommand 做加粗/颜色/字体；
+ *                    字号用「execCommand('fontSize',7) 再把 <font size=7> 换成 span 内联样式」
+ *                    这个通用技巧，绕开 execCommand 只支持 1~7 档的限制。
+ *  2) 浮动元素     —— 图片 / 文本框 / 标注都是 position:absolute 的 .dke-el，
+ *                    坐标与尺寸一律存成**百分比**，因此换分辨率、缩放、打印都不跑位。
+ *  3) 拖动/缩放    —— mousedown 记录起点 → mousemove 改 style → mouseup 落盘。
+ *                    八个手柄各自决定改 left/top/width/height 的哪几项；角手柄按住 Shift 锁比例。
+ *  4) 粘贴图片     —— 监听 paste，从 e.clipboardData.items 里取出 image/* 的 File，
+ *                    FileReader.readAsDataURL 转成 data URI 塞进 <img>，所以保存出来的
+ *                    单个 HTML 文件自带图片，不依赖任何外部路径。
+ *  5) 撤销         —— 每次结构性改动前把 .deck 的 innerHTML 压入快照栈（最多 60 步）。
+ *  6) 保存         —— 克隆整份文档 → 去掉编辑期的临时类和手柄 → Blob + <a download>。
+ *                    因为编辑器本身也在这份 HTML 里，导出的文件再打开仍然可编辑。
+ *
+ * 约定：胶片里每一页是一个 .slide；所有页装在 .deck 里。仅此而已。
+ * ========================================================================== */
+(function () {
+  'use strict';
+
+  var CFG = window.DECK_EDITOR_CONFIG || {};
+  var DECK_SEL = CFG.deck || '.deck';
+  var SLIDE_SEL = CFG.slide || '.slide';
+  var FILENAME = CFG.filename || (document.title || 'deck').replace(/\s+/g, '-') + '.html';
+  var FONTS = CFG.fonts || ['微软雅黑', '苹方 PingFang SC', '思源黑体 Source Han Sans SC', 'Arial', 'Consolas'];
+  var COLORS = CFG.colors || ['#C7000B', '#E60012', '#8C0008', '#1F1F1F', '#6B6B6B',
+                              '#0A4A7A', '#2E6B33', '#B26A00', '#6A3D8F', '#FFFFFF'];
+
+  var deck = document.querySelector(DECK_SEL);
+  if (!deck) { console.warn('[deck-editor] 找不到 ' + DECK_SEL); return; }
+
+  var editing = false;
+  var layout = false;          // 排版模式：点静态元素可解锁
+  var hot = null;             // 排版模式下当前悬停的块
+  var sel = null;            // 当前选中的浮动元素
+  var curSlide = null;       // 当前页
+  var undoStack = [], redoStack = [];
+  var bar, row2;
+  var fileHandle = null;      // File System Access 的文件句柄，保存过一次后一直复用
+  var dirty = false;          // 有没有未保存的改动
+  var savedTag;               // 工具条上的「已保存 …」提示
+
+  /* ---------------------------------------------------------------- 工具 */
+
+  function $(t, cls, txt) { var e = document.createElement(t); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
+  function slides() { return Array.prototype.slice.call(deck.querySelectorAll(SLIDE_SEL)); }
+
+  var toastEl;
+  function toast(msg) {
+    if (!toastEl) { toastEl = $('div', 'dke-toast'); document.body.appendChild(toastEl); }
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastEl._t);
+    toastEl._t = setTimeout(function () { toastEl.classList.remove('show'); }, 1600);
+  }
+
+  function snapshot() {
+    undoStack.push(deck.innerHTML);
+    if (undoStack.length > 60) undoStack.shift();
+    redoStack.length = 0;
+    autosave();
+  }
+  function restore(html) {
+    deselect();
+    deck.innerHTML = html;
+    if (editing) markEditable(true);
+    bindAll();
+  }
+  function undo() { if (!undoStack.length) return; redoStack.push(deck.innerHTML); restore(undoStack.pop()); }
+  function redo() { if (!redoStack.length) return; undoStack.push(deck.innerHTML); restore(redoStack.pop()); }
+
+  function markDirty() {
+    dirty = true;
+    if (savedTag) { savedTag.textContent = '未保存'; savedTag.className = 'dke-saved dirty'; }
+    if (bar && bar._bSave) bar._bSave.classList.add('need');
+  }
+  function markSaved() {
+    dirty = false;
+    var t = new Date();
+    var hh = ('0' + t.getHours()).slice(-2), mm = ('0' + t.getMinutes()).slice(-2), ss = ('0' + t.getSeconds()).slice(-2);
+    if (savedTag) { savedTag.textContent = '已保存 ' + hh + ':' + mm + ':' + ss; savedTag.className = 'dke-saved'; }
+    if (bar && bar._bSave) bar._bSave.classList.remove('need');
+  }
+
+  var saveTimer;
+  function autosave() {
+    markDirty();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      try { localStorage.setItem('dke:' + location.pathname, deck.innerHTML); } catch (e) {}
+    }, 800);
+  }
+
+  /* ------------------------------------------------- 文字：内联样式工具 */
+
+  // execCommand('fontSize') 只认 1~7 档，这里用 7 档占位再替换成真实 px / 字体族
+  function applyInline(styleObj) {
+    document.execCommand('styleWithCSS', false, true);
+    document.execCommand('fontSize', false, '7');
+    var fonts = deck.querySelectorAll('font[size="7"]');
+    for (var i = 0; i < fonts.length; i++) {
+      var f = fonts[i], s = document.createElement('span');
+      for (var k in styleObj) s.style[k] = styleObj[k];
+      while (f.firstChild) s.appendChild(f.firstChild);
+      f.parentNode.replaceChild(s, f);
+    }
+  }
+
+  function currentFontPx() {
+    var s = window.getSelection();
+    if (!s || !s.rangeCount) return 12;
+    var n = s.getRangeAt(0).startContainer;
+    if (n.nodeType === 3) n = n.parentNode;
+    return Math.round(parseFloat(window.getComputedStyle(n).fontSize)) || 12;
+  }
+
+  function bumpFont(delta) {
+    var px = Math.max(6, Math.min(96, currentFontPx() + delta));
+    applyInline({ fontSize: px + 'px' });
+    numSize.value = px;
+  }
+
+  function cmd(name, val) { document.execCommand('styleWithCSS', false, true); document.execCommand(name, false, val || null); }
+
+  /* ------------------------------------------------- 浮动元素：创建 */
+
+  function slideOf(node) { while (node && node !== document.body) { if (node.matches && node.matches(SLIDE_SEL)) return node; node = node.parentNode; } return null; }
+
+  function targetSlide() {
+    if (curSlide && document.contains(curSlide)) return curSlide;
+    // 取视口中央那一页
+    var mid = window.innerHeight / 2, best = null, bd = 1e9;
+    slides().forEach(function (s) {
+      var r = s.getBoundingClientRect(), d = Math.abs((r.top + r.bottom) / 2 - mid);
+      if (d < bd) { bd = d; best = s; }
+    });
+    return best || slides()[0];
+  }
+
+  function addFloat(slide, node, opts) {
+    opts = opts || {};
+    var el = $('div', 'dke-el' + (opts.cls ? ' ' + opts.cls : ''));
+    el.setAttribute('contenteditable', 'false');
+    el.style.left = (opts.left != null ? opts.left : 30) + '%';
+    el.style.top = (opts.top != null ? opts.top : 30) + '%';
+    if (opts.width != null) el.style.width = opts.width + '%';
+    if (opts.height != null) el.style.height = opts.height + '%';
+    if (node) el.appendChild(node);
+    slide.appendChild(el);
+    bindFloat(el);
+    return el;
+  }
+
+  function insertImage(src, slide, atPct) {
+    var img = new Image();
+    img.onload = function () {
+      var s = slide || targetSlide();
+      var sw = s.clientWidth, sh = s.clientHeight;
+      var w = Math.min(img.naturalWidth, sw * 0.45);
+      var h = w * img.naturalHeight / img.naturalWidth;
+      if (h > sh * 0.7) { h = sh * 0.7; w = h * img.naturalWidth / img.naturalHeight; }
+      snapshot();
+      var el = addFloat(s, img, {
+        left: atPct ? atPct.x : (50 - w / sw * 50),
+        top: atPct ? atPct.y : (50 - h / sh * 50),
+        width: w / sw * 100, height: h / sh * 100
+      });
+      select(el);
+      toast('图片已插入 —— 拖动移动，拖角缩放（按住 Shift 锁定比例），Delete 删除');
+    };
+    img.src = src;
+  }
+
+  function insertTextBox() {
+    var s = targetSlide();
+    snapshot();
+    var inner = $('div');
+    inner.textContent = '双击编辑文字';
+    var el = addFloat(s, inner, { cls: 'txt', left: 35, top: 40, width: 26 });
+    el.style.background = 'rgba(255,255,255,.92)';
+    el.style.border = '1px solid #C7000B';
+    select(el);
+  }
+
+  function insertPin() {
+    var s = targetSlide();
+    snapshot();
+    var n = s.querySelectorAll('.pin').length + 1;
+    var p = $('div', 'pin dke-el dke-pin', String(n));
+    p.setAttribute('contenteditable', 'false');
+    p.style.left = '50%'; p.style.top = '50%';
+    s.appendChild(p);
+    bindFloat(p);
+    select(p);
+    toast('标注已添加 —— 拖到截图上要指的位置');
+  }
+
+  /* --------------------------------- 把静态排版元素变成可拖动的浮动元素 */
+
+  // 点排版元素时向上找到「有意义的块」，避免选中一个孤零零的 <b>
+  var BLOCK_SEL = '.mod, .card, .proj, .shot, .scene, .note, .cards, .kpis, .tl, .ag, .agi, ' +
+                  '.pipe, .bar, .ft, .hdr, .h1, .sub, .fill-box, .cap, table, svg, img, section > div';
+
+  function blockOf(node) {
+    var s = slideOf(node);
+    if (!s) return null;
+    var n = node;
+    while (n && n !== s) {
+      if (n.classList && (n.classList.contains('dke-el') || n.classList.contains('dke-bar'))) return n;
+      if (n.matches && n.matches(BLOCK_SEL)) return n;
+      n = n.parentNode;
+    }
+    return null;
+  }
+
+  function tagOf(el) {
+    if (el.classList.contains('mod')) return 'module';
+    if (el.classList.contains('shot')) return 'screenshot';
+    if (el.classList.contains('card')) return 'card';
+    if (el.classList.contains('proj')) return 'row';
+    if (el.tagName === 'TABLE') return 'table';
+    if (el.tagName === 'IMG') return 'image';
+    if (el.tagName === 'svg' || el.tagName === 'SVG') return 'diagram';
+    return el.tagName.toLowerCase();
+  }
+
+  /** 脱离文档流：原位留一个等尺寸占位块，元素本身改成绝对定位的 .dke-el */
+  function freeElement(el) {
+    if (!el) return;
+    if (el.classList.contains('dke-el')) { select(el); return; }
+    var s = slideOf(el);
+    if (!s || el === s) return;
+    snapshot();
+
+    var r = el.getBoundingClientRect(), sr = s.getBoundingClientRect();
+    var spacer = document.createElement('div');
+    spacer.className = 'dke-spacer';
+    spacer.style.cssText = 'width:' + r.width + 'px;height:' + r.height + 'px;flex:0 0 auto;visibility:hidden';
+    el.parentNode.insertBefore(spacer, el);
+
+    s.appendChild(el);
+    el.classList.add('dke-el', 'dke-freed');
+    el.classList.remove('dke-hot');
+    el.removeAttribute('data-dke-tag');
+    el.setAttribute('contenteditable', 'false');
+    el.style.position = 'absolute';
+    el.style.margin = '0';
+    el.style.left = ((r.left - sr.left) / sr.width * 100).toFixed(2) + '%';
+    el.style.top = ((r.top - sr.top) / sr.height * 100).toFixed(2) + '%';
+    el.style.width = (r.width / sr.width * 100).toFixed(2) + '%';
+    el.style.height = (r.height / sr.height * 100).toFixed(2) + '%';
+    bindFloat(el);
+    select(el);
+    toast('已解锁：拖动移动，拖角缩放，Delete 删除。Ctrl+Z 可还原');
+  }
+
+  /* ------------------------------------------------- 选中 / 手柄 */
+
+  function deselect() {
+    if (sel) { sel.classList.remove('sel'); clearHandles(sel); }
+    sel = null;
+    syncElBar();
+  }
+  function clearHandles(el) {
+    var hs = el.querySelectorAll(':scope > .dke-h');
+    for (var i = 0; i < hs.length; i++) hs[i].remove();
+  }
+  function select(el) {
+    if (sel === el) return;
+    deselect();
+    sel = el;
+    el.classList.add('sel');
+    // .pin 是圆点，只移动不缩放
+    if (!el.classList.contains('dke-pin')) {
+      ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach(function (d) {
+        var h = $('div', 'dke-h ' + d); h.dataset.dir = d; el.appendChild(h);
+      });
+    }
+    curSlide = slideOf(el);
+    syncElBar();
+  }
+
+  /* ------------------------------------------------- 拖动 / 缩放 */
+
+  function pct(v, total) { return (v / total) * 100; }
+
+  function bindFloat(el) {
+    if (el._dkeBound) return;
+    el._dkeBound = true;
+
+    el.addEventListener('mousedown', function (e) {
+      if (!editing) return;
+      if (el.isContentEditable && e.target.isContentEditable && el.classList.contains('dke-editing')) return;
+      var handle = e.target.classList && e.target.classList.contains('dke-h') ? e.target.dataset.dir : null;
+      e.preventDefault();
+      e.stopPropagation();
+      select(el);
+
+      var s = slideOf(el), sr = s.getBoundingClientRect();
+      var r = el.getBoundingClientRect();
+      var isPin = el.classList.contains('dke-pin');
+      var start = {
+        mx: e.clientX, my: e.clientY,
+        l: r.left - sr.left, t: r.top - sr.top, w: r.width, h: r.height,
+        ratio: r.width / (r.height || 1), sw: sr.width, sh: sr.height
+      };
+      var moved = false;
+
+      function onMove(ev) {
+        if (!moved) { snapshot(); moved = true; }
+        var dx = ev.clientX - start.mx, dy = ev.clientY - start.my;
+        if (!handle) {
+          var l = start.l + dx, t = start.t + dy;
+          if (isPin) { l += start.w / 2; t += start.h / 2; }   // pin 用中心定位
+          el.style.left = pct(l, start.sw).toFixed(2) + '%';
+          el.style.top = pct(t, start.sh).toFixed(2) + '%';
+          return;
+        }
+        var l2 = start.l, t2 = start.t, w2 = start.w, h2 = start.h;
+        if (handle.indexOf('e') > -1) w2 = start.w + dx;
+        if (handle.indexOf('s') > -1) h2 = start.h + dy;
+        if (handle.indexOf('w') > -1) { w2 = start.w - dx; l2 = start.l + dx; }
+        if (handle.indexOf('n') > -1) { h2 = start.h - dy; t2 = start.t + dy; }
+        if (ev.shiftKey && handle.length === 2) {          // 角手柄 + Shift = 锁比例
+          if (Math.abs(dx) > Math.abs(dy)) h2 = w2 / start.ratio; else w2 = h2 * start.ratio;
+          if (handle.indexOf('n') > -1) t2 = start.t + (start.h - h2);
+          if (handle.indexOf('w') > -1) l2 = start.l + (start.w - w2);
+        }
+        w2 = Math.max(16, w2); h2 = Math.max(12, h2);
+        el.style.left = pct(l2, start.sw).toFixed(2) + '%';
+        el.style.top = pct(t2, start.sh).toFixed(2) + '%';
+        el.style.width = pct(w2, start.sw).toFixed(2) + '%';
+        el.style.height = pct(h2, start.sh).toFixed(2) + '%';
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        if (moved) autosave();
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
+    // 双击进入文字编辑（文本框 / 标注）
+    el.addEventListener('dblclick', function (e) {
+      if (!editing || el.querySelector('img')) return;
+      e.stopPropagation();
+      el.classList.add('dke-editing');
+      el.setAttribute('contenteditable', 'true');
+      el.focus();
+      var r = document.createRange(); r.selectNodeContents(el);
+      var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    });
+    el.addEventListener('blur', function () {
+      el.classList.remove('dke-editing');
+      el.setAttribute('contenteditable', 'false');
+    }, true);
+  }
+
+  function bindAll() {
+    var els = deck.querySelectorAll('.dke-el, .pin');
+    for (var i = 0; i < els.length; i++) {
+      var e = els[i];
+      if (e.classList.contains('pin') && !e.classList.contains('dke-el')) {
+        e.classList.add('dke-el', 'dke-pin');
+        e.setAttribute('contenteditable', 'false');
+      }
+      bindFloat(e);
+    }
+  }
+
+  /* --------------------------------- 图片：拉伸 / 适应 / 还原比例 */
+
+  function selImg() { return sel ? sel.querySelector('img') : null; }
+
+  function toggleFit() {
+    if (!sel || !selImg()) { toast('先选中一张图片'); return; }
+    snapshot();
+    var on = sel.classList.toggle('fitmode');
+    toast(on ? '适应：保持比例，框内可能留白' : '拉伸：图片跟着框变形，无留白');
+  }
+
+  function resetRatio() {
+    var img = selImg();
+    if (!img) { toast('先选中一张图片'); return; }
+    if (!img.naturalWidth) { toast('图片还没加载完'); return; }
+    snapshot();
+    var s = slideOf(sel), sr = s.getBoundingClientRect();
+    var w = sel.getBoundingClientRect().width;
+    var h = w * img.naturalHeight / img.naturalWidth;
+    sel.style.height = (h / sr.height * 100).toFixed(2) + '%';
+    sel.classList.remove('fitmode');
+    toast('已按图片原始比例调整高度');
+  }
+
+  /* ------------------------------------------------- 表格操作 */
+
+  function cellAtCaret() {
+    var s = window.getSelection();
+    if (!s || !s.rangeCount) return null;
+    var n = s.getRangeAt(0).startContainer;
+    while (n && n !== deck) { if (n.nodeName === 'TD' || n.nodeName === 'TH') return n; n = n.parentNode; }
+    return null;
+  }
+  function tableOp(op) {
+    var td = cellAtCaret();
+    if (!td) { toast('请先把光标放进表格的某个单元格'); return; }
+    snapshot();
+    var tr = td.parentNode, tbl = tr.closest('table'), idx = Array.prototype.indexOf.call(tr.children, td);
+    if (op === 'rowAfter' || op === 'rowBefore') {
+      var nr = tr.cloneNode(true);
+      for (var i = 0; i < nr.children.length; i++) nr.children[i].innerHTML = '&nbsp;';
+      tr.parentNode.insertBefore(nr, op === 'rowAfter' ? tr.nextSibling : tr);
+    } else if (op === 'rowDel') {
+      if (tr.parentNode.children.length > 1) tr.remove(); else toast('至少保留一行');
+    } else if (op === 'colAfter' || op === 'colBefore') {
+      Array.prototype.forEach.call(tbl.rows, function (r) {
+        var c = r.children[idx]; if (!c) return;
+        var n2 = document.createElement(c.nodeName); n2.innerHTML = '&nbsp;';
+        r.insertBefore(n2, op === 'colAfter' ? c.nextSibling : c);
+      });
+    } else if (op === 'colDel') {
+      Array.prototype.forEach.call(tbl.rows, function (r) { if (r.children.length > 1 && r.children[idx]) r.children[idx].remove(); });
+    }
+    autosave();
+  }
+
+  /* ------------------------------------------------- 幻灯片操作 */
+
+  function slideOp(op) {
+    var s = targetSlide();
+    if (!s) return;
+    snapshot();
+    if (op === 'dup') {
+      var c = s.cloneNode(true);
+      c.classList.remove('dke-cur');
+      s.parentNode.insertBefore(c, s.nextSibling);
+      bindAll(); curSlide = c; c.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if (op === 'del') {
+      if (slides().length <= 1) { toast('至少保留一页'); return; }
+      var nx = s.nextElementSibling || s.previousElementSibling;
+      s.remove(); curSlide = nx;
+    } else if (op === 'blank') {
+      var b = document.createElement('section');
+      b.className = s.className;
+      b.style.cssText = 'position:relative';
+      b.innerHTML = '<div style="padding:60px;font:700 24px \'Microsoft YaHei\';color:#C7000B">新建页面 —— 双击编辑</div>';
+      s.parentNode.insertBefore(b, s.nextSibling);
+      curSlide = b; b.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    autosave();
+  }
+
+  /* ------------------------------------------------- 保存 / 导出 */
+
+  /** 产出一份干净的整页 HTML —— 保存和导出共用 */
+  function serialize() {
+    var wasEditing = editing;
+    if (wasEditing) setEditing(false);
+    var clone = document.documentElement.cloneNode(true);
+    // 清掉编辑期的痕迹
+    clone.querySelectorAll('.dke-bar,.dke-toast,.dke-h').forEach(function (n) { n.remove(); });
+    clone.querySelectorAll('.sel,.dke-cur,.dke-editing,.dke-hot').forEach(function (n) {
+      n.classList.remove('sel', 'dke-cur', 'dke-editing', 'dke-hot');
+      n.removeAttribute('data-dke-tag');
+    });
+    clone.querySelectorAll('[contenteditable]').forEach(function (n) {
+      if (n.classList.contains('dke-el')) n.setAttribute('contenteditable', 'false');
+      else n.removeAttribute('contenteditable');
+    });
+    var body = clone.querySelector('body');
+    if (body) body.classList.remove('dke-on', 'dke-layout', 'dke-ready');
+    if (wasEditing) setEditing(true);
+    return '<!DOCTYPE html>\n' + clone.outerHTML;
+  }
+
+  /* --------------------------------- 保存：写回同一个文件 */
+
+  // 句柄存进 IndexedDB，重开文件后还能接着用（file:// 下可能被禁，静默降级）
+  function idb(fn) {
+    return new Promise(function (res) {
+      try {
+        var rq = indexedDB.open('dke-handles', 1);
+        rq.onupgradeneeded = function () { rq.result.createObjectStore('h'); };
+        rq.onsuccess = function () { fn(rq.result, res); };
+        rq.onerror = function () { res(null); };
+      } catch (e) { res(null); }
+    });
+  }
+  var HKEY = 'handle:' + location.pathname;
+  function saveHandle(h) {
+    return idb(function (db, res) {
+      var tx = db.transaction('h', 'readwrite');
+      tx.objectStore('h').put(h, HKEY);
+      tx.oncomplete = function () { res(true); };
+      tx.onerror = function () { res(null); };
+    });
+  }
+  function loadHandle() {
+    return idb(function (db, res) {
+      var rq = db.transaction('h', 'readonly').objectStore('h').get(HKEY);
+      rq.onsuccess = function () { res(rq.result || null); };
+      rq.onerror = function () { res(null); };
+    });
+  }
+
+  async function saveToDisk(saveAs) {
+    if (!window.showSaveFilePicker) {          // Firefox / Safari：退回下载
+      exportHtml();
+      return;
+    }
+    try {
+      if (saveAs || !fileHandle) {
+        fileHandle = await window.showSaveFilePicker({
+          suggestedName: FILENAME,
+          types: [{ description: 'HTML', accept: { 'text/html': ['.html'] } }]
+        });
+        saveHandle(fileHandle);
+      } else {
+        var perm = await fileHandle.queryPermission({ mode: 'readwrite' });
+        if (perm !== 'granted') {
+          perm = await fileHandle.requestPermission({ mode: 'readwrite' });
+          if (perm !== 'granted') { toast('没有写入权限，改用「另存为」'); return; }
+        }
+      }
+      var w = await fileHandle.createWritable();
+      await w.write(serialize());
+      await w.close();
+      markSaved();
+      toast('已保存到 ' + (fileHandle.name || FILENAME) + ' —— 之后按 Ctrl+S 直接覆盖，不再弹窗');
+    } catch (e) {
+      if (e.name === 'AbortError') return;     // 用户取消
+      toast('保存失败：' + e.message);
+    }
+  }
+
+  function exportHtml() {
+    var html = serialize();
+    var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = FILENAME; a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+    markSaved();
+    toast('已下载 ' + FILENAME + '（' + (blob.size / 1024 / 1024).toFixed(2) + ' MB）');
+  }
+
+  /* ------------------------------------------------- 工具条 */
+
+  function btn(label, title, fn, cls) {
+    var b = $('button', 'dke-btn' + (cls ? ' ' + cls : ''), label);
+    b.type = 'button'; b.title = title || label;
+    b.addEventListener('mousedown', function (e) { e.preventDefault(); });  // 别丢选区
+    b.addEventListener('click', fn);
+    return b;
+  }
+
+  var numSize, elBarItems = [];
+  function syncElBar() {
+    elBarItems.forEach(function (n) { n.disabled = !sel; });
+  }
+
+  function buildBar() {
+    bar = $('div', 'dke-bar');
+
+    /* --- 第一行：模式 / 插入 / 页面 / 保存 --- */
+    var r1 = $('div', 'dke-row');
+    var bEdit = btn('✎ 进入编辑', '在预览与编辑之间切换', function () { setEditing(!editing); }, 'primary');
+    r1.appendChild(bEdit);
+    r1.appendChild($('div', 'dke-sep'));
+
+    r1.appendChild($('span', 'dke-lbl', '插入'));
+    r1.appendChild(btn('🖼 图片', '从文件选择图片（也可直接 Ctrl+V 粘贴 / 拖文件进来）', pickImage));
+    r1.appendChild(btn('T 文本框', '插入一个可拖动的浮动文本框', insertTextBox));
+    r1.appendChild(btn('① 标注', '插入红色编号圆点，拖到截图上', insertPin));
+    r1.appendChild($('div', 'dke-sep'));
+
+    var bLayout = btn('🔓 移动排版元素', '点开后，页面里的方框 / 表格 / 图都可以点选、拖动、拉伸',
+                      function () { setLayout(!layout); });
+    r1.appendChild(bLayout);
+    r1.appendChild($('div', 'dke-sep'));
+
+    r1.appendChild($('span', 'dke-lbl', '页面'));
+    r1.appendChild(btn('复制本页', '在当前页后面插入一份副本', function () { slideOp('dup'); }));
+    r1.appendChild(btn('新建空白页', '', function () { slideOp('blank'); }));
+    r1.appendChild(btn('删除本页', '', function () { if (confirm('确定删除当前这一页？')) slideOp('del'); }));
+    r1.appendChild($('div', 'dke-sep'));
+
+    r1.appendChild(btn('↶', '撤销 Ctrl+Z', undo, 'icon'));
+    r1.appendChild(btn('↷', '重做 Ctrl+Shift+Z', redo, 'icon'));
+    r1.appendChild($('div', 'dke-sep'));
+    var bSave = btn('💾 保存', '保存回同一个文件（Ctrl+S）。第一次会让你选文件，之后直接覆盖',
+                    function () { saveToDisk(false); }, 'primary');
+    r1.appendChild(bSave);
+    r1.appendChild(btn('另存为…', '存成新文件（Ctrl+Shift+S）', function () { saveToDisk(true); }));
+    savedTag = $('span', 'dke-saved', '未保存');
+    r1.appendChild(savedTag);
+    r1.appendChild($('div', 'dke-sep'));
+    r1.appendChild(btn('⎙ 打印 / PDF', '', function () { window.print(); }));
+
+    var hint = $('div', 'dke-hint');
+    hint.innerHTML = '拖角缩放会<b>拉伸</b>图片（按 <b>Shift</b> 才锁比例）· <b>Delete</b> 删除 · 方向键微调';
+    r1.appendChild(hint);
+    bar.appendChild(r1);
+
+    /* --- 第二行：文字格式 / 表格 / 层级（仅编辑态显示） --- */
+    row2 = $('div', 'dke-row hidden');
+
+    var selFont = $('select', 'dke-sel');
+    selFont.title = '字体';
+    selFont.appendChild(new Option('字体', ''));
+    FONTS.forEach(function (f) { selFont.appendChild(new Option(f.split(' ')[0], f.replace(/^\S+\s/, '') || f)); });
+    selFont.addEventListener('change', function () { if (selFont.value) { applyInline({ fontFamily: selFont.value }); } });
+    row2.appendChild(selFont);
+
+    row2.appendChild(btn('A−', '缩小字号', function () { bumpFont(-1); }, 'icon'));
+    numSize = $('input', 'dke-num'); numSize.type = 'number'; numSize.min = 6; numSize.max = 96; numSize.value = 12;
+    numSize.title = '字号 px（回车应用）';
+    numSize.addEventListener('keydown', function (e) { if (e.key === 'Enter') { applyInline({ fontSize: numSize.value + 'px' }); } });
+    numSize.addEventListener('change', function () { applyInline({ fontSize: numSize.value + 'px' }); });
+    row2.appendChild(numSize);
+    row2.appendChild(btn('A+', '放大字号', function () { bumpFont(1); }, 'icon'));
+    row2.appendChild($('div', 'dke-sep'));
+
+    row2.appendChild(btn('B', '加粗', function () { cmd('bold'); }, 'icon'));
+    var bi = btn('I', '斜体', function () { cmd('italic'); }, 'icon'); bi.style.fontStyle = 'italic'; row2.appendChild(bi);
+    var bu = btn('U', '下划线', function () { cmd('underline'); }, 'icon'); bu.style.textDecoration = 'underline'; row2.appendChild(bu);
+    row2.appendChild(btn('S', '删除线', function () { cmd('strikeThrough'); }, 'icon'));
+    row2.appendChild($('div', 'dke-sep'));
+
+    row2.appendChild($('span', 'dke-lbl', '字色'));
+    var sw1 = $('div', 'dke-swatches');
+    COLORS.forEach(function (c) {
+      var s = $('div', 'dke-sw'); s.style.background = c; s.title = c;
+      s.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      s.addEventListener('click', function () { cmd('foreColor', c); });
+      sw1.appendChild(s);
+    });
+    row2.appendChild(sw1);
+
+    row2.appendChild($('span', 'dke-lbl', '底色'));
+    var sw2 = $('div', 'dke-swatches');
+    ['#FBEDED', '#FFF3CD', '#E8F1F8', '#EAF5EA', '#F2F2F2', 'transparent'].forEach(function (c) {
+      var s = $('div', 'dke-sw');
+      s.style.background = c === 'transparent' ? 'repeating-linear-gradient(45deg,#fff,#fff 4px,#ddd 4px,#ddd 8px)' : c;
+      s.title = c === 'transparent' ? '清除底色' : c;
+      s.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      s.addEventListener('click', function () { cmd('hiliteColor', c === 'transparent' ? 'inherit' : c); });
+      sw2.appendChild(s);
+    });
+    row2.appendChild(sw2);
+    row2.appendChild($('div', 'dke-sep'));
+
+    row2.appendChild(btn('⯇', '左对齐', function () { cmd('justifyLeft'); }, 'icon'));
+    row2.appendChild(btn('≡', '居中', function () { cmd('justifyCenter'); }, 'icon'));
+    row2.appendChild(btn('⯈', '右对齐', function () { cmd('justifyRight'); }, 'icon'));
+    row2.appendChild(btn('⌫格式', '清除所选文字的格式', function () { cmd('removeFormat'); }));
+    row2.appendChild($('div', 'dke-sep'));
+
+    row2.appendChild($('span', 'dke-lbl', '表格'));
+    row2.appendChild(btn('+行', '在光标所在行下方插入一行', function () { tableOp('rowAfter'); }));
+    row2.appendChild(btn('−行', '删除光标所在行', function () { tableOp('rowDel'); }));
+    row2.appendChild(btn('+列', '在光标所在列右侧插入一列', function () { tableOp('colAfter'); }));
+    row2.appendChild(btn('−列', '删除光标所在列', function () { tableOp('colDel'); }));
+    row2.appendChild($('div', 'dke-sep'));
+
+    row2.appendChild($('span', 'dke-lbl', '图片'));
+    var bi1 = btn('拉伸 / 适应', '拉伸=图片跟着框变形不留白（默认）；适应=保持比例，框内可能留白', toggleFit);
+    var bi2 = btn('还原比例', '把框的高度调回图片的原始宽高比', resetRatio);
+    row2.appendChild(bi1); row2.appendChild(bi2);
+    row2.appendChild($('div', 'dke-sep'));
+
+    row2.appendChild($('span', 'dke-lbl', '选中元素'));
+    var b1 = btn('置顶层', '把选中的图片/文本框移到最上层', function () { if (sel) { snapshot(); sel.style.zIndex = 60; } });
+    var b2 = btn('置底层', '', function () { if (sel) { snapshot(); sel.style.zIndex = 5; } });
+    var b3 = btn('删除', '删除选中的元素（Delete）', function () { if (sel) { snapshot(); sel.remove(); deselect(); } });
+    elBarItems = [b1, b2, b3, bi1, bi2];
+    row2.appendChild(b1); row2.appendChild(b2); row2.appendChild(b3);
+    syncElBar();
+
+    bar.appendChild(row2);
+    document.body.appendChild(bar);
+
+    bar._bEdit = bEdit;
+    bar._bLayout = bLayout;
+    bar._bSave = bSave;
+    document.body.classList.add('dke-ready');
+    requestAnimationFrame(function () {
+      document.body.style.setProperty('--dke-h', bar.getBoundingClientRect().height + 'px');
+    });
+  }
+
+  function pickImage() {
+    var inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true;
+    inp.addEventListener('change', function () {
+      Array.prototype.forEach.call(inp.files, function (f) {
+        var fr = new FileReader();
+        fr.onload = function () { insertImage(fr.result); };
+        fr.readAsDataURL(f);
+      });
+    });
+    inp.click();
+  }
+
+  /* ------------------------------------------------- 模式切换 */
+
+  function markEditable(on) {
+    slides().forEach(function (s) {
+      if (on) s.setAttribute('contenteditable', 'true');
+      else s.removeAttribute('contenteditable');
+    });
+    // 浮动元素本身不参与文字流编辑
+    deck.querySelectorAll('.dke-el').forEach(function (e) { e.setAttribute('contenteditable', 'false'); });
+  }
+
+  function setLayout(on) {
+    layout = on;
+    document.body.classList.toggle('dke-layout', on);
+    if (!on && hot) { hot.classList.remove('dke-hot'); hot.removeAttribute('data-dke-tag'); hot = null; }
+    // 排版模式下关掉文字编辑，否则点一下就落光标
+    slides().forEach(function (x) {
+      if (on) x.removeAttribute('contenteditable');
+      else if (editing) x.setAttribute('contenteditable', 'true');
+    });
+    if (bar._bLayout) {
+      bar._bLayout.classList.toggle('on', on);
+      bar._bLayout.textContent = on ? '🔓 排版中（点此退出）' : '🔓 移动排版元素';
+    }
+    if (on) toast('点任意方框 / 表格 / 图 —— 它会脱离排版，之后可以随意拖动和拉伸');
+  }
+
+  function setEditing(on) {
+    editing = on;
+    if (!on && layout) setLayout(false);
+    document.body.classList.toggle('dke-on', on);
+    row2.classList.toggle('hidden', !on);
+    markEditable(on);
+    if (!on) deselect();
+    bar._bEdit.textContent = on ? '✓ 编辑中（点此退出）' : '✎ 进入编辑';
+    bar._bEdit.classList.toggle('on', on);
+    requestAnimationFrame(function () {
+      document.body.style.setProperty('--dke-h', bar.getBoundingClientRect().height + 'px');
+    });
+    if (on) toast('编辑模式：直接改字；Ctrl+V 粘贴图片；拖图片文件进页面也可以');
+  }
+
+  /* ------------------------------------------------- 全局事件 */
+
+  function bindGlobal() {
+    // 排版模式：悬停高亮候选块
+    document.addEventListener('mousemove', function (e) {
+      if (!editing || !layout) return;
+      var b = blockOf(e.target);
+      if (b === hot) return;
+      if (hot) { hot.classList.remove('dke-hot'); hot.removeAttribute('data-dke-tag'); }
+      hot = b;
+      if (hot && !hot.classList.contains('dke-el')) {
+        hot.classList.add('dke-hot');
+        hot.setAttribute('data-dke-tag', tagOf(hot) + ' — click to unlock');
+      } else { hot = null; }
+    });
+
+    // 排版模式：点一下就解锁
+    document.addEventListener('click', function (e) {
+      if (!editing || !layout) return;
+      if (e.target.closest('.dke-bar')) return;
+      var b = blockOf(e.target);
+      if (!b) return;
+      e.preventDefault(); e.stopPropagation();
+      freeElement(b);
+    }, true);
+
+    // 记录当前页 + 点空白处取消选中
+    document.addEventListener('mousedown', function (e) {
+      var s = slideOf(e.target);
+      if (s) { slides().forEach(function (x) { x.classList.remove('dke-cur'); }); s.classList.add('dke-cur'); curSlide = s; }
+      if (!editing) return;
+      if (!e.target.closest('.dke-el') && !e.target.closest('.dke-bar')) deselect();
+    }, true);
+
+    // 粘贴图片
+    document.addEventListener('paste', function (e) {
+      if (!editing) return;
+      var items = (e.clipboardData || {}).items || [];
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].type && items[i].type.indexOf('image') === 0) {
+          e.preventDefault();
+          var f = items[i].getAsFile();
+          var fr = new FileReader();
+          fr.onload = function () { insertImage(fr.result); };
+          fr.readAsDataURL(f);
+          return;
+        }
+      }
+    });
+
+    // 拖文件进来
+    document.addEventListener('dragover', function (e) {
+      if (!editing) return;
+      var s = slideOf(e.target); if (!s) return;
+      e.preventDefault();
+      slides().forEach(function (x) { x.classList.remove('dke-drop'); });
+      s.classList.add('dke-drop');
+    });
+    document.addEventListener('dragleave', function (e) {
+      var s = slideOf(e.target); if (s) s.classList.remove('dke-drop');
+    });
+    document.addEventListener('drop', function (e) {
+      if (!editing) return;
+      var s = slideOf(e.target); if (!s) return;
+      e.preventDefault();
+      s.classList.remove('dke-drop');
+      var r = s.getBoundingClientRect();
+      var at = { x: (e.clientX - r.left) / r.width * 100, y: (e.clientY - r.top) / r.height * 100 };
+      Array.prototype.forEach.call(e.dataTransfer.files || [], function (f) {
+        if (f.type.indexOf('image') !== 0) return;
+        var fr = new FileReader();
+        fr.onload = function () { insertImage(fr.result, s, at); };
+        fr.readAsDataURL(f);
+      });
+    });
+
+    // 键盘
+    document.addEventListener('keydown', function (e) {
+      if (!editing) return;
+      var mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+      if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); saveToDisk(e.shiftKey); return; }
+      if (!sel) return;
+      var inText = sel.classList.contains('dke-editing');
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !inText) {
+        e.preventDefault(); snapshot(); sel.remove(); deselect(); return;
+      }
+      var step = e.shiftKey ? 2 : 0.4, dx = 0, dy = 0;
+      if (e.key === 'ArrowLeft') dx = -step; else if (e.key === 'ArrowRight') dx = step;
+      else if (e.key === 'ArrowUp') dy = -step; else if (e.key === 'ArrowDown') dy = step;
+      if ((dx || dy) && !inText) {
+        e.preventDefault();
+        sel.style.left = (parseFloat(sel.style.left || 0) + dx).toFixed(2) + '%';
+        sel.style.top = (parseFloat(sel.style.top || 0) + dy).toFixed(2) + '%';
+        autosave();
+      }
+    });
+
+    // 输入时记快照（按段落节流）
+    var typeTimer;
+    deck.addEventListener('input', function () {
+      clearTimeout(typeTimer);
+      typeTimer = setTimeout(function () { undoStack.push(deck.innerHTML); if (undoStack.length > 60) undoStack.shift(); autosave(); }, 900);
+    });
+
+    // 选区变化时同步字号显示
+    document.addEventListener('selectionchange', function () {
+      if (!editing) return;
+      var px = currentFontPx();
+      if (px && document.activeElement !== numSize) numSize.value = px;
+    });
+
+    window.addEventListener('beforeunload', function (e) {
+      if (dirty) { e.preventDefault(); e.returnValue = ''; }
+    });
+  }
+
+  /* ------------------------------------------------- 本地草稿恢复 */
+
+  function offerRestore() {
+    var key = 'dke:' + location.pathname, saved;
+    try { saved = localStorage.getItem(key); } catch (e) { return; }
+    if (!saved || saved === deck.innerHTML) return;
+    setTimeout(function () {
+      if (confirm('检测到上次未导出的本地修改，是否恢复？\n（选「取消」则使用文件里的原始内容，草稿保留不删）')) {
+        deck.innerHTML = saved;
+        if (editing) markEditable(true);
+        bindAll();
+        toast('已恢复本地草稿');
+      }
+    }, 400);
+  }
+
+  /* ------------------------------------------------- 启动 */
+
+  buildBar();
+  if (window.showSaveFilePicker) {
+    loadHandle().then(function (h) {
+      if (h) { fileHandle = h; if (savedTag) savedTag.textContent = '已连到 ' + (h.name || '文件'); }
+    });
+  } else if (savedTag) {
+    savedTag.textContent = '此浏览器只能下载';
+  }
+  bindAll();
+  bindGlobal();
+  offerRestore();
+  window.DeckEditor = { setEditing: setEditing, setLayout: setLayout, freeElement: freeElement,
+    save: saveToDisk, serialize: serialize, isDirty: function () { return dirty; },
+    toggleFit: toggleFit, resetRatio: resetRatio, export: exportHtml, undo: undo, redo: redo, insertImage: insertImage };
+})();
+</script>
+<!-- deck-editor:js:end -->
+</body>
+</html>

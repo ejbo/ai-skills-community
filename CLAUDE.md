@@ -108,12 +108,17 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   not a global switch**: external → corporate proxy, `PROXY_BYPASS` hosts (default
   `.huawei.com` + RFC1918 + loopback) → direct, because the proxy refuses internal destinations.
   That's what keeps W3 SSO (`lib/auth.ts` derives `useProxy` from `hostBypassesProxy`) and the
-  10.x vLLM working while 知识库 fetches the public web. Three non-obvious traps: undici ignores
+  10.x vLLM working while 知识库 fetches the public web. Four non-obvious traps: undici ignores
   `HTTP(S)_PROXY` (we parse them ourselves); `new ProxyAgent('http://…')` — the **string** form —
   silently drops `requestTls`, so the MITM cert is checked against Mozilla roots and every https
-  fetch dies with `unable to verify the first certificate` (use the object form); and
+  fetch dies with `unable to verify the first certificate` (use the object form);
   `NODE_EXTRA_CA_CERTS` only works as a systemd `Environment=` line — Node builds its trust store
-  before Next loads `.env`, so `PROXY_CA_FILE` is the `.env`-friendly alternative. Diagnose live
+  before Next loads `.env`, so `PROXY_CA_FILE` is the `.env`-friendly alternative; and a
+  npm-undici dispatcher must ride npm-undici's OWN `fetch`/`request`, NEVER Node's built-in fetch —
+  the bundled undici's handler contract drifts across majors, so Node 24 + undici 8 rejects every
+  dispatched call with `UND_ERR_INVALID_ARG: invalid onRequestStart method` (this broke W3 login:
+  `SSO_VERIFY_SSL=false` attaches an insecure Agent in `lib/auth/huawei-fetch.ts`, whose
+  token/userinfo calls then died as `CallbackRouteError: fetch failed`). Diagnose live
   at 管理后台 → 知识库 → "网络出口 (Proxy) 诊断" (`/api/admin/egress-test`), which reports the raw
   errno + `cause` + chosen route that the user-facing toasts collapse.
   **LLM calls are the exception**: `lib/llm/egress.ts` (`llmFetch`) is DIRECT unless
@@ -236,6 +241,20 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   create in one transaction; detail page renders them as square-avatar profile cards).
   添加到日历 = UTC(`Z`) Google link built client-side (needs window.origin) + `/api/events/[id]/ics`
   — all-day DTEND is EXCLUSIVE (+1 day) and the download filename stays ASCII-only.
+  **我要参加 / 提醒 (migration `20260807000000_add_event_attendees`)**: `EventAttendee`
+  (composite PK) + denormalized `Event.attendeeCount` via guarded array transactions
+  (like-route pattern — races fall through to the authoritative re-read). Toggle =
+  `POST /api/events/[id]/attend`; join is gated (no cancelled/finished events) but LEAVE always
+  works, and the detail-page card stays visible to an attending viewer after 取消/结束 so
+  「我参加的」can be cleaned up. `?mine=1` is a FACET (`EventFilters.mineFor`, viewer id only —
+  never client input) composing with tabs/calendar/counts; ignored for anonymous. Attending
+  cards get an accent border + 已参加 badge. **Reminders**: joining IS the opt-in (deliberately
+  NOT gated by `NotificationPreference`); `lib/events/reminders.ts` sweeps timed, live events
+  starting within ~35 min and notifies un-reminded attendees (in-app `event_reminder` + email),
+  claiming rows ATOMICALLY via `updateMany(remindedAt: null → now)` so concurrent sweeps never
+  double-send. Trigger paths: throttled piggyback on `GET /api/notifications` (the bell polls it
+  while anyone is online) + `scripts/send-event-reminders.ts` for real cron (`*/5 * * * *`) —
+  keep both. All-day events are skipped (no meaningful "30 min before").
 - **员工名单 (Employee Directory)**: admin roster at `/manage/employees` (`EmployeeDirectory` model;
   bulk import via paste / CSV / XLSX — parsers in `lib/employee-import.ts`, merge rules in
   `lib/employee-admin.ts`; 工号 canonicalized to lowercase at write time — the DB unique index is

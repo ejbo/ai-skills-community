@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>礼品库存 PPT · 选题方案与讨论</title>
+<style>
+:root{
+  --red:#C7000B; --red-br:#E60012; --red-dk:#8C0008; --red-tint:#FBEDED;
+  --blue:#0A4A7A; --blue-dk:#1A2942; --amber:#B26A00; --green:#2E6B33; --violet:#6A3D8F;
+  --ink:#1F1F1F; --sub:#6B6B6B; --line:#D8D8D8; --zebra:#F7F9FB;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:#EDEDED}
+body{color:var(--ink);font-family:"Microsoft YaHei","PingFang SC","Source Han Sans SC",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;line-height:1.75;font-size:14.5px;padding:28px 16px}
+.doc{max-width:900px;margin:0 auto;background:#fff;padding:44px 54px 40px;box-shadow:0 2px 14px rgba(0,0,0,.14)}
+
+.top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+.badge{font-size:12px;font-weight:700;color:#fff;background:var(--red);padding:3px 12px;letter-spacing:.5px}
+.top img{height:22px;display:block}
+h1{font-size:27px;line-height:1.25;font-weight:700;color:var(--red);margin:14px 0 0}
+.lead{font-size:14.5px;color:#444;margin-top:10px}
+.rule{height:3px;background:var(--red);margin-top:16px}
+
+h2{font-size:19.5px;font-weight:700;margin:36px 0 6px;padding-left:12px;border-left:6px solid var(--red)}
+h2 .n{color:var(--red)}
+h3{font-size:15.5px;font-weight:700;margin:22px 0 6px}
+p{margin:10px 0}
+ul{margin:9px 0 9px 21px} li{margin-bottom:5px}
+.muted{color:var(--sub);font-size:13.5px}
+b{font-weight:700} .r{color:var(--red);font-weight:700} .rd{color:var(--red-dk);font-weight:700}
+
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin:12px 0}
+th{background:var(--blue);color:#fff;text-align:left;padding:7px 10px;font-size:13px;border:1px solid #fff}
+td{border:1px solid var(--line);padding:8px 10px;vertical-align:top;line-height:1.6}
+tbody tr:nth-child(odd){background:var(--zebra)}
+table.rh th{background:var(--red)}
+
+/* 主题候选卡 */
+.opt{border:1px solid var(--line);border-left:6px solid var(--blue);margin:14px 0}
+.opt.pick{border-left-color:var(--green);box-shadow:0 0 0 2px rgba(46,107,51,.14)}
+.opt > .h{background:#F2F6FA;padding:10px 14px;display:flex;gap:11px;align-items:baseline;flex-wrap:wrap}
+.opt.pick > .h{background:#F1F8F1}
+.opt > .h .tag{flex:none;font-size:12px;font-weight:700;color:#fff;background:var(--blue);padding:2px 9px}
+.opt.pick > .h .tag{background:var(--green)}
+.opt > .h .t{font-size:16.5px;font-weight:700}
+.opt > .h .rec{font-size:11.5px;font-weight:700;color:#fff;background:var(--green);padding:1px 8px}
+.opt > .in{padding:12px 14px}
+.opt .claim{background:#FFFDF3;border-left:4px solid var(--amber);padding:8px 12px;font-size:14px;margin-bottom:10px}
+.opt .claim b{color:var(--amber)}
+.split{display:flex;gap:10px;margin:10px 0}
+.split > div{flex:1;border:1px solid var(--line);padding:8px 11px;font-size:13px;line-height:1.55}
+.split .lb{font-size:11.5px;font-weight:700;color:var(--red);letter-spacing:.5px;margin-bottom:3px}
+.pro{font-size:13px;margin-top:8px}
+.pro .g{color:var(--green);font-weight:700} .pro .b2{color:#B0431A;font-weight:700}
+
+.note{background:#F1F6FB;border-left:5px solid var(--blue);padding:11px 14px;margin:14px 0;font-size:13.8px}
+.warn{background:var(--red-tint);border-left:5px solid var(--red);padding:11px 14px;margin:14px 0;font-size:13.8px}
+.q{border:2px solid var(--red);padding:12px 15px;margin:14px 0}
+.q .t{font-weight:700;color:var(--red-dk);font-size:15.5px;margin-bottom:4px}
+
+.pool{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0}
+.chip{font-size:13px;border:1px solid #DCDCDC;background:#FAFAFA;padding:3px 10px;border-radius:2px}
+.chip.k{border-color:var(--red);color:var(--red-dk);background:#FDF4F4;font-weight:700}
+
+.foot{margin-top:40px;padding-top:14px;border-top:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;font-size:11.5px;color:var(--sub)}
+.foot img{height:18px;display:block}
+
+@page{size:A4;margin:15mm 13mm}
+@media print{
+  html{background:#fff} body{padding:0;font-size:10.5pt;line-height:1.6}
+  .doc{max-width:none;box-shadow:none;padding:0}
+  h2{page-break-after:avoid} .opt,.q,table{page-break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div class="doc">
+
+  <div class="top">
+    <div class="badge">选题讨论稿</div>
+    <img src="img/huawei-logo.png" alt="HUAWEI">
+  </div>
+
+  <h1>礼品库存管理 · 两页 PPT 该讲什么</h1>
+  <p class="lead">
+    这份文件不是 PPT 本身，是<b>决定 PPT 该怎么写之前要先想清楚的事</b>。
+    里面列了六个可能的主题方向、三种内容深浅取向，以及一个可挑选的素材池。
+    看完帮我判断一下：哪个方向对，或者都不对、应该是别的。
+  </p>
+  <div class="rule"></div>
+
+  <div class="note">
+    <b>背景：</b>要做两页 PPT，讲"合理化礼品库存管理办法"。原始诉求有三条 ——
+    ① 没用完的怎么发　② 怎么记账　③ 明确不能对外使用。
+    难点不在于写不出条款，而在于<b>两页放不下所有东西，必须先定主线</b>。
+  </div>
+
+  <!-- ═════ 1 ═════ -->
+  <h2><span class="n">1.</span> 先定一件事：这两页要产生什么结果</h2>
+
+  <p>同样的素材，目的不同写法完全不同。这是所有后续判断的前提。</p>
+
+  <table>
+    <thead><tr><th style="width:16%">目的</th><th style="width:34%">看完的人应该做什么</th><th>那内容就该偏向</th></tr></thead>
+    <tbody>
+      <tr><td><b class="rd">拍板</b></td><td>在几个选项里做选择</td><td>摆选项和利弊，少写结论</td></tr>
+      <tr><td><b class="rd">批准</b></td><td>同意这套办法并签字</td><td>写结论 + 为什么这么定 + 预计效果</td></tr>
+      <tr><td><b class="rd">执行</b></td><td>照着做，知道找谁办</td><td>流程、责任人、单据，能贴墙</td></tr>
+      <tr><td><b class="rd">知会</b></td><td>知道有这回事，别踩线</td><td>几条大原则 + 红线，好记就行</td></tr>
+    </tbody>
+  </table>
+
+  <p class="muted">
+    我的判断：从"合理化管理办法"这个说法看，更像是<b>批准</b>或<b>拍板</b>，
+    不是给一线看的执行手册。如果是这样，两页里就不该塞满操作细节。
+  </p>
+
+  <!-- ═════ 2 ═════ -->
+  <h2><span class="n">2.</span> 六个主题方向</h2>
+
+  <p>每个方向的差别不是"讲不讲某个内容"，而是<b>用哪条主线把内容串起来</b>。同一批素材，主线不同，读者记住的东西完全不同。</p>
+
+  <!-- ① -->
+  <div class="opt">
+    <div class="h"><span class="tag">方向 ①</span><span class="t">三问三答</span></div>
+    <div class="in">
+      <div class="claim"><b>主张：</b>礼品管理就三个问题 —— 发不完的怎么发、账怎么记、什么绝对不能做。</div>
+      <div class="split">
+        <div><div class="lb">第 1 页</div>怎么发：出口有哪几个、优先发什么、谁批</div>
+        <div><div class="lb">第 2 页</div>怎么记账 + 三条红线</div>
+      </div>
+      <div class="pro"><span class="g">好处</span>最忠实原始诉求，别人一看就知道你逐条回答了。结构最稳，不会跑题。
+        <br><span class="b2">代价</span>没有观点，像答题。听完不会记住一句话。</div>
+    </div>
+  </div>
+
+  <!-- ② -->
+  <div class="opt pick">
+    <div class="h"><span class="tag">方向 ②</span><span class="t">一边放开，一边收紧</span><span class="rec">我倾向这个</span></div>
+    <div class="in">
+      <div class="claim"><b>主张：</b>这件事有两个方向相反的目标 —— 一边要<b>把库存用完</b>（得放开发放口子），
+        一边要<b>守住不能对外</b>（得收紧）。管理办法就是在这两者之间划一条清楚的线。</div>
+      <div class="split">
+        <div><div class="lb">第 1 页 · 放开</div>把库存用完：出口设计、优先级（临期先发 / 节令当季清）、配额</div>
+        <div><div class="lb">第 2 页 · 收紧</div>守住底线：红线、台账与可追溯、责任分工</div>
+      </div>
+      <div class="pro"><span class="g">好处</span>承认了张力，显得想过而不是抄的。两页天然对称，一页一条线。
+        对领导最好讲：既解决了积压，又守住了合规。
+        <br><span class="b2">代价</span>红线那一页必须足够硬，否则"放开"会盖过"收紧"。</div>
+    </div>
+  </div>
+
+  <!-- ③ -->
+  <div class="opt">
+    <div class="h"><span class="tag">方向 ③</span><span class="t">一进一出</span></div>
+    <div class="in">
+      <div class="claim"><b>主张：</b>礼品只有两个动作 —— 进来和出去。管住这两头，中间自然有序。
+        <b>而且"进"这一头往往没人管</b>：不看结存就采购，库存永远清不完。</div>
+      <div class="split">
+        <div><div class="lb">第 1 页</div>出的一侧：发放出口、优先级、审批、报废</div>
+        <div><div class="lb">第 2 页</div>进的一侧与账：入库、台账、盘点、<b>采购前先看结存</b></div>
+      </div>
+      <div class="pro"><span class="g">好处</span>唯一一个把"别再乱采"讲进去的方向。真正的"合理化"其实在源头。
+        <br><span class="b2">代价</span>只有采购决策权在我们手里才成立；如果采购是别的部门定的，这条讲了也落不了地。</div>
+    </div>
+  </div>
+
+  <!-- ④ -->
+  <div class="opt">
+    <div class="h"><span class="tag">方向 ④</span><span class="t">一件礼品的一生</span></div>
+    <div class="in">
+      <div class="claim"><b>主张：</b>跟着一件礼品从到货到消失走一遍，每一步谁负责、留什么记录。</div>
+      <div class="split">
+        <div><div class="lb">第 1 页</div>生命周期主图：到货 → 入库 → 在库 → 发放 / 报废</div>
+        <div><div class="lb">第 2 页</div>每一步的责任人与单据，加红线</div>
+      </div>
+      <div class="pro"><span class="g">好处</span>叙事性强，一图看完，最好记。适合宣讲和培训。
+        <br><span class="b2">代价</span>是"介绍流程"不是"提出主张"，做决策的场合会显得没重点。</div>
+    </div>
+  </div>
+
+  <!-- ⑤ -->
+  <div class="opt">
+    <div class="h"><span class="tag">方向 ⑤</span><span class="t">谁能拿到什么</span></div>
+    <div class="in">
+      <div class="claim"><b>主张：</b>先说清楚给谁，再说怎么给。一张对象矩阵解决八成问题。</div>
+      <div class="split">
+        <div><div class="lb">第 1 页</div>对象矩阵：新员工 / 来访 / 内部活动 / 员工里程碑 / 外部 —— 能不能、谁批、发什么档次</div>
+        <div><div class="lb">第 2 页</div>记账与红线</div>
+      </div>
+      <div class="pro"><span class="g">好处</span>一线最关心的就是这个，最实用。"不能对外"在矩阵里自然就说清了。
+        <br><span class="b2">代价</span>管理动作（入库、盘点、报废）会被压缩成配角。</div>
+    </div>
+  </div>
+
+  <!-- ⑥ -->
+  <div class="opt">
+    <div class="h"><span class="tag">方向 ⑥</span><span class="t">现状 → 办法</span></div>
+    <div class="in">
+      <div class="claim"><b>主张：</b>现在有几个具体问题，对应几条办法。左边问题右边对策。</div>
+      <div class="split">
+        <div><div class="lb">第 1 页</div>问题与对策一一对照</div>
+        <div><div class="lb">第 2 页</div>落地机制：谁做、什么时候做、留什么</div>
+      </div>
+      <div class="pro"><span class="g">好处</span>说服力最强，直接回答"为什么现在要改"。
+        <br><span class="b2">代价</span><b>唯一强依赖真实现状的方向</b>。没有具体事例和数字就写不了，硬写会变成空话。</div>
+    </div>
+  </div>
+
+  <!-- ═════ 3 ═════ -->
+  <h2><span class="n">3.</span> 内容写多深</h2>
+
+  <p>这是和主题正交的第二个选择。两页的容量有限，深浅只能选一档。</p>
+
+  <table>
+    <thead><tr><th style="width:14%">取向</th><th style="width:32%">长什么样</th><th>适合 / 不适合</th></tr></thead>
+    <tbody>
+      <tr><td><b class="rd">原则式</b></td><td>5~7 条大原则，细则另附附件</td>
+          <td>适合批准和知会。领导两分钟看完。<br>不适合一线执行 —— 到了具体情形不知道怎么办</td></tr>
+      <tr><td><b class="rd">图解式</b></td><td>流程图 / 决策树 / 对象矩阵为主，文字为辅</td>
+          <td>适合宣讲、贴墙。最好记。<br>信息密度低，写不进细节</td></tr>
+      <tr><td><b class="rd">条文式</b></td><td>分条列款，可编号引用</td>
+          <td>适合当制度用、可审计。<br>枯燥，两页塞不下，且看的人记不住</td></tr>
+    </tbody>
+  </table>
+
+  <div class="warn">
+    <b>我上一版的问题就出在这里。</b>我按<b>条文式</b>写了满满两页操作细则（到货几小时清点、
+    超多少钱要谁批、盘点多久一次），但这些其实应该放附件。两页 PPT 装了一份制度文件，
+    结果是既不好看也不好记，而且里面的数字我是编的。
+  </div>
+
+  <!-- ═════ 4 ═════ -->
+  <h2><span class="n">4.</span> 素材池：可以讲的东西</h2>
+
+  <p class="muted">按主题挑，不用全上。<span class="chip k">红色</span>的是我认为不管选哪个方向都应该保留的。</p>
+
+  <h3>把库存用完 —— 发放出口</h3>
+  <div class="pool">
+    <span class="chip k">新员工入职礼</span><span class="chip k">总部 / 兄弟单位来访</span>
+    <span class="chip">内部活动奖品</span><span class="chip">员工里程碑（周年 / 转正 / 专利 / 论文）</span>
+    <span class="chip">内部清库集市（低值积压品开放自选）</span>
+    <span class="chip">AI Community 社区激励</span><span class="chip">节令集中清库</span>
+  </div>
+
+  <h3>发放优先级</h3>
+  <div class="pool">
+    <span class="chip k">临期优先</span><span class="chip k">节令礼品当季清</span><span class="chip">先进先出</span>
+    <span class="chip">配额 / 单价上限</span>
+  </div>
+
+  <h3>守住底线</h3>
+  <div class="pool">
+    <span class="chip k">不得对外（客户 / 供应商 / 合作方）</span><span class="chip k">不得变卖折价</span>
+    <span class="chip k">领用须签字，不打白条</span>
+    <span class="chip">含公司标识的单独管理</span><span class="chip">违规如何处理</span>
+    <span class="chip">边界模糊的对象（高校讲者 / 校招候选人 / 员工家属）</span>
+  </div>
+
+  <h3>账与可追溯</h3>
+  <div class="pool">
+    <span class="chip k">一物一档，出入双向登记</span><span class="chip">定期盘点</span>
+    <span class="chip">只入内部福利科目，不列支招待费</span><span class="chip">报废须审批与照片</span>
+    <span class="chip">人员变动交接</span>
+  </div>
+
+  <h3>源头</h3>
+  <div class="pool">
+    <span class="chip">采购前先看结存</span><span class="chip">按实际消耗定采购量</span><span class="chip">控制品类数量</span>
+  </div>
+
+  <!-- ═════ 5 ═════ -->
+  <h2><span class="n">5.</span> 我的推荐组合</h2>
+
+  <table>
+    <thead><tr><th style="width:22%">项</th><th>建议</th></tr></thead>
+    <tbody>
+      <tr><td><b class="rd">主题</b></td><td>方向 ② <b>一边放开、一边收紧</b> —— 它同时装下了原始诉求的三条，
+        又有一个能被记住的主张，而且不依赖现状数据</td></tr>
+      <tr><td><b class="rd">深浅</b></td><td><b>原则式为主，图解为辅</b>。第 1 页用一张出口图，第 2 页用红线块 + 一张责任表。
+        具体数字（配额、金额门槛、盘点频率）全部<b>移到附件</b>，PPT 上只留占位</td></tr>
+      <tr><td><b class="rd">一句话主张</b></td><td>"礼品要发得出去，也要说得清去哪了" —— 两页各证明半句</td></tr>
+      <tr><td><b class="rd">如果有真实案例</b></td><td>改用方向 ⑥（现状 → 办法），说服力会高一个档次。
+        只要一件具体的事就够，不需要完整数据</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ═════ 6 ═════ -->
+  <h2><span class="n">6.</span> 请帮我判断的三件事</h2>
+
+  <div class="q">
+    <div class="t">一、这两页是给谁看、要他们做什么？</div>
+    拍板 / 批准 / 执行 / 知会 —— 选一个。这个定了，深浅就定了。
+  </div>
+
+  <div class="q">
+    <div class="t">二、主要矛盾是"用完"还是"管住"？</div>
+    如果重点是把积压清掉，主线应该偏出口设计；如果重点是防止出事，主线应该偏红线与追溯。
+    两者都要的话，就是方向 ②。
+  </div>
+
+  <div class="q">
+    <div class="t">三、细则放正文还是放附件？</div>
+    放正文 = 两页会很挤，但一份文件说完；放附件 = PPT 干净好讲，但要多做一份。
+    我倾向放附件。
+  </div>
+
+  <p class="muted" style="margin-top:18px">
+    这三个问题定了，主题和结构就定了，剩下的填内容很快。
+    也欢迎直接说"六个方向都不对，应该是 XXX" —— 那更省事。
+  </p>
+
+  <div class="foot">
+    <div>内部讨论稿 · 未定稿</div>
+    <img src="img/huawei-logo.png" alt="HUAWEI">
+  </div>
+
+</div>
+</body>
+</html>

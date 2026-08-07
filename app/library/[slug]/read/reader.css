@@ -209,17 +209,36 @@
   text-decoration-color: rgb(var(--accent));
 }
 
-/* ── highlights ────────────────────────────────────────────────────────── */
+/* ── highlights (CSS Custom Highlight API — no DOM mutation) ────────────── */
+/* Painted by the browser from live Range objects; ::highlight() only supports
+   color / background-color / text-decoration / text-shadow. */
 
+::highlight(reader-hl-yellow) {
+  background-color: var(--hl-yellow);
+}
+::highlight(reader-hl-green) {
+  background-color: var(--hl-green);
+}
+::highlight(reader-hl-blue) {
+  background-color: var(--hl-blue);
+}
+::highlight(reader-hl-pink) {
+  background-color: var(--hl-pink);
+}
+/* Other readers' shared notes — a calm dotted underline (details live in the
+   笔记 sidebar + margin avatars). */
+::highlight(reader-community) {
+  text-decoration: underline dotted rgb(var(--accent) / 0.85);
+  text-decoration-thickness: 2px;
+}
+::highlight(reader-flash) {
+  background-color: rgb(var(--accent) / 0.4);
+}
+
+/* Legacy wrapRange fallback (only used where the Highlight API is missing). */
 .reader-hl {
   border-radius: 2px;
-  padding: 0.08em 0;
-  color: inherit;
   cursor: pointer;
-  transition: filter 150ms ease;
-}
-.reader-hl:hover {
-  filter: brightness(0.94);
 }
 .reader-hl-yellow {
   background: var(--hl-yellow);
@@ -234,34 +253,14 @@
   background: var(--hl-pink);
 }
 .reader-hl-temp {
-  background: rgb(var(--accent) / 0.2);
-  border-radius: 2px;
-  color: inherit;
+  background: rgb(var(--accent) / 0.3);
 }
-/* Other readers' shared notes — dotted underline markers, never a fill (the
-   page must stay calm; details live in the 社区 sidebar). */
 .reader-hl-community {
   background: transparent;
-  color: inherit;
   cursor: pointer;
   text-decoration: underline dotted rgb(var(--accent) / 0.75);
   text-decoration-thickness: 2px;
   text-underline-offset: 4px;
-}
-.reader-hl-community:hover {
-  background: rgb(var(--accent) / 0.08);
-}
-.reader-hl-flash {
-  animation: reader-hl-flash 0.8s ease-out 3;
-}
-@keyframes reader-hl-flash {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgb(var(--accent) / 0);
-  }
-  50% {
-    box-shadow: 0 0 0 3px rgb(var(--accent) / 0.45);
-  }
 }
 
 /* community-drawer quote left borders */

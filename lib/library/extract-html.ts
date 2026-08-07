@@ -13,6 +13,10 @@ const MIN_CONTENT_CHARS = 200;
 const SPLIT_MIN_HEADINGS = 3;
 const SPLIT_MIN_CHARS = 6000;
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function metaContent(doc: Document, selector: string): string | null {
   const content = doc.querySelector(selector)?.getAttribute('content')?.trim();
   return content || null;
@@ -102,18 +106,60 @@ function extractMeta(doc: Document, html: string, url: string): PageMeta {
   return { title: finalTitle, author, siteName, publishedAt, coverRemoteUrl };
 }
 
-/** Largest article/main container, else body — the no-Readability fallback. */
+/**
+ * No-Readability fallback: pick the DOM container with the most paragraph-like
+ * text. Most sites don't use <article>/<main>, so we score EVERY block
+ * container by the combined length of its direct-ish <p>/<li>/<blockquote>/<pre>
+ * descendants and take the densest — this handles div-soup layouts too.
+ */
 function fallbackContainer(doc: Document): Element {
+  const BLOCK = 'p, li, blockquote, pre, h1, h2, h3, h4';
+  // Prefer semantic roots when they actually hold the bulk of the text.
+  const candidates = new Set<Element>();
+  for (const el of Array.from(doc.querySelectorAll('article, main, [role="main"]'))) {
+    candidates.add(el);
+  }
+  // Plus generic containers that hold many block elements.
+  for (const el of Array.from(doc.querySelectorAll('div, section'))) {
+    if (el.querySelectorAll(BLOCK).length >= 3) candidates.add(el);
+  }
+
   let best: Element | null = null;
   let bestLen = 0;
-  for (const el of Array.from(doc.querySelectorAll('article, main'))) {
-    const len = (el.textContent ?? '').trim().length;
+  for (const el of candidates) {
+    // Skip obvious chrome.
+    const cls = `${el.id} ${el.className}`.toLowerCase();
+    if (/(^|[\s_-])(nav|footer|header|sidebar|comment|menu|share|related|recommend)([\s_-]|$)/.test(cls)) {
+      continue;
+    }
+    let len = 0;
+    for (const b of Array.from(el.querySelectorAll(BLOCK))) {
+      const tl = (b.textContent ?? '').trim().length;
+      if (tl >= 20) len += tl;
+    }
     if (len > bestLen) {
       best = el;
       bestLen = len;
     }
   }
   return best ?? doc.body;
+}
+
+/** Last-resort content from JSON-LD Article/NewsArticle `articleBody`. */
+function jsonLdArticleBody(doc: Document): string | null {
+  for (const script of Array.from(doc.querySelectorAll('script[type="application/ld+json"]'))) {
+    try {
+      const raw = JSON.parse(script.textContent ?? 'null');
+      const nodes = Array.isArray(raw) ? raw : raw?.['@graph'] ? raw['@graph'] : [raw];
+      for (const node of nodes) {
+        const body = node?.articleBody;
+        if (typeof body === 'string' && body.trim().length > 200) return body.trim();
+      }
+    } catch {
+      /* malformed JSON-LD — skip */
+    }
+  }
+  return null;
 }
 
 /** Split sanitized article HTML at top-level h1/h2 boundaries (long-form only). */
@@ -210,13 +256,43 @@ export function extractArticle(html: string, url: string): ExtractedDoc {
   let sanitized = contentHtml ? sanitizeChapterHtml(contentHtml, { baseUrl: url }) : '';
   let text = sanitized ? htmlToPlainText(sanitized) : '';
 
+  // Fallback 1: densest paragraph container (handles div-soup / no <article>).
   if (text.length < MIN_CONTENT_CHARS) {
     const container = fallbackContainer(document);
-    sanitized = sanitizeChapterHtml(container.innerHTML, { baseUrl: url });
-    text = htmlToPlainText(sanitized);
+    const s = sanitizeChapterHtml(container.innerHTML, { baseUrl: url });
+    const tx = htmlToPlainText(s);
+    if (tx.length > text.length) {
+      sanitized = s;
+      text = tx;
+    }
+  }
+  // Fallback 2: JSON-LD articleBody (structured data many CMSes ship).
+  if (text.length < MIN_CONTENT_CHARS) {
+    const body = jsonLdArticleBody(document);
+    if (body && body.length > text.length) {
+      const paras = body
+        .split(/\n{2,}|\r\n\r\n/)
+        .map((p) => p.trim())
+        .filter(Boolean);
+      const html = paras.map((p) => `<p>${escapeHtml(p)}</p>`).join('\n');
+      sanitized = sanitizeChapterHtml(html, { baseUrl: url });
+      text = htmlToPlainText(sanitized);
+    }
+  }
+  // Fallback 3: whole body text (best-effort — better than nothing).
+  if (text.length < MIN_CONTENT_CHARS) {
+    const s = sanitizeChapterHtml(document.body?.innerHTML ?? '', { baseUrl: url });
+    const tx = htmlToPlainText(s);
+    if (tx.length > text.length) {
+      sanitized = s;
+      text = tx;
+    }
   }
   if (text.length < MIN_CONTENT_CHARS) {
-    throw new FetchUrlError('unsupported_content', '无法从该网页提取可读正文');
+    throw new FetchUrlError(
+      'unsupported_content',
+      '无法从该网页提取正文——该页面可能依赖 JavaScript 动态加载，或有反爬限制。可尝试保存为 PDF/HTML 后上传。',
+    );
   }
 
   const chapters = splitChapters(sanitized, text);

@@ -195,6 +195,7 @@
     "or_signup": "Or create an account",
     "or_login": "Already have an account? Sign in",
     "or_divider": "or",
+    "password_login_toggle": "Sign in with email & password",
     "w3_button": "Sign in with W3",
     "invalid_credentials": "Invalid email or password",
     "email_in_use": "Email already registered"
@@ -1422,7 +1423,19 @@
     "date_from": "Start date",
     "date_to": "End date",
     "apply_range": "Apply date range",
-    "cancelled_calendar_title": "[Cancelled] {title}"
+    "cancelled_calendar_title": "[Cancelled] {title}",
+    "my_events": "Attending",
+    "attending_badge": "Attending",
+    "attendee_count": "{count, plural, one {# attendee} other {# attendees}}",
+    "attend_join": "Attend",
+    "attend_joined": "Attending · click to leave",
+    "attend_login": "Log in to attend",
+    "attend_failed": "Something went wrong — please retry",
+    "attend_reminder_hint": "We'll remind you by email and in-app 30 minutes before it starts",
+    "toast_joined": "Added — you'll be reminded 30 minutes before it starts",
+    "toast_left": "Removed from your events",
+    "empty_mine_title": "No events added yet",
+    "empty_mine_hint": "Hit \"Attend\" on an event page and it will show up here"
   },
   "library_cards": {
     "like": "Like",
@@ -2025,7 +2038,11 @@
     "translate_failed_retry": "Translation failed — please try again",
     "no_readable_text": "This document has no readable text yet",
     "translating": "Translating…",
-    "view_image": "View image"
+    "view_image": "View image",
+    "pdf_view_mode": "PDF view mode",
+    "pdf_original": "Original",
+    "pdf_reader": "Reader",
+    "pdf_annotate_hint": "Extracted-text view — highlight / notes / translate / AI citations"
   },
   "skills_misc": {
     "categories_subtitle": "Pick the right Skill for what you are working on.",

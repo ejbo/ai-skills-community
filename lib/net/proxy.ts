@@ -25,13 +25,18 @@
 
 import { readFileSync } from 'node:fs';
 import net from 'node:net';
-import { Agent, ProxyAgent, type Dispatcher } from 'undici';
+import { Agent, ProxyAgent, fetch as undiciFetch, type Dispatcher } from 'undici';
 import { env } from '@/lib/env';
 
 export type EgressVia = 'proxy' | 'direct' | 'direct-insecure';
 
 export interface EgressDecision {
-  /** Pass to undici `request({ dispatcher })` / `fetch(url, { dispatcher })`. */
+  /**
+   * Pass to npm-undici `request({ dispatcher })` or npm-undici `fetch` ONLY —
+   * never into Node's built-in fetch: the bundled undici's dispatch-handler
+   * contract drifts across majors (Node 24 + undici 8 ⇒ UND_ERR_INVALID_ARG
+   * "invalid onRequestStart method"; it broke W3 login).
+   */
   dispatcher: Dispatcher | undefined;
   via: EgressVia;
   /** Proxy URI with credentials redacted — safe to log or show an admin. */
@@ -252,16 +257,19 @@ export function isProxied(target: string | URL): boolean {
 }
 
 /**
- * Drop-in `fetch` that applies the per-host egress decision. Node's global
- * fetch takes an undici `dispatcher` in its init bag, but the DOM typings
- * don't model it — hence the cast.
+ * Drop-in `fetch` that applies the per-host egress decision. The dispatcher
+ * branch must run on npm undici's OWN fetch — Node's built-in fetch rejects a
+ * npm-undici dispatcher (bundled-undici handler drift ⇒ UND_ERR_INVALID_ARG).
+ * On that branch a Request-object input keeps only its URL; pass options via
+ * `init`.
  */
 export const egressFetch: typeof fetch = ((input, init) => {
   const url =
     typeof input === 'string' || input instanceof URL ? input : (input as Request).url;
   const { dispatcher } = egressFor(url);
   if (!dispatcher) return fetch(input, init);
-  return fetch(input, { ...(init ?? {}), dispatcher } as RequestInit);
+  const opts = { ...(init ?? {}), dispatcher } as Parameters<typeof undiciFetch>[1];
+  return undiciFetch(url, opts) as unknown as Promise<Response>;
 }) as typeof fetch;
 
 // ── diagnostics ──────────────────────────────────────────────────────────────

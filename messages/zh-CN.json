@@ -195,6 +195,7 @@
     "or_signup": "或注册新账号",
     "or_login": "已有账号？登录",
     "or_divider": "或",
+    "password_login_toggle": "使用邮箱密码登录",
     "w3_button": "使用 W3 账号登录",
     "invalid_credentials": "邮箱或密码错误",
     "email_in_use": "该邮箱已被注册"
@@ -1422,7 +1423,19 @@
     "date_from": "开始日期",
     "date_to": "结束日期",
     "apply_range": "应用日期范围",
-    "cancelled_calendar_title": "【已取消】{title}"
+    "cancelled_calendar_title": "【已取消】{title}",
+    "my_events": "我参加的",
+    "attending_badge": "已参加",
+    "attendee_count": "{count} 人参加",
+    "attend_join": "我要参加",
+    "attend_joined": "已加入 · 点击取消",
+    "attend_login": "登录后添加参加",
+    "attend_failed": "操作失败，请重试",
+    "attend_reminder_hint": "加入后，开始前 30 分钟会通过邮件和站内消息提醒你",
+    "toast_joined": "已加入，开始前 30 分钟提醒你",
+    "toast_left": "已取消参加",
+    "empty_mine_title": "还没有添加的活动",
+    "empty_mine_hint": "在活动详情页点「我要参加」，它就会出现在这里"
   },
   "library_cards": {
     "like": "喜欢",
@@ -2025,7 +2038,11 @@
     "translate_failed_retry": "翻译失败，请重试",
     "no_readable_text": "该文档暂无可阅读的文本内容",
     "translating": "翻译中…",
-    "view_image": "查看图片"
+    "view_image": "查看图片",
+    "pdf_view_mode": "PDF 阅读模式",
+    "pdf_original": "原版",
+    "pdf_reader": "精读",
+    "pdf_annotate_hint": "提取文本视图，可划线 / 笔记 / 翻译 / AI 引用跳转"
   },
   "skills_misc": {
     "categories_subtitle": "按场景挑选合适的 Skill。",

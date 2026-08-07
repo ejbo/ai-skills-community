@@ -28,6 +28,7 @@ export function MarginNotes({
   containerRef,
   notes,
   version,
+  getRect,
   onJump,
   onOpenPanel,
 }: {
@@ -35,6 +36,8 @@ export function MarginNotes({
   notes: CommunityNote[];
   /** Any value that changes when the visible note set / view / chapter does. */
   version: string | number;
+  /** Viewport rect of a note's painted range (CSS Custom Highlight ranges). */
+  getRect: (noteId: string) => DOMRect | null;
   onJump: (note: CommunityNote) => void;
   onOpenPanel: (noteId: string) => void;
 }) {
@@ -54,17 +57,13 @@ export function MarginNotes({
     const crect = container.getBoundingClientRect();
     setGutterX(crect.right);
 
-    // First rendered mark per note, within the visible band.
-    const seen = new Set<string>();
+    // Position each note by its painted range's viewport rect, keeping only
+    // those in the visible band.
     const points: { note: CommunityNote; top: number }[] = [];
-    for (const el of Array.from(container.querySelectorAll('mark[data-chl-id]'))) {
-      const id = (el as HTMLElement).dataset.chlId;
-      if (!id || seen.has(id)) continue;
-      const note = byId.current.get(id);
-      if (!note) continue;
-      const r = el.getBoundingClientRect();
+    for (const note of byId.current.values()) {
+      const r = getRect(note.id);
+      if (!r) continue;
       if (r.bottom < crect.top + 4 || r.top > crect.bottom - 4) continue;
-      seen.add(id);
       points.push({ note, top: r.top });
     }
     points.sort((a, b) => a.top - b.top);
@@ -80,7 +79,7 @@ export function MarginNotes({
     }
     setClusters(next);
     setOpen((prev) => (prev && next.some((c) => c.key === prev.key) ? prev : null));
-  }, [containerRef]);
+  }, [containerRef, getRect]);
 
   const schedule = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
@@ -93,7 +92,6 @@ export function MarginNotes({
     schedule();
     container.addEventListener('scroll', schedule, { passive: true });
     window.addEventListener('resize', schedule);
-    // Marks appear/disappear as pages render or chapters change.
     const mo = new MutationObserver(schedule);
     mo.observe(container, { childList: true, subtree: true });
     const ro = new ResizeObserver(schedule);

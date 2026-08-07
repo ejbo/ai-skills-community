@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { sweepEventRemindersThrottled } from '@/lib/events/reminders';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,10 @@ export async function GET() {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   const recipientId = session.user.id;
+
+  // Piggyback the 活动提醒 sweep on the bell's constant polling (throttled,
+  // fire-and-forget, atomic claims — safe across processes, never blocks).
+  sweepEventRemindersThrottled();
 
   const [items, unreadCount] = await Promise.all([
     prisma.notification.findMany({

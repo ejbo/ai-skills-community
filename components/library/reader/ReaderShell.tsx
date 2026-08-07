@@ -9,7 +9,6 @@ import type { AiOverview } from '@/lib/library/types';
 import { ReaderChrome } from './ReaderChrome';
 import { ReaderContent } from './ReaderContent';
 import { TocPanel, type TocEntry } from './TocPanel';
-import { PdfView, type PdfViewHandle } from './PdfView';
 import { NotesPanel, filterCommunityNotes, type HighlightItem, type NoteUserFilter } from './NotesPanel';
 import { ReaderChatPanel, type Citation } from './ReaderChatPanel';
 import { MarginNotes } from './MarginNotes';
@@ -22,16 +21,8 @@ import {
   type SelectionPayload,
 } from './SelectionMenu';
 import { useReaderPrefs, READER_WIDTHS } from './reader-prefs';
-import {
-  applyCommunityMarks,
-  applyHighlights,
-  clearCommunityMarks,
-  clearHighlights,
-  esc,
-  flashQuote,
-  recolorHighlight,
-  removeHighlightMarks,
-} from './anchoring';
+import { ReaderHighlighter } from './highlighter';
+import { withBasePath } from '@/lib/base-path';
 
 export interface ReaderDocInfo {
   id: string;
@@ -118,6 +109,7 @@ export function ReaderShell({
   const [userFilter, setUserFilter] = useState<NoteUserFilter>({ hidden: [], only: [] });
   const [focusNoteId, setFocusNoteId] = useState<string | null>(null);
   const [communityRefresh, setCommunityRefresh] = useState(0);
+  const [marksVersion, setMarksVersion] = useState(0);
   const [translate, setTranslate] = useState<{
     top: number;
     left: number;
@@ -126,7 +118,15 @@ export function ReaderShell({
     loading: boolean;
     error: string | null;
   } | null>(null);
-  const pdfRef = useRef<PdfViewHandle>(null);
+  // PDF: 原版 = browser-native iframe (reliable, no annotation — browser
+  // boundary); 精读 = extracted reader where highlights / notes / AI work.
+  const [pdfView, setPdfView] = useState<'original' | 'text'>(
+    doc.format === 'pdf' && doc.fileUrl ? 'original' : 'text',
+  );
+  const highlighterRef = useRef<ReaderHighlighter | null>(null);
+  if (highlighterRef.current === null && typeof window !== 'undefined') {
+    highlighterRef.current = new ReaderHighlighter();
+  }
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const chapterRootsRef = useRef(new Map<number, HTMLElement>());
@@ -143,9 +143,7 @@ export function ReaderShell({
   const lastPagedChapterRef = useRef<number | null>(null);
   const flashedRef = useRef<string | null>(null);
 
-  // PDF has ONE view: the faithful pdf.js render (原版). Extraction still runs
-  // behind the scenes to feed AI/search/citations, but there is no 精读 toggle.
-  const showOriginalPdf = doc.format === 'pdf' && !!doc.fileUrl;
+  const showOriginalPdf = doc.format === 'pdf' && pdfView === 'original' && !!doc.fileUrl;
   const visibleCommunityNotes = useMemo(
     () => (showOthers && communityNotes ? filterCommunityNotes(communityNotes, userFilter) : []),
     [showOthers, communityNotes, userFilter],
@@ -210,11 +208,11 @@ export function ReaderShell({
   const goChapter = useCallback(
     (n: number) => {
       if (n < 0 || n >= chapterCount) return;
-      // 原版 PDF: jump via the renderer (page span if known, else estimated —
-      // works even for older PDFs extracted before page spans existed).
-      if (showOriginalPdf && pdfRef.current) {
-        pdfRef.current.jumpToChapter(n);
-        setCurrentChapter(n);
+      // 原版 PDF is the browser viewer (its own nav); a TOC jump switches to the
+      // 精读 reader and navigates there.
+      if (showOriginalPdf) {
+        setPdfView('text');
+        router.replace(readHref(n), { scroll: false });
         return;
       }
       if (mode === 'flow') {
@@ -305,7 +303,6 @@ export function ReaderShell({
     schedulePatch();
   }, [chapters, chapterCount, mode, rootFor, rootTop, schedulePatch, showOriginalPdf]);
 
-  const repaintTickRef = useRef(0);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -323,11 +320,6 @@ export function ReaderShell({
       lastScrollTopRef.current = top;
       setMarkPopover(null);
       updateProgress();
-      const now = Date.now();
-      if (now - repaintTickRef.current > 600) {
-        repaintTickRef.current = now;
-        paintTextMarks();
-      }
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
@@ -481,39 +473,40 @@ export function ReaderShell({
   }, [doc.id, showOthers, notesOpen, communityRefresh]);
 
   // Shared idempotent painter for the extracted view (effects + scroll repair).
-  const paintTextMarks = useCallback(() => {
-    if (showOriginalPdf) return;
-    const visible = showOthers && communityNotes ? filterCommunityNotes(communityNotes, userFilter) : [];
-    for (const [ci, root] of chapterRootsRef.current) {
-      applyHighlights(
-        root,
-        chapterHighlights.filter((h) => h.chapterIndex === ci),
-      );
-      const forChapter = visible.filter((n) => n.chapterIndex === ci);
-      if (forChapter.length > 0) applyCommunityMarks(root, forChapter);
-    }
+  // Rebuild all highlights via the CSS Custom Highlight API. Ranges are LIVE
+  // (they track the DOM), so this only runs when the highlight/community set
+  // changes or chapters (re)mount — never on scroll. No DOM mutation ⇒ no React
+  // conflict, no flicker, no drift.
+  const renderMarks = useCallback(() => {
+    const h = highlighterRef.current;
+    if (!h || showOriginalPdf) return;
+    const community = (
+      showOthers && communityNotes ? filterCommunityNotes(communityNotes, userFilter) : []
+    ).map((n) => ({
+      id: n.id,
+      chapterIndex: n.chapterIndex,
+      quote: n.quote,
+      charStart: n.charStart,
+      color: n.color,
+    }));
+    h.renderAll(chapterRootsRef.current, chapterHighlights, community);
+    setMarksVersion((v) => v + 1);
   }, [chapterHighlights, communityNotes, userFilter, showOthers, showOriginalPdf]);
 
   useEffect(() => {
-    const visible = showOthers && communityNotes ? filterCommunityNotes(communityNotes, userFilter) : [];
-    for (const [ci, root] of chapterRootsRef.current) {
-      clearCommunityMarks(root);
-      if (showOriginalPdf) continue;
-      const forChapter = visible.filter((n) => n.chapterIndex === ci);
-      if (forChapter.length > 0) applyCommunityMarks(root, forChapter);
-    }
-  }, [communityNotes, userFilter, chaptersKey, showOthers, showOriginalPdf]);
+    const id = requestAnimationFrame(renderMarks);
+    return () => cancelAnimationFrame(id);
+  }, [renderMarks, chaptersKey]);
+
+  useEffect(() => () => highlighterRef.current?.dispose(), []);
 
   const handleCommunityJump = useCallback(
     (note: CommunityNote) => {
       setFocusNoteId(note.id);
-      if (showOriginalPdf) {
-        pdfRef.current?.jumpToQuote(note.chapterIndex, note.quote, note.charStart);
-        return;
-      }
+      if (showOriginalPdf) setPdfView('text');
       const root = rootFor(note.chapterIndex);
-      if (root) {
-        flashQuote(root, note.quote, note.charStart);
+      if (root && highlighterRef.current) {
+        highlighterRef.current.flash(root, note.quote, note.charStart);
         return;
       }
       try {
@@ -552,45 +545,18 @@ export function ReaderShell({
 
   useEffect(() => setChapterHighlights(highlights), [highlights]);
 
-  useEffect(() => {
-    for (const [ci, root] of chapterRootsRef.current) {
-      clearHighlights(root);
-      if (showOriginalPdf) continue;
-      applyHighlights(
-        root,
-        chapterHighlights.filter((h) => h.chapterIndex === ci),
-      );
-    }
-  }, [chapterHighlights, chaptersKey, showOriginalPdf]);
-
   const flashMark = useCallback((id: string): boolean => {
-    for (const root of chapterRootsRef.current.values()) {
-      const marks = root.querySelectorAll(`mark[data-hl-id="${esc(id)}"]`);
-      if (marks.length === 0) continue;
-      (marks[0] as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' });
-      marks.forEach((m) => m.classList.add('reader-hl-flash'));
-      window.setTimeout(() => marks.forEach((m) => m.classList.remove('reader-hl-flash')), 2400);
-      return true;
-    }
-    return false;
+    return highlighterRef.current?.flashOwn(id) ?? false;
   }, []);
 
   // ?hl= deep link: scroll to the mark and flash it (once per id).
   useEffect(() => {
     if (!focusHighlightId || flashedRef.current === focusHighlightId) return;
     const timer = window.setTimeout(() => {
-      if (showOriginalPdf) {
-        const row = chapterHighlights.find((h) => h.id === focusHighlightId);
-        if (row) {
-          pdfRef.current?.jumpToQuote(row.chapterIndex, row.quote, row.charStart);
-          flashedRef.current = focusHighlightId;
-        }
-        return;
-      }
       if (flashMark(focusHighlightId)) flashedRef.current = focusHighlightId;
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [focusHighlightId, chaptersKey, chapterHighlights, flashMark, showOriginalPdf]);
+  }, [focusHighlightId, chaptersKey, marksVersion, flashMark]);
 
   // Cross-chapter jump left in sessionStorage (paged navigation only).
   useEffect(() => {
@@ -612,10 +578,10 @@ export function ReaderShell({
     }
     const { snippet, charStart } = jump;
     const timer = window.setTimeout(() => {
-      if (typeof snippet === 'string') flashQuote(root, snippet, charStart ?? 0);
+      if (typeof snippet === 'string') highlighterRef.current?.flash(root, snippet, charStart ?? 0);
     }, 220);
     return () => window.clearTimeout(timer);
-  }, [chaptersKey, rootFor, showOriginalPdf]);
+  }, [chaptersKey, marksVersion, rootFor, showOriginalPdf]);
 
   const resyncChapterHighlights = useCallback(async () => {
     try {
@@ -685,7 +651,7 @@ export function ReaderShell({
 
   async function recolor(id: string, color: HighlightColor) {
     setMarkPopover(null);
-    for (const root of chapterRootsRef.current.values()) recolorHighlight(root, id, color);
+    // State change → renderMarks effect repaints (Custom Highlight API).
     setChapterHighlights((prev) => prev.map((h) => (h.id === id ? { ...h, color } : h)));
     try {
       const res = await fetch(`/api/library/docs/${doc.id}/highlights/${id}`, {
@@ -707,7 +673,6 @@ export function ReaderShell({
 
   async function removeHighlight(id: string) {
     setMarkPopover(null);
-    for (const root of chapterRootsRef.current.values()) removeHighlightMarks(root, id);
     setChapterHighlights((prev) => prev.filter((h) => h.id !== id));
     try {
       const res = await fetch(`/api/library/docs/${doc.id}/highlights/${id}`, { method: 'DELETE' });
@@ -731,25 +696,26 @@ export function ReaderShell({
       setLightbox({ src: img.currentSrc || img.src, alt: img.alt ?? '' });
       return;
     }
-    // Community marker → open the 笔记 panel focused on that note.
-    const community = target.closest?.('mark[data-chl-id]') as HTMLElement | null;
-    if (community?.dataset.chlId) {
-      setFocusNoteId(community.dataset.chlId);
+    // Highlights are painted by the browser (no <mark> elements) — hit-test the
+    // click point against the live ranges. Ignore clicks that are part of a
+    // fresh selection.
+    const h = highlighterRef.current;
+    if (!h) return;
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) return;
+    const community = h.communityHitAt(e.clientX, e.clientY);
+    if (community) {
+      setFocusNoteId(community);
       setNotesOpen(true);
       setMarkPopover(null);
       return;
     }
-    const mark = target.closest?.('mark[data-hl-id]') as HTMLElement | null;
-    if (!mark || !mark.dataset.hlId || mark.dataset.hlId.startsWith('temp-')) {
-      setMarkPopover(null);
+    const own = h.ownHitAt(e.clientX, e.clientY);
+    if (own && !own.id.startsWith('temp-')) {
+      setMarkPopover({ id: own.id, top: own.rect.bottom + 10, left: own.rect.left + own.rect.width / 2 });
       return;
     }
-    const rect = mark.getBoundingClientRect();
-    setMarkPopover({
-      id: mark.dataset.hlId,
-      top: rect.bottom + 10,
-      left: rect.left + rect.width / 2,
-    });
+    setMarkPopover(null);
   }
 
   // ── chat wiring ───────────────────────────────────────────────────────
@@ -764,13 +730,10 @@ export function ReaderShell({
 
   const handleCitationJump = useCallback(
     (citation: Citation) => {
-      if (showOriginalPdf) {
-        pdfRef.current?.jumpToQuote(citation.chapterIndex, citation.snippet, citation.charStart);
-        return;
-      }
+      if (showOriginalPdf) setPdfView('text');
       const root = rootFor(citation.chapterIndex);
-      if (root) {
-        flashQuote(root, citation.snippet, citation.charStart);
+      if (root && highlighterRef.current) {
+        highlighterRef.current.flash(root, citation.snippet, citation.charStart);
         return;
       }
       try {
@@ -792,11 +755,7 @@ export function ReaderShell({
 
   const handleOwnJump = useCallback(
     (hl: { id: string; chapterIndex: number }) => {
-      if (showOriginalPdf) {
-        const row = chapterHighlights.find((h) => h.id === hl.id);
-        if (row) pdfRef.current?.jumpToQuote(row.chapterIndex, row.quote, row.charStart);
-        return;
-      }
+      if (showOriginalPdf) setPdfView('text');
       if (flashMark(hl.id)) return;
       if (rootFor(hl.chapterIndex)) {
         scrollToChapter(hl.chapterIndex);
@@ -805,18 +764,15 @@ export function ReaderShell({
       flashedRef.current = null;
       router.replace(`${readHref(hl.chapterIndex)}&hl=${hl.id}`, { scroll: false });
     },
-    [chapterHighlights, flashMark, readHref, rootFor, router, scrollToChapter, showOriginalPdf],
+    [flashMark, readHref, rootFor, router, scrollToChapter, showOriginalPdf],
   );
 
   const handleOwnMutated = useCallback(
     (id: string, patch: { color?: string; noteText?: string | null } | null) => {
+      // State change drives the renderMarks effect (Custom Highlight API).
       if (patch === null) {
-        for (const root of chapterRootsRef.current.values()) removeHighlightMarks(root, id);
         setChapterHighlights((prev) => prev.filter((h) => h.id !== id));
       } else {
-        if (patch.color) {
-          for (const root of chapterRootsRef.current.values()) recolorHighlight(root, id, patch.color);
-        }
         setChapterHighlights((prev) =>
           prev.map((h) =>
             h.id === id
@@ -832,50 +788,6 @@ export function ReaderShell({
     },
     [],
   );
-
-  // ── 原版 pdf.js view wiring ───────────────────────────────────────────
-
-  const chapterForPage = useCallback(
-    (page: number): number => {
-      for (const c of toc) {
-        if (c.pageStart !== null && c.pageEnd !== null && page >= c.pageStart && page <= c.pageEnd) {
-          return c.chapterIndex;
-        }
-      }
-      return toc[0]?.chapterIndex ?? 0;
-    },
-    [toc],
-  );
-
-  const handlePdfVisiblePage = useCallback(
-    (page: number, pageCount: number, inPageRatio: number) => {
-      const ci = chapterForPage(page);
-      const chapter = toc.find((c) => c.chapterIndex === ci);
-      const span =
-        chapter && chapter.pageStart !== null && chapter.pageEnd !== null
-          ? chapter.pageEnd - chapter.pageStart + 1
-          : 1;
-      const within =
-        chapter && chapter.pageStart !== null
-          ? Math.min(1, Math.max(0, (page - chapter.pageStart + inPageRatio) / Math.max(1, span)))
-          : inPageRatio;
-      const pct = Math.min(100, ((page + inPageRatio) / Math.max(1, pageCount)) * 100);
-      progressRef.current = { chapterIndex: ci, scrollRatio: within, percent: pct };
-      setPercent(pct);
-      setCurrentChapter(ci);
-      schedulePatch();
-    },
-    [chapterForPage, toc, schedulePatch],
-  );
-
-  // Resume position for the pdf view: chapter progress → page estimate.
-  const pdfInitialPage = useMemo(() => {
-    const chapter = toc.find((c) => c.chapterIndex === initialChapter);
-    if (!chapter || chapter.pageStart === null || chapter.pageEnd === null) return 0;
-    const span = chapter.pageEnd - chapter.pageStart + 1;
-    const ratio = progress && progress.chapterIndex === initialChapter ? progress.scrollRatio : 0;
-    return chapter.pageStart + Math.min(span - 1, Math.floor(ratio * span));
-  }, [toc, initialChapter, progress]);
 
   const handleTranslate = useCallback((text: string, anchorPos: { top: number; left: number }) => {
     setTranslate({
@@ -966,6 +878,15 @@ export function ReaderShell({
             ? { mode, available: flowAvailable, onChange: changeMode }
             : null
         }
+        pdfMode={
+          doc.format === 'pdf' && doc.fileUrl
+            ? {
+                view: pdfView,
+                canAnnotate: chapters.length > 0,
+                onChange: setPdfView,
+              }
+            : null
+        }
       />
 
       <div className="relative flex min-h-0 flex-1">
@@ -978,29 +899,13 @@ export function ReaderShell({
         />
 
         {showOriginalPdf ? (
-          <div ref={scrollRef} className="pdf-surface h-full min-w-0 flex-1 overflow-y-auto overscroll-contain">
-            <PdfView
-              ref={pdfRef}
-              fileUrl={doc.fileUrl!}
-              scrollRef={scrollRef}
-              toc={toc}
-              highlights={chapterHighlights}
-              communityNotes={visibleCommunityNotes}
-              initialPage={pdfInitialPage}
-              onVisiblePage={handlePdfVisiblePage}
-              onHighlight={(payload, color) => void createHighlight(payload, color, false)}
-              onNote={(payload) => void createHighlight(payload, 'yellow', true)}
-              onAskAi={handleAskAi}
-              onTranslate={handleTranslate}
-              onMarkClick={(id, rect) =>
-                setMarkPopover({ id, top: rect.bottom + 10, left: rect.left + rect.width / 2 })
-              }
-              onCommunityMarkClick={(noteId) => {
-                setFocusNoteId(noteId);
-                setNotesOpen(true);
-              }}
-            />
-          </div>
+          // 原版: the browser's own PDF viewer — pixel-faithful, reliable
+          // selection/zoom. Annotation lives in the 精读 view (toggle above).
+          <iframe
+            src={`${withBasePath(doc.fileUrl!)}#view=FitH`}
+            title={doc.title}
+            className="h-full min-w-0 flex-1 border-0"
+          />
         ) : (
           <div
             ref={scrollRef}
@@ -1033,16 +938,19 @@ export function ReaderShell({
           </div>
         )}
 
-        <MarginNotes
-          containerRef={scrollRef}
-          notes={visibleCommunityNotes}
-          version={`${communitySig}|${showOriginalPdf ? 'p' : 't'}|${currentChapter}`}
-          onJump={handleCommunityJump}
-          onOpenPanel={(noteId) => {
-            setFocusNoteId(noteId);
-            setNotesOpen(true);
-          }}
-        />
+        {!showOriginalPdf && (
+          <MarginNotes
+            containerRef={scrollRef}
+            notes={visibleCommunityNotes}
+            version={`${communitySig}|${marksVersion}|${currentChapter}`}
+            getRect={(id) => highlighterRef.current?.communityRect(id) ?? null}
+            onJump={handleCommunityJump}
+            onOpenPanel={(noteId) => {
+              setFocusNoteId(noteId);
+              setNotesOpen(true);
+            }}
+          />
+        )}
 
         <NotesPanel
           open={notesOpen}

@@ -24,6 +24,11 @@ interface Props {
   prefs: ReaderPrefs;
   onPrefsChange: (patch: Partial<ReaderPrefs>) => void;
   flow: { mode: 'paged' | 'flow'; available: boolean; onChange: (mode: 'paged' | 'flow') => void } | null;
+  pdfMode: {
+    view: 'original' | 'text';
+    canAnnotate: boolean;
+    onChange: (view: 'original' | 'text') => void;
+  } | null;
 }
 
 /** Auto-hiding top bar: back, viewport-centered title, panel toggles. */
@@ -45,6 +50,7 @@ export function ReaderChrome({
   prefs,
   onPrefsChange,
   flow,
+  pdfMode,
 }: Props) {
   const t = useTranslations('reader');
   const td = useTranslations('detail');
@@ -81,6 +87,41 @@ export function ReaderChrome({
         </div>
 
         <div className="flex shrink-0 items-center gap-0.5">
+          {pdfMode && pdfMode.canAnnotate && (
+            <div
+              className="rborder mr-1.5 flex overflow-hidden rounded-lg border text-xs"
+              role="tablist"
+              aria-label={t('pdf_view_mode')}
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={pdfMode.view === 'original'}
+                onClick={() => pdfMode.onChange('original')}
+                className={`px-2.5 py-1 transition ${
+                  pdfMode.view === 'original'
+                    ? 'bg-accent-500 font-medium text-white'
+                    : 'r-muted hover:bg-[var(--reader-hover)]'
+                }`}
+              >
+                {t('pdf_original')}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={pdfMode.view === 'text'}
+                onClick={() => pdfMode.onChange('text')}
+                title={t('pdf_annotate_hint')}
+                className={`px-2.5 py-1 transition ${
+                  pdfMode.view === 'text'
+                    ? 'bg-accent-500 font-medium text-white'
+                    : 'r-muted hover:bg-[var(--reader-hover)]'
+                }`}
+              >
+                {t('pdf_reader')}
+              </button>
+            </div>
+          )}
 
           <ChromeButton label={t('toc')} active={tocOpen} onClick={onToggleToc}>
             <List className="h-4 w-4" />

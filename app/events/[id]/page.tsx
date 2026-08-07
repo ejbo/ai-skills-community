@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
-import { CalendarDays, ExternalLink, Link2, MapPin, Video } from 'lucide-react';
+import { CalendarDays, CalendarPlus, ExternalLink, Link2, MapPin, Users, Video } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { Avatar } from '@/components/Avatar';
@@ -18,6 +18,7 @@ import { getEventDetail } from '@/lib/event-queries';
 import { toWallDate } from '@/lib/events/time';
 import { DEFAULT_EVENT_TIMEZONE, eventLinkHref } from '@/lib/events/types';
 import { AddToCalendar } from '../_components/AddToCalendar';
+import { AttendButton } from '../_components/AttendButton';
 import { EventActions } from '../_components/EventActions';
 import { EventTimeDetail } from '../_components/EventTime';
 import { CancelledBadge, KindBadge, ModeBadge, TopicChip } from '../_components/badges';
@@ -48,6 +49,10 @@ export default async function EventDetailPage({ params }: { params: { id: string
   const icsHref = withBasePath(`/api/events/${event.id}/ics`);
   const meetingHref = eventLinkHref(event.meetingUrl);
   const websiteHref = eventLinkHref(event.websiteUrl);
+  // Same "over" rule as the attend route: all-day rows run through end-of-date.
+  const effEnd = new Date(event.endAt ?? event.startAt).getTime();
+  const isOver = (event.allDay ? effEnd + 24 * 60 * 60 * 1000 : effEnd) < Date.now();
+  const te = await getTranslations('events');
 
   return (
     <div className="container max-w-6xl py-8">
@@ -163,6 +168,33 @@ export default async function EventDetailPage({ params }: { params: { id: string
         {/* ── right rail ── */}
         <aside>
           <div className="sticky top-20 space-y-4">
+            {/* Joinable while live; an ATTENDING viewer keeps the card even after
+                取消/结束 so they can still leave (clean up 我参加的). */}
+            {(event.attending || (!event.cancelled && !isOver)) && (
+              <div className="surface rounded-2xl p-5">
+                {session?.user ? (
+                  <AttendButton
+                    id={event.id}
+                    attending={event.attending}
+                    attendeeCount={event.attendeeCount}
+                  />
+                ) : (
+                  <div>
+                    <Link
+                      href={`/auth/login?callbackUrl=${encodeURIComponent(`/events/${event.id}`)}`}
+                      className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-accent-500 text-sm font-medium text-white transition hover:bg-accent-600"
+                    >
+                      <CalendarPlus className="h-4 w-4" />
+                      {te('attend_login')}
+                    </Link>
+                    <p className="mt-1.5 flex items-center justify-center gap-1 text-xs text-muted">
+                      <Users className="h-3.5 w-3.5" />
+                      {te('attendee_count', { count: event.attendeeCount })}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="surface rounded-2xl p-5">
               <div className="flex items-start gap-3">
                 <div className="flex h-11 w-11 shrink-0 flex-col items-center justify-center overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700">

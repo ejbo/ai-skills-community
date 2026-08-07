@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { hashPassword, deriveHandle } from '@/lib/auth/password';
+import { isSsoEnabled } from '@/lib/auth';
 
 const schema = z.object({
   email: z.string().email().transform((v) => v.toLowerCase().trim()),
@@ -19,6 +20,10 @@ async function uniqueHandle(base: string): Promise<string> {
 }
 
 export async function POST(req: Request) {
+  // SSO deploys have no self-service signup; the UI hides it, this stops curl.
+  if (isSsoEnabled) {
+    return NextResponse.json({ error: 'signup_disabled' }, { status: 403 });
+  }
   const body = await req.json().catch(() => null);
   const parsed = schema.safeParse(body);
   if (!parsed.success) {

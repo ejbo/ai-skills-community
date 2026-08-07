@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { Sparkles } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { SignupForm } from './SignupForm';
-import { auth } from '@/lib/auth';
+import { auth, isSsoEnabled } from '@/lib/auth';
 
 export default async function SignupPage({
   searchParams,
@@ -12,6 +12,13 @@ export default async function SignupPage({
 }) {
   const session = await auth();
   if (session?.user) redirect(searchParams.callbackUrl ?? '/');
+  // SSO deploys close self-service signup — regular users go through W3, so a
+  // direct /auth/signup visit bounces to the login page (API is closed too).
+  if (isSsoEnabled) {
+    redirect(
+      `/auth/login${searchParams.callbackUrl ? `?callbackUrl=${encodeURIComponent(searchParams.callbackUrl)}` : ''}`,
+    );
+  }
   const t = await getTranslations('auth');
 
   return (

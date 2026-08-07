@@ -250,3 +250,28 @@ export function notifyAnnouncementEmail(opts: {
       `<p><a href="${opts.link}">查看全文 →</a></p>`,
   });
 }
+
+/** Remind an attendee that an event they joined starts soon. `link` is absolute. */
+export function notifyEventReminderEmail(opts: {
+  to: string;
+  eventTitle: string;
+  minutesLeft: number;
+  timeLabel: string; // e.g. '14:00（北京时间）'
+  location: string; // venue/city or 线上
+  meetingUrl: string | null;
+  link: string;
+}): void {
+  const meeting = opts.meetingUrl ? `\n会议链接：${opts.meetingUrl}` : '';
+  sendMailAsync({
+    to: opts.to,
+    subject: `【活动提醒】「${opts.eventTitle}」${opts.minutesLeft} 分钟后开始`,
+    text:
+      `你添加参加的活动「${opts.eventTitle}」将于 ${opts.minutesLeft} 分钟后（${opts.timeLabel}）开始。\n` +
+      `地点：${opts.location}${meeting}\n\n查看活动：${opts.link}`,
+    html:
+      `<p>你添加参加的活动 <strong>「${esc(opts.eventTitle)}」</strong> 将于 <strong>${opts.minutesLeft} 分钟后</strong>（${esc(opts.timeLabel)}）开始。</p>` +
+      `<p>地点：${esc(opts.location)}</p>` +
+      (opts.meetingUrl ? `<p><a href="${esc(opts.meetingUrl)}">加入线上会议 →</a></p>` : '') +
+      `<p><a href="${opts.link}">查看活动详情 →</a></p>`,
+  });
+}

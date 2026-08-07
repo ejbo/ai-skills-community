@@ -23,7 +23,7 @@
  * unit-testable without loading the app's env.
  */
 
-import { Agent, ProxyAgent } from 'undici';
+import { Agent, ProxyAgent, fetch as undiciFetch } from 'undici';
 
 export interface HuaweiFetchConfig {
   clientId: string;
@@ -37,7 +37,7 @@ export interface HuaweiFetchConfig {
   useProxy?: boolean;
   proxyHost?: string;
   proxyPort?: string;
-  /** Injectable for tests; defaults to global fetch (+ optional intranet dispatcher). */
+  /** Injectable for tests; defaults to fetch (npm undici's when a dispatcher is attached). */
   baseFetch?: typeof fetch;
 }
 
@@ -156,7 +156,7 @@ function jsonResponse(obj: unknown): Response {
 }
 
 /**
- * Global fetch wrapped with an undici dispatcher for the Huawei intranet.
+ * Fetch wrapped with an undici dispatcher for the Huawei intranet.
  *
  * The two knobs are INDEPENDENT and must compose: uniportal presents an internal
  * chain (`verifySsl:false`) AND may need the corporate proxy. The previous
@@ -166,6 +166,13 @@ function jsonResponse(obj: unknown): Response {
  * Note that uniportal is an INTRANET host: callers normally leave `useProxy`
  * false for it (lib/auth.ts derives it from the per-host bypass list) — the
  * proxy refuses internal destinations.
+ *
+ * Dispatcher and fetch MUST come from the same undici. Node's built-in fetch
+ * runs the BUNDLED undici, whose dispatch-handler contract drifts across
+ * majors — on Node 24 (bundled v7) a npm-undici-v8 Agent dies with
+ * `UND_ERR_INVALID_ARG: invalid onRequestStart method` on every call, which
+ * reached prod as CallbackRouteError("fetch failed") on each W3 login. Hence
+ * `undiciFetch` below, never the global fetch, whenever a dispatcher rides along.
  */
 function buildBaseFetch(cfg: HuaweiFetchConfig): typeof fetch {
   const proxyUri =
@@ -183,8 +190,8 @@ function buildBaseFetch(cfg: HuaweiFetchConfig): typeof fetch {
     : new Agent({ connect: { rejectUnauthorized: false } });
 
   return (async (input: FetchInput, init?: FetchInit): Promise<Response> => {
-    const opts: FetchInit & { dispatcher?: unknown } = { ...(init ?? {}) };
-    opts.dispatcher = dispatcher;
-    return fetch(input, opts as FetchInit);
+    const target = typeof input === 'string' || input instanceof URL ? input : input.url;
+    const opts = { ...(init ?? {}), dispatcher } as Parameters<typeof undiciFetch>[1];
+    return (await undiciFetch(target, opts)) as unknown as Response;
   }) as typeof fetch;
 }

@@ -105,7 +105,8 @@ model User {
   discussionReplies DiscussionReply[]
 
   // ── Events back-relations (virtual; no SQL columns on User) ──
-  authoredEvents Event[] @relation("AuthoredEvents")
+  authoredEvents   Event[]         @relation("AuthoredEvents")
+  eventAttendances EventAttendee[]
 
   // ── Library back-relations (virtual; no SQL columns on User) ──
   libraryDocs            LibraryDoc[]
@@ -870,6 +871,7 @@ enum NotificationType {
   access_request // someone requested download access to your restricted skill
   access_decision // your access request was approved / rejected / revoked
   announcement // admin-published update announcement
+  event_reminder // an event you joined (我要参加) starts within ~30 minutes
 }
 
 // One row per recipient. title/body/link are rendered at creation time so the
@@ -1591,12 +1593,14 @@ model Event {
   coverUrl      String? // root-relative stored cover; withBasePath at render time
   pinned        Boolean   @default(false) // admin 置顶（活动页顶部推荐位）
   cancelledAt   DateTime? // organizer/admin 取消 — kept visible with a 已取消 banner
+  attendeeCount Int       @default(0) // denormalized「我要参加」count, guarded transactions
   deletedAt     DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  author   User           @relation("AuthoredEvents", fields: [authorId], references: [id], onDelete: Cascade)
-  speakers EventSpeaker[]
+  author    User            @relation("AuthoredEvents", fields: [authorId], references: [id], onDelete: Cascade)
+  speakers  EventSpeaker[]
+  attendees EventAttendee[]
 
   @@index([deletedAt, startAt])
   @@index([kind, startAt])
@@ -1621,4 +1625,22 @@ model EventSpeaker {
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@index([eventId, sortOrder])
+}
+
+// 「我要参加」— per-user per-event join. Joining is the reminder opt-in: the
+// sweep (lib/events/reminders.ts) emails + in-app notifies attendees ~30 min
+// before startAt, claiming rows atomically via remindedAt (dupe-proof across
+// processes). No NotificationPreference gate by design — the click IS consent.
+model EventAttendee {
+  userId     String
+  eventId    String
+  remindedAt DateTime? // pre-start reminder sent (atomic claim marker)
+  createdAt  DateTime  @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@id([userId, eventId])
+  @@index([eventId])
+  @@index([userId, createdAt])
 }

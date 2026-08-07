@@ -8,7 +8,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { getLocale, getTranslations } from 'next-intl/server';
-import { ChevronLeft, ChevronRight, Pin, Plus, X } from 'lucide-react';
+import { CalendarCheck2, ChevronLeft, ChevronRight, Pin, Plus, X } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { SearchBar } from '@/components/SearchBar';
 import { EmptyState } from '@/components/EmptyState';
@@ -74,13 +74,14 @@ interface SearchParams {
   q?: string | string[];
   cal?: string | string[];
   page?: string | string[];
+  mine?: string | string[];
 }
 
 function firstParam(v: string | string[] | undefined): string {
   return (Array.isArray(v) ? v[0] : v ?? '').trim();
 }
 
-const PARAM_KEYS = ['tab', 'preset', 'from', 'to', 'day', 'kind', 'topic', 'mode', 'city', 'q', 'cal', 'page'] as const;
+const PARAM_KEYS = ['tab', 'preset', 'from', 'to', 'day', 'kind', 'topic', 'mode', 'city', 'q', 'cal', 'page', 'mine'] as const;
 
 /** Merge current searchParams with a patch ('' deletes); any change resets page. */
 function eventsHref(sp: SearchParams, patch: Record<string, string>): string {
@@ -160,9 +161,23 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
   const calMonth =
     monthKeyToDate(firstParam(searchParams.cal)) ?? startOfMonthUtc(day ?? from ?? nowWall());
 
-  const filters: EventFilters = { tab, kind, topic, mode, city, q, from, to, day };
+  // 我参加的 — anonymous viewers can't have joined anything; ignore the param.
+  const mine = Boolean(viewer.id) && firstParam(searchParams.mine) === '1';
+  const filters: EventFilters = {
+    tab,
+    kind,
+    topic,
+    mode,
+    city,
+    q,
+    from,
+    to,
+    day,
+    mineFor: mine ? (viewer.id as string) : undefined,
+  };
   const hasDateFilter = Boolean(day || from || to);
-  const showPinned = tab === 'upcoming' && !hasDateFilter && !kind && !topic && !mode && !city && !q && pageNum === 1;
+  const showPinned =
+    tab === 'upcoming' && !hasDateFilter && !kind && !topic && !mode && !city && !q && !mine && pageNum === 1;
 
   const [list, kindCounts, cityCounts, cal, pinned] = await Promise.all([
     listEvents(filters, viewer, pageNum),
@@ -201,6 +216,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
 
   // ── active filter chips ─────────────────────────────────────────────────
   const chips: { label: string; href: string }[] = [];
+  if (mine) chips.push({ label: t('my_events'), href: eventsHref(searchParams, { mine: '' }) });
   if (q) chips.push({ label: t('chip_search', { q }), href: eventsHref(searchParams, { q: '' }) });
   if (kind) chips.push({ label: tl(`eventKind.${kind}`), href: eventsHref(searchParams, { kind: '' }) });
   if (topic) chips.push({ label: t(`topic_${topic}`), href: eventsHref(searchParams, { topic: '' }) });
@@ -354,6 +370,19 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
                 {t('tab_past')}
               </Link>
             </div>
+            {session?.user && (
+              <Link
+                href={eventsHref(searchParams, { mine: mine ? '' : '1' })}
+                className={`inline-flex h-[30px] items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition ${
+                  mine
+                    ? 'border-accent-500 bg-accent-500/10 text-accent-600 dark:text-accent-400'
+                    : 'border-zinc-200 text-muted hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-800 dark:hover:text-zinc-100'
+                }`}
+              >
+                <CalendarCheck2 className="h-3.5 w-3.5" />
+                {t('my_events')}
+              </Link>
+            )}
             <div className="w-full max-w-xs">
               <SearchBar placeholder={t('search_placeholder')} />
             </div>
@@ -408,8 +437,10 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
           {groups.length === 0 ? (
             pinned.length > 0 ? null : (
               <EmptyState
-                title={t('empty_title')}
-                description={tab === 'past' ? t('empty_past_hint') : t('empty_hint')}
+                title={mine ? t('empty_mine_title') : t('empty_title')}
+                description={
+                  mine ? t('empty_mine_hint') : tab === 'past' ? t('empty_past_hint') : t('empty_hint')
+                }
                 actionLabel={session?.user ? t('publish') : undefined}
                 actionHref={session?.user ? '/events/new' : undefined}
               />
