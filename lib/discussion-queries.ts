@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { Prisma, DiscussionCategory, PostReaction } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { AUTHOR_IDENTITY_FIELDS, AUTHOR_IDENTITY_SELECT } from '@/lib/user-identity';
+import { POLL_TOKEN_GLOBAL_RE } from '@/lib/polls-shared';
 
 // Shared query layer for the 讨论区 (Discussion) section: the LinkedIn/HF-style
 // post feed and the Discourse-style forum. Same conventions as
@@ -468,6 +469,7 @@ export async function listTopics(filters: ListTopicsFilters) {
 export function excerptOf(md: string, max = 140): string {
   const text = md
     .replace(/```[\s\S]*?```/g, ' ') // code fences
+    .replace(POLL_TOKEN_GLOBAL_RE, ' ') // embedded 投票 tokens (incl. \[poll:…\] escaped form)
     .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ') // images
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // links → label
     .replace(/[#>*_~`|-]+/g, ' ') // md syntax noise

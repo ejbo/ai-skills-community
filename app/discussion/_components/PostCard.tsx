@@ -88,11 +88,20 @@ export function PostCard({
   // LinkedIn's clamp split: fewer lines when the card also carries media.
   const clampMax = post.media.length > 0 ? '5.5rem' : '9rem';
 
-  // Show 展开 only when the body actually overflows the clamp.
+  // Show 展开 only when the body actually overflows the clamp. Async-height
+  // children (PollWidget fetch, late-loading images) grow AFTER mount, so the
+  // one-shot measure is paired with a ResizeObserver on the inner content —
+  // the clamped div itself stops changing height once it hits maxHeight.
   useEffect(() => {
     if (expanded || !bodyRef.current) return;
     const el = bodyRef.current;
-    setOverflowing(el.scrollHeight > el.clientHeight + 2);
+    const measure = () => setOverflowing(el.scrollHeight > el.clientHeight + 2);
+    measure();
+    const inner = el.firstElementChild;
+    if (!inner || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(inner);
+    return () => ro.disconnect();
   }, [expanded, bodyMd]);
 
   useEffect(() => {

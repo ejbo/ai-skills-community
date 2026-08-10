@@ -214,6 +214,7 @@ export function toPublicEvent(row: EventRow, viewer: Viewer, attending = false):
     meetingUrl: viewer.id ? row.meetingUrl : null,
     websiteUrl: row.websiteUrl,
     coverUrl: row.coverUrl,
+    coverPos: row.coverPos,
     pinned: row.pinned,
     cancelled: row.cancelledAt != null,
     attendeeCount: row.attendeeCount,
@@ -326,6 +327,35 @@ export async function countEventsByCity(filters: EventFilters): Promise<Record<s
   return Object.fromEntries(
     grouped.filter((g) => g.city).map((g) => [g.city as string, g._count._all]),
   );
+}
+
+/** 相关活动 rail: upcoming live events sharing the kind or a topic, soonest first. */
+export async function listRelatedEvents(
+  current: { id: string; kind: EventKindValue; topics: string[] },
+  viewer: Viewer,
+  limit = 4,
+): Promise<PublicEventItem[]> {
+  const rows = await prisma.event.findMany({
+    where: {
+      AND: [
+        BASE_WHERE,
+        { id: { not: current.id } },
+        { cancelledAt: null },
+        upcomingWhere(),
+        {
+          OR: [
+            { kind: current.kind },
+            ...(current.topics.length > 0 ? [{ topics: { hasSome: current.topics } }] : []),
+          ],
+        },
+      ],
+    },
+    include: EVENT_INCLUDE,
+    orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
+    take: limit,
+  });
+  const attending = await attendingIdsFor(viewer.id, rows.map((r) => r.id));
+  return rows.map((r) => toPublicEvent(r, viewer, attending.has(r.id)));
 }
 
 // ── mini calendar ───────────────────────────────────────────────────────────

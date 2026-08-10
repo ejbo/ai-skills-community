@@ -209,58 +209,53 @@
   text-decoration-color: rgb(var(--accent));
 }
 
-/* ── highlights (CSS Custom Highlight API — no DOM mutation) ────────────── */
-/* Painted by the browser from live Range objects; ::highlight() only supports
-   color / background-color / text-decoration / text-shadow. */
+/* ── highlights (DOM <mark> wrapping) ───────────────────────────────────── */
+/* Literal translucent colors so they tint any reader theme; !important guards
+   against the article's own inherited styles. */
 
-::highlight(reader-hl-yellow) {
-  background-color: var(--hl-yellow);
+.reader-prose mark.reader-hl {
+  border-radius: 2px;
+  padding: 0.05em 0;
+  color: inherit;
+  cursor: pointer;
 }
-::highlight(reader-hl-green) {
-  background-color: var(--hl-green);
+.reader-prose mark.reader-hl-yellow {
+  background-color: rgba(250, 204, 21, 0.45) !important;
 }
-::highlight(reader-hl-blue) {
-  background-color: var(--hl-blue);
+.reader-prose mark.reader-hl-green {
+  background-color: rgba(74, 222, 128, 0.45) !important;
 }
-::highlight(reader-hl-pink) {
-  background-color: var(--hl-pink);
+.reader-prose mark.reader-hl-blue {
+  background-color: rgba(96, 165, 250, 0.45) !important;
+}
+.reader-prose mark.reader-hl-pink {
+  background-color: rgba(244, 114, 182, 0.45) !important;
 }
 /* Other readers' shared notes — a calm dotted underline (details live in the
    笔记 sidebar + margin avatars). */
-::highlight(reader-community) {
-  text-decoration: underline dotted rgb(var(--accent) / 0.85);
-  text-decoration-thickness: 2px;
-}
-::highlight(reader-flash) {
-  background-color: rgb(var(--accent) / 0.4);
-}
-
-/* Legacy wrapRange fallback (only used where the Highlight API is missing). */
-.reader-hl {
-  border-radius: 2px;
+.reader-prose mark.reader-hl-community {
+  background-color: transparent !important;
+  color: inherit;
   cursor: pointer;
-}
-.reader-hl-yellow {
-  background: var(--hl-yellow);
-}
-.reader-hl-green {
-  background: var(--hl-green);
-}
-.reader-hl-blue {
-  background: var(--hl-blue);
-}
-.reader-hl-pink {
-  background: var(--hl-pink);
-}
-.reader-hl-temp {
-  background: rgb(var(--accent) / 0.3);
-}
-.reader-hl-community {
-  background: transparent;
-  cursor: pointer;
-  text-decoration: underline dotted rgb(var(--accent) / 0.75);
+  text-decoration: underline dotted #6366f1;
   text-decoration-thickness: 2px;
   text-underline-offset: 4px;
+}
+.reader-prose mark.reader-hl-temp {
+  background-color: rgba(99, 102, 241, 0.35) !important;
+  color: inherit;
+}
+.reader-prose mark.reader-hl-flash {
+  animation: reader-hl-flash 0.8s ease-out 3;
+}
+@keyframes reader-hl-flash {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.5);
+  }
 }
 
 /* community-drawer quote left borders */

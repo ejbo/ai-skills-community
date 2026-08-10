@@ -615,6 +615,7 @@ export async function getSharedNotes(docId: string, chapterIndex?: number) {
       userId: true,
       chapterIndex: true,
       charStart: true,
+      charEnd: true,
       quote: true,
       color: true,
       noteText: true,

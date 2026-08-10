@@ -255,6 +255,50 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   double-send. Trigger paths: throttled piggyback on `GET /api/notifications` (the bell polls it
   while anyone is online) + `scripts/send-event-reminders.ts` for real cron (`*/5 * * * *`) —
   keep both. All-day events are skipped (no meaningful "30 min before").
+  **Card UX (migration `20260807120000_add_event_cover_pos`)**: list cards carry a compact
+  `CardAttendButton` (rendered whenever the event is joinable — anonymous clicks get the house
+  401 toast + login redirect, so the server card needs no session). Covers open in
+  `ImageLightbox` — it MUST portal to `<body>` (`card-hover`'s hover transform creates a
+  containing block that traps `fixed` overlays). Detail cover: `Event.coverPos` null ⇒ full
+  image shown blur-contain INSIDE the 2:1 frame (nothing truncated); set ⇒ object-cover with
+  that CSS object-position — the uploader picks it by dragging in `CoverEditor` (2:1 取景框,
+  pointer-capture drag, '' = 完整显示; a crop without a cover is never stored). Detail page
+  section order: 讲师/嘉宾 ABOVE 活动介绍; right rail ends with 相关活动
+  (`listRelatedEvents`: upcoming + live, same kind OR overlapping topics, ≤4).
+- **表情包 (Stickers, migration `20260807150000_add_stickers_polls`)**: WeChat-style personal
+  meme library, ONE integration pair — the 😊 button in `RichTextEditor`'s toolbar (every
+  composer gets it) and a src-prefix branch in `MarkdownRenderer`. `UserSticker` = per-user
+  rows over SHARED files in the `stickers/` namespace of the uploads root (public
+  `/api/uploads/[...key]` serves them for free); the URL prefix `/api/uploads/stickers/`
+  (lib/stickers.ts) IS the render-time trust signal — test the RAW stored src BEFORE
+  withBasePath. Files are NEVER unlinked on row delete (old messages keep rendering; same
+  policy as editor images). 添加到表情包 (`POST /api/stickers/add`) re-validates the
+  client-sent key against `STICKER_KEY_RE` + on-disk existence — never trust the URL; dedupe
+  via the `(userId, fileKey)` unique. Panel (`StickerPicker`, portaled — editor root is
+  overflow-hidden): bottom tabs 最近/全部/收藏 derive from `lastUsedAt`/`favorited`
+  client-side; uploads are sequential single-file raw-body POSTs (house protocol); hover
+  preview card carries 红心/删除 (touch = 450ms long-press). In-editor stickers are an INLINE
+  `stickerImage` node extending `BasePathImage` — its `addCommands` MUST stay `{}` (an
+  inherited `setImage` would hijack normal image inserts) and `parseHTML` priority 100 claims
+  the prefix; tiptap-markdown lifts it to its own paragraph on RE-EDIT (known cosmetic
+  tradeoff, readers still see it inline). Mechanism contract is pinned by
+  `tests/editor-embed-smoke.test.ts` — mirror changes there.
+- **投票 (Polls, same migration)**: standalone `Poll`/`PollOption`/`PollVote` created from the
+  editor's 📊 dialog, then embedded as an own-line `[poll:<id>]` token; `lib/polls-shared.ts`
+  is the SINGLE token contract (≤3 leading spaces, fence-aware splitter — a token inside
+  ```/~~~ stays inert text, ≤`MAX_POLLS_PER_CONTENT` widgets per body, duplicate ids inert)
+  and `MarkdownRenderer` mounts `PollWidget` per segment (key includes the poll id — index
+  alone leaves stale state on edits). The editor inserts the token at the document TOP LEVEL
+  (`$to.after(1)`) — at the selection, a blockquote caret serializes `> \[poll:…\]` which the
+  own-line matcher rightly ignores (orphaned poll). Voting is replace-all + RECOUNT from
+  `PollVote` rows inside a Serializable tx with P2034 retries (no increment drift);
+  `resultsAfterVote` gates counts SERVER-side (`voteCount: null`) and blocks retraction
+  (vote-then-retract = free results peek); voter identities need login + non-anonymous
+  (per-option earliest-20 through `toPublicAuthor`). `GET /api/polls/[id]` is anonymous
+  (polls embed in public content) but rate-limited by userId / last-XFF-hop IP. `excerptOf`
+  strips tokens via `POLL_TOKEN_GLOBAL_RE`; PostCard's clamp measurement uses a
+  ResizeObserver because widgets grow after mount. Polls are immutable after creation
+  (only creator/admin 提前结束); deleting the embedding content orphans the poll — accepted.
 - **员工名单 (Employee Directory)**: admin roster at `/manage/employees` (`EmployeeDirectory` model;
   bulk import via paste / CSV / XLSX — parsers in `lib/employee-import.ts`, merge rules in
   `lib/employee-admin.ts`; 工号 canonicalized to lowercase at write time — the DB unique index is

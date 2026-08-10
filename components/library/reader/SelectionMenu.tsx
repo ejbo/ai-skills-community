@@ -92,14 +92,11 @@ export function SelectionMenu({
     if (!ctx) return null;
     const full = sel.toString().replace(/\s+/g, ' ').trim();
     if (!full) return null;
-    const quote = full.slice(0, 300);
+    // No length limit — the highlight is anchored by exact offsets, so any
+    // span works. The quote is a short fallback anchor only.
+    const quote = full.slice(0, 2000);
     const charStart = getTextOffsetOfPoint(ctx.root, range.startContainer, range.startOffset);
-    let charEnd = getTextOffsetOfPoint(ctx.root, range.endContainer, range.endOffset);
-    if (full.length > 300) {
-      // Keep the stored span consistent with the truncated (= painted) quote.
-      charEnd = Math.min(charEnd, charStart + quote.length);
-      pushToast('info', t('highlight_truncated'));
-    }
+    const charEnd = getTextOffsetOfPoint(ctx.root, range.endContainer, range.endOffset);
     return { chapterIndex: ctx.chapterIndex, quote, charStart, charEnd: Math.max(charEnd, charStart + 1) };
   }
 

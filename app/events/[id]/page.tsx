@@ -14,11 +14,12 @@ import { BackButton } from '@/components/BackButton';
 import { DeptTag } from '@/components/DeptTag';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { withBasePath } from '@/lib/base-path';
-import { getEventDetail } from '@/lib/event-queries';
-import { toWallDate } from '@/lib/events/time';
+import { getEventDetail, listRelatedEvents } from '@/lib/event-queries';
+import { eventOverAt, toWallDate } from '@/lib/events/time';
 import { DEFAULT_EVENT_TIMEZONE, eventLinkHref } from '@/lib/events/types';
 import { AddToCalendar } from '../_components/AddToCalendar';
 import { AttendButton } from '../_components/AttendButton';
+import { ImageLightbox } from '../_components/ImageLightbox';
 import { EventActions } from '../_components/EventActions';
 import { EventTimeDetail } from '../_components/EventTime';
 import { CancelledBadge, KindBadge, ModeBadge, TopicChip } from '../_components/badges';
@@ -41,6 +42,10 @@ export default async function EventDetailPage({ params }: { params: { id: string
   const viewer = { id: session?.user?.id ?? null, isAdmin: Boolean(session?.user?.isAdmin) };
   const event = await getEventDetail(params.id, viewer);
   if (!event) notFound();
+  const related = await listRelatedEvents(
+    { id: event.id, kind: event.kind, topics: event.topics },
+    viewer,
+  );
 
   const start = new Date(event.startAt);
   // 日历角标显示活动本地日期（定时活动按其时区，全天活动按存储日期）。
@@ -49,9 +54,9 @@ export default async function EventDetailPage({ params }: { params: { id: string
   const icsHref = withBasePath(`/api/events/${event.id}/ics`);
   const meetingHref = eventLinkHref(event.meetingUrl);
   const websiteHref = eventLinkHref(event.websiteUrl);
-  // Same "over" rule as the attend route: all-day rows run through end-of-date.
-  const effEnd = new Date(event.endAt ?? event.startAt).getTime();
-  const isOver = (event.allDay ? effEnd + 24 * 60 * 60 * 1000 : effEnd) < Date.now();
+  // Same "over" rule as the attend route and 即将举行: end of its last day in
+  // its own zone — an in-progress or earlier-today event stays joinable.
+  const isOver = eventOverAt(event.startAt, event.endAt, event.allDay, event.timezone).getTime() < Date.now();
   const te = await getTranslations('events');
 
   return (
@@ -64,12 +69,35 @@ export default async function EventDetailPage({ params }: { params: { id: string
         {/* ── main column ── */}
         <div className="min-w-0">
           {event.coverUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={withBasePath(event.coverUrl)}
-              alt=""
-              className="mb-5 aspect-[2/1] w-full rounded-2xl object-cover"
-            />
+            <ImageLightbox src={event.coverUrl} alt={event.title} className="mb-5 w-full">
+              {event.coverPos ? (
+                // Uploader picked the crop — honor it (click still opens the full image).
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={withBasePath(event.coverUrl)}
+                  alt=""
+                  className="aspect-[2/1] w-full rounded-2xl object-cover"
+                  style={{ objectPosition: event.coverPos }}
+                />
+              ) : (
+                // 完整显示但保持 2:1 版式：同图模糊铺底 + contain 前景，不截断。
+                <span className="relative block aspect-[2/1] w-full overflow-hidden rounded-2xl bg-zinc-100 dark:bg-zinc-900">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={withBasePath(event.coverUrl)}
+                    alt=""
+                    aria-hidden
+                    className="absolute inset-0 h-full w-full scale-110 object-cover opacity-50 blur-2xl"
+                  />
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={withBasePath(event.coverUrl)}
+                    alt=""
+                    className="relative h-full w-full object-contain"
+                  />
+                </span>
+              )}
+            </ImageLightbox>
           )}
 
           <div className="flex flex-wrap items-center gap-1.5">
@@ -107,13 +135,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
             <span className="text-xs text-muted">{t('organizer_label')}</span>
           </div>
 
-          {event.descriptionMd.trim() && (
-            <section className="mt-8">
-              <h2 className="mb-3 text-lg font-semibold">{t('f_description')}</h2>
-              <MarkdownRenderer content={event.descriptionMd} />
-            </section>
-          )}
-
+          {/* 讲师/嘉宾 deliberately ABOVE 活动介绍 — the lineup is the headline. */}
           {event.speakers.length > 0 && (
             <section className="mt-8">
               <h2 className="mb-3 text-lg font-semibold">{t('speakers_heading')}</h2>
@@ -161,6 +183,13 @@ export default async function EventDetailPage({ params }: { params: { id: string
                   </div>
                 ))}
               </div>
+            </section>
+          )}
+
+          {event.descriptionMd.trim() && (
+            <section className="mt-8">
+              <h2 className="mb-3 text-lg font-semibold">{t('f_description')}</h2>
+              <MarkdownRenderer content={event.descriptionMd} />
             </section>
           )}
         </div>
@@ -300,6 +329,45 @@ export default async function EventDetailPage({ params }: { params: { id: string
                   isAuthor={event.isAuthor}
                   isAdmin={viewer.isAdmin}
                 />
+              </div>
+            )}
+
+            {related.length > 0 && (
+              <div className="surface rounded-2xl p-4">
+                <h3 className="mb-3 text-sm font-semibold">{te('related_events')}</h3>
+                <ul className="space-y-1">
+                  {related.map((ev) => {
+                    const chip = ev.allDay
+                      ? new Date(ev.startAt)
+                      : toWallDate(new Date(ev.startAt), ev.timezone ?? DEFAULT_EVENT_TIMEZONE);
+                    return (
+                      <li key={ev.id}>
+                        <Link
+                          href={`/events/${ev.id}`}
+                          className="group -mx-1.5 flex items-start gap-2.5 rounded-lg p-1.5 transition hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                        >
+                          <span className="flex h-9 w-9 shrink-0 flex-col items-center justify-center overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700">
+                            <span className="w-full bg-zinc-100 text-center text-[8px] font-medium text-muted dark:bg-zinc-800">
+                              {t('month_chip', { m: chip.getUTCMonth() + 1 })}
+                            </span>
+                            <span className="flex flex-1 items-center text-xs font-semibold">
+                              {chip.getUTCDate()}
+                            </span>
+                          </span>
+                          <span className="min-w-0">
+                            <span className="line-clamp-2 text-[13px] font-medium leading-snug transition group-hover:text-accent-600">
+                              {ev.title}
+                            </span>
+                            <span className="mt-0.5 block text-[11px] text-muted">
+                              {tl(`eventKind.${ev.kind}`)}
+                              {ev.city ? ` · ${te(`city_${ev.city.toLowerCase()}`)}` : ''}
+                            </span>
+                          </span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
             )}
           </div>

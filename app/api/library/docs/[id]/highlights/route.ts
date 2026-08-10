@@ -24,7 +24,7 @@ const createSchema = z.object({
   chapterIndex: z.number().int().min(0),
   charStart: z.number().int().min(0),
   charEnd: z.number().int().min(0),
-  quote: z.string().min(1, '划线内容不能为空').max(300),
+  quote: z.string().min(1, '划线内容不能为空').max(2000),
   color: z.enum(['yellow', 'green', 'blue', 'pink']).default('yellow'),
   noteText: z.string().max(2000).optional(),
 });

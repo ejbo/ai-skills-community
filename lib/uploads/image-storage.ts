@@ -52,6 +52,16 @@ export function newImageKey(ext: string): string {
   return `images/${nanoid()}.${ext}`;
 }
 
+/**
+ * A fresh sticker key, e.g. "stickers/V1StGXR8.gif" — same uploads root (so the
+ * public /api/uploads/[...key] route serves it for free), separate namespace
+ * because the `/api/uploads/stickers/` URL prefix is the render-time signal
+ * that an embedded image is a 表情包 (see lib/stickers.ts).
+ */
+export function newStickerKey(ext: string): string {
+  return `stickers/${nanoid()}.${ext}`;
+}
+
 /** Absolute path for a key, guarding against path traversal (returns null if unsafe). */
 export function uploadFileAbsPath(key: string): string | null {
   const full = path.resolve(UPLOAD_ROOT, key);

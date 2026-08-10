@@ -122,6 +122,11 @@ model User {
   libraryAccessRequests  LibraryAccessRequest[] @relation("LibraryAccessRequester")
   libraryAccessDecisions LibraryAccessRequest[] @relation("LibraryAccessDecider")
 
+  // ── Stickers & Polls back-relations (virtual; no SQL columns on User) ──
+  stickers     UserSticker[]
+  createdPolls Poll[]        @relation("CreatedPolls")
+  pollVotes    PollVote[]
+
   @@index([handle])
   @@index([email])
   @@index([isAdmin])
@@ -1591,6 +1596,9 @@ model Event {
   meetingUrl    String? // 线上会议链接（WeLink / Zoom / …）
   websiteUrl    String? // 官网 / 报名链接（多用于外部会议）
   coverUrl      String? // root-relative stored cover; withBasePath at render time
+  // CSS object-position ("50% 30%") the uploader picked by dragging the crop
+  // frame. null = no crop chosen → detail shows the FULL image (blur-contain).
+  coverPos      String?
   pinned        Boolean   @default(false) // admin 置顶（活动页顶部推荐位）
   cancelledAt   DateTime? // organizer/admin 取消 — kept visible with a 已取消 banner
   attendeeCount Int       @default(0) // denormalized「我要参加」count, guarded transactions
@@ -1642,5 +1650,87 @@ model EventAttendee {
 
   @@id([userId, eventId])
   @@index([eventId])
+  @@index([userId, createdAt])
+}
+
+// ─── 表情包（Stickers）─────────────────────────────────────────────────────
+// WeChat-style personal meme/sticker library, inserted from the rich-text
+// editor as a markdown image whose URL lives under the `stickers/` key
+// namespace of the shared uploads root (served by the public
+// /api/uploads/[...key] route — that URL prefix is ALSO the render-time trust
+// signal MarkdownRenderer uses to show it as a sticker). Each row is ONE
+// user's copy; adding someone else's sticker creates a new row pointing at the
+// same fileKey. Files are NEVER unlinked when a row is deleted — old messages
+// keep rendering (same never-GC policy as editor images).
+
+model UserSticker {
+  id         String    @id @default(cuid())
+  userId     String
+  fileKey    String // "stickers/<nanoid>.<ext>" under the uploads root
+  favorited  Boolean   @default(false) // 红心收藏 → 收藏 tab
+  lastUsedAt DateTime? // bumped when inserted into content → 最近 tab
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, fileKey]) // one copy per user; re-adding is reported, not duplicated
+  @@index([userId, createdAt])
+  @@index([userId, lastUsedAt])
+}
+
+// ─── 投票（Polls）───────────────────────────────────────────────────────────
+// Embedded poll widgets: created from the rich-text editor, referenced from
+// markdown as a `[poll:<id>]` own-line token, rendered by MarkdownRenderer via
+// PollWidget wherever that content shows (动态 / 评论 / 讨论帖 / 视频描述 …).
+// Self-contained: Poll* models FK only to User or Poll*. Denormalized counts
+// are RECOMPUTED from PollVote rows inside the vote transaction (immune to
+// increment drift); `resultsAfterVote` visibility is enforced server-side in
+// lib/poll-queries.ts (counts omitted from the payload, never ship-then-hide).
+
+model Poll {
+  id               String    @id @default(cuid())
+  creatorId        String
+  question         String
+  multiple         Boolean   @default(false) // 多选
+  maxChoices       Int? // only meaningful when multiple; null = up to all options
+  anonymous        Boolean   @default(false) // 匿名：voter identities never leave the server
+  resultsAfterVote Boolean   @default(false) // 投票后才能查看结果
+  endsAt           DateTime? // 截止时间；null = no deadline
+  closedAt         DateTime? // creator/admin 提前结束
+  voterCount       Int       @default(0) // denormalized DISTINCT voters (recomputed in vote tx)
+  createdAt        DateTime  @default(now())
+
+  creator User         @relation("CreatedPolls", fields: [creatorId], references: [id], onDelete: Cascade)
+  options PollOption[]
+  votes   PollVote[]
+
+  @@index([creatorId, createdAt])
+}
+
+model PollOption {
+  id        String @id @default(cuid())
+  pollId    String
+  text      String
+  ord       Int    @default(0)
+  voteCount Int    @default(0) // recomputed from PollVote rows in the vote tx
+
+  poll  Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes PollVote[]
+
+  @@index([pollId, ord])
+}
+
+model PollVote {
+  pollId    String
+  optionId  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  poll   Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  option PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([optionId, userId])
+  @@index([pollId, userId])
   @@index([userId, createdAt])
 }

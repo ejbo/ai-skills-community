@@ -18,9 +18,9 @@ import {
   Plus,
   Trash2,
   Upload,
-  X,
 } from 'lucide-react';
 import { RichTextEditor } from '@/components/RichTextEditor';
+import { CoverEditor } from './CoverEditor';
 import { Avatar } from '@/components/Avatar';
 import { pushToast } from '@/components/Toaster';
 import { withBasePath } from '@/lib/base-path';
@@ -54,6 +54,7 @@ export interface EventFormInitial {
   meetingUrl: string;
   websiteUrl: string;
   coverUrl: string;
+  coverPos: string;
   speakers: EventSpeakerData[];
 }
 
@@ -122,6 +123,7 @@ export function EventForm({ eventId, initial }: { eventId?: string; initial?: Ev
   const [meetingUrl, setMeetingUrl] = useState(initial?.meetingUrl ?? '');
   const [websiteUrl, setWebsiteUrl] = useState(initial?.websiteUrl ?? '');
   const [coverUrl, setCoverUrl] = useState(initial?.coverUrl ?? '');
+  const [coverPos, setCoverPos] = useState(initial?.coverPos ?? '');
   const [withSpeakers, setWithSpeakers] = useState((initial?.speakers?.length ?? 0) > 0);
   const speakerSeq = useRef(0);
   const [speakers, setSpeakers] = useState<SpeakerDraft[]>(
@@ -218,6 +220,7 @@ export function EventForm({ eventId, initial }: { eventId?: string; initial?: Ev
         meetingUrl: mode === 'offline' ? '' : meetingUrl.trim(),
         websiteUrl: websiteUrl.trim(),
         coverUrl,
+        coverPos,
         speakers: effectiveSpeakers.map(({ localId: _drop, ...s }) => ({ ...s, name: s.name.trim() })),
       };
       const res = await fetch(eventId ? `/api/events/${eventId}` : '/api/events', {
@@ -419,22 +422,24 @@ export function EventForm({ eventId, initial }: { eventId?: string; initial?: Ev
       {/* 封面 */}
       <Field label={t('f_cover')} hint={t('cover_hint')}>
         {coverUrl ? (
-          <div className="relative w-fit">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={withBasePath(coverUrl)} alt="" className="h-32 rounded-xl object-cover" />
-            <button
-              type="button"
-              onClick={() => setCoverUrl('')}
-              aria-label={t('remove_cover')}
-              className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900/80 text-white transition hover:bg-zinc-900"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
+          <CoverEditor
+            coverUrl={coverUrl}
+            pos={coverPos}
+            onPosChange={setCoverPos}
+            onRemove={() => {
+              setCoverUrl('');
+              setCoverPos('');
+            }}
+          />
         ) : (
           <button
             type="button"
-            onClick={() => pickImage(setCoverUrl)}
+            onClick={() =>
+              pickImage((url) => {
+                setCoverUrl(url);
+                setCoverPos(''); // 新图默认完整显示，裁切重新选
+              })
+            }
             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-dashed border-zinc-300 px-4 text-sm text-muted transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
           >
             <ImagePlus className="h-4 w-4" />

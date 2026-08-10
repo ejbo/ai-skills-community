@@ -157,6 +157,8 @@ export interface PublicEventItem {
   meetingUrl: string | null;
   websiteUrl: string | null;
   coverUrl: string | null;
+  /** CSS object-position the uploader picked; null = show the full image. */
+  coverPos: string | null;
   pinned: boolean;
   cancelled: boolean;
   attendeeCount: number;

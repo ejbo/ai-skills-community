@@ -51,6 +51,7 @@ export default async function EditEventPage({ params }: { params: { id: string }
     meetingUrl: row.meetingUrl ?? '',
     websiteUrl: row.websiteUrl ?? '',
     coverUrl: row.coverUrl ?? '',
+    coverPos: row.coverPos ?? '',
     speakers: row.speakers.map((s) => ({
       name: s.name,
       title: s.title,

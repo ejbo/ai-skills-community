@@ -5,6 +5,10 @@ import rehypeSanitize from 'rehype-sanitize';
 import rehypeHighlight from 'rehype-highlight';
 import { sanitizeSchema } from '@/lib/markdown';
 import { withBasePath } from '@/lib/base-path';
+import { isStickerSrc } from '@/lib/stickers';
+import { splitPollSegments } from '@/lib/polls-shared';
+import { StickerImage } from '@/components/stickers/StickerImage';
+import { PollWidget } from '@/components/polls/PollWidget';
 
 // Shared code / table styling for both sizes.
 // The prose-code chip styles (bg/px) target EVERY <code>, including the one
@@ -21,53 +25,80 @@ const DEFAULT_CLASS = `prose prose-zinc max-w-none text-[15px] leading-relaxed d
 // tighter headings so an h2/## doesn't dominate the panel.
 const COMPACT_CLASS = `prose prose-sm prose-zinc max-w-none text-[13px] leading-relaxed dark:prose-invert prose-headings:tracking-tight prose-headings:font-semibold prose-h1:text-sm prose-h1:mb-1.5 prose-h1:mt-3 prose-h2:text-[13px] prose-h2:mb-1 prose-h2:mt-3 prose-h3:text-xs prose-h3:mb-1 prose-h3:mt-2 prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 ${CODE_TABLE}`;
 
-export function MarkdownRenderer({ content, compact = false }: { content: string; compact?: boolean }) {
+// One markdown chunk (poll tokens already split out by the caller).
+function Md({ content }: { content: string }) {
   return (
-    <div className={compact ? COMPACT_CLASS : DEFAULT_CLASS}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        // Order matters: parse raw HTML → highlight code → sanitize (last, so
-        // anything the earlier plugins produced is still scrubbed against the schema).
-        rehypePlugins={[
-          rehypeRaw,
-          [rehypeHighlight, { ignoreMissing: true, detect: false }],
-          [rehypeSanitize, sanitizeSchema],
-        ]}
-        components={{
-          // Apply the deploy basePath to root-relative media (e.g. editor-uploaded
-          // images stored as "/api/uploads/...") so they resolve under subpath
-          // deploys. Absolute/data/blob URLs pass through unchanged.
-          img: ({ node, src, alt, style, ...props }) => (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      // Order matters: parse raw HTML → highlight code → sanitize (last, so
+      // anything the earlier plugins produced is still scrubbed against the schema).
+      rehypePlugins={[
+        rehypeRaw,
+        [rehypeHighlight, { ignoreMissing: true, detect: false }],
+        [rehypeSanitize, sanitizeSchema],
+      ]}
+      components={{
+        // Apply the deploy basePath to root-relative media (e.g. editor-uploaded
+        // images stored as "/api/uploads/...") so they resolve under subpath
+        // deploys. Absolute/data/blob URLs pass through unchanged.
+        // 表情包 (the /api/uploads/stickers/ namespace — tested on the RAW
+        // stored src, BEFORE withBasePath) render through the interactive
+        // StickerImage client leaf instead: fixed small box + 添加到表情包.
+        img: ({ node, src, alt, style, ...props }) => {
+          const raw = typeof src === 'string' ? src : '';
+          if (isStickerSrc(raw)) {
+            return <StickerImage src={raw} alt={alt} />;
+          }
+          return (
             // Author-set width (HTML <img width=…> from the editor) is honored; keep
             // images responsive + aspect-correct so a wide width never overflows.
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={withBasePath(typeof src === 'string' ? src : '')}
+              src={withBasePath(raw)}
               alt={alt ?? ''}
               loading="lazy"
               style={{ maxWidth: '100%', height: 'auto', ...(style as object) }}
               {...props}
             />
-          ),
-          // External links open in a new tab and ALWAYS get a safe rel (closes
-          // reverse-tabnabbing — the sanitize schema permits target/rel, and any
-          // stored rel is overridden here). Root-relative hrefs get the basePath.
-          a: ({ node, href, target, rel, ...props }) => {
-            const h = typeof href === 'string' ? href : '';
-            const external = /^(https?:)?\/\//i.test(h);
-            return (
-              <a
-                href={withBasePath(h)}
-                target={external ? '_blank' : target}
-                rel={external || target === '_blank' ? 'noopener noreferrer nofollow' : rel}
-                {...props}
-              />
-            );
-          },
-        }}
-      >
-        {content || '_(empty)_'}
-      </ReactMarkdown>
+          );
+        },
+        // External links open in a new tab and ALWAYS get a safe rel (closes
+        // reverse-tabnabbing — the sanitize schema permits target/rel, and any
+        // stored rel is overridden here). Root-relative hrefs get the basePath.
+        a: ({ node, href, target, rel, ...props }) => {
+          const h = typeof href === 'string' ? href : '';
+          const external = /^(https?:)?\/\//i.test(h);
+          return (
+            <a
+              href={withBasePath(h)}
+              target={external ? '_blank' : target}
+              rel={external || target === '_blank' ? 'noopener noreferrer nofollow' : rel}
+              {...props}
+            />
+          );
+        },
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
+
+export function MarkdownRenderer({ content, compact = false }: { content: string; compact?: boolean }) {
+  // Own-line `[poll:<id>]` tokens become embedded PollWidget cards; everything
+  // else renders as before. No poll ⇒ single segment ⇒ identical output.
+  const segments = splitPollSegments(content || '_(empty)_');
+  return (
+    <div className={compact ? COMPACT_CLASS : DEFAULT_CLASS}>
+      {segments.map((seg, i) =>
+        seg.type === 'md' ? (
+          <Md key={i} content={seg.text} />
+        ) : (
+          // id in the key: content edits that swap the token remount the widget
+          // (fresh missing/poll/selection state); index keeps duplicates unique.
+          <PollWidget key={`${i}:${seg.id}`} id={seg.id} />
+        ),
+      )}
     </div>
   );
 }

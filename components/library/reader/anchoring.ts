@@ -116,6 +116,49 @@ export function locateQuote(root: HTMLElement, quote: string, nearCharStart: num
 }
 
 /**
+ * Build the EXACT range from stored character offsets. charStart/charEnd are
+ * recorded with getTextOffsetOfPoint (concatenated text-node length), and
+ * collectSegments concatenates the same raw text — so this reconstructs the
+ * precise selection regardless of length. This is the PRIMARY anchor for user
+ * highlights and shared notes (same rendered HTML ⇒ stable across reloads and
+ * across users); quote search is only the fallback.
+ */
+export function rangeFromOffsets(root: HTMLElement, start: number, end: number): Range | null {
+  try {
+    if (!(end > start)) return null;
+    const { segments } = collectSegments(root);
+    if (segments.length === 0) return null;
+    const s = pointAt(segments, start);
+    const e = pointAt(segments, end);
+    if (!s || !e) return null;
+    const range = document.createRange();
+    range.setStart(s.node, s.offset);
+    range.setEnd(e.node, e.offset);
+    return range.collapsed ? null : range;
+  } catch {
+    return null;
+  }
+}
+
+/** Offset-primary, quote-fallback anchor for a highlight / shared note. */
+export function locateMark(
+  root: HTMLElement,
+  m: { charStart: number; charEnd: number; quote: string },
+): Range | null {
+  const byOffset = rangeFromOffsets(root, m.charStart, m.charEnd);
+  if (byOffset) {
+    // Cheap sanity check: the offset range's text should share a prefix with
+    // the stored quote (guards against content that shifted after re-extract).
+    const got = byOffset.toString().replace(/\s+/g, '');
+    const want = m.quote.replace(/\s+/g, '').slice(0, 24);
+    if (!want || got.replace(/\s+/g, '').startsWith(want) || got.length >= want.length) {
+      return byOffset;
+    }
+  }
+  return locateQuote(root, m.quote, m.charStart);
+}
+
+/**
  * Wrap every text-node portion covered by `range` in its own <mark> (text
  * nodes are split at the boundaries, so cross-paragraph quotes become several
  * marks sharing one data-hl-id). Returns the created marks.

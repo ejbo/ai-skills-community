@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { eventOverAt } from '@/lib/events/time';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +16,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
   const event = await prisma.event.findFirst({
     where: { id: params.id, deletedAt: null },
-    select: { id: true, cancelledAt: true, startAt: true, endAt: true, allDay: true },
+    select: { id: true, cancelledAt: true, startAt: true, endAt: true, allDay: true, timezone: true },
   });
   if (!event) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
@@ -30,11 +31,9 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
         { status: 400 },
       );
     }
-    // Over = past the end of its last day (all-day rows are date-only, so the
-    // event runs through end-of-date; timed rows end at the stored instant).
-    const effEnd = event.endAt ?? event.startAt;
-    const overAt = event.allDay ? effEnd.getTime() + 24 * 60 * 60 * 1000 : effEnd.getTime();
-    if (overAt < Date.now()) {
+    // Over = the end of its last day in its own zone — same boundary as 即将举行
+    // and the detail-page card, so button visibility and this gate always agree.
+    if (eventOverAt(event.startAt, event.endAt, event.allDay, event.timezone).getTime() < Date.now()) {
       return NextResponse.json(
         { error: 'invalid_input', reason: '活动已结束，无法添加' },
         { status: 400 },

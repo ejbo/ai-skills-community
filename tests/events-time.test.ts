@@ -6,6 +6,7 @@ import {
   dayKeyToDate,
   eventDayKeysInWindow,
   eventLocalDayKey,
+  eventOverAt,
   fmtEventRange,
   fmtTime,
   monthGrid,
@@ -97,6 +98,23 @@ describe('IANA zone conversion', () => {
     // The same instant is the evening BEFORE in Toronto.
     expect(dayKey(toWallDate(instant, 'America/Toronto'))).toBe('2026-08-05'); // 02:00 same day
     expect(fmtTime(toWallDate(instant, 'America/Toronto'))).toBe('02:00');
+  });
+
+  it('eventOverAt = end of the last day in the event zone (join-window boundary)', () => {
+    const start = zonedWallToUtc('2026-08-05', '14:00', 'Asia/Shanghai')!;
+    const end = zonedWallToUtc('2026-08-05', '15:30', 'Asia/Shanghai')!;
+    // Over at 北京 8月6日 00:00, NOT at 15:30 — stays joinable all day.
+    expect(eventOverAt(start, end, false, 'Asia/Shanghai').toISOString()).toBe(
+      zonedWallToUtc('2026-08-06', '00:00', 'Asia/Shanghai')!.toISOString(),
+    );
+    // No end time: still end-of-day, not the start instant.
+    expect(eventOverAt(start, null, false, 'Asia/Shanghai').toISOString()).toBe(
+      zonedWallToUtc('2026-08-06', '00:00', 'Asia/Shanghai')!.toISOString(),
+    );
+    // All-day spans run through the end of their last date (date-only space).
+    expect(
+      eventOverAt(parseWallTime('2026-08-05')!, parseWallTime('2026-08-08')!, true, null).toISOString(),
+    ).toBe('2026-08-09T00:00:00.000Z');
   });
 
   it('eventLocalDayKey groups by the event-own-zone date', () => {

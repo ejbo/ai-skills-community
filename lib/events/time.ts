@@ -280,6 +280,26 @@ export function eventLocalDayKey(
   return dayKey(toWallDate(d, timezone ?? DEFAULT_EVENT_TIMEZONE));
 }
 
+/**
+ * The instant an event counts as OVER: the end of its last day in its OWN zone
+ * — the same boundary 即将举行 uses, so the join button and the list agree
+ * (an in-progress or earlier-today event stays joinable all day).
+ */
+export function eventOverAt(
+  startAt: Date | string,
+  endAt: Date | string | null,
+  allDay: boolean,
+  timezone: string | null,
+): Date {
+  const start = typeof startAt === 'string' ? new Date(startAt) : startAt;
+  const rawEnd = typeof endAt === 'string' ? new Date(endAt) : endAt;
+  const eff = rawEnd && rawEnd.getTime() >= start.getTime() ? rawEnd : start;
+  if (allDay) return addDaysUtc(dayKeyToDate(dayKey(eff))!, 1);
+  const zone = timezone ?? DEFAULT_EVENT_TIMEZONE;
+  const lastDay = dayKeyToDate(dayKey(toWallDate(eff, zone)))!;
+  return zonedWallToUtc(dayKey(addDaysUtc(lastDay, 1)), '00:00', zone) ?? addDaysUtc(eff, 1);
+}
+
 export interface CalendarCell {
   key: string; // 'YYYY-MM-DD'
   day: number; // 1..31

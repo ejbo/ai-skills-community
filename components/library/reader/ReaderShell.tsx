@@ -487,6 +487,7 @@ export function ReaderShell({
       chapterIndex: n.chapterIndex,
       quote: n.quote,
       charStart: n.charStart,
+      charEnd: n.charEnd,
       color: n.color,
     }));
     h.renderAll(chapterRootsRef.current, chapterHighlights, community);
@@ -506,7 +507,7 @@ export function ReaderShell({
       if (showOriginalPdf) setPdfView('text');
       const root = rootFor(note.chapterIndex);
       if (root && highlighterRef.current) {
-        highlighterRef.current.flash(root, note.quote, note.charStart);
+        highlighterRef.current.flashMark(root, note);
         return;
       }
       try {
@@ -515,7 +516,8 @@ export function ReaderShell({
           JSON.stringify({
             chapterIndex: note.chapterIndex,
             charStart: note.charStart,
-            snippet: note.quote.slice(0, 120),
+            charEnd: note.charEnd,
+            snippet: note.quote.slice(0, 200),
           }),
         );
       } catch {
@@ -561,7 +563,8 @@ export function ReaderShell({
   // Cross-chapter jump left in sessionStorage (paged navigation only).
   useEffect(() => {
     if (showOriginalPdf) return;
-    let jump: { chapterIndex: number; charStart: number; snippet: string } | null = null;
+    let jump: { chapterIndex: number; charStart: number; charEnd?: number; snippet: string } | null =
+      null;
     try {
       const raw = sessionStorage.getItem(PENDING_JUMP_KEY);
       if (raw) jump = JSON.parse(raw);
@@ -576,9 +579,13 @@ export function ReaderShell({
     } catch {
       /* ignore */
     }
-    const { snippet, charStart } = jump;
+    const { snippet, charStart, charEnd } = jump;
     const timer = window.setTimeout(() => {
-      if (typeof snippet === 'string') highlighterRef.current?.flash(root, snippet, charStart ?? 0);
+      const h = highlighterRef.current;
+      if (!h) return;
+      // Notes/highlights carry charEnd → exact offset flash; citations don't.
+      if (typeof charEnd === 'number') h.flashMark(root, { charStart, charEnd, quote: snippet });
+      else if (typeof snippet === 'string') h.flash(root, snippet, charStart ?? 0);
     }, 220);
     return () => window.clearTimeout(timer);
   }, [chaptersKey, marksVersion, rootFor, showOriginalPdf]);

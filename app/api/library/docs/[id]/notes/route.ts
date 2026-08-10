@@ -39,6 +39,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     isMine: n.userId === session.user.id,
     chapterIndex: n.chapterIndex,
     charStart: n.charStart,
+    charEnd: n.charEnd,
     quote: n.quote,
     color: n.color,
     noteText: n.noteText,

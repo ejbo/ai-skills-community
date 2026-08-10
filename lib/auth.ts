@@ -1,6 +1,7 @@
 import NextAuth, { customFetch, type DefaultSession } from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import type { Provider } from 'next-auth/providers';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { verifyPassword } from '@/lib/auth/password';
 import { syncDirectoryToUserAtLogin } from '@/lib/employee-directory';
@@ -122,10 +123,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (account?.provider === 'huawei') {
         const w3Id = (user as { huaweiW3Id?: string }).huaweiW3Id;
         if (!w3Id) return false;
-        const existing = await prisma.user.findFirst({
-          where: { OR: [{ huaweiW3Id: w3Id }, { email: user.email ?? undefined }] },
-        });
-        if (existing) {
+
+        // First-login provisioning must be IDEMPOTENT: the OAuth callback can
+        // fire twice near-simultaneously (double click, second tab, gateway
+        // prefetch), and with a naive check-then-act both racers see "no user
+        // yet" — the loser then dies on a unique index, so a brand-new user's
+        // VERY FIRST login 500s while the retry succeeds (the winner's row now
+        // exists). Hence: link if present; on create-conflict fall back to
+        // linking; only a squatted handle (a password account registered with
+        // the 工号 as its email local part) warrants a suffixed re-create.
+        const linkExisting = async (): Promise<boolean> => {
+          const existing = await prisma.user.findFirst({
+            where: { OR: [{ huaweiW3Id: w3Id }, { email: user.email ?? undefined }] },
+          });
+          if (!existing) return false;
           await prisma.user.update({
             where: { id: existing.id },
             data: {
@@ -137,11 +148,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               ...(existing.huaweiW3Name ? {} : { huaweiW3Name: user.name ?? null }),
             },
           });
-        } else {
-          await prisma.user.create({
+          return true;
+        };
+        const createFresh = (handle: string) =>
+          prisma.user.create({
             data: {
               email: user.email!,
-              handle: w3Id,
+              handle,
               displayName: user.name ?? w3Id, // editable later by the user
               huaweiW3Id: w3Id,
               huaweiW3Name: user.name ?? null, // immutable record of the W3 identity
@@ -150,6 +163,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               lastLoginAt: new Date(),
             },
           });
+
+        if (!(await linkExisting())) {
+          try {
+            await createFresh(w3Id);
+          } catch (e) {
+            const isUniqueConflict =
+              e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
+            if (!isUniqueConflict) throw e;
+            // Re-read as the authority: a concurrent callback just created us.
+            if (!(await linkExisting())) {
+              // huaweiW3Id/email are still free ⇒ the conflict was the handle.
+              await createFresh(`${w3Id}-${Date.now().toString(36).slice(-4)}`);
+            }
+          }
         }
         // 员工名单：按工号把部门/研究所挂到刚登录的账号上（best-effort，绝不阻断登录）。
         // 只用 W3 验证过的 id 匹配 — 见 lib/employee-directory.ts 的安全说明。

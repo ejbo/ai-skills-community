@@ -12,6 +12,7 @@ export interface CommunityNote {
   isMine: boolean;
   chapterIndex: number;
   charStart: number;
+  charEnd: number;
   quote: string;
   color: string;
   noteText: string | null;

@@ -74,6 +74,12 @@ export const eventContentSchema = z.object({
   meetingUrl: linkOrEmpty('会议链接'),
   websiteUrl: linkOrEmpty('官网/报名链接'),
   coverUrl: imageUrlOrEmpty('封面图'),
+  // '' = 未选裁切（详情页完整显示）；否则 CSS object-position，如 '50% 30%'。
+  coverPos: z
+    .string()
+    .trim()
+    .refine((v) => v === '' || /^(100|\d{1,2})% (100|\d{1,2})%$/.test(v), '封面裁切位置无效')
+    .default(''),
   speakers: z.array(speakerSchema).max(MAX_EVENT_SPEAKERS, `讲师最多 ${MAX_EVENT_SPEAKERS} 位`).default([]),
 });
 
@@ -96,6 +102,7 @@ export interface ComposedEvent {
     meetingUrl: string | null;
     websiteUrl: string | null;
     coverUrl: string | null;
+    coverPos: string | null;
   };
   speakers: (EventSpeakerData & { sortOrder: number })[];
 }
@@ -162,6 +169,8 @@ export function composeEventData(
         meetingUrl: orNull(input.meetingUrl),
         websiteUrl: orNull(input.websiteUrl),
         coverUrl: orNull(input.coverUrl),
+        // Crop without an image is meaningless — never store a dangling position.
+        coverPos: input.coverUrl ? orNull(input.coverPos) : null,
       },
       speakers: input.speakers.map((s, i) => ({
         name: s.name,

@@ -10,14 +10,20 @@ import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { withBasePath } from '@/lib/base-path';
 import { eventLinkHref, type PublicEventItem } from '@/lib/events/types';
+import { eventOverAt } from '@/lib/events/time';
 import { CancelledBadge, KindBadge, ModeBadge, TopicChip } from './badges';
+import { CardAttendButton } from './CardAttendButton';
 import { EventTimeCard } from './EventTime';
+import { ImageLightbox } from './ImageLightbox';
 
 export async function EventCard({ event, showDate = false }: { event: PublicEventItem; showDate?: boolean }) {
   const t = await getTranslations('events');
   const location =
     event.mode === 'online' ? t('online_event') : [event.venue, event.city].filter(Boolean).join(' · ');
   const websiteHref = eventLinkHref(event.websiteUrl);
+  const joinable =
+    !event.cancelled &&
+    eventOverAt(event.startAt, event.endAt, event.allDay, event.timezone).getTime() > Date.now();
   return (
     // 我要参加的活动：accent 边框 + 徽章，让「这是我加入的」一眼可辨。
     <article
@@ -37,12 +43,13 @@ export async function EventCard({ event, showDate = false }: { event: PublicEven
             />
           </span>
           {event.cancelled && <CancelledBadge />}
-          {event.attending && (
+          {event.attending && !joinable && (
             <span className="inline-flex items-center gap-1 rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-600 dark:text-accent-400">
               <CalendarCheck2 className="h-3 w-3" />
               {t('attending_badge')}
             </span>
           )}
+          {joinable && <CardAttendButton id={event.id} attending={event.attending} />}
         </div>
         <h3 className={`mt-1 truncate text-base font-semibold ${event.cancelled ? 'text-muted line-through' : ''}`}>
           <Link href={`/events/${event.id}`} className="after:absolute after:inset-0">
@@ -110,13 +117,16 @@ export async function EventCard({ event, showDate = false }: { event: PublicEven
         </div>
       </div>
       {event.coverUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={withBasePath(event.coverUrl)}
-          alt=""
-          loading="lazy"
-          className="hidden h-24 w-24 shrink-0 rounded-xl object-cover sm:block"
-        />
+        <ImageLightbox src={event.coverUrl} alt={event.title} className="hidden shrink-0 self-start sm:block">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={withBasePath(event.coverUrl)}
+            alt=""
+            loading="lazy"
+            className="h-24 w-24 rounded-xl object-cover"
+            style={event.coverPos ? { objectPosition: event.coverPos } : undefined}
+          />
+        </ImageLightbox>
       )}
     </article>
   );
