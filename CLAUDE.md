@@ -32,7 +32,7 @@ NEXT_BASE_PATH=/ai-community pnpm exec next start -p 3100 -H 127.0.0.1
 # Production: run as systemd — see docs/huawei-sso-deploy.md "Run it as a systemd service".
 ```
 
-systemd (production): `deploy/ai-community.service` is preset for this box (`WorkingDirectory=/opt/cari_projects/ai-skills-community`, `User=ai4news`, `NEXT_BASE_PATH=/ai-community`). `sudo cp` it, set `ExecStart`'s node to your `which node` (absolute — systemd ignores your nvm/conda PATH), `daemon-reload`, `enable --now`. After `git pull` on the server: `NEXT_BASE_PATH=/ai-community pnpm build && sudo systemctl restart ai-community`.
+systemd (production): `deploy/ai-community.service` is preset for this box (`WorkingDirectory=/home/eason/projects/ai-skills-community`, `User=eason`, `NEXT_BASE_PATH=/ai-community`). `sudo cp` it, set `ExecStart`'s node to your `which node` (absolute — systemd ignores your nvm/conda PATH), `daemon-reload`, `enable --now`. After `git pull` on the server: `NEXT_BASE_PATH=/ai-community pnpm build && sudo systemctl restart ai-community`.
 
 ## Pitfalls (each one cost real time — read before deploying)
 
@@ -288,17 +288,25 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   is the SINGLE token contract (≤3 leading spaces, fence-aware splitter — a token inside
   ```/~~~ stays inert text, ≤`MAX_POLLS_PER_CONTENT` widgets per body, duplicate ids inert)
   and `MarkdownRenderer` mounts `PollWidget` per segment (key includes the poll id — index
-  alone leaves stale state on edits). The editor inserts the token at the document TOP LEVEL
-  (`$to.after(1)`) — at the selection, a blockquote caret serializes `> \[poll:…\]` which the
-  own-line matcher rightly ignores (orphaned poll). Voting is replace-all + RECOUNT from
+  alone leaves stale state on edits). IN-EDITOR the token materializes as the `pollEmbed`
+  atom node (`components/polls/poll-embed-extension.ts` — React-free base with the
+  markdown serializer + a normalizer that converts loaded/pasted own-line tokens; initial
+  normalize runs in the plugin view's microtask because tiptap's `create` event is async);
+  `RichTextEditor` attaches the `PollEmbedView` nodeview (preview card + 编辑/移除) and
+  inserts new polls at the document TOP LEVEL (`$to.after(1)`) — at the selection, a
+  blockquote caret would nest the token and the own-line matcher rightly ignores it
+  (orphaned poll). Voting is replace-all + RECOUNT from
   `PollVote` rows inside a Serializable tx with P2034 retries (no increment drift);
   `resultsAfterVote` gates counts SERVER-side (`voteCount: null`) and blocks retraction
   (vote-then-retract = free results peek); voter identities need login + non-anonymous
   (per-option earliest-20 through `toPublicAuthor`). `GET /api/polls/[id]` is anonymous
   (polls embed in public content) but rate-limited by userId / last-XFF-hop IP. `excerptOf`
   strips tokens via `POLL_TOKEN_GLOBAL_RE`; PostCard's clamp measurement uses a
-  ResizeObserver because widgets grow after mount. Polls are immutable after creation
-  (only creator/admin 提前结束); deleting the embedding content orphans the poll — accepted.
+  ResizeObserver because widgets grow after mount. Editing: creator/admin may PATCH the full
+  definition ONLY while `voterCount === 0` (re-checked inside the tx — `poll_has_votes`;
+  options replaced wholesale); after votes, only 提前结束. The composer dialog doubles as
+  the editor (`pollId` prop) and broadcasts `POLL_UPDATED_EVENT` (lib/polls-shared.ts) so
+  mounted previews refetch. Deleting the embedding content orphans the poll — accepted.
 - **员工名单 (Employee Directory)**: admin roster at `/manage/employees` (`EmployeeDirectory` model;
   bulk import via paste / CSV / XLSX — parsers in `lib/employee-import.ts`, merge rules in
   `lib/employee-admin.ts`; 工号 canonicalized to lowercase at write time — the DB unique index is

@@ -22,6 +22,12 @@ export const POLL_TOKEN_GLOBAL_RE = /\\?\[poll:[a-z0-9]{8,40}\\?\]/g;
 /** Widget mount cap per rendered content body. */
 export const MAX_POLLS_PER_CONTENT = 10;
 
+/**
+ * Window event PollComposerDialog dispatches after saving an edit
+ * (detail: { id }) so mounted in-editor previews refetch.
+ */
+export const POLL_UPDATED_EVENT = 'ai-community:poll-updated';
+
 /** Build the token the editor inserts into content. */
 export function pollToken(id: string): string {
   return `[poll:${id}]`;

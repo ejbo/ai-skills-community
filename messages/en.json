@@ -2164,6 +2164,12 @@
   },
   "polls": {
     "create_title": "Create a poll",
+    "edit_title": "Edit poll",
+    "edit": "Edit",
+    "save": "Save changes",
+    "saved": "Poll updated",
+    "remove": "Remove from content",
+    "edit_locked": "Votes have been cast — this poll can no longer be edited (you can still end it early)",
     "cancel": "Cancel",
     "question_label": "Question",
     "question_placeholder": "What do you want to ask?",

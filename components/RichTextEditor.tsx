@@ -13,10 +13,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { useEditor, EditorContent, type Editor } from '@tiptap/react';
-import { Extension, mergeAttributes } from '@tiptap/core';
-import { Plugin } from '@tiptap/pm/state';
-import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import { useEditor, EditorContent, ReactNodeViewRenderer, type Editor } from '@tiptap/react';
+import { mergeAttributes } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
@@ -45,9 +43,10 @@ import {
 } from 'lucide-react';
 import { withBasePath } from '@/lib/base-path';
 import { STICKER_URL_PREFIX } from '@/lib/stickers';
-import { pollToken } from '@/lib/polls-shared';
 import { StickerPicker } from '@/components/stickers/StickerPicker';
 import { PollComposerDialog } from '@/components/polls/PollComposerDialog';
+import { PollEmbedBase } from '@/components/polls/poll-embed-extension';
+import { PollEmbedView } from '@/components/polls/PollEmbedView';
 
 export type RichTextVariant = 'full' | 'compact';
 
@@ -236,42 +235,12 @@ const StickerImageNode = BasePathImage.extend({
   },
 });
 
-// In-editor look for the `[poll:<id>]` token: an inline decoration styles the
-// own-line token as an accent chip so authors see "this is a poll", while the
-// document/text content stays the plain token (markdown round-trip untouched).
-const PollTokenChip = Extension.create({
-  name: 'pollTokenChip',
-  addProseMirrorPlugins() {
-    // In-doc form is unescaped (escaping happens at markdown serialization).
-    const TOKEN = /^\[poll:[a-z0-9]{8,40}\]$/;
-    const build = (doc: Parameters<typeof DecorationSet.create>[0]) => {
-      const decos: Decoration[] = [];
-      doc.descendants((node, pos) => {
-        if (!node.isTextblock) return true;
-        if (TOKEN.test(node.textContent)) {
-          decos.push(
-            Decoration.inline(pos + 1, pos + 1 + node.textContent.length, {
-              class: 'rte-poll-chip',
-            }),
-          );
-        }
-        return true;
-      });
-      return DecorationSet.create(doc, decos);
-    };
-    return [
-      new Plugin({
-        state: {
-          init: (_config, { doc }) => build(doc),
-          apply: (tr, old) => (tr.docChanged ? build(tr.doc) : old),
-        },
-        props: {
-          decorations(state) {
-            return this.getState(state);
-          },
-        },
-      }),
-    ];
+// In-editor 投票 embed: the shared base node (token contract + normalizer,
+// components/polls/poll-embed-extension.ts) plus the React preview-card
+// nodeview. Configured per editor instance with the edit callback.
+const PollEmbedWithView = PollEmbedBase.extend({
+  addNodeView() {
+    return ReactNodeViewRenderer(PollEmbedView);
   },
 });
 
@@ -336,20 +305,22 @@ function Toolbar({
   uploading,
   disabled,
   onPickImage,
+  onOpenPoll,
 }: {
   editor: Editor;
   variant: RichTextVariant;
   uploading: number;
   disabled: boolean;
   onPickImage: () => void;
+  onOpenPoll: () => void;
 }) {
   const t = useTranslations('ui');
   const icon = 'h-4 w-4';
 
-  // 表情包 picker + 投票 dialog (both portaled; the editor root is
-  // overflow-hidden, an in-place absolute panel would clip).
+  // 表情包 picker (portaled; the editor root is overflow-hidden, an in-place
+  // absolute panel would clip). The 投票 dialog lives in RichTextEditor — the
+  // in-editor poll cards need its edit mode too.
   const [stickerOpen, setStickerOpen] = useState(false);
-  const [pollOpen, setPollOpen] = useState(false);
   const stickerAnchorRef = useRef<HTMLSpanElement>(null);
 
   const setLink = () => {
@@ -429,12 +400,7 @@ function Toolbar({
           <Smile className={icon} />
         </ToolbarButton>
       </span>
-      <ToolbarButton
-        title={t('rte_poll')}
-        active={pollOpen}
-        disabled={disabled}
-        onClick={() => setPollOpen(true)}
-      >
+      <ToolbarButton title={t('rte_poll')} disabled={disabled} onClick={onOpenPoll}>
         <BarChart3 className={icon} />
       </ToolbarButton>
 
@@ -465,25 +431,6 @@ function Toolbar({
             .run();
         }}
       />
-      <PollComposerDialog
-        open={pollOpen}
-        onClose={() => setPollOpen(false)}
-        onCreated={(pollId) => {
-          // Lift to the document TOP LEVEL before inserting: at the selection,
-          // a caret inside a blockquote/list would nest the token ("> \[poll:…\]"),
-          // which the own-line matcher rightly ignores — orphaning the poll.
-          const { $to } = editor.state.selection;
-          const pos = $to.depth === 0 ? $to.pos : $to.after(1);
-          editor
-            .chain()
-            .focus()
-            .insertContentAt(pos, [
-              { type: 'paragraph', content: [{ type: 'text', text: pollToken(pollId) }] },
-              { type: 'paragraph' },
-            ])
-            .run();
-        }}
-      />
     </div>
   );
 }
@@ -502,6 +449,18 @@ export function RichTextEditor({
 }: RichTextEditorProps) {
   const [uploading, setUploading] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 投票 dialog — hosted here (not in Toolbar) because the in-editor poll
+  // cards' 编辑 buttons open it too, via a ref-backed callback handed to the
+  // PollEmbed extension (extensions are wired once at editor creation).
+  const [pollDialog, setPollDialog] = useState<{ open: boolean; pollId: string | null }>({
+    open: false,
+    pollId: null,
+  });
+  const openPollEditRef = useRef<(pollId: string) => void>(() => {});
+  useEffect(() => {
+    openPollEditRef.current = (pollId) => setPollDialog({ open: true, pollId });
+  }, []);
 
   // Keep the latest onChange without re-creating the editor.
   const onChangeRef = useRef(onChange);
@@ -530,7 +489,7 @@ export function RichTextEditor({
       }),
       BasePathImage,
       StickerImageNode,
-      PollTokenChip,
+      PollEmbedWithView.configure({ onEdit: (id: string) => openPollEditRef.current(id) }),
       Placeholder.configure({ placeholder: placeholder ?? '' }),
       Markdown.configure({ html: true, transformPastedText: true, breaks: false }),
     ],
@@ -619,9 +578,30 @@ export function RichTextEditor({
         uploading={uploading}
         disabled={disabled}
         onPickImage={onPickImage}
+        onOpenPoll={() => setPollDialog({ open: true, pollId: null })}
       />
       <EditorContent editor={editor} style={maxHeight ? { maxHeight, overflowY: 'auto' } : undefined} />
       <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={onFileChange} />
+      <PollComposerDialog
+        open={pollDialog.open}
+        pollId={pollDialog.pollId}
+        onClose={() => setPollDialog({ open: false, pollId: null })}
+        onCreated={(pollId) => {
+          // Insert the embed node at the document TOP LEVEL: at the selection,
+          // a caret inside a blockquote/list would nest it and the own-line
+          // token contract (lib/polls-shared.ts) would never match on render.
+          const { $to } = editor.state.selection;
+          const pos = $to.depth === 0 ? $to.pos : $to.after(1);
+          editor
+            .chain()
+            .focus()
+            .insertContentAt(pos, [
+              { type: 'pollEmbed', attrs: { pollId } },
+              { type: 'paragraph' },
+            ])
+            .run();
+        }}
+      />
       {maxLength != null && (
         <div className={`px-3 pb-1.5 text-right text-[11px] ${over ? 'text-danger' : 'text-muted'}`}>
           {value.length} / {maxLength}
@@ -663,13 +643,10 @@ export function RichTextEditor({
           height: 6rem;
           object-fit: contain;
         }
-        .rte .rte-poll-chip {
-          background: rgb(var(--accent) / 0.12);
-          border-radius: 0.375rem;
-          padding: 0.1rem 0.35rem;
-          color: rgb(var(--accent));
-          font-weight: 500;
-          font-size: 0.8em;
+        .rte [data-poll-embed].ProseMirror-selectednode .pe-card,
+        .rte .ProseMirror-selectednode[data-poll-embed] {
+          outline: 2px solid rgb(var(--accent));
+          border-radius: 0.875rem;
         }
         .rte .rte-img-handle {
           display: none;

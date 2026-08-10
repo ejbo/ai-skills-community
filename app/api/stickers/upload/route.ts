@@ -50,14 +50,17 @@ export async function POST(req: Request) {
   }
   if (!req.body) return NextResponse.json({ error: 'empty_body' }, { status: 400 });
 
-  // Approximate cap — a burst of parallel uploads may overshoot by a few; fine.
-  const count = await prisma.userSticker.count({ where: { userId: session.user.id } });
-  if (count >= MAX_STICKERS_PER_USER) {
-    return NextResponse.json({ error: 'sticker_limit' }, { status: 400 });
-  }
-
   const key = newStickerKey(imageExtFor(contentType, filename));
   try {
+    // Approximate cap — a burst of parallel uploads may overshoot by a few; fine.
+    // Inside the try: a missing table / stale Prisma client (migration not
+    // deployed, dev server not restarted after `prisma generate`) must surface
+    // as a logged JSON 500, not a naked unhandled one.
+    const count = await prisma.userSticker.count({ where: { userId: session.user.id } });
+    if (count >= MAX_STICKERS_PER_USER) {
+      return NextResponse.json({ error: 'sticker_limit' }, { status: 400 });
+    }
+
     const size = await saveImageStream(key, req.body, MAX_IMAGE_BYTES);
     if (size === 0) {
       // saveImageStream doesn't reject empty bodies (post-media does) — a 0-byte
@@ -74,6 +77,7 @@ export async function POST(req: Request) {
     await deleteImageFile(key);
     const msg = e instanceof Error ? e.message : 'upload_failed';
     if (msg === 'file_too_large') return NextResponse.json({ error: 'file_too_large' }, { status: 413 });
+    console.error('[stickers/upload]', e);
     return NextResponse.json({ error: 'upload_failed' }, { status: 500 });
   }
 }

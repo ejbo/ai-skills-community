@@ -14,9 +14,9 @@ After=network.target postgresql.service
 
 [Service]
 Type=simple
-User=ai4news
-Group=ai4news
-WorkingDirectory=/opt/cari_projects/ai-skills-community
+User=eason
+Group=eason
+WorkingDirectory=/home/eason/projects/ai-skills-community
 # Next.js auto-loads .env from WorkingDirectory → DATABASE_URL, AUTH_URL, AUTH_SECRET,
 # SSO_* all come from there. NEXT_BASE_PATH is set here too so basePath is correct at
 # `next start` as well as build time.
@@ -34,8 +34,8 @@ Environment=NEXT_BASE_PATH=/ai-community
 # box's nvm node — re-check with `which node` and update it if you upgrade node (the nvm path
 # contains the version). Keep the FULL command: <node> node_modules/next/dist/bin/next start …
 # (a bare `<node> start` fails — `start` isn't a file). If native libs fail, add:
-#   Environment=PATH=/home/ai4news/.nvm/versions/node/v24.17.0/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/home/ai4news/.nvm/versions/node/v24.17.0/bin/node node_modules/next/dist/bin/next start -p 3100 -H 127.0.0.1
+#   Environment=PATH=/home/eason/.nvm/versions/node/v24.19.0/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/eason/.nvm/versions/node/v24.19.0/bin/node node_modules/next/dist/bin/next start -p 3100 -H 127.0.0.1
 Restart=on-failure
 RestartSec=3
 

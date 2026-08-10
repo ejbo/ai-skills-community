@@ -2164,6 +2164,12 @@
   },
   "polls": {
     "create_title": "创建投票",
+    "edit_title": "编辑投票",
+    "edit": "编辑",
+    "save": "保存修改",
+    "saved": "投票已更新",
+    "remove": "从正文移除",
+    "edit_locked": "已有用户投票，此投票不可再修改（仍可提前结束）",
     "cancel": "取消",
     "question_label": "投票主题",
     "question_placeholder": "想问大家什么？",

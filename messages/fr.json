@@ -2164,6 +2164,12 @@
   },
   "polls": {
     "create_title": "Créer un sondage",
+    "edit_title": "Modifier le sondage",
+    "edit": "Modifier",
+    "save": "Enregistrer",
+    "saved": "Sondage mis à jour",
+    "remove": "Retirer du contenu",
+    "edit_locked": "Des votes ont été enregistrés — ce sondage ne peut plus être modifié (vous pouvez encore le clore)",
     "cancel": "Annuler",
     "question_label": "Question",
     "question_placeholder": "Que voulez-vous demander ?",

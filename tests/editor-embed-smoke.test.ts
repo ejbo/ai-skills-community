@@ -7,10 +7,11 @@
 // 1) inline sticker node round-trips markdown and wins parse priority
 // 2) poll token insertion lifts to top level from inside a blockquote
 import { describe, expect, it } from 'vitest';
-import { Editor, Extension } from '@tiptap/core';
+import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import { Markdown } from 'tiptap-markdown';
+import { PollEmbedBase } from '@/components/polls/poll-embed-extension';
 
 const STICKER_URL_PREFIX = '/api/uploads/stickers/';
 
@@ -100,39 +101,75 @@ describe('sticker inline node', () => {
   });
 });
 
-describe('poll token top-level insertion', () => {
-  const insert = (ed: Editor, id: string) => {
+describe('poll embed node (the REAL extension, minus its React nodeview)', () => {
+  const id = 'clxyz12345abcde';
+  const OWN_LINE = /^ {0,3}\\?\[poll:([a-z0-9]{8,40})\\?\][ \t]*$/m;
+
+  function makePollEditor(content: string) {
+    return new Editor({
+      extensions: [
+        StarterKit,
+        PollEmbedBase,
+        Markdown.configure({ html: true, transformPastedText: true, breaks: false }),
+      ],
+      content,
+    });
+  }
+  const nodeIds = (ed: Editor) => {
+    const ids: string[] = [];
+    ed.state.doc.descendants((n) => {
+      if (n.type.name === 'pollEmbed') ids.push(String(n.attrs.pollId));
+      return true;
+    });
+    return ids;
+  };
+  const insertEmbed = (ed: Editor, pollId: string) => {
     const { $to } = ed.state.selection;
     const pos = $to.depth === 0 ? $to.pos : $to.after(1);
     ed.chain().insertContentAt(pos, [
-      { type: 'paragraph', content: [{ type: 'text', text: `[poll:${id}]` }] },
+      { type: 'pollEmbed', attrs: { pollId } },
       { type: 'paragraph' },
     ]).run();
   };
-  const OWN_LINE = /^ {0,3}\\?\[poll:([a-z0-9]{8,40})\\?\][ \t]*$/m;
 
-  it('from inside a blockquote the token lands top-level and own-line', () => {
-    const ed = makeEditor('> quoted text');
+  it('loading markdown with an own-line token materializes the node (initial normalize)', async () => {
+    const ed = makePollEditor(`before\n\n[poll:${id}]\n\nafter`);
+    await new Promise((r) => setTimeout(r, 0)); // initial normalize is a microtask
+    expect(nodeIds(ed)).toEqual([id]);
+    // and it serializes back to the own-line token
+    const out = ed.storage.markdown.getMarkdown();
+    expect(OWN_LINE.test(out)).toBe(true);
+    ed.destroy();
+  });
+
+  it('setContent (controlled sync) also normalizes via appendTransaction', () => {
+    const ed = makePollEditor('plain');
+    ed.commands.setContent(`[poll:${id}]`, false);
+    expect(nodeIds(ed)).toEqual([id]);
+    ed.destroy();
+  });
+
+  it('inline mentions and non-token text never become nodes', () => {
+    const ed = makePollEditor(`see [poll:${id}] inline`);
+    expect(nodeIds(ed)).toEqual([]);
+    ed.destroy();
+  });
+
+  it('insertion from a blockquote caret lands top-level and round-trips', () => {
+    const ed = makePollEditor('> quoted text');
     ed.commands.setTextSelection(5); // inside the blockquote
-    insert(ed, 'clxyz12345abcde');
+    insertEmbed(ed, id);
+    expect(nodeIds(ed)).toEqual([id]);
     const out = ed.storage.markdown.getMarkdown();
     expect(OWN_LINE.test(out)).toBe(true);
     expect(out).not.toMatch(/^>.*poll/m); // not nested in the quote
     ed.destroy();
   });
 
-  it('from a plain paragraph too', () => {
-    const ed = makeEditor('hello');
-    ed.commands.setTextSelection(3);
-    insert(ed, 'clxyz12345abcde');
-    expect(OWN_LINE.test(ed.storage.markdown.getMarkdown())).toBe(true);
-    ed.destroy();
-  });
-
-  it('from inside a bullet list', () => {
-    const ed = makeEditor('- item one\n- item two');
+  it('insertion from a bullet list caret lands top-level', () => {
+    const ed = makePollEditor('- item one\n- item two');
     ed.commands.setTextSelection(6);
-    insert(ed, 'clxyz12345abcde');
+    insertEmbed(ed, id);
     const out = ed.storage.markdown.getMarkdown();
     expect(OWN_LINE.test(out)).toBe(true);
     expect(out).not.toMatch(/^[-*] .*poll/m);

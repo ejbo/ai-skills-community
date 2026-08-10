@@ -1,9 +1,11 @@
 'use client';
 
-// 创建投票 dialog, opened from the rich-text editor toolbar. On success the
-// server-created poll id is handed back to the editor, which inserts the
-// `[poll:<id>]` token into the content. Portaled modal (ImageLightbox pattern:
-// editors can sit inside transformed/overflow ancestors).
+// 创建 / 编辑投票 dialog, opened from the rich-text editor toolbar (create) or
+// an in-editor poll card's 编辑 button (edit — `pollId` set). Create hands the
+// new id back to the editor, which inserts the poll embed node; edit PATCHes in
+// place (server allows it only while nobody has voted) and broadcasts
+// POLL_UPDATED_EVENT so mounted previews refetch. Portaled modal (ImageLightbox
+// pattern: editors can sit inside transformed/overflow ancestors).
 
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -12,15 +14,27 @@ import { useTranslations } from 'next-intl';
 import { Loader2, Plus, X } from 'lucide-react';
 import { withBasePath } from '@/lib/base-path';
 import { pushToast } from '@/components/Toaster';
+import { POLL_UPDATED_EVENT } from '@/lib/polls-shared';
+import type { PollDto } from '@/lib/poll-queries';
 
 const MAX_OPTIONS = 12;
 
+/** ISO instant → the local wall time a datetime-local input expects. */
+function toLocalInputValue(iso: string): string {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 export function PollComposerDialog({
   open,
+  pollId = null,
   onClose,
   onCreated,
 }: {
   open: boolean;
+  /** Edit an existing poll instead of creating one. */
+  pollId?: string | null;
   onClose: () => void;
   onCreated: (pollId: string) => void;
 }) {
@@ -37,8 +51,14 @@ export function PollComposerDialog({
   const [endsAt, setEndsAt] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [needsLogin, setNeedsLogin] = useState(false);
+  const [loadingPoll, setLoadingPoll] = useState(false);
+  // Edit mode only: votes already cast ⇒ the definition is frozen (server
+  // enforces the same rule — poll_has_votes).
+  const [locked, setLocked] = useState(false);
 
-  // Fresh form every time the dialog opens.
+  const editing = pollId != null;
+
+  // Fresh form every time the dialog opens; edit mode then prefills from the server.
   useEffect(() => {
     if (!open) return;
     setQuestion('');
@@ -50,7 +70,33 @@ export function PollComposerDialog({
     setEndsAt('');
     setSubmitting(false);
     setNeedsLogin(false);
-  }, [open]);
+    setLocked(false);
+    if (!pollId) return;
+    let cancelled = false;
+    setLoadingPoll(true);
+    fetch(withBasePath(`/api/polls/${pollId}`))
+      .then(async (res) => {
+        if (cancelled || !res.ok) return;
+        const data = (await res.json().catch(() => null)) as { poll?: PollDto } | null;
+        if (cancelled || !data?.poll) return;
+        const p = data.poll;
+        setQuestion(p.question);
+        setOptions(p.options.map((o) => o.text));
+        setMultiple(p.multiple);
+        setMaxChoices(p.maxChoices ?? '');
+        setAnonymous(p.anonymous);
+        setResultsAfterVote(p.resultsAfterVote);
+        setEndsAt(p.endsAt ? toLocalInputValue(p.endsAt) : '');
+        setLocked(p.voterCount > 0);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setLoadingPoll(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, pollId]);
 
   useEffect(() => {
     if (!open) return;
@@ -84,19 +130,23 @@ export function PollComposerDialog({
     }
     setSubmitting(true);
     try {
-      const res = await fetch(withBasePath('/api/polls'), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          question: q,
-          options: opts,
-          multiple,
-          maxChoices: multiple && maxChoices !== '' ? maxChoices : null,
-          anonymous,
-          resultsAfterVote,
-          endsAt: endsAt ? new Date(endsAt).toISOString() : null,
-        }),
-      });
+      const payload = {
+        question: q,
+        options: opts,
+        multiple,
+        maxChoices: multiple && maxChoices !== '' ? maxChoices : null,
+        anonymous,
+        resultsAfterVote,
+        endsAt: endsAt ? new Date(endsAt).toISOString() : null,
+      };
+      const res = await fetch(
+        withBasePath(editing ? `/api/polls/${pollId}` : '/api/polls'),
+        {
+          method: editing ? 'PATCH' : 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        },
+      );
       if (res.status === 401) {
         // Keep the dialog (and the authored question/options) — redirecting
         // here would throw the whole form away. The hint bar below offers 登录.
@@ -107,11 +157,26 @@ export function PollComposerDialog({
         | { ok?: boolean; poll?: { id: string }; error?: string }
         | null;
       if (!res.ok || !data?.ok || !data.poll) {
-        pushToast('error', data?.error === 'ends_in_past' ? t('ends_in_past') : t('create_failed'));
+        if (data?.error === 'poll_has_votes') {
+          setLocked(true);
+          pushToast('error', t('edit_locked'));
+        } else {
+          pushToast(
+            'error',
+            data?.error === 'ends_in_past' ? t('ends_in_past') : t('create_failed'),
+          );
+        }
         return;
       }
-      onCreated(data.poll.id);
-      pushToast('success', t('created'));
+      if (editing) {
+        window.dispatchEvent(
+          new CustomEvent(POLL_UPDATED_EVENT, { detail: { id: data.poll.id } }),
+        );
+        pushToast('success', t('saved'));
+      } else {
+        onCreated(data.poll.id);
+        pushToast('success', t('created'));
+      }
       onClose();
     } catch {
       pushToast('error', t('create_failed'));
@@ -126,9 +191,9 @@ export function PollComposerDialog({
     anonymous,
     resultsAfterVote,
     endsAt,
+    editing,
+    pollId,
     t,
-    router,
-    pathname,
     onCreated,
     onClose,
   ]);
@@ -140,12 +205,15 @@ export function PollComposerDialog({
   const toggleRow =
     'flex cursor-pointer items-center justify-between gap-3 rounded-lg px-1 py-1.5 text-sm';
 
+  const formDisabled = locked || loadingPoll;
+  const title = editing ? t('edit_title') : t('create_title');
+
   return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
       role="dialog"
       aria-modal="true"
-      aria-label={t('create_title')}
+      aria-label={title}
       onClick={onClose}
     >
       <div
@@ -153,7 +221,10 @@ export function PollComposerDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-semibold">{t('create_title')}</h2>
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            {title}
+            {loadingPoll && <Loader2 className="h-4 w-4 animate-spin text-muted" />}
+          </h2>
           <button
             type="button"
             aria-label={t('cancel')}
@@ -164,6 +235,13 @@ export function PollComposerDialog({
           </button>
         </div>
 
+        {/* Edit mode: votes already cast ⇒ read-only */}
+        {locked && (
+          <div className="mb-3 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+            {t('edit_locked')}
+          </div>
+        )}
+
         {/* 问题 */}
         <label className="mb-1 block text-xs font-medium text-muted">{t('question_label')}</label>
         <input
@@ -172,7 +250,8 @@ export function PollComposerDialog({
           maxLength={200}
           placeholder={t('question_placeholder')}
           className={inputCls}
-          autoFocus
+          disabled={formDisabled}
+          autoFocus={!editing}
         />
 
         {/* 选项 */}
@@ -186,8 +265,9 @@ export function PollComposerDialog({
                 maxLength={80}
                 placeholder={t('option_placeholder', { n: i + 1 })}
                 className={inputCls}
+                disabled={formDisabled}
               />
-              {options.length > 2 && (
+              {options.length > 2 && !formDisabled && (
                 <button
                   type="button"
                   aria-label={t('remove_option')}
@@ -200,7 +280,7 @@ export function PollComposerDialog({
             </div>
           ))}
         </div>
-        {options.length < MAX_OPTIONS && (
+        {options.length < MAX_OPTIONS && !formDisabled && (
           <button
             type="button"
             onClick={addOption}
@@ -220,6 +300,7 @@ export function PollComposerDialog({
               checked={multiple}
               onChange={(e) => setMultiple(e.target.checked)}
               className="h-4 w-4 accent-accent-500"
+              disabled={formDisabled}
             />
           </label>
           {multiple && (
@@ -229,6 +310,7 @@ export function PollComposerDialog({
                 value={maxChoices}
                 onChange={(e) => setMaxChoices(e.target.value === '' ? '' : Number(e.target.value))}
                 className="rounded-lg border border-[rgb(var(--border))] bg-transparent px-2 py-1 text-sm focus:outline-none"
+                disabled={formDisabled}
               >
                 <option value="">{t('max_choices_unlimited')}</option>
                 {Array.from({ length: Math.max(0, options.length - 2) }, (_, i) => i + 2).map((n) => (
@@ -246,6 +328,7 @@ export function PollComposerDialog({
               checked={anonymous}
               onChange={(e) => setAnonymous(e.target.checked)}
               className="h-4 w-4 accent-accent-500"
+              disabled={formDisabled}
             />
           </label>
           <label className={toggleRow}>
@@ -255,6 +338,7 @@ export function PollComposerDialog({
               checked={resultsAfterVote}
               onChange={(e) => setResultsAfterVote(e.target.checked)}
               className="h-4 w-4 accent-accent-500"
+              disabled={formDisabled}
             />
           </label>
           <label className={toggleRow}>
@@ -264,6 +348,7 @@ export function PollComposerDialog({
               value={endsAt}
               onChange={(e) => setEndsAt(e.target.value)}
               className="rounded-lg border border-[rgb(var(--border))] bg-transparent px-2 py-1 text-sm focus:outline-none"
+              disabled={formDisabled}
             />
           </label>
         </div>
@@ -295,12 +380,12 @@ export function PollComposerDialog({
           </button>
           <button
             type="button"
-            disabled={submitting}
+            disabled={submitting || formDisabled}
             onClick={submit}
             className="flex items-center gap-1.5 rounded-lg bg-accent-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
           >
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            {t('create')}
+            {editing ? t('save') : t('create')}
           </button>
         </div>
       </div>
