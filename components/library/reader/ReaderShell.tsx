@@ -21,7 +21,7 @@ import {
   type SelectionPayload,
 } from './SelectionMenu';
 import { useReaderPrefs, READER_WIDTHS } from './reader-prefs';
-import { ReaderHighlighter } from './highlighter';
+import { ReaderHighlighter, type HlBox } from './highlighter';
 import { withBasePath } from '@/lib/base-path';
 
 export interface ReaderDocInfo {
@@ -110,6 +110,9 @@ export function ReaderShell({
   const [focusNoteId, setFocusNoteId] = useState<string | null>(null);
   const [communityRefresh, setCommunityRefresh] = useState(0);
   const [marksVersion, setMarksVersion] = useState(0);
+  const [boxes, setBoxes] = useState<HlBox[]>([]);
+  const [flashBoxes, setFlashBoxes] = useState<HlBox[]>([]);
+  const flashTimerRef = useRef<number | null>(null);
   const [translate, setTranslate] = useState<{
     top: number;
     left: number;
@@ -473,13 +476,17 @@ export function ReaderShell({
   }, [doc.id, showOthers, notesOpen, communityRefresh]);
 
   // Shared idempotent painter for the extracted view (effects + scroll repair).
-  // Rebuild all highlights via the CSS Custom Highlight API. Ranges are LIVE
-  // (they track the DOM), so this only runs when the highlight/community set
-  // changes or chapters (re)mount — never on scroll. No DOM mutation ⇒ no React
-  // conflict, no flicker, no drift.
-  const renderMarks = useCallback(() => {
+  // Recompute the highlight OVERLAY boxes. Nothing is injected into the
+  // article, so a re-render / normalize / effect can't wipe a highlight — it
+  // structurally cannot "flash and disappear". Coordinates are content-relative
+  // so boxes scroll with the text; recompute only on layout change.
+  const recomputeBoxes = useCallback(() => {
     const h = highlighterRef.current;
-    if (!h || showOriginalPdf) return;
+    const container = scrollRef.current;
+    if (!h || !container || showOriginalPdf) {
+      setBoxes([]);
+      return;
+    }
     const community = (
       showOthers && communityNotes ? filterCommunityNotes(communityNotes, userFilter) : []
     ).map((n) => ({
@@ -490,25 +497,66 @@ export function ReaderShell({
       charEnd: n.charEnd,
       color: n.color,
     }));
-    h.renderAll(chapterRootsRef.current, chapterHighlights, community);
+    setBoxes(h.computeBoxes(chapterRootsRef.current, chapterHighlights, community, container));
     setMarksVersion((v) => v + 1);
   }, [chapterHighlights, communityNotes, userFilter, showOthers, showOriginalPdf]);
 
   useEffect(() => {
-    const id = requestAnimationFrame(renderMarks);
-    return () => cancelAnimationFrame(id);
-  }, [renderMarks, chaptersKey]);
+    if (showOriginalPdf) {
+      setBoxes([]);
+      return;
+    }
+    const container = scrollRef.current;
+    if (!container) return;
+    let raf = requestAnimationFrame(recomputeBoxes);
+    // Layout settles asynchronously (fonts, images) — recompute a few times.
+    const t1 = window.setTimeout(recomputeBoxes, 350);
+    const t2 = window.setTimeout(recomputeBoxes, 1200);
+    const onResize = () => recomputeBoxes();
+    window.addEventListener('resize', onResize);
+    // The reading column reflows when a side panel (笔记/AI) opens or closes,
+    // which never fires a window resize — observe the container itself.
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => recomputeBoxes());
+      ro.observe(container);
+    }
+    const onLoad = (e: Event) => {
+      if ((e.target as HTMLElement | null)?.tagName === 'IMG') recomputeBoxes();
+    };
+    container.addEventListener('load', onLoad, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.removeEventListener('resize', onResize);
+      ro?.disconnect();
+      container.removeEventListener('load', onLoad, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recomputeBoxes, chaptersKey, prefs.fontSize, prefs.lineHeight, prefs.width, prefs.serif]);
 
-  useEffect(() => () => highlighterRef.current?.dispose(), []);
+  // Flash a range: render temporary flash boxes + auto-clear.
+  const doFlash = useCallback((range: Range | null): boolean => {
+    const h = highlighterRef.current;
+    const container = scrollRef.current;
+    if (!h || !container || !range) return false;
+    const fb = h.flashBoxes(range, container);
+    if (fb.length === 0) return false;
+    setFlashBoxes(fb);
+    if (flashTimerRef.current) window.clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = window.setTimeout(() => setFlashBoxes([]), 2400);
+    return true;
+  }, []);
 
   const handleCommunityJump = useCallback(
     (note: CommunityNote) => {
       setFocusNoteId(note.id);
       if (showOriginalPdf) setPdfView('text');
       const root = rootFor(note.chapterIndex);
-      if (root && highlighterRef.current) {
-        highlighterRef.current.flashMark(root, note);
-        return;
+      const h = highlighterRef.current;
+      if (root && h) {
+        if (doFlash(h.locateFlash(root, note))) return;
       }
       try {
         sessionStorage.setItem(
@@ -525,7 +573,7 @@ export function ReaderShell({
       }
       router.replace(readHref(note.chapterIndex), { scroll: false });
     },
-    [readHref, rootFor, router, showOriginalPdf],
+    [doFlash, readHref, rootFor, router, showOriginalPdf],
   );
 
   const handleReplyAdded = useCallback(
@@ -547,9 +595,19 @@ export function ReaderShell({
 
   useEffect(() => setChapterHighlights(highlights), [highlights]);
 
-  const flashMark = useCallback((id: string): boolean => {
-    return highlighterRef.current?.flashOwn(id) ?? false;
-  }, []);
+  // Flash an own highlight by id: locate its range in the mounted chapter, then
+  // render flash boxes. Uses the highlight set (offsets), not any injected DOM.
+  const flashMark = useCallback(
+    (id: string): boolean => {
+      const hl = chapterHighlights.find((h) => h.id === id);
+      if (!hl) return false;
+      const root = rootFor(hl.chapterIndex);
+      const h = highlighterRef.current;
+      if (!root || !h) return false;
+      return doFlash(h.locateFlash(root, hl));
+    },
+    [chapterHighlights, doFlash, rootFor],
+  );
 
   // ?hl= deep link: scroll to the mark and flash it (once per id).
   useEffect(() => {
@@ -584,11 +642,16 @@ export function ReaderShell({
       const h = highlighterRef.current;
       if (!h) return;
       // Notes/highlights carry charEnd → exact offset flash; citations don't.
-      if (typeof charEnd === 'number') h.flashMark(root, { charStart, charEnd, quote: snippet });
-      else if (typeof snippet === 'string') h.flash(root, snippet, charStart ?? 0);
+      const range =
+        typeof charEnd === 'number'
+          ? h.locateFlash(root, { charStart, charEnd, quote: snippet })
+          : typeof snippet === 'string'
+            ? h.locateCitation(root, snippet, charStart ?? 0)
+            : null;
+      doFlash(range);
     }, 220);
     return () => window.clearTimeout(timer);
-  }, [chaptersKey, marksVersion, rootFor, showOriginalPdf]);
+  }, [chaptersKey, marksVersion, rootFor, showOriginalPdf, doFlash]);
 
   const resyncChapterHighlights = useCallback(async () => {
     try {
@@ -739,9 +802,9 @@ export function ReaderShell({
     (citation: Citation) => {
       if (showOriginalPdf) setPdfView('text');
       const root = rootFor(citation.chapterIndex);
-      if (root && highlighterRef.current) {
-        highlighterRef.current.flash(root, citation.snippet, citation.charStart);
-        return;
+      const h = highlighterRef.current;
+      if (root && h) {
+        if (doFlash(h.locateCitation(root, citation.snippet, citation.charStart))) return;
       }
       try {
         sessionStorage.setItem(
@@ -757,7 +820,7 @@ export function ReaderShell({
       }
       router.replace(readHref(citation.chapterIndex), { scroll: false });
     },
-    [readHref, rootFor, router, showOriginalPdf],
+    [doFlash, readHref, rootFor, router, showOriginalPdf],
   );
 
   const handleOwnJump = useCallback(
@@ -917,8 +980,31 @@ export function ReaderShell({
           <div
             ref={scrollRef}
             onClick={onContentClick}
-            className="h-full min-w-0 flex-1 overflow-y-auto overscroll-contain"
+            className="relative h-full min-w-0 flex-1 overflow-y-auto overscroll-contain"
           >
+            {/* Highlight OVERLAY: translucent boxes drawn OVER the text, never
+                injected into it. Content-relative coords ⇒ they scroll with the
+                article and survive any React re-render (no flash-and-disappear). */}
+            <div className="reader-hl-layer" aria-hidden>
+              {boxes.map((b) => (
+                <div
+                  key={b.key}
+                  className={`reader-hl-box ${
+                    b.kind === 'community'
+                      ? 'reader-hl-box-community'
+                      : `reader-hl-box-${b.color}`
+                  }`}
+                  style={{ top: b.top, left: b.left, width: b.width, height: b.height }}
+                />
+              ))}
+              {flashBoxes.map((b) => (
+                <div
+                  key={b.key}
+                  className="reader-hl-box reader-hl-box-flash"
+                  style={{ top: b.top, left: b.left, width: b.width, height: b.height }}
+                />
+              ))}
+            </div>
             {chapters.length > 0 ? (
               chapters.map((ch) => (
                 <section key={ch.chapterIndex} data-chapter-index={ch.chapterIndex}>
