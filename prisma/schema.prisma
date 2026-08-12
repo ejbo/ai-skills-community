@@ -743,6 +743,9 @@ model Video {
   status      VideoStatus     @default(draft)
   visibility  VideoVisibility @default(public)
   sourceType  VideoSourceType @default(admin_curated)
+  // 随刷短视频: member-uploaded vertical shorts live in the same table but are
+  // excluded from every long-video surface (rails/browse) and vice versa.
+  isShort     Boolean         @default(false)
   uploaderId  String
   categoryId  String?
   language    String?
@@ -792,6 +795,7 @@ model Video {
   @@index([featured, publishedAt])
   @@index([trendingScore])
   @@index([createdAt])
+  @@index([isShort, publishedAt])
 }
 
 model VideoComment {

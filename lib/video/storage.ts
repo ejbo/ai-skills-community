@@ -193,6 +193,57 @@ function runFfmpeg(args: string[]): Promise<boolean> {
   });
 }
 
+let ffprobeCheck: Promise<boolean> | null = null;
+/** Detect ffprobe once (cached). When absent, duration probing is a no-op. */
+function hasFfprobe(): Promise<boolean> {
+  if (!ffprobeCheck) {
+    ffprobeCheck = new Promise<boolean>((resolve) => {
+      try {
+        const p = spawn('ffprobe', ['-version'], { stdio: 'ignore' });
+        p.on('error', () => resolve(false));
+        p.on('close', (code) => resolve(code === 0));
+      } catch {
+        resolve(false);
+      }
+    });
+  }
+  return ffprobeCheck;
+}
+
+/**
+ * Real container duration in seconds, or null when it can't be measured
+ * (no ffprobe on the box, broken file). Best-effort — never throws. Used to
+ * enforce the shorts duration cap against the actual media instead of the
+ * client-asserted value.
+ */
+export async function probeVideoDurationSec(key: string): Promise<number | null> {
+  const full = videoFileAbsPath(key);
+  if (!full) return null;
+  if (!(await hasFfprobe())) return null;
+  return new Promise((resolve) => {
+    try {
+      const p = spawn('ffprobe', [
+        '-v', 'error',
+        '-show_entries', 'format=duration',
+        '-of', 'csv=p=0',
+        full,
+      ]);
+      let out = '';
+      p.stdout?.on('data', (d) => {
+        out += String(d);
+      });
+      p.on('error', () => resolve(null));
+      p.on('close', (code) => {
+        if (code !== 0) return resolve(null);
+        const v = Number.parseFloat(out.trim());
+        resolve(Number.isFinite(v) && v > 0 ? v : null);
+      });
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
 /**
  * Rewrite an MP4/MOV in place with the `moov` atom moved to the FRONT
  * (`-movflags +faststart`), so the browser can begin playback before the whole

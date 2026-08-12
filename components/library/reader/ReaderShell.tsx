@@ -9,8 +9,9 @@ import type { AiOverview } from '@/lib/library/types';
 import { ReaderChrome } from './ReaderChrome';
 import { ReaderContent } from './ReaderContent';
 import { TocPanel, type TocEntry } from './TocPanel';
-import { NotesPanel, filterCommunityNotes, type HighlightItem, type NoteUserFilter } from './NotesPanel';
-import { ReaderChatPanel, type Citation } from './ReaderChatPanel';
+import { filterCommunityNotes, type HighlightItem, type NoteUserFilter } from './NotesPanel';
+import { type Citation } from './ReaderChatPanel';
+import { ReaderRightPanel, type RightTab } from './ReaderRightPanel';
 import { MarginNotes } from './MarginNotes';
 import type { CommunityNote } from './community-types';
 import {
@@ -22,6 +23,7 @@ import {
 } from './SelectionMenu';
 import { useReaderPrefs, READER_WIDTHS } from './reader-prefs';
 import { ReaderHighlighter, type HlBox } from './highlighter';
+import { getTextOffsetOfPoint } from './anchoring';
 import { withBasePath } from '@/lib/base-path';
 
 export interface ReaderDocInfo {
@@ -39,6 +41,7 @@ export interface ReaderDocInfo {
   aiOverview: AiOverview | null;
   aiIndexState: string;
   language: string | null;
+  commentCount: number;
 }
 
 interface ChapterPayload {
@@ -58,6 +61,7 @@ interface Props {
   highlights: HighlightItem[];
   initialChat: string | null;
   focusHighlightId: string | null;
+  currentUser: { id: string; handle: string; isAdmin: boolean } | null;
 }
 
 const PENDING_JUMP_KEY = 'library:pendingJump';
@@ -80,6 +84,7 @@ export function ReaderShell({
   highlights,
   initialChat,
   focusHighlightId,
+  currentUser,
 }: Props) {
   const t = useTranslations('reader');
   const tc = useTranslations('common');
@@ -90,8 +95,20 @@ export function ReaderShell({
   const [currentChapter, setCurrentChapter] = useState(initialChapter);
 
   const [tocOpen, setTocOpen] = useState(false);
-  const [notesOpen, setNotesOpen] = useState(false);
-  const [chatOpen, setChatOpen] = useState(Boolean(initialChat));
+  // alphaXiv-style single right panel with tabs (助手/我的笔记/评论/相似).
+  const [rightPanel, setRightPanel] = useState<{ open: boolean; tab: RightTab }>({
+    open: Boolean(initialChat),
+    tab: 'assistant',
+  });
+  const notesOpen = rightPanel.open && rightPanel.tab === 'notes';
+  const chatOpen = rightPanel.open && rightPanel.tab === 'assistant';
+  const openTab = useCallback((tab: RightTab) => setRightPanel({ open: true, tab }), []);
+  const toggleTab = useCallback(
+    (tab: RightTab) =>
+      setRightPanel((p) => (p.open && p.tab === tab ? { ...p, open: false } : { open: true, tab })),
+    [],
+  );
+  const closeRight = useCallback(() => setRightPanel((p) => ({ ...p, open: false })), []);
   const [typographyOpen, setTypographyOpen] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
   const [percent, setPercent] = useState(progress?.percent ?? 0);
@@ -145,6 +162,10 @@ export function ReaderShell({
   const restoredRef = useRef(false);
   const lastPagedChapterRef = useRef<number | null>(null);
   const flashedRef = useRef<string | null>(null);
+  // Last in-article text selection, captured on pointer-up so the 我的笔记
+  // composer can quote it even after focus moves to the textarea (which
+  // collapses the live selection).
+  const lastSelectionRef = useRef<SelectionPayload | null>(null);
 
   const showOriginalPdf = doc.format === 'pdf' && pdfView === 'original' && !!doc.fileUrl;
   const visibleCommunityNotes = useMemo(
@@ -317,9 +338,15 @@ export function ReaderShell({
     const onScroll = () => {
       const top = el.scrollTop;
       const last = lastScrollTopRef.current;
-      if (top < 64) setChromeVisible(true);
-      else if (top > last + 4) setChromeVisible(false);
-      else if (top < last - 4) setChromeVisible(true);
+      // Do NOT collapse/expand the in-flow chrome while a selection drag is in
+      // progress: toggling it resizes this scroll container, and the resulting
+      // reflow shifts the text under the pointer and collapses the selection.
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) {
+        if (top < 64) setChromeVisible(true);
+        else if (top > last + 4) setChromeVisible(false);
+        else if (top < last - 4) setChromeVisible(true);
+      }
       lastScrollTopRef.current = top;
       setMarkPopover(null);
       updateProgress();
@@ -404,8 +431,7 @@ export function ReaderShell({
         if (lightbox) setLightbox(null);
         else if (typographyOpen) setTypographyOpen(false);
         else if (markPopover) setMarkPopover(null);
-        else if (chatOpen) setChatOpen(false);
-        else if (notesOpen) setNotesOpen(false);
+        else if (rightPanel.open) closeRight();
         else if (tocOpen) setTocOpen(false);
         return;
       }
@@ -416,7 +442,7 @@ export function ReaderShell({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [typographyOpen, markPopover, chatOpen, notesOpen, tocOpen, lightbox, goChapter, currentChapter]);
+  }, [typographyOpen, markPopover, rightPanel.open, closeRight, tocOpen, lightbox, goChapter, currentChapter]);
 
   // ── community notes ───────────────────────────────────────────────────
 
@@ -487,6 +513,13 @@ export function ReaderShell({
       setBoxes([]);
       return;
     }
+    // NEVER recompute while the user is actively dragging a selection: setBoxes
+    // + setMarksVersion re-renders the overlay and reads layout, and doing that
+    // mid-drag (a resize/observer can fire it) makes the browser re-anchor and
+    // collapse the native selection — the "selects elsewhere / disappears" bug.
+    // A trailing recompute runs once the selection clears (see the mouseup net).
+    const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+    if (sel && !sel.isCollapsed && sel.anchorNode && getSelectionContext(sel.anchorNode)) return;
     const community = (
       showOthers && communityNotes ? filterCommunityNotes(communityNotes, userFilter) : []
     ).map((n) => ({
@@ -499,7 +532,7 @@ export function ReaderShell({
     }));
     setBoxes(h.computeBoxes(chapterRootsRef.current, chapterHighlights, community, container));
     setMarksVersion((v) => v + 1);
-  }, [chapterHighlights, communityNotes, userFilter, showOthers, showOriginalPdf]);
+  }, [chapterHighlights, communityNotes, userFilter, showOthers, showOriginalPdf, getSelectionContext]);
 
   useEffect(() => {
     if (showOriginalPdf) {
@@ -535,6 +568,40 @@ export function ReaderShell({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recomputeBoxes, chaptersKey, prefs.fontSize, prefs.lineHeight, prefs.width, prefs.serif]);
+
+  // Trailing recompute once a drag ends: recomputeBoxes early-returns while a
+  // selection is live, so any layout change that happened DURING the drag is
+  // reconciled here (the pointer is no longer down, so a one-shot re-render
+  // cannot collapse the finished selection).
+  useEffect(() => {
+    if (showOriginalPdf) return;
+    const onPointerUp = () => {
+      // Remember a real in-article selection for the 我的笔记 composer.
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        const ctx = getSelectionContext(range.commonAncestorContainer);
+        const full = sel.toString().replace(/\s+/g, ' ').trim();
+        if (ctx && full) {
+          const charStart = getTextOffsetOfPoint(ctx.root, range.startContainer, range.startOffset);
+          const charEnd = getTextOffsetOfPoint(ctx.root, range.endContainer, range.endOffset);
+          lastSelectionRef.current = {
+            chapterIndex: ctx.chapterIndex,
+            quote: full.slice(0, 2000),
+            charStart,
+            charEnd: Math.max(charEnd, charStart + 1),
+          };
+        }
+      }
+      requestAnimationFrame(recomputeBoxes);
+    };
+    document.addEventListener('mouseup', onPointerUp);
+    document.addEventListener('touchend', onPointerUp);
+    return () => {
+      document.removeEventListener('mouseup', onPointerUp);
+      document.removeEventListener('touchend', onPointerUp);
+    };
+  }, [recomputeBoxes, showOriginalPdf, getSelectionContext]);
 
   // Flash a range: render temporary flash boxes + auto-clear.
   const doFlash = useCallback((range: Range | null): boolean => {
@@ -671,13 +738,19 @@ export function ReaderShell({
     setHlVersion((v) => v + 1);
   }, [doc.id, currentChapter, mode]);
 
-  async function createHighlight(payload: SelectionPayload, color: HighlightColor, openNote: boolean) {
+  async function createHighlight(
+    payload: SelectionPayload,
+    color: HighlightColor,
+    openNote: boolean,
+    noteText?: string,
+  ) {
     const tempId = `temp-${Date.now()}`;
+    const seededNote = noteText?.trim() || null;
     const optimistic: HighlightItem = {
       id: tempId,
       ...payload,
       color,
-      noteText: null,
+      noteText: seededNote,
       createdAt: new Date().toISOString(),
     };
     setChapterHighlights((prev) => [...prev, optimistic]);
@@ -704,10 +777,18 @@ export function ReaderShell({
       const realId = saved && typeof saved.id === 'string' ? saved.id : null;
       if (realId) {
         setChapterHighlights((prev) => prev.map((h) => (h.id === tempId ? { ...h, id: realId } : h)));
+        // Attach the seeded note (composer path) in a follow-up PATCH.
+        if (seededNote) {
+          void fetch(`/api/library/docs/${doc.id}/highlights/${realId}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ noteText: seededNote }),
+          }).finally(() => setHlVersion((v) => v + 1));
+        }
         setHlVersion((v) => v + 1);
         if (openNote) {
           setEditNoteId(realId);
-          setNotesOpen(true);
+          openTab('notes');
         }
       } else {
         setChapterHighlights((prev) => prev.filter((h) => h.id !== tempId));
@@ -718,6 +799,22 @@ export function ReaderShell({
       pushToast('error', t('network_highlight_not_saved'));
     }
   }
+
+  // 我的笔记 composer: turn the last in-article selection into a highlight that
+  // carries `noteText`. Returns false when there's nothing selected to anchor.
+  const saveSelectionNote = useCallback(
+    (noteText: string): boolean => {
+      const payload = lastSelectionRef.current;
+      const body = noteText.trim();
+      if (!payload || !body) return false;
+      lastSelectionRef.current = null;
+      void createHighlight(payload, 'yellow', false, body);
+      return true;
+    },
+    // createHighlight is a stable function declaration in this scope.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   async function recolor(id: string, color: HighlightColor) {
     setMarkPopover(null);
@@ -776,7 +873,7 @@ export function ReaderShell({
     const community = h.communityHitAt(e.clientX, e.clientY);
     if (community) {
       setFocusNoteId(community);
-      setNotesOpen(true);
+      openTab('notes');
       setMarkPopover(null);
       return;
     }
@@ -793,9 +890,9 @@ export function ReaderShell({
   const handleAskAi = useCallback(
     (quote: string) => {
       setChatPrefill({ text: t('ask_ai_prefill', { quote: quote.slice(0, 200) }), nonce: Date.now() });
-      setChatOpen(true);
+      openTab('assistant');
     },
-    [t],
+    [t, openTab],
   );
 
   const handleCitationJump = useCallback(
@@ -936,8 +1033,8 @@ export function ReaderShell({
         notesOpen={notesOpen}
         chatOpen={chatOpen}
         onToggleToc={() => setTocOpen((v) => !v)}
-        onToggleNotes={() => setNotesOpen((v) => !v)}
-        onToggleChat={() => setChatOpen((v) => !v)}
+        onToggleNotes={() => toggleTab('notes')}
+        onToggleChat={() => toggleTab('assistant')}
         typographyOpen={typographyOpen}
         onToggleTypography={() => setTypographyOpen((v) => !v)}
         onCloseTypography={() => setTypographyOpen(false)}
@@ -1040,48 +1137,48 @@ export function ReaderShell({
             onJump={handleCommunityJump}
             onOpenPanel={(noteId) => {
               setFocusNoteId(noteId);
-              setNotesOpen(true);
+              openTab('notes');
             }}
           />
         )}
 
-        <NotesPanel
-          open={notesOpen}
-          onClose={() => {
-            setNotesOpen(false);
-            setEditNoteId(null);
-            setFocusNoteId(null);
-          }}
-          docId={doc.id}
-          toc={toc}
-          version={hlVersion}
-          editNoteId={editNoteId}
-          onJumpOwn={handleOwnJump}
-          onMutatedOwn={handleOwnMutated}
-          communityNotes={communityNotes}
-          onReplyAdded={handleReplyAdded}
-          shareNotes={shareNotes}
-          onShareNotesChange={(v) => {
-            setShareNotes(v);
-            setCommunityRefresh((n) => n + 1);
-          }}
-          showOthers={showOthers}
-          onShowOthersChange={changeShowOthers}
-          userFilter={userFilter}
-          onUserFilterChange={changeUserFilter}
-          focusNoteId={focusNoteId}
-          onJumpCommunity={handleCommunityJump}
-        />
-
-        <ReaderChatPanel
-          open={chatOpen}
-          onClose={() => setChatOpen(false)}
-          docId={doc.id}
-          aiIndexState={doc.aiIndexState}
-          questions={doc.aiOverview?.questions ?? []}
-          prefill={chatPrefill}
-          onCitationJump={handleCitationJump}
-        />
+        {rightPanel.open && (
+          <ReaderRightPanel
+            tab={rightPanel.tab}
+            onTabChange={openTab}
+            onClose={() => {
+              closeRight();
+              setEditNoteId(null);
+              setFocusNoteId(null);
+            }}
+            currentUser={currentUser}
+            docId={doc.id}
+            aiIndexState={doc.aiIndexState}
+            questions={doc.aiOverview?.questions ?? []}
+            prefill={chatPrefill}
+            onCitationJump={handleCitationJump}
+            toc={toc}
+            notesVersion={hlVersion}
+            editNoteId={editNoteId}
+            onJumpOwn={handleOwnJump}
+            onMutatedOwn={handleOwnMutated}
+            communityNotes={communityNotes}
+            onReplyAdded={handleReplyAdded}
+            shareNotes={shareNotes}
+            onShareNotesChange={(v) => {
+              setShareNotes(v);
+              setCommunityRefresh((n) => n + 1);
+            }}
+            showOthers={showOthers}
+            onShowOthersChange={changeShowOthers}
+            userFilter={userFilter}
+            onUserFilterChange={changeUserFilter}
+            focusNoteId={focusNoteId}
+            onJumpCommunity={handleCommunityJump}
+            onSaveSelectionNote={saveSelectionNote}
+            commentCount={doc.commentCount}
+          />
+        )}
       </div>
 
       {!showOriginalPdf && (
@@ -1139,7 +1236,7 @@ export function ReaderShell({
           onRecolor={(color) => void recolor(markPopover.id, color)}
           onNote={() => {
             setEditNoteId(markPopover.id);
-            setNotesOpen(true);
+            openTab('notes');
             setMarkPopover(null);
           }}
           onDelete={() => void removeHighlight(markPopover.id)}

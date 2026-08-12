@@ -8,6 +8,7 @@ import {
   Flame,
   MessagesSquare,
   PenLine,
+  Play,
   Upload,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -15,7 +16,9 @@ import { prisma } from '@/lib/db';
 import { DISCOVERABLE_SKILL_WHERE, SKILL_CARD_SELECT } from '@/lib/skill-queries';
 import { SkillCard } from '@/components/SkillCard';
 import { VideoGrid } from '@/components/video/VideoGrid';
+import { ShortsStrip } from '@/components/video/ShortsStrip';
 import { trendingVideos } from '@/lib/video/queries';
+import { featuredShorts } from '@/lib/video/shorts-queries';
 import { listTopics } from '@/lib/discussion-queries';
 import { listEvents } from '@/lib/event-queries';
 import { browseDocs } from '@/lib/library-queries';
@@ -38,7 +41,7 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
   const t = await getTranslations('home');
   const tl = await getTranslations('labels');
 
-  const [skills, videos, topicsRes, eventsRes, docsRes, announcement] = await Promise.all([
+  const [skills, videos, shorts, topicsRes, eventsRes, docsRes, announcement] = await Promise.all([
     prisma.skill.findMany({
       where: DISCOVERABLE_SKILL_WHERE,
       orderBy: { trendingScore: 'desc' },
@@ -46,6 +49,7 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
       select: SKILL_CARD_SELECT,
     }),
     trendingVideos(8),
+    featuredShorts(10),
     listTopics({ sort: 'top', pageSize: 4 }),
     listEvents({ tab: 'upcoming' }, { id: user.id, isAdmin: user.isAdmin }),
     browseDocs({ sort: 'newest', pageSize: 4 }),
@@ -281,6 +285,28 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
               </Reveal>
             )}
           </div>
+        </section>
+      )}
+
+      {/* 精选短视频 (featured shorts strip → 随刷 feed) */}
+      {shorts.length > 0 && (
+        <section className="container pb-10 md:pb-12">
+          <Reveal>
+            <ShortsStrip
+              title={t('shorts_title')}
+              viewAllLabel={t('view_all')}
+              icon={<Play className="h-4 w-4" />}
+              items={shorts.map((s) => ({
+                id: s.id,
+                title: s.title,
+                summary: s.summary,
+                posterUrl: s.posterUrl,
+                durationSec: s.durationSec,
+                viewCount: s.viewCount,
+                likeCount: s.likeCount,
+              }))}
+            />
+          </Reveal>
         </section>
       )}
 

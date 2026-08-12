@@ -225,47 +225,78 @@
   pointer-events: none;
   z-index: 1;
 }
+/* alphaXiv keeps highlights LIGHT so the glyphs stay crisp. `mix-blend-mode:
+   multiply` makes each translucent box TINT the text underneath instead of
+   fogging it (the boxes paint at z-index:1 OVER the text). Alphas are ~0.28,
+   well below the old 0.4 that "挡住字体". */
 .reader-hl-box {
   position: absolute;
-  border-radius: 2px;
+  border-radius: 3px;
   pointer-events: none;
+  mix-blend-mode: multiply;
   /* nudge to hug the glyph baseline rather than the line box */
   margin-top: -1px;
   padding-bottom: 2px;
 }
 .reader-hl-box-yellow {
-  background-color: rgba(250, 204, 21, 0.4);
+  background-color: rgba(250, 224, 122, 0.3);
 }
 .reader-hl-box-green {
-  background-color: rgba(74, 222, 128, 0.4);
+  background-color: rgba(150, 224, 178, 0.28);
 }
 .reader-hl-box-blue {
-  background-color: rgba(96, 165, 250, 0.4);
+  background-color: rgba(150, 190, 250, 0.3);
 }
 .reader-hl-box-pink {
-  background-color: rgba(244, 114, 182, 0.4);
+  background-color: rgba(244, 178, 210, 0.3);
 }
-/* Other readers' shared notes — a calm translucent tint + dotted underline
+/* Other readers' shared notes — a barely-there tint + dotted underline
    (details live in the 笔记 sidebar + margin avatars). */
 .reader-hl-box-community {
-  background-color: rgba(99, 102, 241, 0.12);
-  border-bottom: 2px dotted #6366f1;
+  background-color: rgba(139, 122, 240, 0.1);
+  border-bottom: 2px dotted rgba(124, 108, 240, 0.85);
 }
-/* jump/citation flash — a pulsing accent ring that fades out. */
+/* jump/citation flash — a pulsing accent wash that fades out. */
 .reader-hl-box-flash {
-  background-color: rgba(99, 102, 241, 0.28);
+  background-color: rgba(139, 122, 240, 0.22);
   animation: reader-hl-flash 0.9s ease-out 2;
 }
 @keyframes reader-hl-flash {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
-    background-color: rgba(99, 102, 241, 0.12);
+    box-shadow: 0 0 0 0 rgba(139, 122, 240, 0);
+    background-color: rgba(139, 122, 240, 0.14);
   }
   50% {
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.5);
-    background-color: rgba(99, 102, 241, 0.4);
+    box-shadow: 0 0 0 3px rgba(139, 122, 240, 0.45);
+    background-color: rgba(139, 122, 240, 0.34);
   }
+}
+/* Dark themes: multiply would darken on a dark bg — use screen and slightly
+   stronger fills so the marks read against the dark page. */
+.reader-root[data-reader-theme='dark'] .reader-hl-box,
+[data-theme='dark'] .reader-root[data-reader-theme='auto'] .reader-hl-box {
+  mix-blend-mode: screen;
+}
+.reader-root[data-reader-theme='dark'] .reader-hl-box-yellow,
+[data-theme='dark'] .reader-root[data-reader-theme='auto'] .reader-hl-box-yellow {
+  background-color: rgba(202, 160, 40, 0.32);
+}
+.reader-root[data-reader-theme='dark'] .reader-hl-box-green,
+[data-theme='dark'] .reader-root[data-reader-theme='auto'] .reader-hl-box-green {
+  background-color: rgba(52, 150, 90, 0.3);
+}
+.reader-root[data-reader-theme='dark'] .reader-hl-box-blue,
+[data-theme='dark'] .reader-root[data-reader-theme='auto'] .reader-hl-box-blue {
+  background-color: rgba(70, 120, 220, 0.32);
+}
+.reader-root[data-reader-theme='dark'] .reader-hl-box-pink,
+[data-theme='dark'] .reader-root[data-reader-theme='auto'] .reader-hl-box-pink {
+  background-color: rgba(200, 90, 150, 0.3);
+}
+.reader-root[data-reader-theme='dark'] .reader-hl-box-community,
+[data-theme='dark'] .reader-root[data-reader-theme='auto'] .reader-hl-box-community {
+  background-color: rgba(148, 130, 255, 0.16);
 }
 
 /* community-drawer quote left borders */
@@ -326,4 +357,50 @@
 .citation-chip:hover,
 .reader-chat-md a[href^='#cite-']:hover {
   background: rgb(var(--accent) / 0.22);
+}
+
+/* ── right panel: alphaXiv-style tabbed header ──────────────────────────── */
+
+.reader-tabs {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.reader-tabs::-webkit-scrollbar {
+  display: none;
+}
+.reader-tab {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 0.4rem 0.7rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--reader-muted);
+  transition:
+    color 150ms ease,
+    background 150ms ease;
+}
+.reader-tab:hover {
+  color: var(--reader-fg);
+  background: var(--reader-hover);
+}
+.reader-tab[aria-selected='true'] {
+  color: var(--reader-accent);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--reader-accent) 12%, transparent);
+}
+
+/* Assistant tab intro cards (Highlight & Ask / Add Context) */
+.reader-assist-card {
+  border: 1px solid var(--reader-border);
+  border-radius: 12px;
+  padding: 0.8rem;
+  background: color-mix(in srgb, var(--reader-fg) 3%, transparent);
+}
+
+/* Comments tab hosts the shared DocComments board — keep its type readable
+   against the reader surface. */
+.reader-comments {
+  color: var(--reader-fg);
 }

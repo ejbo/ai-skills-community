@@ -22,7 +22,9 @@ export default async function EditVideoPage({ params }: { params: { id: string }
     listVideoCategories(),
   ]);
 
-  if (!video) notFound();
+  // 随刷短视频 are managed at /manage/shorts — the long-video editor's fields
+  // (and its PATCH route, which now 404s shorts) don't apply to them.
+  if (!video || video.isShort) notFound();
 
   const status: 'draft' | 'published' = video.status === 'published' ? 'published' : 'draft';
   const visibility: 'public' | 'unlisted' | 'private' =

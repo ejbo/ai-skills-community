@@ -58,6 +58,11 @@ export default async function LibraryReaderPage({
       focusHighlightId={
         typeof searchParams.hl === 'string' && searchParams.hl ? searchParams.hl : null
       }
+      currentUser={{
+        id: session.user.id,
+        handle: session.user.handle,
+        isAdmin: Boolean(session.user.isAdmin),
+      }}
     />
   );
 }

@@ -92,15 +92,16 @@ export function MarginNotes({
     schedule();
     container.addEventListener('scroll', schedule, { passive: true });
     window.addEventListener('resize', schedule);
-    const mo = new MutationObserver(schedule);
-    mo.observe(container, { childList: true, subtree: true });
+    // Positions come from stored Range rects (getRect), NOT from the highlight
+    // overlay's DOM. A MutationObserver here would only re-fire on every overlay
+    // box add/remove — pure churn that piles onto an in-progress selection — so
+    // we rely on scroll + resize + the `version` prop (note/box-set changes).
     const ro = new ResizeObserver(schedule);
     ro.observe(container);
     return () => {
       cancelAnimationFrame(rafRef.current);
       container.removeEventListener('scroll', schedule);
       window.removeEventListener('resize', schedule);
-      mo.disconnect();
       ro.disconnect();
     };
   }, [containerRef, schedule, version]);

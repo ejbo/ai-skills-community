@@ -27,7 +27,9 @@ export default async function AdminVideosPage({
   const page = Math.max(1, Number(searchParams.page ?? 1));
   const q = (searchParams.q ?? '').trim();
 
-  const where: import('@prisma/client').Prisma.VideoWhereInput = { deletedAt: null };
+  // 随刷短视频 have their own board (/manage/shorts) with soft-delete semantics —
+  // keep them out of the curated long-video table and its hard-delete flow.
+  const where: import('@prisma/client').Prisma.VideoWhereInput = { deletedAt: null, isShort: false };
   if (q) {
     where.OR = [
       { title: { contains: q, mode: 'insensitive' } },

@@ -47,7 +47,10 @@ export function Toaster() {
       role="status"
       aria-live="polite"
       aria-atomic="false"
-      className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col gap-2"
+      // z-[120]: toasts are transient top-layer feedback — they must show above
+      // every overlay, including the z-[100] lightbox (添加到表情包 fires from
+      // inside it) and the z-[110] sticker preview/context menus.
+      className="pointer-events-none fixed bottom-4 right-4 z-[120] flex flex-col gap-2"
     >
       <AnimatePresence>
         {toasts.map((toast) => (

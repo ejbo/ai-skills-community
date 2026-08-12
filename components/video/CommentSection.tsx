@@ -15,9 +15,21 @@ interface Props {
   initialComments: VideoCommentView[];
   initialCursor: string | null;
   currentUser: { id: string; isAdmin: boolean; handle?: string } | null;
+  /**
+   * Explicit deep-link target. `undefined` (detail page) = read ?focus= from
+   * the URL; a string/null (shorts drawer, whose feed rewrites the URL via
+   * replaceState before this mounts) = use exactly this value.
+   */
+  focusCommentId?: string | null;
 }
 
-export function CommentSection({ slug, initialComments, initialCursor, currentUser }: Props) {
+export function CommentSection({
+  slug,
+  initialComments,
+  initialCursor,
+  currentUser,
+  focusCommentId,
+}: Props) {
   const t = useTranslations('video');
   const tu = useTranslations('video_ui');
   const [comments, setComments] = useState<VideoCommentView[]>(initialComments);
@@ -31,7 +43,10 @@ export function CommentSection({ slug, initialComments, initialCursor, currentUs
   // it to its thread root, make sure that root is loaded (it may be on a later
   // page), then drive the highlight/auto-expand through context.
   useEffect(() => {
-    const focusId = new URLSearchParams(window.location.search).get('focus');
+    const focusId =
+      focusCommentId !== undefined
+        ? focusCommentId
+        : new URLSearchParams(window.location.search).get('focus');
     if (!focusId) return;
     let cancelled = false;
     (async () => {
@@ -51,7 +66,7 @@ export function CommentSection({ slug, initialComments, initialCursor, currentUs
     return () => {
       cancelled = true;
     };
-  }, [slug]);
+  }, [slug, focusCommentId]);
 
   const reload = useCallback(
     async (nextSort: CommentSort) => {

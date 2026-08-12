@@ -265,6 +265,29 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   pointer-capture drag, '' = 完整显示; a crop without a cover is never stored). Detail page
   section order: 讲师/嘉宾 ABOVE 活动介绍; right rail ends with 相关活动
   (`listRelatedEvents`: upcoming + live, same kind OR overlapping topics, ≤4).
+- **随刷短视频 (Shorts, migration `20260811000000_add_short_videos`)**: TikTok-style vertical
+  swipe feed riding the EXISTING Video board — shorts are `Video` rows with `isShort: true`
+  (member `sourceType: user_uploaded`, published-public on create), reusing VideoLike/VideoFavorite/
+  VideoComment (+CommentSection in a drawer)/VideoView and the videos file route. **Every Video
+  read must now decide about `isShort`**: `PUBLISHED_PUBLIC` (lib/video/queries.ts), lib/search.ts,
+  /manage/videos (+its edit page and the admin PATCH/DELETE `/api/videos/[slug]`, which 404 shorts —
+  their DELETE hard-unlinks files, shorts soft-delete keeps them) all filter it; `favoriteVideos`
+  deliberately does NOT (稍后看 is the only favorites surface; short cards deep-link fine because
+  `/videos/[slug]` redirects shorts → `/videos/shorts?v=<id>&focus=…`, which keeps comment
+  notifications working). Feed `/videos/shorts` (app/videos/shorts/): scroll-snap `y mandatory` +
+  `scroll-snap-stop: always`, ONE IntersectionObserver max-ratio active detection, real `<video>`
+  only at active ±2 (decoder windowing is correctness, not perf), muted-first autoplay with
+  persisted unmute (`localStorage shorts:sound`) + play()-rejection tap-to-play fallback, keyset
+  `createdAt|id` / hot `o:<n>` cursors (lib/video/shorts-queries.ts). Member upload =
+  `/api/shorts/upload` (raw-body protocol, 500 MB/5 min caps, own 2 GB/day ledger, faststart remux);
+  publish = POST `/api/shorts` re-validating echoed keys (shape + on-disk + not-attached-elsewhere)
+  and ffprobe-ing REAL duration when available (client value is advisory). Views count ONLY via the
+  deduped `/api/shorts/[id]/view` (VideoView sessionHash; the long-video +1-per-open ping 404s
+  shorts — viewCount ranks the hot feed). AI 文案润色 lives in `lib/video/shorts-caption.ts`,
+  SERVER-ONLY (its extractJsonObject chain reaches yauzl/node:crypto — client components import
+  only the import-free `lib/video/shorts-shared.ts`). 精选 (admin `featured`, /manage/shorts or
+  PATCH `/api/shorts/[id]`) feeds the homepage + /videos strips (`featuredShorts`: featured first,
+  hot backfill). i18n namespace `shorts`.
 - **表情包 (Stickers, migration `20260807150000_add_stickers_polls`)**: WeChat-style personal
   meme library, ONE integration pair — the 😊 button in `RichTextEditor`'s toolbar (every
   composer gets it) and a src-prefix branch in `MarkdownRenderer`. `UserSticker` = per-user
@@ -272,7 +295,11 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   `/api/uploads/[...key]` serves them for free); the URL prefix `/api/uploads/stickers/`
   (lib/stickers.ts) IS the render-time trust signal — test the RAW stored src BEFORE
   withBasePath. Files are NEVER unlinked on row delete (old messages keep rendering; same
-  policy as editor images). 添加到表情包 (`POST /api/stickers/add`) re-validates the
+  policy as editor images). Rendered-sticker interactions (`StickerImage`): CLICK = enlarge
+  in the shared `ImageLightbox` (its optional `actions` slot carries 添加到表情包 — that is
+  also the touch path), RIGHT-CLICK = cursor-anchored 添加到表情包 menu; the Toaster sits at
+  z-[120] ON PURPOSE so toasts fired from inside the z-[100] lightbox stay visible.
+  添加到表情包 (`POST /api/stickers/add`) re-validates the
   client-sent key against `STICKER_KEY_RE` + on-disk existence — never trust the URL; dedupe
   via the `(userId, fileKey)` unique. Panel (`StickerPicker`, portaled — editor root is
   overflow-hidden): bottom tabs 最近/全部/收藏 derive from `lastUsedAt`/`favorited`

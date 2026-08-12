@@ -1,0 +1,156 @@
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
+import { prisma } from '@/lib/db';
+import { auth } from '@/lib/auth';
+import { rateLimit } from '@/lib/rate-limit';
+import { apiReason } from '@/lib/api-errors';
+import { toPublicAuthor } from '@/lib/user-identity';
+import { uniqueVideoSlug } from '@/lib/video/slug';
+import { probeVideoDurationSec, statVideoFileAsync, videoPublicUrl } from '@/lib/video/storage';
+import { listShorts, SHORT_FEED_SELECT } from '@/lib/video/shorts-queries';
+import {
+  MAX_SHORT_CAPTION_CHARS,
+  MAX_SHORT_DURATION_SEC,
+  isValidShortPosterKey,
+  isValidShortSourceKey,
+  parseShortsSort,
+  shortTitleFromCaption,
+} from '@/lib/video/shorts-shared';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// GET /api/shorts?cursor=&limit=&sort= (login) — feed pages for the swipe UI.
+export async function GET(req: Request) {
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+
+  const sp = new URL(req.url).searchParams;
+  const { items, hasMore, nextCursor } = await listShorts({
+    cursor: sp.get('cursor'),
+    limit: Number(sp.get('limit') ?? 8),
+    sort: parseShortsSort(sp.get('sort')),
+    viewerId: session.user.id,
+  });
+  const adm = Boolean(session.user.isAdmin);
+  return NextResponse.json({
+    items: items.map((s) => ({ ...s, uploader: toPublicAuthor(s.uploader, adm) })),
+    hasMore,
+    nextCursor,
+  });
+}
+
+const createSchema = z.object({
+  caption: z.string().trim().min(1).max(MAX_SHORT_CAPTION_CHARS),
+  videoKey: z.string().min(1).max(200),
+  posterKey: z.string().min(1).max(200).optional(),
+  durationSec: z.number().int().min(1).max(60 * 60),
+  width: z.number().int().min(1).max(8192).optional(),
+  height: z.number().int().min(1).max(8192).optional(),
+});
+
+// POST /api/shorts (any logged-in user) — publish an uploaded short.
+export async function POST(req: Request) {
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+
+  const gate = rateLimit(`shorts:create:${session.user.id}`, 20, DAY_MS);
+  if (!gate.allowed) {
+    return NextResponse.json(
+      { error: 'rate_limited', reason: await apiReason('rate_limited'), resetAt: gate.resetAt },
+      { status: 429 },
+    );
+  }
+
+  const body = await req.json().catch(() => null);
+  const parsed = createSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: 'invalid_input', reason: await apiReason('invalid_request') },
+      { status: 400 },
+    );
+  }
+  const d = parsed.data;
+
+  // Re-validate the echoed storage keys: shape first (a crafted key must never
+  // point a row at an arbitrary path)…
+  if (!isValidShortSourceKey(d.videoKey) || (d.posterKey && !isValidShortPosterKey(d.posterKey))) {
+    return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
+  }
+  // …then on-disk existence (sizeBytes comes from the stat — never the client)…
+  const [videoStat, posterStat] = await Promise.all([
+    statVideoFileAsync(d.videoKey),
+    d.posterKey ? statVideoFileAsync(d.posterKey) : Promise.resolve(null),
+  ]);
+  if (!videoStat || videoStat.size === 0 || (d.posterKey && !posterStat)) {
+    return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
+  }
+  // …then reuse: keys are readable from any served URL and there is no per-key
+  // ownership ledger, so reject keys already attached to another Video row
+  // (closes the attach-someone-else's-file hole; same idea as mediaKeysAvailable).
+  const keys = [d.videoKey, ...(d.posterKey ? [d.posterKey] : [])];
+  const inUse = await prisma.video.count({
+    where: {
+      OR: [
+        { videoKey: { in: keys } },
+        { posterKey: { in: keys } },
+        { previewKey: { in: keys } },
+      ],
+    },
+  });
+  if (inUse > 0) {
+    return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
+  }
+
+  // Enforce the "shorts are short" cap on the REAL container duration when the
+  // box has ffprobe (client-probed durationSec is attacker-controlled); fall
+  // back to the client value where ffprobe is absent (best-effort by design,
+  // same posture as faststartRemux).
+  const probed = await probeVideoDurationSec(d.videoKey);
+  const durationSec = probed !== null ? Math.max(1, Math.round(probed)) : d.durationSec;
+  if (durationSec > MAX_SHORT_DURATION_SEC) {
+    return NextResponse.json(
+      { error: 'too_long', reason: await apiReason('invalid_request') },
+      { status: 400 },
+    );
+  }
+
+  const title = shortTitleFromCaption(d.caption);
+  const slug = await uniqueVideoSlug(title);
+
+  const short = await prisma.video.create({
+    data: {
+      slug,
+      title,
+      summary: d.caption,
+      isShort: true,
+      sourceType: 'user_uploaded',
+      status: 'published',
+      visibility: 'public',
+      publishedAt: new Date(),
+      uploaderId: session.user.id,
+      videoKey: d.videoKey,
+      videoUrl: videoPublicUrl(d.videoKey),
+      posterKey: d.posterKey ?? null,
+      posterUrl: d.posterKey ? videoPublicUrl(d.posterKey) : null,
+      mimeType: videoStat.contentType,
+      sizeBytes: videoStat.size,
+      width: d.width ?? null,
+      height: d.height ?? null,
+      durationSec,
+    },
+    select: SHORT_FEED_SELECT,
+  });
+
+  return NextResponse.json({
+    ok: true,
+    short: {
+      ...short,
+      uploader: toPublicAuthor(short.uploader, Boolean(session.user.isAdmin)),
+      likedByMe: false,
+      favoritedByMe: false,
+    },
+  });
+}

@@ -10,9 +10,13 @@ export async function POST(_req: Request, { params }: { params: { slug: string }
 
   const video = await prisma.video.findUnique({
     where: { slug: params.slug },
-    select: { id: true, deletedAt: true },
+    select: { id: true, deletedAt: true, isShort: true },
   });
   if (!video || video.deletedAt) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  // 随刷短视频 count views ONLY through the deduped POST /api/shorts/[id]/view
+  // (per-user-per-day sessionHash); this undeduped ping would let anyone inflate
+  // a short's viewCount — and viewCount ranks the shorts hot feed.
+  if (video.isShort) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   await prisma.video.update({ where: { id: video.id }, data: { viewCount: { increment: 1 } } });
   return NextResponse.json({ ok: true });

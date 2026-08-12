@@ -47,6 +47,9 @@ export async function PATCH(req: Request, { params }: { params: { slug: string }
 
   const video = await prisma.video.findUnique({ where: { slug: params.slug } });
   if (!video || video.deletedAt) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  // 随刷短视频 are moderated via PATCH /api/shorts/[id] (per-field permissions,
+  // caption/featured only) — the long-video editor's fields don't apply.
+  if (video.isShort) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   const data: Record<string, unknown> = {};
   for (const key of [
@@ -128,6 +131,9 @@ export async function DELETE(req: Request, { params }: { params: { slug: string 
 
   const video = await prisma.video.findUnique({ where: { slug: params.slug } });
   if (!video || video.deletedAt) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  // 随刷短视频 use DELETE /api/shorts/[id]: soft delete, files KEPT on disk —
+  // this route's hard blob cleanup must never run on a short.
+  if (video.isShort) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   await prisma.video.update({ where: { id: video.id }, data: { deletedAt: new Date() } });
   await deleteVideoFile(video.videoKey);

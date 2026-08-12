@@ -15,11 +15,14 @@ export function ImageLightbox({
   src,
   alt = '',
   className,
+  actions,
   children,
 }: {
   src: string;
   alt?: string;
   className?: string;
+  /** Optional action row rendered under the enlarged image (e.g. 添加到表情包). */
+  actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const tc = useTranslations('common');
@@ -73,13 +76,28 @@ export function ImageLightbox({
             >
               <X className="h-5 w-5" />
             </button>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={withBasePath(src)}
-              alt={alt}
-              className="max-h-[92vh] max-w-[94vw] rounded-lg object-contain shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            />
+            {actions ? (
+              <div
+                className="flex max-h-[92vh] max-w-[94vw] flex-col items-center gap-3"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={withBasePath(src)}
+                  alt={alt}
+                  className="min-h-0 max-h-[85vh] max-w-full rounded-lg object-contain shadow-2xl"
+                />
+                <div className="flex items-center gap-2">{actions}</div>
+              </div>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={withBasePath(src)}
+                alt={alt}
+                className="max-h-[92vh] max-w-[94vw] rounded-lg object-contain shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              />
+            )}
           </div>,
           document.body,
         )}

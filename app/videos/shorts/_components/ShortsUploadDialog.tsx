@@ -1,0 +1,486 @@
+'use client';
+
+// 上传短视频 dialog: pick a video (≤500 MB, ≤5 min), probe duration/size via a
+// detached <video>, auto-capture a poster frame to canvas, raw-body XHR upload
+// (house protocol — XHR for upload.onprogress; the fetch basePath shim does NOT
+// cover XHR, so endpoints are wrapped in withBasePath explicitly), then publish
+// via POST /api/shorts. The caption field has an AI 润色 assist.
+
+import { useEffect, useRef, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Clapperboard, Loader2, Sparkles, Upload, X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { pushToast } from '@/components/Toaster';
+import { withBasePath } from '@/lib/base-path';
+import { formatDuration } from '@/lib/video/types';
+import {
+  MAX_SHORT_CAPTION_CHARS,
+  MAX_SHORT_DURATION_SEC,
+  MAX_SHORT_VIDEO_BYTES,
+} from '@/lib/video/shorts-shared';
+import type { ShortView } from './types';
+
+const ACCEPTED_TYPES = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
+
+interface Meta {
+  duration: number;
+  width: number;
+  height: number;
+}
+
+/** Raw-body upload protocol shared by every upload route in the app. */
+function uploadRaw(
+  file: Blob,
+  filename: string,
+  kind: 'source' | 'poster',
+  onProgress?: (pct: number) => void,
+): Promise<{ key: string; url: string; size: number }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', withBasePath('/api/shorts/upload'));
+    xhr.setRequestHeader('content-type', file.type || 'application/octet-stream');
+    xhr.setRequestHeader('x-upload-kind', kind);
+    xhr.setRequestHeader('x-filename', encodeURIComponent(filename));
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress((e.loaded / e.total) * 100);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText));
+        } catch {
+          reject(new Error('bad_response'));
+        }
+      } else {
+        let msg = 'upload_failed';
+        try {
+          msg = JSON.parse(xhr.responseText).error || msg;
+        } catch {
+          /* ignore */
+        }
+        reject(new Error(msg));
+      }
+    };
+    xhr.onerror = () => reject(new Error('network_error'));
+    xhr.send(file);
+  });
+}
+
+/** Probe duration/dimensions and capture a poster frame from a picked file. */
+async function probeAndCapture(
+  url: string,
+): Promise<{ meta: Meta; poster: Blob | null }> {
+  const video = document.createElement('video');
+  video.preload = 'metadata';
+  video.muted = true;
+  video.playsInline = true;
+  video.src = url;
+
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('probe_timeout')), 15000);
+    video.onloadedmetadata = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    video.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error('probe_failed'));
+    };
+  });
+
+  // Streamed/recorded WebM often reports duration = Infinity from metadata
+  // alone. Standard workaround: seek far past the end — the durationchange
+  // that follows carries the real value.
+  if (!Number.isFinite(video.duration)) {
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => resolve(), 8000);
+      video.ondurationchange = () => {
+        if (Number.isFinite(video.duration)) {
+          clearTimeout(timer);
+          resolve();
+        }
+      };
+      video.currentTime = Number.MAX_SAFE_INTEGER;
+    });
+    try {
+      video.currentTime = 0;
+    } catch {
+      /* fine — the capture step seeks anyway */
+    }
+    if (!Number.isFinite(video.duration)) throw new Error('probe_failed');
+  }
+
+  const meta: Meta = {
+    duration: video.duration || 0,
+    width: video.videoWidth || 0,
+    height: video.videoHeight || 0,
+  };
+
+  // Poster capture is best-effort — publishing without one is fine (the player
+  // then shows the first decoded frame).
+  let poster: Blob | null = null;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('seek_timeout')), 8000);
+      video.onseeked = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      video.onerror = () => {
+        clearTimeout(timer);
+        reject(new Error('seek_failed'));
+      };
+      video.currentTime = Math.min(0.5, (meta.duration || 1) / 2);
+    });
+    const canvas = document.createElement('canvas');
+    const scale = meta.width > 720 ? 720 / meta.width : 1;
+    canvas.width = Math.max(1, Math.round(meta.width * scale));
+    canvas.height = Math.max(1, Math.round(meta.height * scale));
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      poster = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.85),
+      );
+    }
+  } catch {
+    poster = null;
+  }
+  video.removeAttribute('src');
+  video.load();
+  return { meta, poster };
+}
+
+interface Props {
+  onClose: () => void;
+  onPublished: (short: ShortView) => void;
+}
+
+export function ShortsUploadDialog({ onClose, onPublished }: Props) {
+  const t = useTranslations('shorts');
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const [file, setFile] = useState<File | null>(null);
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [meta, setMeta] = useState<Meta | null>(null);
+  const [poster, setPoster] = useState<Blob | null>(null);
+  const [probing, setProbing] = useState(false);
+  const [caption, setCaption] = useState('');
+  const [aiBusy, setAiBusy] = useState(false);
+  const [phase, setPhase] = useState<'idle' | 'uploading' | 'publishing'>('idle');
+  const [pct, setPct] = useState(0);
+  const busy = phase !== 'idle';
+  const objectUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    objectUrlRef.current = objectUrl;
+  }, [objectUrl]);
+  useEffect(
+    () => () => {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && !busy) onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [busy, onClose]);
+
+  function uploadErrorKey(e: unknown): string {
+    const msg = e instanceof Error ? e.message : '';
+    if (msg === 'file_too_large') return 'err_too_large';
+    if (msg === 'unsupported_type') return 'err_unsupported';
+    if (msg === 'quota_exceeded') return 'err_quota';
+    if (msg === 'rate_limited') return 'err_rate_limited';
+    if (msg === 'network_error') return 'err_network';
+    return 'err_upload_failed';
+  }
+
+  async function pick(list: FileList | null) {
+    const f = list?.[0];
+    if (!f) return;
+    if (!ACCEPTED_TYPES.has(f.type)) {
+      pushToast('error', t('err_unsupported'));
+      return;
+    }
+    if (f.size > MAX_SHORT_VIDEO_BYTES) {
+      pushToast('error', t('err_too_large'));
+      return;
+    }
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    const url = URL.createObjectURL(f);
+    setFile(f);
+    setObjectUrl(url);
+    setMeta(null);
+    setPoster(null);
+    setProbing(true);
+    try {
+      const { meta: m, poster: p } = await probeAndCapture(url);
+      if (m.duration > MAX_SHORT_DURATION_SEC + 1) {
+        pushToast('error', t('err_too_long', { max: Math.round(MAX_SHORT_DURATION_SEC / 60) }));
+        setFile(null);
+        setObjectUrl(null);
+        URL.revokeObjectURL(url);
+        return;
+      }
+      setMeta(m);
+      setPoster(p);
+    } catch {
+      pushToast('error', t('err_probe_failed'));
+      setFile(null);
+      setObjectUrl(null);
+      URL.revokeObjectURL(url);
+    } finally {
+      setProbing(false);
+    }
+  }
+
+  async function polish() {
+    const draft = caption.trim();
+    if (!draft || aiBusy) return;
+    setAiBusy(true);
+    try {
+      const res = await fetch('/api/shorts/assist', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ draft }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        pushToast('error', data.reason ?? t('ai_failed'));
+        return;
+      }
+      if (typeof data.caption === 'string' && data.caption.trim()) {
+        setCaption(data.caption.trim().slice(0, MAX_SHORT_CAPTION_CHARS));
+        pushToast('success', t('ai_done'));
+      }
+    } catch {
+      pushToast('error', t('ai_failed'));
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function publish() {
+    if (!file || !meta || !caption.trim() || busy) return;
+    setPhase('uploading');
+    setPct(0);
+    try {
+      const src = await uploadRaw(file, file.name, 'source', setPct);
+      let posterKey: string | undefined;
+      if (poster) {
+        try {
+          const p = await uploadRaw(poster, 'poster.jpg', 'poster');
+          posterKey = p.key;
+        } catch {
+          /* poster is optional — publish without it */
+        }
+      }
+      setPhase('publishing');
+      const res = await fetch('/api/shorts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          caption: caption.trim(),
+          videoKey: src.key,
+          posterKey,
+          durationSec: Math.max(1, Math.round(meta.duration)),
+          width: meta.width || undefined,
+          height: meta.height || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        pushToast('error', t('login_required'));
+        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        return;
+      }
+      if (!res.ok) {
+        pushToast('error', data.reason ?? t('err_publish_failed'));
+        return;
+      }
+      onPublished(data.short as ShortView);
+    } catch (e) {
+      pushToast('error', t(uploadErrorKey(e)));
+    } finally {
+      setPhase('idle');
+    }
+  }
+
+  const ready = Boolean(file && meta && caption.trim()) && !probing && !busy;
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4"
+      onClick={() => {
+        if (!busy) onClose();
+      }}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-label={t('upload_title')}
+        className="max-h-[90dvh] w-[min(94vw,560px)] overflow-y-auto rounded-2xl bg-white p-5 text-zinc-900 shadow-2xl dark:bg-zinc-950 dark:text-zinc-100"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            <Clapperboard className="h-4.5 w-4.5 text-accent-500" />
+            {t('upload_title')}
+          </h2>
+          <button
+            type="button"
+            onClick={() => {
+              if (!busy) onClose();
+            }}
+            className="flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            aria-label={t('close')}
+          >
+            <X className="h-4.5 w-4.5" />
+          </button>
+        </div>
+
+        {/* File pick / preview */}
+        {!file ? (
+          <label className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-zinc-300 px-6 py-12 text-center transition hover:border-accent-400 hover:bg-accent-500/5 dark:border-zinc-700">
+            <Upload className="h-8 w-8 text-zinc-400" />
+            <div>
+              <p className="text-sm font-medium">{t('pick_video')}</p>
+              <p className="mt-1 text-xs text-muted">
+                {t('pick_hint', { minutes: Math.round(MAX_SHORT_DURATION_SEC / 60), mb: 500 })}
+              </p>
+            </div>
+            <input
+              type="file"
+              accept="video/mp4,video/webm,video/quicktime"
+              className="hidden"
+              onChange={(e) => {
+                void pick(e.target.files);
+                e.target.value = '';
+              }}
+            />
+          </label>
+        ) : (
+          <div className="space-y-2">
+            {objectUrl && (
+              // eslint-disable-next-line jsx-a11y/media-has-caption -- user-picked local preview
+              <video
+                src={objectUrl}
+                controls
+                muted
+                playsInline
+                className="max-h-64 w-full rounded-xl bg-black"
+              />
+            )}
+            <div className="flex items-center justify-between text-xs text-muted">
+              <span className="truncate">{file.name}</span>
+              <span className="flex shrink-0 items-center gap-2">
+                {probing ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : meta ? (
+                  <>
+                    <span>{formatDuration(Math.round(meta.duration))}</span>
+                    {meta.width > 0 && meta.height > 0 && (
+                      <span>
+                        {meta.width}×{meta.height}
+                      </span>
+                    )}
+                  </>
+                ) : null}
+                {!busy && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (objectUrl) URL.revokeObjectURL(objectUrl);
+                      setFile(null);
+                      setObjectUrl(null);
+                      setMeta(null);
+                      setPoster(null);
+                    }}
+                    className="font-medium text-accent-600 hover:underline dark:text-accent-400"
+                  >
+                    {t('repick')}
+                  </button>
+                )}
+              </span>
+            </div>
+            {meta && meta.width > meta.height && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">{t('landscape_hint')}</p>
+            )}
+          </div>
+        )}
+
+        {/* Caption + AI polish */}
+        <div className="mt-4">
+          <div className="mb-1.5 flex items-center justify-between">
+            <label htmlFor="shorts-caption" className="text-sm font-medium">
+              {t('caption_label')}
+            </label>
+            <button
+              type="button"
+              onClick={() => void polish()}
+              disabled={aiBusy || !caption.trim() || busy}
+              className="inline-flex items-center gap-1 rounded-full bg-accent-500/10 px-2.5 py-1 text-xs font-medium text-accent-600 transition hover:bg-accent-500/20 disabled:opacity-40 dark:text-accent-400"
+            >
+              {aiBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {t('ai_polish')}
+            </button>
+          </div>
+          <textarea
+            id="shorts-caption"
+            value={caption}
+            onChange={(e) => setCaption(e.target.value.slice(0, MAX_SHORT_CAPTION_CHARS))}
+            rows={4}
+            disabled={busy}
+            placeholder={t('caption_placeholder')}
+            className="w-full resize-none rounded-xl border border-zinc-300 bg-transparent px-3 py-2.5 text-sm outline-none transition focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-700"
+          />
+          <p className="mt-1 text-right text-[11px] tabular-nums text-muted">
+            {caption.length}/{MAX_SHORT_CAPTION_CHARS}
+          </p>
+        </div>
+
+        {/* Progress */}
+        {phase === 'uploading' && (
+          <div className="mt-2">
+            <div className="h-1.5 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+              <div
+                className="h-full rounded-full bg-accent-500 transition-[width]"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <p className="mt-1 text-xs text-muted">{t('uploading', { pct: Math.round(pct) })}</p>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (!busy) onClose();
+            }}
+            disabled={busy}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          >
+            {t('cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={() => void publish()}
+            disabled={!ready}
+            className="inline-flex items-center gap-2 rounded-lg bg-accent-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-accent-600 disabled:opacity-40"
+          >
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+            {phase === 'publishing' ? t('publishing') : t('publish')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

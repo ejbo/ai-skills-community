@@ -3,10 +3,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Eraser, Loader2, Send, Sparkles } from 'lucide-react';
+import { AtSign, Eraser, Highlighter, Loader2, Send, Sparkles } from 'lucide-react';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { pushToast } from '@/components/Toaster';
-import { SidePanel } from './SidePanel';
 
 export interface Citation {
   key: string;
@@ -54,21 +53,20 @@ const ERROR_KEYS: Record<string, string> = {
 };
 
 /**
- * 问问这篇文档 — inline right panel. The conversation is persisted per user
- * per doc (loaded from /chat/history on open; the chat route appends each
- * exchange server-side).
+ * 助手 tab body — AI chat over this doc with [cX-Y] citations. The conversation
+ * is persisted per user per doc (loaded from /chat/history when the tab becomes
+ * active; the chat route appends each exchange server-side). Rendered inside
+ * ReaderRightPanel, which supplies the panel chrome + tab header.
  */
-export function ReaderChatPanel({
-  open,
-  onClose,
+export function AssistantTab({
+  active,
   docId,
   aiIndexState,
   questions,
   prefill,
   onCitationJump,
 }: {
-  open: boolean;
-  onClose: () => void;
+  active: boolean;
   docId: string;
   aiIndexState: string;
   questions: string[];
@@ -94,7 +92,7 @@ export function ReaderChatPanel({
 
   // Saved conversation.
   useEffect(() => {
-    if (!open || messages !== null) return;
+    if (!active || messages !== null) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -120,16 +118,16 @@ export function ReaderChatPanel({
     return () => {
       cancelled = true;
     };
-  }, [open, docId, messages]);
+  }, [active, docId, messages]);
 
   useEffect(() => {
     if (!prefill) return;
     setInput(prefill.text.slice(0, 4000));
-    if (open) window.setTimeout(() => inputRef.current?.focus(), 150);
-  }, [prefill, open]);
+    if (active) window.setTimeout(() => inputRef.current?.focus(), 150);
+  }, [prefill, active]);
 
   useEffect(() => {
-    if (!open || indexState !== 'running') return;
+    if (!active || indexState !== 'running') return;
     const timer = window.setInterval(async () => {
       try {
         const res = await fetch(`/api/library/docs/${docId}`);
@@ -144,7 +142,7 @@ export function ReaderChatPanel({
       }
     }, 3000);
     return () => window.clearInterval(timer);
-  }, [open, indexState, docId, router]);
+  }, [active, indexState, docId, router]);
 
   async function triggerIndexing() {
     if (triggering) return;
@@ -303,153 +301,155 @@ export function ReaderChatPanel({
     if (citation) onCitationJump(citation);
   }
 
-  if (!open) return null;
-
   const ready = indexState === 'ready';
   const list = messages ?? [];
 
-  return (
-    <SidePanel
-      side="right"
-      title={
-        <span className="flex items-center gap-1.5">
-          <Sparkles className="h-4 w-4 text-accent-500" />
-          {t('ask_this_doc')}
-        </span>
-      }
-      onClose={onClose}
-      widthClass="lg:w-[380px]"
-      headerExtra={
-        ready && list.length > 0 ? (
-          <button
-            type="button"
-            onClick={() => void clearHistory()}
-            title={t('clear_chat')}
-            aria-label={t('clear_chat')}
-            className="r-muted grid h-7 w-7 shrink-0 place-items-center rounded-lg transition hover:bg-[var(--reader-hover)]"
-          >
-            <Eraser className="h-3.5 w-3.5" />
-          </button>
-        ) : null
-      }
-    >
-      {!ready ? (
-        <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 px-8 text-center">
-          {indexState === 'running' ? (
-            <>
-              <Loader2 className="h-6 w-6 animate-spin text-accent-500" />
-              <p className="text-sm font-medium">{t('ai_reading_doc')}</p>
-            </>
-          ) : (
-            <>
-              <Sparkles className="r-muted h-6 w-6" />
-              <p className="text-sm font-medium">{t('ai_not_indexed')}</p>
-              <p className="r-muted text-xs">{t('ai_not_indexed_desc')}</p>
-              <button
-                type="button"
-                disabled={triggering}
-                onClick={() => void triggerIndexing()}
-                className="mt-1 inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
-              >
-                {triggering && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                {t('generate_ai_guide')}
-              </button>
-            </>
-          )}
-          {error && <p className="text-xs text-danger">{error}</p>}
-        </div>
-      ) : (
-        <div className="flex h-full min-h-0 flex-col">
-          <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4">
-            {messages === null ? (
-              <div className="r-muted flex items-center justify-center gap-2 py-8 text-sm">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {t('loading_chat')}
-              </div>
-            ) : list.length === 0 ? (
-              <div className="space-y-3">
-                <p className="r-muted text-sm">
-                  {t('chat_intro')}
-                </p>
-                {questions.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {questions.map((q) => (
-                      <button
-                        key={q}
-                        type="button"
-                        onClick={() => {
-                          setInput(q.slice(0, 4000));
-                          inputRef.current?.focus();
-                        }}
-                        className="rborder rounded-full border px-3 py-1 text-left text-xs transition hover:border-accent-500 hover:text-[var(--reader-accent)]"
-                      >
-                        {q}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              list.map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className={`max-w-[88%] rounded-2xl px-3 py-2 text-sm ${
-                      msg.role === 'user'
-                        ? 'bg-accent-500 text-white'
-                        : 'rborder border bg-[var(--reader-hover)]'
-                    }`}
-                  >
-                    {msg.role === 'assistant' ? (
-                      msg.content ? (
-                        <div className="reader-chat-md" onClick={(e) => handleCiteClick(e, msg.citations)}>
-                          <MarkdownRenderer compact content={transformCitations(msg.content)} />
-                        </div>
-                      ) : (
-                        <span className="r-muted flex items-center gap-1.5">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          {t('retrieving_source')}
-                        </span>
-                      )
-                    ) : (
-                      <span className="whitespace-pre-wrap break-words">{msg.content}</span>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {error && (
-            <div className="border-t border-danger/30 bg-danger/5 px-4 py-2 text-xs text-danger">{error}</div>
-          )}
-
-          <div className="rborder flex items-end gap-2 border-t p-3">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value.slice(0, 4000))}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                  e.preventDefault();
-                  void send(input);
-                }
-              }}
-              rows={1}
-              placeholder={t('chat_placeholder')}
-              className="rborder h-9 flex-1 resize-none rounded-lg border bg-transparent px-3 py-1.5 text-sm leading-6 focus:border-accent-500 focus:outline-none"
-            />
+  if (!ready) {
+    return (
+      <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 px-8 text-center">
+        {indexState === 'running' ? (
+          <>
+            <Loader2 className="h-6 w-6 animate-spin text-accent-500" />
+            <p className="text-sm font-medium">{t('ai_reading_doc')}</p>
+          </>
+        ) : (
+          <>
+            <Sparkles className="r-muted h-6 w-6" />
+            <p className="text-sm font-medium">{t('ai_not_indexed')}</p>
+            <p className="r-muted text-xs">{t('ai_not_indexed_desc')}</p>
             <button
               type="button"
-              onClick={() => void send(input)}
-              disabled={pending || !input.trim()}
-              aria-label={t('send')}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-500 text-white transition hover:bg-accent-600 disabled:opacity-60"
+              disabled={triggering}
+              onClick={() => void triggerIndexing()}
+              className="mt-1 inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
             >
-              {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {triggering && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {t('generate_ai_guide')}
+            </button>
+          </>
+        )}
+        {error && <p className="text-xs text-danger">{error}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4">
+        {ready && list.length > 0 && (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => void clearHistory()}
+              title={t('clear_chat')}
+              aria-label={t('clear_chat')}
+              className="r-muted grid h-7 w-7 shrink-0 place-items-center rounded-lg transition hover:bg-[var(--reader-hover)]"
+            >
+              <Eraser className="h-3.5 w-3.5" />
             </button>
           </div>
-        </div>
+        )}
+        {messages === null ? (
+          <div className="r-muted flex items-center justify-center gap-2 py-8 text-sm">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {t('loading_chat')}
+          </div>
+        ) : list.length === 0 ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="reader-assist-card">
+                <Highlighter className="h-4 w-4 text-accent-500" />
+                <p className="mt-1.5 text-sm font-semibold">{t('assist_card_highlight_title')}</p>
+                <p className="r-muted mt-0.5 text-xs leading-relaxed">
+                  {t('assist_card_highlight_desc')}
+                </p>
+              </div>
+              <div className="reader-assist-card">
+                <AtSign className="h-4 w-4 text-accent-500" />
+                <p className="mt-1.5 text-sm font-semibold">{t('assist_card_context_title')}</p>
+                <p className="r-muted mt-0.5 text-xs leading-relaxed">
+                  {t('assist_card_context_desc')}
+                </p>
+              </div>
+            </div>
+            <p className="r-muted text-sm">{t('chat_intro')}</p>
+            {questions.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {questions.map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    onClick={() => {
+                      setInput(q.slice(0, 4000));
+                      inputRef.current?.focus();
+                    }}
+                    className="rborder rounded-full border px-3 py-1 text-left text-xs transition hover:border-accent-500 hover:text-[var(--reader-accent)]"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          list.map((msg, i) => (
+            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div
+                className={`max-w-[88%] rounded-2xl px-3 py-2 text-sm ${
+                  msg.role === 'user'
+                    ? 'bg-accent-500 text-white'
+                    : 'rborder border bg-[var(--reader-hover)]'
+                }`}
+              >
+                {msg.role === 'assistant' ? (
+                  msg.content ? (
+                    <div className="reader-chat-md" onClick={(e) => handleCiteClick(e, msg.citations)}>
+                      <MarkdownRenderer compact content={transformCitations(msg.content)} />
+                    </div>
+                  ) : (
+                    <span className="r-muted flex items-center gap-1.5">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      {t('retrieving_source')}
+                    </span>
+                  )
+                ) : (
+                  <span className="whitespace-pre-wrap break-words">{msg.content}</span>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {error && (
+        <div className="border-t border-danger/30 bg-danger/5 px-4 py-2 text-xs text-danger">{error}</div>
       )}
-    </SidePanel>
+
+      <div className="rborder flex items-end gap-2 border-t p-3">
+        <textarea
+          ref={inputRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value.slice(0, 4000))}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              void send(input);
+            }
+          }}
+          rows={1}
+          placeholder={t('chat_composer_placeholder')}
+          className="rborder h-9 flex-1 resize-none rounded-lg border bg-transparent px-3 py-1.5 text-sm leading-6 focus:border-accent-500 focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => void send(input)}
+          disabled={pending || !input.trim()}
+          aria-label={t('send')}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-500 text-white transition hover:bg-accent-600 disabled:opacity-60"
+        >
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+        </button>
+      </div>
+    </div>
   );
 }

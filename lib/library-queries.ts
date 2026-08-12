@@ -176,6 +176,28 @@ export async function getFeaturedDocs(limit = 8): Promise<DocCardData[]> {
   });
 }
 
+/**
+ * 相似文档 — up to `limit` OTHER public+ready docs that share this doc's type
+ * or at least one category, newest first. Public-only mirrors the profile/shelf
+ * visibility rule so the reader never surfaces a doc the viewer couldn't open.
+ */
+export async function getRelatedDocs(docId: string, limit = 6): Promise<DocCardData[]> {
+  const take = Math.min(12, Math.max(1, Math.trunc(limit) || 6));
+  const src = await prisma.libraryDoc.findUnique({
+    where: { id: docId },
+    select: { docType: true, categories: true },
+  });
+  if (!src) return [];
+  const or: Prisma.LibraryDocWhereInput[] = [{ docType: src.docType }];
+  if (src.categories.length > 0) or.push({ categories: { hasSome: src.categories } });
+  return prisma.libraryDoc.findMany({
+    where: { ...READY_DOC_WHERE, visibility: 'public', id: { not: docId }, OR: or },
+    orderBy: [{ featured: 'desc' }, { createdAt: 'desc' }],
+    take,
+    select: DOC_CARD_SELECT,
+  });
+}
+
 /** Per-category doc counts for the browse sidebar (ready, non-private docs). */
 export async function getCategoryCounts(): Promise<Record<string, number>> {
   const rows = await prisma.libraryDoc.findMany({
@@ -337,6 +359,7 @@ export interface ReaderData {
     aiOverview: AiOverview | null;
     aiIndexState: string;
     language: string | null;
+    commentCount: number;
   };
   /** 'flow' = whole doc stacked for continuous scrolling; 'paged' = one chapter. */
   mode: 'paged' | 'flow';
@@ -392,6 +415,7 @@ export async function getDocReaderData(
       aiOverview: true,
       aiIndexState: true,
       language: true,
+      commentCount: true,
       status: true,
       visibility: true,
       uploaderId: true,
@@ -491,6 +515,7 @@ export async function getDocReaderData(
       aiOverview: doc.aiOverview as AiOverview | null,
       aiIndexState: doc.aiIndexState,
       language: doc.language,
+      commentCount: doc.commentCount,
     },
     mode,
     flowAvailable,

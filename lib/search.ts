@@ -89,6 +89,8 @@ export async function searchSite(
           status: 'published',
           visibility: { not: 'private' },
           deletedAt: null,
+          // 随刷短视频 stay out of the long-video result list (own feed surface).
+          isShort: false,
           OR: [{ title: contains }, { slug: contains }],
         },
         select: {

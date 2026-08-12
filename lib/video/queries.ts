@@ -41,10 +41,13 @@ export const VIDEO_DETAIL_INCLUDE = {
 
 export type VideoDetail = Prisma.VideoGetPayload<{ include: typeof VIDEO_DETAIL_INCLUDE }>;
 
+// isShort: false — 随刷短视频 live in the same table but have their own feed
+// (/videos/shorts); they must never leak into the long-video rails/browse.
 const PUBLISHED_PUBLIC = {
   status: 'published',
   visibility: 'public',
   deletedAt: null,
+  isShort: false,
 } satisfies Prisma.VideoWhereInput;
 
 function orderForSort(sort: VideoSort): Prisma.VideoOrderByWithRelationInput {
@@ -125,7 +128,15 @@ export function featuredVideos(take = 8): Promise<VideoCard[]> {
 
 export async function favoriteVideos(userId: string, take = 14): Promise<VideoCard[]> {
   const rows = await prisma.videoFavorite.findMany({
-    where: { userId, video: PUBLISHED_PUBLIC },
+    // Deliberately NOT PUBLISHED_PUBLIC: 稍后看 is the only surface listing a
+    // user's favorites, and the shorts feed's 收藏 button writes the same
+    // VideoFavorite rows — excluding isShort here would make favorited shorts
+    // unreachable. Card clicks on a short still work: /videos/[slug] redirects
+    // into the 随刷 feed.
+    where: {
+      userId,
+      video: { status: 'published', visibility: 'public', deletedAt: null },
+    },
     orderBy: { createdAt: 'desc' },
     take,
     select: { video: { select: VIDEO_CARD_SELECT } },

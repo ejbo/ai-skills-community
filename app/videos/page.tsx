@@ -3,7 +3,9 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { getVideoActor } from '@/lib/video/access';
 import { browseVideos, getHomeFeed, listVideoCategories } from '@/lib/video/queries';
+import { featuredShorts } from '@/lib/video/shorts-queries';
 import { parseVideoSort } from '@/lib/video/types';
+import { ShortsStrip } from '@/components/video/ShortsStrip';
 import { SearchBar } from '@/components/SearchBar';
 import { EmptyState } from '@/components/EmptyState';
 import { HomeHero } from '@/components/video/HomeHero';
@@ -34,7 +36,11 @@ export default async function VideosPage({ searchParams }: { searchParams: Searc
   // ── Home (Netflix billboard + rails) ───────────────────────────────────────
   if (!isBrowse) {
     const actor = await getVideoActor();
-    const feed = await getHomeFeed(actor?.id ?? null);
+    const [feed, shorts] = await Promise.all([
+      getHomeFeed(actor?.id ?? null),
+      featuredShorts(12),
+    ]);
+    const ts = await getTranslations('shorts');
 
     return (
       <div className="animate-fade-in">
@@ -50,6 +56,24 @@ export default async function VideosPage({ searchParams }: { searchParams: Searc
         <div className="container mt-5">
           <CategoryBar categories={categoryPills} />
         </div>
+
+        {shorts.length > 0 && (
+          <div className="container mt-7">
+            <ShortsStrip
+              title={ts('strip_title')}
+              viewAllLabel={ts('strip_view_all')}
+              items={shorts.map((s) => ({
+                id: s.id,
+                title: s.title,
+                summary: s.summary,
+                posterUrl: s.posterUrl,
+                durationSec: s.durationSec,
+                viewCount: s.viewCount,
+                likeCount: s.likeCount,
+              }))}
+            />
+          </div>
+        )}
 
         <div className="container space-y-9 py-8">
           {feed.rails.map((rail) => (

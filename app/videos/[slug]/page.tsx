@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireUser } from '@/lib/admin';
 import { prisma } from '@/lib/db';
@@ -18,13 +18,22 @@ export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: { slug: string };
+  searchParams: { focus?: string | string[] };
 }
 
-export default async function VideoDetailPage({ params }: PageProps) {
+export default async function VideoDetailPage({ params, searchParams }: PageProps) {
   const session = await requireUser();
   const actor = await getVideoActor();
   const video = await getVideoBySlug(params.slug);
   if (!video || !canViewVideo(video, actor)) notFound();
+
+  // 随刷短视频 live in the immersive feed, not this detail layout. Comment
+  // notifications deep-link here (/videos/<slug>?focus=...) — carry the focus
+  // through so the feed auto-opens the comment drawer on the right thread.
+  if (video.isShort) {
+    const focus = Array.isArray(searchParams.focus) ? searchParams.focus[0] : searchParams.focus;
+    redirect(`/videos/shorts?v=${video.id}${focus ? `&focus=${encodeURIComponent(focus)}` : ''}`);
+  }
 
   const privileged = isVideoPrivileged(video, actor);
   const playable = canPlayVideo(video, actor);
