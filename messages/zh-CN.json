@@ -91,7 +91,14 @@
     "go_library": "进入知识库",
     "topic_meta": "{replies} 回复 · {views} 浏览",
     "doc_read_minutes": "约 {min} 分钟",
-    "rank_sr": "热门第 {rank} 名"
+    "rank_sr": "热门第 {rank} 名",
+    "briefing_title": "今日简报",
+    "briefing_new_label": "今日新增",
+    "briefing_skills": "{count} 个 Skill",
+    "briefing_posts": "{count} 条动态",
+    "briefing_shorts": "{count} 条短视频",
+    "briefing_events_label": "即将举行",
+    "briefing_no_events": "暂无活动"
   },
   "browse": {
     "title": "浏览 Skills",
@@ -2282,6 +2289,9 @@
     "err_probe_failed": "无法读取该视频文件",
     "err_publish_failed": "发布失败，请重试",
     "strip_title": "随刷短视频",
-    "strip_view_all": "进入随刷"
+    "strip_view_all": "进入随刷",
+    "prev": "上一个",
+    "next": "下一个",
+    "fullscreen": "全屏"
   }
 }

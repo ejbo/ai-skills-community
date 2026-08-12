@@ -40,6 +40,8 @@ interface Props {
    * rewrites the query string before the drawer mounts.
    */
   initialFocus: { itemId: string; commentId: string } | null;
+  /** ?upload=1 entry link (homepage / strip 上传 buttons) — open the dialog on mount. */
+  autoOpenUpload: boolean;
 }
 
 export function ShortsFeed({
@@ -49,6 +51,7 @@ export function ShortsFeed({
   sort,
   currentUser,
   initialFocus,
+  autoOpenUpload,
 }: Props) {
   const t = useTranslations('shorts');
 
@@ -85,8 +88,9 @@ export function ShortsFeed({
   }, []);
 
   // One-time client setup: persisted sound preference, first-visit hint,
-  // reduced-motion media query.
+  // reduced-motion media query, ?upload=1 entry.
   useEffect(() => {
+    if (autoOpenUpload) setUploadOpen(true);
     try {
       if (localStorage.getItem('shorts:sound') === 'on') setMuted(false);
       if (!localStorage.getItem('shorts:hinted')) setHintVisible(true);
@@ -289,25 +293,24 @@ export function ShortsFeed({
         )}
       </div>
 
-      {/* Top bar */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-[9] bg-gradient-to-b from-black/70 to-transparent pb-10 pt-3">
-        <div className="flex items-center gap-3 px-3">
+      {/* Top bar — 抖音-style: bare icons/text tabs on a soft gradient. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-[9] bg-gradient-to-b from-black/60 to-transparent pb-12 pt-3">
+        <div className="flex items-center gap-4 px-4">
           <Link
             href="/videos"
-            className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full bg-black/40 transition hover:bg-black/60"
+            className="pointer-events-auto text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)] transition hover:scale-110 active:scale-90"
             aria-label={t('back')}
           >
-            <ChevronLeft className="h-5 w-5" />
+            <ChevronLeft className="h-6 w-6" />
           </Link>
-          <h1 className="text-sm font-semibold tracking-wide">{t('title')}</h1>
-          <div className="pointer-events-auto ml-2 flex items-center gap-1 rounded-full bg-black/40 p-1 text-xs">
+          <div className="pointer-events-auto flex items-center gap-5 text-[15px]">
             <SortPill href="/videos/shorts" label={t('sort_hot')} active={sort === 'hot'} />
             <SortPill href="/videos/shorts?sort=new" label={t('sort_new')} active={sort === 'new'} />
           </div>
           <button
             type="button"
             onClick={() => setUploadOpen(true)}
-            className="pointer-events-auto ml-auto inline-flex items-center gap-1.5 rounded-full bg-accent-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-accent-600"
+            className="pointer-events-auto ml-auto inline-flex items-center gap-1.5 rounded-full bg-accent-500 px-4 py-1.5 text-xs font-semibold text-white shadow-lg transition hover:bg-accent-600"
           >
             <Plus className="h-4 w-4" />
             {t('upload')}
@@ -360,11 +363,14 @@ function SortPill({ href, label, active }: { href: string; label: string; active
   return (
     <Link
       href={href}
-      className={`rounded-full px-3 py-1 font-medium transition ${
-        active ? 'bg-white text-zinc-900' : 'text-white/70 hover:text-white'
+      className={`relative drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)] transition ${
+        active ? 'font-semibold text-white' : 'font-medium text-white/60 hover:text-white/90'
       }`}
     >
       {label}
+      {active && (
+        <span className="absolute -bottom-1.5 left-1/2 h-0.5 w-5 -translate-x-1/2 rounded-full bg-white" />
+      )}
     </Link>
   );
 }

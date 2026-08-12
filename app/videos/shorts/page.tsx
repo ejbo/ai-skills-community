@@ -75,6 +75,7 @@ export default async function ShortsPage({ searchParams }: PageProps) {
       sort={sort}
       currentUser={{ id: viewerId, isAdmin: viewerIsAdmin, handle: session.user.handle }}
       initialFocus={focus && deepLinked ? { itemId: deepLinked.id, commentId: focus } : null}
+      autoOpenUpload={firstParam(searchParams.upload) === '1'}
     />
   );
 }

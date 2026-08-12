@@ -6,17 +6,20 @@ import {
   CalendarDays,
   Clapperboard,
   Flame,
+  Megaphone,
   MessagesSquare,
-  PenLine,
+  Newspaper,
   Play,
-  Upload,
+  Plus,
+  Sparkles,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { getLocale } from 'next-intl/server';
 import { prisma } from '@/lib/db';
 import { DISCOVERABLE_SKILL_WHERE, SKILL_CARD_SELECT } from '@/lib/skill-queries';
 import { SkillCard } from '@/components/SkillCard';
 import { VideoGrid } from '@/components/video/VideoGrid';
-import { ShortsStrip } from '@/components/video/ShortsStrip';
+import { ShortsShowcase } from './home/ShortsShowcase';
 import { trendingVideos } from '@/lib/video/queries';
 import { featuredShorts } from '@/lib/video/shorts-queries';
 import { listTopics } from '@/lib/discussion-queries';
@@ -40,12 +43,29 @@ interface HomeUser {
 export async function CommunityHome({ user }: { user: HomeUser }) {
   const t = await getTranslations('home');
   const tl = await getTranslations('labels');
+  const ts = await getTranslations('shorts');
+  const locale = await getLocale();
 
-  const [skills, videos, shorts, topicsRes, eventsRes, docsRes, announcement] = await Promise.all([
+  // 今日简报 counts from the server's local midnight.
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const [
+    skills,
+    videos,
+    shorts,
+    topicsRes,
+    eventsRes,
+    docsRes,
+    announcement,
+    newSkillsToday,
+    newPostsToday,
+    newShortsToday,
+  ] = await Promise.all([
     prisma.skill.findMany({
       where: DISCOVERABLE_SKILL_WHERE,
       orderBy: { trendingScore: 'desc' },
-      take: 6,
+      take: 4,
       select: SKILL_CARD_SELECT,
     }),
     trendingVideos(8),
@@ -57,6 +77,13 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
       where: { publishedAt: { not: null } },
       orderBy: { publishedAt: 'desc' },
       select: { id: true, title: true },
+    }),
+    prisma.skill.count({
+      where: { ...DISCOVERABLE_SKILL_WHERE, createdAt: { gte: todayStart } },
+    }),
+    prisma.post.count({ where: { createdAt: { gte: todayStart } } }),
+    prisma.video.count({
+      where: { isShort: true, status: 'published', deletedAt: null, createdAt: { gte: todayStart } },
     }),
   ]);
 
@@ -71,111 +98,203 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
 
   return (
     <div>
-      {/* Welcome band — CSS-staggered entrance, renders without JS. */}
+      {/* Welcome band — compact: greeting left, 今日简报 right. CSS-staggered
+          entrance, renders without JS. */}
       <section className="relative overflow-hidden border-b border-zinc-200 dark:border-zinc-800">
         <HeroBackdrop intensity="soft" />
-        <div className="container relative py-10 md:py-14">
-          <p className="animate-rise text-xs font-semibold uppercase tracking-[0.2em] text-accent-600 dark:text-accent-400">
-            {t('community_kicker')}
-          </p>
-          <h1
-            className="animate-rise mt-2 text-3xl font-semibold tracking-tight md:text-4xl"
-            style={{ animationDelay: '60ms' }}
-          >
-            {t('welcome_back', { name: user.displayName })}
-          </h1>
-          <p
-            className="animate-rise mt-2 max-w-xl text-base text-muted"
-            style={{ animationDelay: '120ms' }}
-          >
-            {t('community_sub_v2')}
-          </p>
-          {announcement && (
-            <div className="animate-rise mt-4" style={{ animationDelay: '170ms' }}>
-              <Link
-                href={`/announcements/${announcement.id}`}
-                className="group inline-flex max-w-full items-center gap-2 rounded-full border border-accent-500/25 bg-accent-500/5 py-1 pl-1.5 pr-3 text-xs transition hover:border-accent-500/50 hover:bg-accent-500/10"
+        <div className="container relative py-6 md:py-8">
+          <div className="grid items-center gap-6 lg:grid-cols-[minmax(0,1fr),420px]">
+            <div>
+              <p className="animate-rise text-xs font-semibold uppercase tracking-[0.2em] text-accent-600 dark:text-accent-400">
+                {t('community_kicker')}
+              </p>
+              <h1
+                className="animate-rise mt-1.5 text-2xl font-semibold tracking-tight md:text-3xl"
+                style={{ animationDelay: '60ms' }}
               >
-                <span className="rounded-full bg-accent-500 px-2 py-0.5 text-[10px] font-semibold text-white">
-                  {t('announcement_label')}
-                </span>
-                <span className="truncate text-zinc-700 dark:text-zinc-200">
-                  {announcement.title}
-                </span>
-                <ArrowRight className="h-3 w-3 shrink-0 text-accent-600 transition-transform duration-200 group-hover:translate-x-0.5 dark:text-accent-400" />
-              </Link>
+                {t('welcome_back', { name: user.displayName })}
+              </h1>
+              <p
+                className="animate-rise mt-1.5 max-w-xl text-sm text-muted md:text-base"
+                style={{ animationDelay: '120ms' }}
+              >
+                {t('community_sub_v2')}
+              </p>
             </div>
-          )}
-          <div
-            className="animate-rise mt-5 flex flex-wrap items-center gap-3"
-            style={{ animationDelay: '220ms' }}
-          >
-            <Link
-              href="/skills/new"
-              className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600"
-            >
-              <Upload className="h-3.5 w-3.5" />
-              {t('post_skill')}
-            </Link>
-            <Link
-              href="/discussion"
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-4 text-sm font-medium transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-            >
-              <PenLine className="h-3.5 w-3.5" />
-              {t('post_update')}
-            </Link>
+
+            {/* 今日简报 */}
+            <div className="animate-rise" style={{ animationDelay: '160ms' }}>
+              <div className="surface rounded-2xl p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="flex items-center gap-2 text-sm font-semibold">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-accent-500/15 text-accent-600 dark:text-accent-400">
+                      <Newspaper className="h-3.5 w-3.5" />
+                    </span>
+                    {t('briefing_title')}
+                  </p>
+                  <span className="text-xs text-muted">
+                    {new Intl.DateTimeFormat(locale, {
+                      month: 'long',
+                      day: 'numeric',
+                      weekday: 'short',
+                    }).format(new Date())}
+                  </span>
+                </div>
+                <div className="mt-3 space-y-2 text-sm">
+                  <div className="flex items-start gap-2">
+                    <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-500" />
+                    <p className="min-w-0 text-zinc-700 dark:text-zinc-300">
+                      <span className="text-muted">{t('briefing_new_label')}</span>{' '}
+                      {t('briefing_skills', { count: newSkillsToday })} ·{' '}
+                      {t('briefing_posts', { count: newPostsToday })} ·{' '}
+                      {t('briefing_shorts', { count: newShortsToday })}
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CalendarDays className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-500" />
+                    {events.length > 0 ? (
+                      <Link
+                        href={`/events/${events[0].id}`}
+                        className="min-w-0 truncate text-zinc-700 hover:text-accent-600 hover:underline dark:text-zinc-300 dark:hover:text-accent-400"
+                      >
+                        <span className="text-muted">{t('briefing_events_label')}</span>{' '}
+                        {events[0].title}
+                      </Link>
+                    ) : (
+                      <p className="text-muted">
+                        {t('briefing_events_label')} {t('briefing_no_events')}
+                      </p>
+                    )}
+                  </div>
+                  {announcement && (
+                    <div className="flex items-start gap-2">
+                      <Megaphone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-500" />
+                      <Link
+                        href={`/announcements/${announcement.id}`}
+                        className="min-w-0 truncate text-zinc-700 hover:text-accent-600 hover:underline dark:text-zinc-300 dark:hover:text-accent-400"
+                      >
+                        <span className="text-muted">{t('announcement_label')}</span>{' '}
+                        {announcement.title}
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Trending skills */}
-      <section className="container py-10 md:py-12">
-        <Reveal>
-          <SectionHeader
-            icon={<Flame className="h-4 w-4" />}
-            title={t('hot_skills')}
-            href="/skills"
-            linkLabel={t('view_all')}
-          />
-        </Reveal>
-        {skills.length === 0 ? (
-          <div className="surface rounded-2xl px-6 py-12 text-center text-sm text-muted">
-            {t('no_skills_yet')}{' '}
-            <Link
-              href="/skills/new"
-              className="text-accent-600 hover:underline dark:text-accent-400"
-            >
-              {t('be_first')}
-            </Link>
+      {/* 热门 Skills (half) + 刷视频 (half) */}
+      <section className="container py-8 md:py-10">
+        <div className="grid items-start gap-8 lg:grid-cols-2">
+          <div>
+            <Reveal>
+              <SectionHeader
+                icon={<Flame className="h-4 w-4" />}
+                title={t('hot_skills')}
+                href="/skills"
+                linkLabel={t('view_all')}
+              />
+            </Reveal>
+            {skills.length === 0 ? (
+              <div className="surface rounded-2xl px-6 py-12 text-center text-sm text-muted">
+                {t('no_skills_yet')}{' '}
+                <Link
+                  href="/skills/new"
+                  className="text-accent-600 hover:underline dark:text-accent-400"
+                >
+                  {t('be_first')}
+                </Link>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {skills.map((s, i) => (
+                  <Reveal key={s.id} delay={(i % 2) * 0.06} className="h-full">
+                    <div className="group relative h-full">
+                      <span className="sr-only">{t('rank_sr', { rank: i + 1 })}</span>
+                      <RankBadge rank={i + 1} />
+                      <SkillCard
+                        slug={s.slug}
+                        name={s.name}
+                        summary={s.summary}
+                        sourceType={s.sourceType}
+                        visibility={s.visibility}
+                        author={s.author}
+                        updatedAt={s.updatedAt}
+                        stats={{
+                          downloads: s.downloadCount,
+                          likes: s.likeCount,
+                          rating: s.avgRating,
+                          reviewCount: s.reviewCount,
+                          tokens: s.tokenCostEstimate,
+                        }}
+                      />
+                    </div>
+                  </Reveal>
+                ))}
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {skills.map((s, i) => (
-              <Reveal key={s.id} delay={(i % 3) * 0.06} className="h-full">
-                <div className="group relative h-full">
-                  <span className="sr-only">{t('rank_sr', { rank: i + 1 })}</span>
-                  <RankBadge rank={i + 1} />
-                  <SkillCard
-                    slug={s.slug}
-                    name={s.name}
-                    summary={s.summary}
-                    sourceType={s.sourceType}
-                    visibility={s.visibility}
-                    author={s.author}
-                    updatedAt={s.updatedAt}
-                    stats={{
-                      downloads: s.downloadCount,
-                      likes: s.likeCount,
-                      rating: s.avgRating,
-                      reviewCount: s.reviewCount,
-                      tokens: s.tokenCostEstimate,
-                    }}
-                  />
+
+          {/* 刷视频 — embedded vertical player (news ai_hub widget lineage) */}
+          <div>
+            <Reveal>
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <h2 className="flex items-center gap-2.5 text-xl font-semibold tracking-tight">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-accent-500/15 text-accent-600 dark:text-accent-400">
+                    <Play className="h-4 w-4" />
+                  </span>
+                  {t('shorts_title')}
+                </h2>
+                <div className="flex shrink-0 items-center gap-3">
+                  <Link
+                    href="/videos/shorts?upload=1"
+                    className="inline-flex items-center gap-1 rounded-full bg-accent-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-accent-600"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    {ts('upload')}
+                  </Link>
+                  <Link
+                    href="/videos/shorts"
+                    className="group flex items-center gap-1 text-sm font-medium text-accent-600 transition hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
+                  >
+                    {t('view_all')}
+                    <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
+                  </Link>
                 </div>
-              </Reveal>
-            ))}
+              </div>
+            </Reveal>
+            <Reveal delay={0.05}>
+              {shorts.length > 0 ? (
+                <ShortsShowcase
+                  items={shorts.map((s) => ({
+                    id: s.id,
+                    title: s.title,
+                    summary: s.summary,
+                    videoUrl: s.videoUrl,
+                    posterUrl: s.posterUrl,
+                    durationSec: s.durationSec,
+                    viewCount: s.viewCount,
+                    likeCount: s.likeCount,
+                  }))}
+                />
+              ) : (
+                <div className="surface flex h-[560px] flex-col items-center justify-center gap-3 rounded-2xl px-6 text-center xl:h-[600px]">
+                  <p className="text-sm font-medium">{ts('empty_title')}</p>
+                  <p className="max-w-xs text-xs text-muted">{ts('empty_hint')}</p>
+                  <Link
+                    href="/videos/shorts?upload=1"
+                    className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-accent-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-accent-600"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    {ts('upload')}
+                  </Link>
+                </div>
+              )}
+            </Reveal>
           </div>
-        )}
+        </div>
       </section>
 
       {/* Community now — light list panels, not heavy cards. */}
@@ -285,28 +404,6 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
               </Reveal>
             )}
           </div>
-        </section>
-      )}
-
-      {/* 精选短视频 (featured shorts strip → 随刷 feed) */}
-      {shorts.length > 0 && (
-        <section className="container pb-10 md:pb-12">
-          <Reveal>
-            <ShortsStrip
-              title={t('shorts_title')}
-              viewAllLabel={t('view_all')}
-              icon={<Play className="h-4 w-4" />}
-              items={shorts.map((s) => ({
-                id: s.id,
-                title: s.title,
-                summary: s.summary,
-                posterUrl: s.posterUrl,
-                durationSec: s.durationSec,
-                viewCount: s.viewCount,
-                likeCount: s.likeCount,
-              }))}
-            />
-          </Reveal>
         </section>
       )}
 

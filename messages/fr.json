@@ -91,7 +91,14 @@
     "go_library": "Ouvrir la bibliothèque",
     "topic_meta": "{replies, plural, one {# réponse} other {# réponses}} · {views, plural, one {# vue} other {# vues}}",
     "doc_read_minutes": "≈ {min} min",
-    "rank_sr": "Classement {rank}"
+    "rank_sr": "Classement {rank}",
+    "briefing_title": "Brief du jour",
+    "briefing_new_label": "Nouveau aujourd'hui :",
+    "briefing_skills": "{count, plural, one {# skill} other {# skills}}",
+    "briefing_posts": "{count, plural, one {# publication} other {# publications}}",
+    "briefing_shorts": "{count, plural, one {# clip} other {# clips}}",
+    "briefing_events_label": "À venir :",
+    "briefing_no_events": "aucun événement"
   },
   "browse": {
     "title": "Parcourir les skills",
@@ -2282,6 +2289,9 @@
     "err_probe_failed": "Impossible de lire ce fichier vidéo",
     "err_publish_failed": "Échec de la publication, réessayez",
     "strip_title": "Clips",
-    "strip_view_all": "Ouvrir le flux"
+    "strip_view_all": "Ouvrir le flux",
+    "prev": "Précédent",
+    "next": "Suivant",
+    "fullscreen": "Plein écran"
   }
 }

@@ -91,7 +91,14 @@
     "go_library": "Open the library",
     "topic_meta": "{replies, plural, one {# reply} other {# replies}} · {views, plural, one {# view} other {# views}}",
     "doc_read_minutes": "~{min} min read",
-    "rank_sr": "Trending rank {rank}"
+    "rank_sr": "Trending rank {rank}",
+    "briefing_title": "Today's briefing",
+    "briefing_new_label": "New today:",
+    "briefing_skills": "{count, plural, one {# skill} other {# skills}}",
+    "briefing_posts": "{count, plural, one {# post} other {# posts}}",
+    "briefing_shorts": "{count, plural, one {# short} other {# shorts}}",
+    "briefing_events_label": "Upcoming:",
+    "briefing_no_events": "no events yet"
   },
   "browse": {
     "title": "Browse Skills",
@@ -2282,6 +2289,9 @@
     "err_probe_failed": "Could not read this video file",
     "err_publish_failed": "Publish failed, please retry",
     "strip_title": "Shorts",
-    "strip_view_all": "Open the feed"
+    "strip_view_all": "Open the feed",
+    "prev": "Previous",
+    "next": "Next",
+    "fullscreen": "Fullscreen"
   }
 }

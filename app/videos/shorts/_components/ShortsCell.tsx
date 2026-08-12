@@ -18,10 +18,10 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   Bookmark,
   Eye,
+  Forward,
   Heart,
   MessageCircle,
   Play,
-  Share2,
   Volume2,
   VolumeX,
 } from 'lucide-react';
@@ -356,11 +356,12 @@ export function ShortsCell({
         </button>
       )}
 
-      {/* Right action rail */}
-      <div className="absolute bottom-24 right-2 z-[7] flex flex-col items-center gap-4 md:right-3">
+      {/* Right action rail — 抖音-style: bare solid icons + drop shadow, no
+          heavy button chrome. */}
+      <div className="absolute bottom-24 right-2.5 z-[7] flex flex-col items-center gap-5 md:right-4">
         <Link
           href={`/users/${item.uploader.handle}`}
-          className="mb-1 rounded-full ring-2 ring-white/80 transition hover:ring-accent-400"
+          className="mb-0.5 rounded-full ring-2 ring-white/90 drop-shadow-lg transition hover:ring-accent-400"
           aria-label={item.uploader.displayName}
         >
           <Avatar name={item.uploader.displayName} src={item.uploader.avatarUrl} size="lg" />
@@ -372,7 +373,9 @@ export function ShortsCell({
           onClick={() => void toggleLike()}
           icon={
             <Heart
-              className={`h-7 w-7 transition ${liked ? 'fill-rose-500 text-rose-500' : ''}`}
+              className={`h-8 w-8 transition ${
+                liked ? 'fill-rose-500 text-rose-500' : 'fill-white text-white'
+              }`}
             />
           }
         />
@@ -380,7 +383,7 @@ export function ShortsCell({
           label={t('comments')}
           count={item.commentCount}
           onClick={onOpenComments}
-          icon={<MessageCircle className="h-7 w-7" />}
+          icon={<MessageCircle className="h-8 w-8 fill-white text-white" />}
         />
         <RailButton
           label={t('favorite')}
@@ -389,18 +392,24 @@ export function ShortsCell({
           onClick={() => void toggleFavorite()}
           icon={
             <Bookmark
-              className={`h-7 w-7 transition ${favorited ? 'fill-amber-400 text-amber-400' : ''}`}
+              className={`h-8 w-8 transition ${
+                favorited ? 'fill-amber-400 text-amber-400' : 'fill-white text-white'
+              }`}
             />
           }
         />
-        <RailButton label={t('share')} onClick={() => void share()} icon={<Share2 className="h-7 w-7" />} />
+        <RailButton
+          label={t('share')}
+          onClick={() => void share()}
+          icon={<Forward className="h-8 w-8 fill-white text-white" />}
+        />
         <button
           type="button"
           onClick={onToggleMute}
-          className="mt-1 flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white transition hover:bg-black/60"
+          className="mt-0.5 text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)] transition active:scale-90"
           aria-label={muted ? t('unmute') : t('mute')}
         >
-          {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+          {muted ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
         </button>
       </div>
 
@@ -500,13 +509,13 @@ function RailButton({
       onClick={onClick}
       aria-label={count !== undefined ? `${label} ${count}` : label}
       aria-pressed={active}
-      className="flex flex-col items-center gap-1 text-white transition active:scale-90"
+      className="flex flex-col items-center gap-0.5 transition hover:scale-105 active:scale-90"
     >
-      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 transition hover:bg-black/60">
-        {icon}
-      </span>
+      <span className="drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)]">{icon}</span>
       {count !== undefined && (
-        <span className="text-xs font-medium tabular-nums text-white/90">{formatCount(count)}</span>
+        <span className="text-xs font-semibold tabular-nums text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">
+          {formatCount(count)}
+        </span>
       )}
     </button>
   );

@@ -62,6 +62,7 @@ export default async function VideosPage({ searchParams }: { searchParams: Searc
             <ShortsStrip
               title={ts('strip_title')}
               viewAllLabel={ts('strip_view_all')}
+              uploadLabel={ts('upload')}
               items={shorts.map((s) => ({
                 id: s.id,
                 title: s.title,

@@ -3,7 +3,7 @@
 // parents (RSC) pass translated labels in; no client JS beyond CSS hover.
 
 import Link from 'next/link';
-import { ArrowRight, Eye, Heart, Play } from 'lucide-react';
+import { ArrowRight, Eye, Heart, Play, Plus } from 'lucide-react';
 import { withBasePath } from '@/lib/base-path';
 import { formatCount, formatDuration } from '@/lib/video/types';
 
@@ -20,11 +20,14 @@ export interface ShortsStripItem {
 export function ShortsStrip({
   title,
   viewAllLabel,
+  uploadLabel,
   items,
   icon,
 }: {
   title: string;
   viewAllLabel: string;
+  /** When set, renders an 上传 CTA linking into the feed's upload dialog. */
+  uploadLabel?: string;
   items: ShortsStripItem[];
   icon?: React.ReactNode;
 }) {
@@ -40,13 +43,24 @@ export function ShortsStrip({
           )}
           {title}
         </h2>
-        <Link
-          href="/videos/shorts"
-          className="group flex shrink-0 items-center gap-1 text-sm font-medium text-accent-600 transition hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
-        >
-          {viewAllLabel}
-          <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
-        </Link>
+        <div className="flex shrink-0 items-center gap-3">
+          {uploadLabel && (
+            <Link
+              href="/videos/shorts?upload=1"
+              className="inline-flex items-center gap-1 rounded-full bg-accent-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-accent-600"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {uploadLabel}
+            </Link>
+          )}
+          <Link
+            href="/videos/shorts"
+            className="group flex items-center gap-1 text-sm font-medium text-accent-600 transition hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
+          >
+            {viewAllLabel}
+            <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
+          </Link>
+        </div>
       </div>
       <div className="flex snap-x gap-3 overflow-x-auto pb-2 [scrollbar-width:thin]">
         {items.map((s) => (
