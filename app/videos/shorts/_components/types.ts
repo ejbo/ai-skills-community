@@ -19,6 +19,11 @@ export interface ShortView {
   commentCount: number;
   favoriteCount: number;
   featured: boolean;
+  /** ISO string (serialized across the RSC/JSON boundary). */
+  publishedAt: string | null;
+  subtitleStatus: 'none' | 'processing' | 'ready' | 'failed';
+  subtitleZhUrl: string | null;
+  subtitleEnUrl: string | null;
   uploader: PublicAuthor;
   likedByMe: boolean;
   favoritedByMe: boolean;

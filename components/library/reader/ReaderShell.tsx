@@ -15,6 +15,7 @@ import { ReaderRightPanel, type RightTab } from './ReaderRightPanel';
 import { MarginNotes } from './MarginNotes';
 import type { CommunityNote } from './community-types';
 import {
+  CommunityNotePopover,
   MarkPopover,
   SelectionMenu,
   type HighlightColor,
@@ -22,8 +23,8 @@ import {
   type SelectionPayload,
 } from './SelectionMenu';
 import { useReaderPrefs, READER_WIDTHS } from './reader-prefs';
-import { ReaderHighlighter, type HlBox } from './highlighter';
-import { getTextOffsetOfPoint } from './anchoring';
+import { ReaderHighlighter, supportsNativeHighlights, type HlBox } from './highlighter';
+import { getTextOffsetOfPoint, invalidateAnchorCache, rootTextLength } from './anchoring';
 import { withBasePath } from '@/lib/base-path';
 
 export interface ReaderDocInfo {
@@ -116,6 +117,20 @@ export function ReaderShell({
   const [hlVersion, setHlVersion] = useState(0);
   const [editNoteId, setEditNoteId] = useState<string | null>(null);
   const [markPopover, setMarkPopover] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [communityPopover, setCommunityPopover] = useState<{
+    id: string;
+    top: number;
+    left: number;
+  } | null>(null);
+  const [savingNote, setSavingNote] = useState(false);
+  // The mark popover hosts a note textarea — while it is open, nothing may
+  // unmount the popover out from under an unsaved draft.
+  const [editingMarkNote, setEditingMarkNote] = useState(false);
+  // Mirror for the scroll listener, which is attached once and must not be
+  // re-attached on every keystroke in the note editor.
+  const editingMarkNoteRef = useRef(false);
+  editingMarkNoteRef.current = editingMarkNote;
+  const [hoveringMark, setHoveringMark] = useState(false);
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
   const [chatPrefill, setChatPrefill] = useState<{ text: string; nonce: number } | null>(
     initialChat ? { text: initialChat, nonce: 0 } : null,
@@ -147,6 +162,10 @@ export function ReaderShell({
   if (highlighterRef.current === null && typeof window !== 'undefined') {
     highlighterRef.current = new ReaderHighlighter();
   }
+  // Native painting (CSS Custom Highlight API) needs no geometry at all: the
+  // Ranges are live, so highlights follow every reflow on their own. Only the
+  // overlay FALLBACK has to be recomputed on layout change.
+  const nativeHl = typeof window !== 'undefined' && supportsNativeHighlights();
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const chapterRootsRef = useRef(new Map<number, HTMLElement>());
@@ -166,6 +185,11 @@ export function ReaderShell({
   // composer can quote it even after focus moves to the textarea (which
   // collapses the live selection).
   const lastSelectionRef = useRef<SelectionPayload | null>(null);
+  // True between pointerdown and pointerup inside the reading column.
+  const draggingRef = useRef(false);
+  // Latest `repaint` for listeners that must outlive its identity changes.
+  const repaintRef = useRef<() => void>(() => {});
+  const hoverRafRef = useRef<number | null>(null);
 
   const showOriginalPdf = doc.format === 'pdf' && pdfView === 'original' && !!doc.fileUrl;
   const visibleCommunityNotes = useMemo(
@@ -207,6 +231,63 @@ export function ReaderShell({
     }
     return null;
   }, []);
+
+  /**
+   * Turn the live selection into an anchorable payload.
+   *
+   * Resolved from the range's START (then END) container rather than its
+   * commonAncestorContainer: in 连续滚动 the common ancestor of a selection
+   * spanning two chapters is the scroll container, and a selection that merely
+   * touches the chapter <header> or the prev/next <nav> has a common ancestor
+   * outside the <article> — both used to be dropped entirely, so the text
+   * highlighted blue but no toolbar appeared and nothing could be saved. Such a
+   * selection now anchors to the chapter it STARTS in, clamped to that
+   * chapter's end.
+   */
+  const captureSelection = useCallback((): SelectionPayload | null => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
+    const range = sel.getRangeAt(0);
+    const ctx =
+      getSelectionContext(range.startContainer) ?? getSelectionContext(range.endContainer);
+    if (!ctx) return null;
+
+    // CLAMP the range into the chosen root, then take the quote from the
+    // clamped range — never from the raw selection. `quote` is the verification
+    // key `locateMark` checks the offsets against, so a quote that starts with
+    // text living OUTSIDE the article (the chapter <header>, the prev/next
+    // <nav>) can never be anchored, and the highlight would save fine and then
+    // be invisible and un-jumpable forever.
+    const clamped = document.createRange();
+    try {
+      if (ctx.root.contains(range.startContainer)) {
+        clamped.setStart(range.startContainer, range.startOffset);
+      } else {
+        clamped.setStart(ctx.root, 0);
+      }
+      if (ctx.root.contains(range.endContainer)) {
+        clamped.setEnd(range.endContainer, range.endOffset);
+      } else {
+        clamped.setEnd(ctx.root, ctx.root.childNodes.length);
+      }
+    } catch {
+      return null;
+    }
+    if (clamped.collapsed) return null;
+
+    const full = clamped.toString().replace(/\s+/g, ' ').trim();
+    if (!full) return null;
+    const charStart = getTextOffsetOfPoint(ctx.root, clamped.startContainer, clamped.startOffset);
+    const rawEnd = getTextOffsetOfPoint(ctx.root, clamped.endContainer, clamped.endOffset);
+    // getTextOffsetOfPoint returns null when the browser rejects the point —
+    // storing 0 there would anchor the highlight at the top of the chapter.
+    if (charStart === null || rawEnd === null) return null;
+    const charEnd = Math.max(rawEnd, charStart + 1);
+    if (charEnd <= charStart) return null;
+    // No length limit — the highlight is anchored by exact offsets, so any
+    // span works. The quote is the verification key and the fallback anchor.
+    return { chapterIndex: ctx.chapterIndex, quote: full.slice(0, 2000), charStart, charEnd };
+  }, [getSelectionContext]);
 
   /** Top offset of a chapter root within the scroll container. */
   const rootTop = useCallback((root: HTMLElement) => {
@@ -348,7 +429,11 @@ export function ReaderShell({
         else if (top < last - 4) setChromeVisible(true);
       }
       lastScrollTopRef.current = top;
-      setMarkPopover(null);
+      // Both popovers are `fixed` at viewport coordinates, so scrolling detaches
+      // them from their mark — EXCEPT while the note editor is open, where
+      // closing would throw away an unsaved draft.
+      if (!editingMarkNoteRef.current) setMarkPopover(null);
+      setCommunityPopover(null);
       updateProgress();
     };
     el.addEventListener('scroll', onScroll, { passive: true });
@@ -431,12 +516,13 @@ export function ReaderShell({
         if (lightbox) setLightbox(null);
         else if (typographyOpen) setTypographyOpen(false);
         else if (markPopover) setMarkPopover(null);
+        else if (communityPopover) setCommunityPopover(null);
         else if (rightPanel.open) closeRight();
         else if (tocOpen) setTocOpen(false);
         return;
       }
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (inField || markPopover || typographyOpen || lightbox) return;
+      if (inField || markPopover || communityPopover || typographyOpen || lightbox) return;
       if (e.key === 'ArrowLeft') goChapter(currentChapter - 1);
       else if (e.key === 'ArrowRight') goChapter(currentChapter + 1);
     };
@@ -501,25 +587,29 @@ export function ReaderShell({
     };
   }, [doc.id, showOthers, notesOpen, communityRefresh]);
 
-  // Shared idempotent painter for the extracted view (effects + scroll repair).
-  // Recompute the highlight OVERLAY boxes. Nothing is injected into the
-  // article, so a re-render / normalize / effect can't wipe a highlight — it
-  // structurally cannot "flash and disappear". Coordinates are content-relative
-  // so boxes scroll with the text; recompute only on layout change.
-  const recomputeBoxes = useCallback(() => {
+  // Re-locate every mark and hand the Ranges to the browser. On the native path
+  // this touches no DOM and computes no geometry, so it can run at ANY time —
+  // including mid-drag — without disturbing the selection. On the fallback path
+  // it also returns overlay boxes to render.
+  const repaint = useCallback(() => {
     const h = highlighterRef.current;
     const container = scrollRef.current;
     if (!h || !container || showOriginalPdf) {
+      h?.clear();
       setBoxes([]);
+      setFlashBoxes([]);
       return;
     }
-    // NEVER recompute while the user is actively dragging a selection: setBoxes
-    // + setMarksVersion re-renders the overlay and reads layout, and doing that
-    // mid-drag (a resize/observer can fire it) makes the browser re-anchor and
-    // collapse the native selection — the "selects elsewhere / disappears" bug.
-    // A trailing recompute runs once the selection clears (see the mouseup net).
-    const sel = typeof window !== 'undefined' ? window.getSelection() : null;
-    if (sel && !sel.isCollapsed && sel.anchorNode && getSelectionContext(sel.anchorNode)) return;
+    // Fallback path only: rendering overlay boxes mid-drag re-reads layout and
+    // re-renders under the pointer. The native path registers Ranges, which
+    // touches neither the DOM nor layout, so it is always safe to run.
+    // The live-selection half self-heals a drag flag stranded true by a mouseup
+    // the window never received (release outside the browser).
+    if (!nativeHl && draggingRef.current) {
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) return;
+      draggingRef.current = false;
+    }
     const community = (
       showOthers && communityNotes ? filterCommunityNotes(communityNotes, userFilter) : []
     ).map((n) => ({
@@ -530,32 +620,53 @@ export function ReaderShell({
       charEnd: n.charEnd,
       color: n.color,
     }));
-    setBoxes(h.computeBoxes(chapterRootsRef.current, chapterHighlights, community, container));
+    setBoxes(h.paint(chapterRootsRef.current, chapterHighlights, community, container));
     setMarksVersion((v) => v + 1);
-  }, [chapterHighlights, communityNotes, userFilter, showOthers, showOriginalPdf, getSelectionContext]);
+  }, [chapterHighlights, communityNotes, userFilter, showOthers, showOriginalPdf, nativeHl]);
+
+  // Kept in a ref (not read directly) so listeners that must outlive `repaint`'s
+  // identity — the MutationObserver below — never need to be torn down.
+  useEffect(() => {
+    repaintRef.current = repaint;
+  }, [repaint]);
 
   useEffect(() => {
     if (showOriginalPdf) {
+      if (flashTimerRef.current) window.clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = null;
+      highlighterRef.current?.clear();
       setBoxes([]);
+      setFlashBoxes([]);
       return;
     }
     const container = scrollRef.current;
     if (!container) return;
-    let raf = requestAnimationFrame(recomputeBoxes);
-    // Layout settles asynchronously (fonts, images) — recompute a few times.
-    const t1 = window.setTimeout(recomputeBoxes, 350);
-    const t2 = window.setTimeout(recomputeBoxes, 1200);
-    const onResize = () => recomputeBoxes();
+    const raf = requestAnimationFrame(repaint);
+    // Text nodes settle asynchronously (fonts, late images) — a couple of
+    // retries so a mark whose text was not laid out yet still lands.
+    const t1 = window.setTimeout(repaint, 350);
+    const t2 = window.setTimeout(repaint, 1200);
+    if (nativeHl) {
+      // Live Ranges follow reflow by themselves: no resize observer, no scroll
+      // repaint, no per-frame geometry. That whole loop is what used to starve
+      // the main thread of mousemove events during a drag.
+      return () => {
+        cancelAnimationFrame(raf);
+        window.clearTimeout(t1);
+        window.clearTimeout(t2);
+      };
+    }
+    const onResize = () => repaint();
     window.addEventListener('resize', onResize);
     // The reading column reflows when a side panel (笔记/AI) opens or closes,
     // which never fires a window resize — observe the container itself.
     let ro: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined') {
-      ro = new ResizeObserver(() => recomputeBoxes());
+      ro = new ResizeObserver(() => repaint());
       ro.observe(container);
     }
     const onLoad = (e: Event) => {
-      if ((e.target as HTMLElement | null)?.tagName === 'IMG') recomputeBoxes();
+      if ((e.target as HTMLElement | null)?.tagName === 'IMG') repaint();
     };
     container.addEventListener('load', onLoad, true);
     return () => {
@@ -567,53 +678,114 @@ export function ReaderShell({
       container.removeEventListener('load', onLoad, true);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recomputeBoxes, chaptersKey, prefs.fontSize, prefs.lineHeight, prefs.width, prefs.serif]);
+  }, [repaint, nativeHl, chaptersKey, prefs.fontSize, prefs.lineHeight, prefs.width, prefs.serif]);
 
-  // Trailing recompute once a drag ends: recomputeBoxes early-returns while a
-  // selection is live, so any layout change that happened DURING the drag is
-  // reconciled here (the pointer is no longer down, so a one-shot re-render
-  // cannot collapse the finished selection).
+  // Remember the last real in-article selection so the 我的笔记 composer can
+  // quote it after focus moves to the textarea (which collapses the live one).
   useEffect(() => {
     if (showOriginalPdf) return;
+    const onPointerDown = (e: Event) => {
+      const el = scrollRef.current;
+      draggingRef.current = !!el && e.target instanceof Node && el.contains(e.target);
+    };
     const onPointerUp = () => {
-      // Remember a real in-article selection for the 我的笔记 composer.
+      const wasDragging = draggingRef.current;
+      draggingRef.current = false;
       const sel = window.getSelection();
       if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
-        const range = sel.getRangeAt(0);
-        const ctx = getSelectionContext(range.commonAncestorContainer);
-        const full = sel.toString().replace(/\s+/g, ' ').trim();
-        if (ctx && full) {
-          const charStart = getTextOffsetOfPoint(ctx.root, range.startContainer, range.startOffset);
-          const charEnd = getTextOffsetOfPoint(ctx.root, range.endContainer, range.endOffset);
-          lastSelectionRef.current = {
-            chapterIndex: ctx.chapterIndex,
-            quote: full.slice(0, 2000),
-            charStart,
-            charEnd: Math.max(charEnd, charStart + 1),
-          };
-        }
+        // An unresolvable selection must CLEAR the ref, not leave the previous
+        // one standing — otherwise the composer silently anchors the note to a
+        // passage the user selected minutes ago, possibly in another chapter.
+        lastSelectionRef.current = captureSelection();
       }
-      requestAnimationFrame(recomputeBoxes);
+      // Fallback path: reconcile any layout change the drag guard skipped.
+      if (wasDragging && !nativeHl) requestAnimationFrame(repaint);
     };
+    // window blur is the backstop: releasing the button outside the browser
+    // delivers no mouseup, which would strand the flag true forever.
+    const onLostPointer = () => {
+      draggingRef.current = false;
+    };
+    document.addEventListener('mousedown', onPointerDown, true);
+    document.addEventListener('touchstart', onPointerDown, true);
     document.addEventListener('mouseup', onPointerUp);
     document.addEventListener('touchend', onPointerUp);
+    document.addEventListener('touchcancel', onPointerUp);
+    document.addEventListener('pointercancel', onPointerUp);
+    window.addEventListener('blur', onLostPointer);
     return () => {
+      document.removeEventListener('mousedown', onPointerDown, true);
+      document.removeEventListener('touchstart', onPointerDown, true);
       document.removeEventListener('mouseup', onPointerUp);
       document.removeEventListener('touchend', onPointerUp);
+      document.removeEventListener('touchcancel', onPointerUp);
+      document.removeEventListener('pointercancel', onPointerUp);
+      window.removeEventListener('blur', onLostPointer);
     };
-  }, [recomputeBoxes, showOriginalPdf, getSelectionContext]);
+  }, [showOriginalPdf, captureSelection, nativeHl, repaint]);
 
-  // Flash a range: render temporary flash boxes + auto-clear.
+  /**
+   * Recover from anything that rewrites the article's text nodes under us —
+   * chiefly Chrome/Edge in-page translation, which replaces every text node and
+   * silently collapses the anchored Ranges (highlights would just vanish).
+   * Debounced, and it never observes the overlay layer, so a repaint on the
+   * fallback path cannot retrigger it.
+   */
+  useEffect(() => {
+    if (showOriginalPdf || typeof MutationObserver === 'undefined') return;
+    const roots = Array.from(chapterRootsRef.current.values());
+    if (roots.length === 0) return;
+    let timer: number | null = null;
+    const observer = new MutationObserver(() => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        timer = null;
+        for (const root of roots) invalidateAnchorCache(root);
+        // Through a ref so the observer survives every highlight-set change.
+        repaintRef.current();
+      }, 400);
+    });
+    for (const root of roots) {
+      observer.observe(root, { childList: true, subtree: true, characterData: true });
+    }
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+      observer.disconnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chaptersKey, showOriginalPdf]);
+
+  // A selection anchored in a chapter that is no longer mounted cannot be saved.
+  useEffect(() => {
+    lastSelectionRef.current = null;
+  }, [chaptersKey]);
+
+  // Flash a range: paint it, scroll it into view, auto-clear.
   const doFlash = useCallback((range: Range | null): boolean => {
     const h = highlighterRef.current;
     const container = scrollRef.current;
     if (!h || !container || !range) return false;
-    const fb = h.flashBoxes(range, container);
-    if (fb.length === 0) return false;
+    h.scrollTo(range);
+    const fb = h.setFlash(range, container);
     setFlashBoxes(fb);
     if (flashTimerRef.current) window.clearTimeout(flashTimerRef.current);
-    flashTimerRef.current = window.setTimeout(() => setFlashBoxes([]), 2400);
+    flashTimerRef.current = window.setTimeout(() => {
+      h.setFlash(null, container);
+      setFlashBoxes([]);
+    }, 2400);
     return true;
+  }, []);
+
+  // CSS.highlights is a document-global registry keyed by a CONSTANT name, so
+  // teardown has to cancel the flash timer too: an orphan timer from a closed
+  // reader would delete the flash the NEXT reader just registered.
+  useEffect(() => {
+    const h = highlighterRef.current;
+    return () => {
+      if (flashTimerRef.current) window.clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = null;
+      h?.clear();
+    };
   }, []);
 
   const handleCommunityJump = useCallback(
@@ -817,8 +989,10 @@ export function ReaderShell({
   );
 
   async function recolor(id: string, color: HighlightColor) {
-    setMarkPopover(null);
-    // State change → renderMarks effect repaints (Custom Highlight API).
+    // Deliberately does NOT close the popover: the palette sits next to the note
+    // editor, so closing would discard an unsaved draft. The popover re-renders
+    // with the new `currentColor` from the state change below.
+    // The state change re-runs `repaint`, which re-registers the ranges.
     setChapterHighlights((prev) => prev.map((h) => (h.id === id ? { ...h, color } : h)));
     try {
       const res = await fetch(`/api/library/docs/${doc.id}/highlights/${id}`, {
@@ -856,33 +1030,89 @@ export function ReaderShell({
   }
 
   function onContentClick(e: React.MouseEvent) {
+    // A drag that ENDS on an image must not open the lightbox — check for a
+    // live selection before anything else.
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) return;
+
     const target = e.target as HTMLElement;
-    // Images zoom into a lightbox.
     if (target.tagName === 'IMG' && getSelectionContext(target)) {
       const img = target as HTMLImageElement;
       setLightbox({ src: img.currentSrc || img.src, alt: img.alt ?? '' });
       return;
     }
-    // Highlights are painted by the browser (no <mark> elements) — hit-test the
-    // click point against the live ranges. Ignore clicks that are part of a
-    // fresh selection.
+    // Marks are painted by the browser (no elements to click) — hit-test the
+    // click point against the live ranges, exactly (caretPositionFromPoint +
+    // isPointInRange), so blank space beside a highlighted line is not a hit.
     const h = highlighterRef.current;
     if (!h) return;
-    const sel = window.getSelection();
-    if (sel && !sel.isCollapsed) return;
-    const community = h.communityHitAt(e.clientX, e.clientY);
-    if (community) {
-      setFocusNoteId(community);
-      openTab('notes');
-      setMarkPopover(null);
-      return;
-    }
     const own = h.ownHitAt(e.clientX, e.clientY);
     if (own && !own.id.startsWith('temp-')) {
+      setCommunityPopover(null);
       setMarkPopover({ id: own.id, top: own.rect.bottom + 10, left: own.rect.left + own.rect.width / 2 });
       return;
     }
+    const community = h.communityHitAt(e.clientX, e.clientY);
+    if (community) {
+      setMarkPopover(null);
+      setFocusNoteId(community.id);
+      setCommunityPopover({
+        id: community.id,
+        top: community.rect.bottom + 10,
+        left: community.rect.left + community.rect.width / 2,
+      });
+      return;
+    }
     setMarkPopover(null);
+    setCommunityPopover(null);
+  }
+
+  // Painted marks have no element to hang a cursor on — hit-test on move so a
+  // clickable annotation still LOOKS clickable. Coalesced to one test per frame:
+  // hit-testing reads layout per mark and a doc may carry hundreds.
+  const onContentMove = useCallback((e: React.MouseEvent) => {
+    if (hoverRafRef.current !== null) return;
+    const { clientX, clientY } = e;
+    hoverRafRef.current = requestAnimationFrame(() => {
+      hoverRafRef.current = null;
+      const h = highlighterRef.current;
+      if (!h) return;
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) return; // mid-drag: leave the I-beam alone
+      setHoveringMark(h.anyHitAt(clientX, clientY));
+    });
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (hoverRafRef.current !== null) cancelAnimationFrame(hoverRafRef.current);
+    },
+    [],
+  );
+
+  /** Save (or clear) the note on an existing highlight, from the mark popover.
+   *  Resolves to whether it persisted — the popover keeps the draft on false. */
+  async function saveMarkNote(id: string, text: string): Promise<boolean> {
+    const noteText = text.trim() || null;
+    const prev = chapterHighlights.find((h) => h.id === id)?.noteText ?? null;
+    setSavingNote(true);
+    setChapterHighlights((list) => list.map((h) => (h.id === id ? { ...h, noteText } : h)));
+    try {
+      const res = await fetch(`/api/library/docs/${doc.id}/highlights/${id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ noteText: noteText ?? '' }),
+      });
+      if (!res.ok) throw new Error('failed');
+      setHlVersion((v) => v + 1);
+      return true;
+    } catch {
+      setChapterHighlights((list) => list.map((h) => (h.id === id ? { ...h, noteText: prev } : h)));
+      pushToast('error', t('note_save_failed'));
+      return false;
+    } finally {
+      setSavingNote(false);
+    }
   }
 
   // ── chat wiring ───────────────────────────────────────────────────────
@@ -936,7 +1166,7 @@ export function ReaderShell({
 
   const handleOwnMutated = useCallback(
     (id: string, patch: { color?: string; noteText?: string | null } | null) => {
-      // State change drives the renderMarks effect (Custom Highlight API).
+      // The state change re-runs `repaint`, which re-registers the ranges.
       if (patch === null) {
         setChapterHighlights((prev) => prev.filter((h) => h.id !== id));
       } else {
@@ -1077,11 +1307,14 @@ export function ReaderShell({
           <div
             ref={scrollRef}
             onClick={onContentClick}
-            className="relative h-full min-w-0 flex-1 overflow-y-auto overscroll-contain"
+            onMouseMove={onContentMove}
+            onMouseLeave={() => setHoveringMark(false)}
+            className={`relative h-full min-w-0 flex-1 overflow-y-auto overscroll-contain ${
+              hoveringMark ? 'reader-scroll-hit' : ''
+            }`}
           >
-            {/* Highlight OVERLAY: translucent boxes drawn OVER the text, never
-                injected into it. Content-relative coords ⇒ they scroll with the
-                article and survive any React re-render (no flash-and-disappear). */}
+            {/* Fallback overlay only — empty on browsers with CSS.highlights,
+                where the marks are painted by the browser itself. */}
             <div className="reader-hl-layer" aria-hidden>
               {boxes.map((b) => (
                 <div
@@ -1183,7 +1416,7 @@ export function ReaderShell({
 
       {!showOriginalPdf && (
         <SelectionMenu
-          getContext={getSelectionContext}
+          capture={captureSelection}
           onHighlight={(payload, color) => void createHighlight(payload, color, false)}
           onNote={(payload) => void createHighlight(payload, 'yellow', true)}
           onAskAi={handleAskAi}
@@ -1228,21 +1461,53 @@ export function ReaderShell({
         </div>
       )}
 
-      {markPopover && (
-        <MarkPopover
-          top={markPopover.top}
-          left={markPopover.left}
-          currentColor={chapterHighlights.find((h) => h.id === markPopover.id)?.color ?? 'yellow'}
-          onRecolor={(color) => void recolor(markPopover.id, color)}
-          onNote={() => {
-            setEditNoteId(markPopover.id);
-            openTab('notes');
-            setMarkPopover(null);
-          }}
-          onDelete={() => void removeHighlight(markPopover.id)}
-          onClose={() => setMarkPopover(null)}
-        />
-      )}
+      {markPopover &&
+        (() => {
+          const hl = chapterHighlights.find((h) => h.id === markPopover.id);
+          if (!hl) return null;
+          return (
+            <MarkPopover
+              top={markPopover.top}
+              left={markPopover.left}
+              quote={hl.quote}
+              currentColor={hl.color}
+              noteText={hl.noteText}
+              saving={savingNote}
+              onRecolor={(color) => void recolor(markPopover.id, color)}
+              onSaveNote={(text) => saveMarkNote(markPopover.id, text)}
+              onEditingChange={setEditingMarkNote}
+              onOpenInPanel={() => {
+                setEditNoteId(markPopover.id);
+                openTab('notes');
+                setMarkPopover(null);
+              }}
+              onDelete={() => void removeHighlight(markPopover.id)}
+              onClose={() => setMarkPopover(null)}
+            />
+          );
+        })()}
+
+      {communityPopover &&
+        (() => {
+          const note = communityNotes?.find((n) => n.id === communityPopover.id);
+          if (!note) return null;
+          return (
+            <CommunityNotePopover
+              top={communityPopover.top}
+              left={communityPopover.left}
+              authorName={note.author.displayName}
+              quote={note.quote}
+              noteText={note.noteText}
+              replyCount={note.replyCount}
+              onOpenInPanel={() => {
+                setFocusNoteId(note.id);
+                openTab('notes');
+                setCommunityPopover(null);
+              }}
+              onClose={() => setCommunityPopover(null)}
+            />
+          );
+        })()}
 
       {lightbox && (
         <div

@@ -110,7 +110,14 @@ export async function searchSite(
           status: 'ready',
           deletedAt: null,
           visibility: { not: 'private' },
-          OR: [{ title: contains }, { author: contains }, { summary: contains }],
+          // summaryEn is the English twin of summary (lib/library/i18n-content.ts)
+          // — an English phrase may only exist there.
+          OR: [
+            { title: contains },
+            { author: contains },
+            { summary: contains },
+            { summaryEn: contains },
+          ],
         },
         select: {
           slug: true,

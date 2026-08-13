@@ -6,7 +6,7 @@
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { AUTHOR_IDENTITY_SELECT } from '@/lib/user-identity';
+import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
 import {
   type ShortsSort,
   decodeShortsCursor,
@@ -32,6 +32,9 @@ export const SHORT_FEED_SELECT = {
   publishedAt: true,
   createdAt: true,
   uploaderId: true,
+  subtitleStatus: true,
+  subtitleZhUrl: true,
+  subtitleEnUrl: true,
   uploader: AUTHOR_IDENTITY_SELECT,
 } satisfies Prisma.VideoSelect;
 
@@ -46,7 +49,11 @@ const SHORTS_PUBLIC = {
   deletedAt: null,
 } satisfies Prisma.VideoWhereInput;
 
-async function annotateViewer(rows: ShortRow[], viewerId: string | null): Promise<ShortFeedRow[]> {
+/** Batch per-viewer flags (2 IN-queries over the whole page, never per-row). */
+export async function annotateShortsViewer(
+  rows: ShortRow[],
+  viewerId: string | null,
+): Promise<ShortFeedRow[]> {
   if (!viewerId || rows.length === 0) {
     return rows.map((r) => ({ ...r, likedByMe: false, favoritedByMe: false }));
   }
@@ -64,6 +71,38 @@ async function annotateViewer(rows: ShortRow[], viewerId: string | null): Promis
   const liked = new Set(likes.map((l) => l.videoId));
   const faved = new Set(favs.map((f) => f.videoId));
   return rows.map((r) => ({ ...r, likedByMe: liked.has(r.id), favoritedByMe: faved.has(r.id) }));
+}
+
+/**
+ * Server-boundary mapper: annotated row → the exact client payload the player
+ * components consume (ISO dates, toPublicAuthor identity trim, no uploaderId).
+ * Every RSC that mounts ShortsCell/ShortsShowcase must go through this.
+ */
+export function toShortView(s: ShortFeedRow, viewerIsAdmin: boolean) {
+  return {
+    id: s.id,
+    slug: s.slug,
+    title: s.title,
+    summary: s.summary,
+    videoUrl: s.videoUrl,
+    posterUrl: s.posterUrl,
+    mimeType: s.mimeType,
+    width: s.width,
+    height: s.height,
+    durationSec: s.durationSec,
+    viewCount: s.viewCount,
+    likeCount: s.likeCount,
+    commentCount: s.commentCount,
+    favoriteCount: s.favoriteCount,
+    featured: s.featured,
+    publishedAt: s.publishedAt ? s.publishedAt.toISOString() : null,
+    subtitleStatus: s.subtitleStatus,
+    subtitleZhUrl: s.subtitleZhUrl,
+    subtitleEnUrl: s.subtitleEnUrl,
+    uploader: toPublicAuthor(s.uploader, viewerIsAdmin),
+    likedByMe: s.likedByMe,
+    favoritedByMe: s.favoritedByMe,
+  };
 }
 
 export interface ListShortsOptions {
@@ -110,7 +149,7 @@ export async function listShorts(opts: ListShortsOptions) {
   const page = rows.slice(0, limit);
 
   return {
-    items: await annotateViewer(page, opts.viewerId ?? null),
+    items: await annotateShortsViewer(page, opts.viewerId ?? null),
     hasMore,
     nextCursor:
       hasMore && page.length > 0
@@ -131,7 +170,7 @@ export async function getShortForFeed(
     select: SHORT_FEED_SELECT,
   });
   if (!row) return null;
-  const [annotated] = await annotateViewer([row], viewerId);
+  const [annotated] = await annotateShortsViewer([row], viewerId);
   return annotated;
 }
 

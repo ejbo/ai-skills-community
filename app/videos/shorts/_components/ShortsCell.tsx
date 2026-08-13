@@ -1,15 +1,16 @@
 'use client';
 
-// One cell of the 随刷 vertical feed: the <video> (mounted only near the active
-// index — decoder/memory windowing is a correctness requirement, not an
-// optimization), tap/double-tap semantics, progress bar with seek, the right
-// action rail (like/comment/favorite/share) and the caption overlay.
+// The ONE short-video player surface, reused by both hosts (same code path by
+// design — never fork this into a homepage copy):
+//   - the fullscreen 随刷 feed (variant: feed cell inside a snap container)
+//   - embedded players (homepage 刷视频, GeekHub 短视频 tab) via `embed`
+// It owns: tap/double-tap semantics, muted-first autoplay with a handled play()
+// promise, drag-seek progress, the 抖音-style bare-icon action rail
+// (like/comment/favorite/share/mute/字幕), uploader identity + date + expandable
+// caption, subtitle tracks (中/EN, whisper+LLM generated) and view counting.
 //
-// Autoplay contract: muted-first (the only autoplay browsers guarantee); the
-// play() promise is ALWAYS handled — NotAllowedError (iOS Low Power Mode, data
-// saver, autoplay blocked) shows a tap-to-play poster overlay instead of a
-// retry loop. React's `muted` JSX attribute is unreliable in the DOM, so the
-// flag is also applied imperatively on the ref.
+// React's `muted` JSX attribute is unreliable in the DOM, so the flag is also
+// applied imperatively on the ref.
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
@@ -17,6 +18,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Bookmark,
+  Captions,
   Eye,
   Forward,
   Heart,
@@ -25,19 +27,21 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { withBasePath } from '@/lib/base-path';
+import { relativeTime } from '@/lib/i18n-date';
 import { formatCount, formatDuration } from '@/lib/video/types';
 import type { ShortsCellApi, ShortView } from './types';
 
 const DOUBLE_TAP_MS = 280;
 
+type SubMode = 'off' | 'zh' | 'en';
+
 interface Props {
   item: ShortView;
-  index: number;
   active: boolean;
   /** Within the ±2 window — the only cells that mount a real <video>. */
   nearActive: boolean;
@@ -45,21 +49,30 @@ interface Props {
   reduceMotion: boolean;
   onToggleMute: () => void;
   onOpenComments: () => void;
-  registerApi: (index: number, api: ShortsCellApi | null) => void;
+  /** Embedded host (homepage / tab widget): fill the given frame, no aspect box. */
+  embed?: boolean;
+  /** When set, the video does NOT loop — the host advances (auto-next). */
+  onEnded?: () => void;
+  /** Feed-only: imperative API registry for keyboard shortcuts. */
+  index?: number;
+  registerApi?: (index: number, api: ShortsCellApi | null) => void;
 }
 
 export function ShortsCell({
   item,
-  index,
   active,
   nearActive,
   muted,
   reduceMotion,
   onToggleMute,
   onOpenComments,
+  embed = false,
+  onEnded,
+  index = 0,
   registerApi,
 }: Props) {
   const t = useTranslations('shorts');
+  const locale = useLocale();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -72,6 +85,7 @@ export function ShortsCell({
   const heartSeqRef = useRef(0);
   const likeBusyRef = useRef(false);
   const favBusyRef = useRef(false);
+  const dragRef = useRef(false);
 
   const [paused, setPaused] = useState(true);
   const [needsTap, setNeedsTap] = useState(false);
@@ -82,11 +96,64 @@ export function ShortsCell({
   const [favorited, setFavorited] = useState(item.favoritedByMe);
   const [favoriteCount, setFavoriteCount] = useState(item.favoriteCount);
   const [hearts, setHearts] = useState<{ id: number; x: number; y: number }[]>([]);
+  const [subMode, setSubMode] = useState<SubMode>('off');
 
   // The feed's keyboard handler calls togglePlay through a registered closure
   // that may be stale — read the live muted value from a ref, never the prop.
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
+
+  const subTracks = [
+    ...(item.subtitleZhUrl ? ([{ lang: 'zh', label: '中文', src: item.subtitleZhUrl }] as const) : []),
+    ...(item.subtitleEnUrl
+      ? ([{ lang: 'en', label: 'English', src: item.subtitleEnUrl }] as const)
+      : []),
+  ];
+
+  // Subtitle preference: stored choice wins, else the viewer's UI locale —
+  // normalized against the tracks this item actually has.
+  useEffect(() => {
+    let mode: SubMode = locale.startsWith('zh') ? 'zh' : 'en';
+    try {
+      const stored = localStorage.getItem('shorts:subtitle');
+      if (stored === 'off' || stored === 'zh' || stored === 'en') mode = stored;
+    } catch {
+      /* storage unavailable */
+    }
+    if (mode === 'zh' && !item.subtitleZhUrl) mode = item.subtitleEnUrl ? 'en' : 'off';
+    if (mode === 'en' && !item.subtitleEnUrl) mode = item.subtitleZhUrl ? 'zh' : 'off';
+    setSubMode(mode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id]);
+
+  // Drive the <track> elements imperatively (React has no `mode` prop).
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    const apply = () => {
+      for (const tr of Array.from(el.textTracks)) {
+        tr.mode = tr.language === subMode ? 'showing' : 'disabled';
+      }
+    };
+    apply();
+    el.textTracks.addEventListener('addtrack', apply);
+    return () => el.textTracks.removeEventListener('addtrack', apply);
+  }, [subMode, nearActive, item.subtitleZhUrl, item.subtitleEnUrl]);
+
+  function cycleSubtitle() {
+    const order: SubMode[] = [
+      'off',
+      ...(item.subtitleZhUrl ? (['zh'] as const) : []),
+      ...(item.subtitleEnUrl ? (['en'] as const) : []),
+    ];
+    const next = order[(order.indexOf(subMode) + 1) % order.length];
+    setSubMode(next);
+    try {
+      localStorage.setItem('shorts:subtitle', next);
+    } catch {
+      /* ignore */
+    }
+  }
 
   function attemptPlay() {
     const el = videoRef.current;
@@ -171,7 +238,7 @@ export function ShortsCell({
   }
 
   async function share() {
-    const url = `${window.location.origin}${window.location.pathname}?v=${item.id}`;
+    const url = `${window.location.origin}${withBasePath(`/videos/shorts?v=${item.id}`)}`;
     try {
       await navigator.clipboard.writeText(url);
       pushToast('success', t('link_copied'));
@@ -208,12 +275,13 @@ export function ShortsCell({
 
   // Imperative API for the feed's keyboard shortcuts (Space / L).
   useEffect(() => {
+    if (!registerApi) return;
     registerApi(index, { togglePlay, toggleLike: () => void toggleLike() });
     return () => registerApi(index, null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index, liked, likeCount, paused, needsTap]);
 
-  // Activation: play when active (muted-first), fully stop when scrolled away.
+  // Activation: play when active (muted-first), fully stop when deactivated.
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
@@ -288,14 +356,18 @@ export function ShortsCell({
     }
   }
 
-  const dragRef = useRef(false);
-
   const caption = item.summary.trim();
   const showExpand = caption.length > 64 || caption.includes('\n');
   const posterSrc = withBasePath(item.posterUrl) || undefined;
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-black md:mx-auto md:aspect-[9/16] md:w-auto md:max-w-full">
+    <div
+      className={
+        embed
+          ? 'relative h-full w-full overflow-hidden bg-black'
+          : 'relative h-full w-full overflow-hidden bg-black md:mx-auto md:aspect-[9/16] md:w-auto md:max-w-full'
+      }
+    >
       {/* Media surface (tap = pause/play, double-tap = like) */}
       <div className="absolute inset-0" onClick={onSurfaceClick}>
         {nearActive && item.videoUrl ? (
@@ -303,7 +375,7 @@ export function ShortsCell({
             ref={videoRef}
             src={withBasePath(item.videoUrl)}
             poster={posterSrc}
-            loop
+            loop={!onEnded}
             muted
             playsInline
             preload={active ? 'auto' : 'metadata'}
@@ -311,7 +383,12 @@ export function ShortsCell({
             onPlay={() => setPaused(false)}
             onPause={() => setPaused(true)}
             onTimeUpdate={onTimeUpdate}
-          />
+            onEnded={onEnded}
+          >
+            {subTracks.map((tr) => (
+              <track key={tr.lang} kind="subtitles" srcLang={tr.lang} label={tr.label} src={withBasePath(tr.src)} />
+            ))}
+          </video>
         ) : posterSrc ? (
           // eslint-disable-next-line @next/next/no-img-element -- same-origin stored poster
           <img src={posterSrc} alt={item.title} className="h-full w-full object-contain" />
@@ -356,15 +433,18 @@ export function ShortsCell({
         </button>
       )}
 
-      {/* Right action rail — 抖音-style: bare solid icons + drop shadow, no
-          heavy button chrome. */}
-      <div className="absolute bottom-24 right-2.5 z-[7] flex flex-col items-center gap-5 md:right-4">
+      {/* Right action rail — 抖音-style: bare solid icons + drop shadow. */}
+      <div
+        className={`absolute z-[7] flex flex-col items-center ${
+          embed ? 'bottom-20 right-2 gap-4' : 'bottom-24 right-2.5 gap-5 md:right-4'
+        }`}
+      >
         <Link
           href={`/users/${item.uploader.handle}`}
           className="mb-0.5 rounded-full ring-2 ring-white/90 drop-shadow-lg transition hover:ring-accent-400"
           aria-label={item.uploader.displayName}
         >
-          <Avatar name={item.uploader.displayName} src={item.uploader.avatarUrl} size="lg" />
+          <Avatar name={item.uploader.displayName} src={item.uploader.avatarUrl} size={embed ? 'md' : 'lg'} />
         </Link>
         <RailButton
           label={t('like')}
@@ -373,7 +453,7 @@ export function ShortsCell({
           onClick={() => void toggleLike()}
           icon={
             <Heart
-              className={`h-8 w-8 transition ${
+              className={`${embed ? 'h-7 w-7' : 'h-8 w-8'} transition ${
                 liked ? 'fill-rose-500 text-rose-500' : 'fill-white text-white'
               }`}
             />
@@ -383,7 +463,7 @@ export function ShortsCell({
           label={t('comments')}
           count={item.commentCount}
           onClick={onOpenComments}
-          icon={<MessageCircle className="h-8 w-8 fill-white text-white" />}
+          icon={<MessageCircle className={`${embed ? 'h-7 w-7' : 'h-8 w-8'} fill-white text-white`} />}
         />
         <RailButton
           label={t('favorite')}
@@ -392,7 +472,7 @@ export function ShortsCell({
           onClick={() => void toggleFavorite()}
           icon={
             <Bookmark
-              className={`h-8 w-8 transition ${
+              className={`${embed ? 'h-7 w-7' : 'h-8 w-8'} transition ${
                 favorited ? 'fill-amber-400 text-amber-400' : 'fill-white text-white'
               }`}
             />
@@ -401,8 +481,23 @@ export function ShortsCell({
         <RailButton
           label={t('share')}
           onClick={() => void share()}
-          icon={<Forward className="h-8 w-8 fill-white text-white" />}
+          icon={<Forward className={`${embed ? 'h-7 w-7' : 'h-8 w-8'} fill-white text-white`} />}
         />
+        {subTracks.length > 0 && (
+          <RailButton
+            label={t('subtitles')}
+            active={subMode !== 'off'}
+            onClick={cycleSubtitle}
+            caption={subMode === 'off' ? t('subtitles_off') : subMode === 'zh' ? '中' : 'EN'}
+            icon={
+              <Captions
+                className={`${embed ? 'h-6 w-6' : 'h-7 w-7'} ${
+                  subMode !== 'off' ? 'text-accent-400' : 'text-white'
+                }`}
+              />
+            }
+          />
+        )}
         <button
           type="button"
           onClick={onToggleMute}
@@ -413,15 +508,25 @@ export function ShortsCell({
         </button>
       </div>
 
-      {/* Caption overlay */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[5] bg-gradient-to-t from-black/80 via-black/35 to-transparent pb-8 pl-4 pr-16 pt-20">
-        <div className="pointer-events-auto max-w-xl space-y-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <Link href={`/users/${item.uploader.handle}`} className="text-[15px] font-semibold hover:underline">
+      {/* Caption overlay: uploader + date, expandable description, counts */}
+      <div
+        className={`pointer-events-none absolute inset-x-0 bottom-0 z-[5] bg-gradient-to-t from-black/80 via-black/35 to-transparent pl-4 pr-16 ${
+          embed ? 'pb-5 pt-14' : 'pb-8 pt-20'
+        }`}
+      >
+        <div className="pointer-events-auto max-w-xl space-y-1.5 text-white">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Link
+              href={`/users/${item.uploader.handle}`}
+              className="text-[15px] font-semibold drop-shadow hover:underline"
+            >
               {item.uploader.displayName}
             </Link>
             {!item.uploader.isPrivate && (
               <span className="text-xs text-white/60">@{item.uploader.handle}</span>
+            )}
+            {item.publishedAt && (
+              <span className="text-xs text-white/50">· {relativeTime(item.publishedAt, locale)}</span>
             )}
             <DeptTag department={item.uploader.department} lab={item.uploader.lab} />
           </div>
@@ -451,6 +556,14 @@ export function ShortsCell({
               {formatCount(item.viewCount)}
             </span>
             {item.durationSec > 0 && <span>{formatDuration(item.durationSec)}</span>}
+            {embed && (
+              <Link
+                href={`/videos/shorts?v=${item.id}`}
+                className="pointer-events-auto font-medium text-accent-300 hover:text-accent-200 hover:underline"
+              >
+                {t('strip_view_all')} →
+              </Link>
+            )}
           </p>
         </div>
       </div>
@@ -464,6 +577,7 @@ export function ShortsCell({
         aria-valuemax={100}
         aria-valuenow={Math.round(progress * 100)}
         tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => {
           dragRef.current = true;
           e.currentTarget.setPointerCapture(e.pointerId);
@@ -485,7 +599,6 @@ export function ShortsCell({
           <div className="h-full rounded-full bg-white/90" style={{ width: `${progress * 100}%` }} />
         </div>
       </div>
-
     </div>
   );
 }
@@ -494,12 +607,15 @@ function RailButton({
   icon,
   label,
   count,
+  caption,
   active,
   onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   count?: number;
+  /** Small text under the icon when there is no count (e.g. 字幕 mode). */
+  caption?: string;
   active?: boolean;
   onClick: () => void;
 }) {
@@ -515,6 +631,11 @@ function RailButton({
       {count !== undefined && (
         <span className="text-xs font-semibold tabular-nums text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">
           {formatCount(count)}
+        </span>
+      )}
+      {caption !== undefined && count === undefined && (
+        <span className="text-[10px] font-semibold text-white/90 drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">
+          {caption}
         </span>
       )}
     </button>

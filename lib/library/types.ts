@@ -80,13 +80,18 @@ export interface ExtractedDoc {
   chapters: ExtractedChapter[];
 }
 
-/** Shape of LibraryDoc.aiOverview (JSON column). */
-export interface AiOverview {
+/**
+ * Shape of LibraryDoc.aiOverview / aiOverviewEn (JSON columns).
+ * A `type` alias, not an `interface`, on purpose: only aliases get TypeScript's
+ * implicit index signature, which is what Prisma's `InputJsonObject` requires
+ * when this is written straight into a Json column.
+ */
+export type AiOverview = {
   summary: string;
   outline: string[];
   keyPoints: string[];
   questions: string[];
-}
+};
 
 // CJK ideographs + kana + hangul — each counts as one "word" for reading stats.
 const CJK_RE = /[㐀-䶿一-鿿豈-﫿぀-ヿ가-힯]/g;

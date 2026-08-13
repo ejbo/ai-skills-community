@@ -8,6 +8,7 @@ import { FileUp, ImagePlus, Loader2, Pencil, RefreshCw, Trash2, X } from 'lucide
 import { pushToast } from '@/components/Toaster';
 import { withBasePath } from '@/lib/base-path';
 import { DocCover } from '@/components/library/DocCover';
+import { ChapterHtmlEditor, type ChapterEditorMode } from '@/components/library/ChapterHtmlEditor';
 import { DOC_TYPES, LIBRARY_CATEGORIES } from '@/lib/library/types';
 
 interface EditableDoc {
@@ -16,7 +17,9 @@ interface EditableDoc {
   title: string;
   author: string | null;
   summary: string;
+  summaryEn: string;
   abstractMd: string;
+  abstractMdEn: string;
   docType: string;
   categories: string[];
   visibility: string;
@@ -43,7 +46,12 @@ export function DocEditor({ doc }: { doc: EditableDoc }) {
   const [title, setTitle] = useState(doc.title);
   const [author, setAuthor] = useState(doc.author ?? '');
   const [summary, setSummary] = useState(doc.summary);
+  const [summaryEn, setSummaryEn] = useState(doc.summaryEn);
   const [abstractMd, setAbstractMd] = useState(doc.abstractMd);
+  const [abstractMdEn, setAbstractMdEn] = useState(doc.abstractMdEn);
+  // 中文 / English are stored side by side (lib/library/i18n-content.ts) — the
+  // viewer's 设置 → 语言 picks one, with 中文 as the fallback.
+  const [contentLang, setContentLang] = useState<'zh' | 'en'>('zh');
   const [docType, setDocType] = useState(doc.docType);
   const [categories, setCategories] = useState<string[]>(doc.categories);
   const [visibility, setVisibility] = useState(doc.visibility);
@@ -77,7 +85,9 @@ export function DocEditor({ doc }: { doc: EditableDoc }) {
           title: title.trim(),
           author: author.trim(),
           summary: summary.trim(),
+          summaryEn: summaryEn.trim(),
           abstractMd: abstractMd.trim(),
+          abstractMdEn: abstractMdEn.trim(),
           docType,
           categories,
           visibility,
@@ -278,23 +288,53 @@ export function DocEditor({ doc }: { doc: EditableDoc }) {
             </select>
           </div>
           <div className="md:col-span-2">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="text-xs font-medium text-muted">{t('content_language')}</span>
+              <div className="inline-flex rounded-lg border border-zinc-200 p-0.5 dark:border-zinc-700">
+                {(['zh', 'en'] as const).map((lang) => (
+                  <button
+                    key={lang}
+                    type="button"
+                    aria-pressed={contentLang === lang}
+                    onClick={() => setContentLang(lang)}
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                      contentLang === lang
+                        ? 'bg-accent-500 text-white'
+                        : 'text-muted hover:text-accent-600'
+                    }`}
+                  >
+                    {lang === 'zh' ? t('lang_zh') : t('lang_en')}
+                  </button>
+                ))}
+              </div>
+              <span className="text-xs text-muted">{t('content_language_hint')}</span>
+            </div>
             <label className={labelCls}>{t('summary_label')}</label>
             <textarea
-              value={summary}
-              onChange={(e) => setSummary(e.target.value)}
+              key={`summary-${contentLang}`}
+              value={contentLang === 'zh' ? summary : summaryEn}
+              onChange={(e) =>
+                contentLang === 'zh' ? setSummary(e.target.value) : setSummaryEn(e.target.value)
+              }
               rows={2}
               maxLength={1000}
+              placeholder={contentLang === 'en' ? t('summary_en_placeholder') : undefined}
               className="w-full resize-y rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-accent-500 dark:border-zinc-800 dark:bg-zinc-900"
             />
           </div>
           <div className="md:col-span-2">
             <label className={labelCls}>{t('abstract_label')}</label>
             <textarea
-              value={abstractMd}
-              onChange={(e) => setAbstractMd(e.target.value)}
+              key={`abstract-${contentLang}`}
+              value={contentLang === 'zh' ? abstractMd : abstractMdEn}
+              onChange={(e) =>
+                contentLang === 'zh' ? setAbstractMd(e.target.value) : setAbstractMdEn(e.target.value)
+              }
               rows={5}
               maxLength={20000}
-              placeholder={t('abstract_placeholder')}
+              placeholder={
+                contentLang === 'en' ? t('abstract_en_placeholder') : t('abstract_placeholder')
+              }
               className="w-full resize-y rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-accent-500 dark:border-zinc-800 dark:bg-zinc-900"
             />
           </div>
@@ -360,6 +400,11 @@ export function DocEditor({ doc }: { doc: EditableDoc }) {
         <section className="surface rounded-2xl p-5">
           <h2 className="text-base font-semibold">{t('reading_content')}</h2>
           <p className="mt-1 text-xs text-muted">{t('chapters_edit_hint')}</p>
+          {doc.format === 'pdf' && (
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              {t('chapter_pdf_edit_hint')}
+            </p>
+          )}
           <ul className="mt-3 divide-y divide-zinc-100 dark:divide-zinc-800/60">
             {doc.chapters.map((ch) => (
               <li key={ch.chapterIndex} className="flex items-center gap-3 py-2.5 text-sm">
@@ -459,6 +504,10 @@ export function DocEditor({ doc }: { doc: EditableDoc }) {
       <AnimatePresence>
         {editingChapter !== null && (
           <ChapterEditModal
+            // Remount per chapter: the WYSIWYG surface is uncontrolled after
+            // its first seed, so a prop-only chapter swap would keep showing
+            // the previous chapter's content.
+            key={editingChapter}
             docId={doc.id}
             chapterIndex={editingChapter}
             onClose={() => setEditingChapter(null)}
@@ -483,6 +532,9 @@ function ChapterEditModal({
   const [title, setTitle] = useState('');
   const [html, setHtml] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // 排版 (the processed reading format) is the default — the uploader edits what
+  // readers see, not tag soup. 源码 stays as the escape hatch.
+  const [editorMode, setEditorMode] = useState<ChapterEditorMode>('rich');
 
   useEffect(() => {
     let cancelled = false;
@@ -551,7 +603,7 @@ function ChapterEditModal({
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 16 }}
-        className="surface relative z-10 flex max-h-[86vh] w-full max-w-3xl flex-col rounded-2xl p-5 shadow-2xl"
+        className="surface relative z-10 flex max-h-[90vh] w-full max-w-4xl flex-col rounded-2xl p-5 shadow-2xl"
       >
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold">{t('edit_chapter_n', { num: chapterIndex + 1 })}</h3>
@@ -575,13 +627,27 @@ function ChapterEditModal({
               <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} />
             </div>
             <div className="mt-3 flex min-h-0 flex-1 flex-col">
-              <label className={labelCls}>{t('chapter_html_label')}</label>
-              <textarea
-                value={html}
-                onChange={(e) => setHtml(e.target.value)}
-                spellCheck={false}
-                className="min-h-[300px] flex-1 resize-y rounded-lg border border-zinc-200 bg-white p-3 font-mono text-xs leading-relaxed outline-none focus:border-accent-500 dark:border-zinc-800 dark:bg-zinc-900"
-              />
+              <div className="mb-1.5 flex items-center justify-between gap-3">
+                <label className="text-xs font-medium text-muted">{t('chapter_content_label')}</label>
+                <div className="inline-flex rounded-lg border border-zinc-200 p-0.5 dark:border-zinc-700">
+                  {(['rich', 'source'] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      aria-pressed={editorMode === m}
+                      onClick={() => setEditorMode(m)}
+                      className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                        editorMode === m
+                          ? 'bg-accent-500 text-white'
+                          : 'text-muted hover:text-accent-600'
+                      }`}
+                    >
+                      {m === 'rich' ? t('chapter_mode_rich') : t('chapter_mode_source')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <ChapterHtmlEditor value={html} onChange={setHtml} mode={editorMode} />
             </div>
             <div className="mt-3 flex justify-end gap-2">
               <button

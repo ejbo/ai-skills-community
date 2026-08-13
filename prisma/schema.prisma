@@ -671,6 +671,13 @@ enum VideoSourceType {
   external_embed
 }
 
+enum VideoSubtitleStatus {
+  none // 未生成
+  processing // 生成中
+  ready // 至少一条字幕可用
+  failed // 生成失败（subtitleError 存原因）
+}
+
 enum VideoCommentStatus {
   visible
   hidden
@@ -774,6 +781,18 @@ model Video {
   aiSummaryModel      String?
   aiSummaryAt         DateTime?
   aiSummarySourceHash String?
+
+  // 字幕 (随刷短视频): local whisper ASR + LLM translation, stored as VTT files
+  // in the videos storage under subtitle/. Best-effort — absent tooling leaves
+  // status at none/failed and playback simply has no subtitle tracks.
+  subtitleStatus  VideoSubtitleStatus @default(none)
+  subtitleSrcLang String? // detected: 'zh' | 'en'
+  subtitleZhKey   String?
+  subtitleZhUrl   String?
+  subtitleEnKey   String?
+  subtitleEnUrl   String?
+  subtitleError   String?
+  subtitleAt      DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1273,7 +1292,9 @@ model LibraryDoc {
   status           LibraryDocStatus  @default(pending)
   processingError  String?
   summary          String            @default("") // short description shown on cards (AI-filled)
+  summaryEn        String            @default("") // English card description (AI-filled alongside aiOverviewEn)
   abstractMd       String            @default("") // 上传者撰写的摘要 Abstract — never AI-touched; shown above AI 导读
+  abstractMdEn     String            @default("") // English Abstract — uploader-written too, never auto-translated
   sourceUrl        String? // canonicalized original URL (null for file uploads)
   siteName         String? // og:site_name / readable domain / null
   publishedAt      DateTime? // original publish date
@@ -1297,8 +1318,12 @@ model LibraryDoc {
   ratingCount      Int               @default(0)
   avgRating        Float             @default(0)
 
-  // AI cache — generated once, shared by all users
+  // AI cache — generated once, shared by all users.
+  // Bilingual by contract (lib/library/i18n-content.ts): `aiOverview` is the
+  // 中文 version, `aiOverviewEn` the English one. The viewer's `locale` cookie
+  // picks which is rendered; en/fr fall back to English, then to 中文.
   aiOverview     Json? // { summary: string, outline: string[], keyPoints: string[], questions: string[] }
+  aiOverviewEn   Json? // same shape, English — produced by the indexer's translate pass
   aiModel        String?
   aiIndexedAt    DateTime?
   aiSourceHash   String? // = contentHash at indexing time; mismatch => stale
@@ -1346,6 +1371,7 @@ model LibraryChapter {
   pageStart    Int?
   pageEnd      Int?
   aiSummary    String? // <=120 chars retrieval index entry; null = not yet summarized (checkpoint)
+  aiSummaryEn  String? // English rendering of aiSummary (TOC display only — retrieval always uses aiSummary)
   aiKeywords   String[] @default([])
 
   doc LibraryDoc @relation(fields: [docId], references: [id], onDelete: Cascade)

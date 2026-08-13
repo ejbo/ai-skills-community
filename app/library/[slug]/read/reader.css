@@ -12,10 +12,16 @@
      the two disagree (site dark + forced 浅色/护眼, or the reverse). */
   --reader-hover: rgba(0, 0, 0, 0.05);
   --reader-accent: #4a46db; /* accent-600 */
-  --hl-yellow: rgba(250, 204, 21, 0.4);
-  --hl-green: rgba(74, 222, 128, 0.35);
-  --hl-blue: rgba(96, 165, 250, 0.35);
-  --hl-pink: rgba(244, 114, 182, 0.35);
+  /* Highlight palette — consumed by BOTH the native ::highlight() rules and
+     the overlay fallback, so the two can never drift. Light alphas: the browser
+     paints these behind the glyphs, so anything heavier fogs the text. */
+  --hl-yellow: rgba(250, 204, 21, 0.42);
+  --hl-green: rgba(74, 222, 128, 0.38);
+  --hl-blue: rgba(96, 165, 250, 0.38);
+  --hl-pink: rgba(244, 114, 182, 0.36);
+  --hl-community: rgba(139, 122, 240, 0.14);
+  --hl-community-line: rgba(124, 108, 240, 0.85);
+  --hl-flash: rgba(139, 122, 240, 0.38);
   background: var(--reader-bg);
   color: var(--reader-fg);
 }
@@ -51,10 +57,13 @@
 .reader-root[data-reader-theme='dark'] {
   --reader-hover: rgba(255, 255, 255, 0.1);
   --reader-accent: #9499ff; /* accent-300 */
-  --hl-yellow: rgba(202, 138, 4, 0.45);
-  --hl-green: rgba(22, 163, 74, 0.4);
-  --hl-blue: rgba(37, 99, 235, 0.4);
-  --hl-pink: rgba(219, 39, 119, 0.4);
+  --hl-yellow: rgba(202, 138, 4, 0.5);
+  --hl-green: rgba(22, 163, 74, 0.45);
+  --hl-blue: rgba(37, 99, 235, 0.48);
+  --hl-pink: rgba(219, 39, 119, 0.45);
+  --hl-community: rgba(148, 130, 255, 0.2);
+  --hl-community-line: rgba(160, 145, 255, 0.9);
+  --hl-flash: rgba(148, 130, 255, 0.42);
 }
 
 /* small helpers used by the reader components */
@@ -166,6 +175,11 @@
   margin: 1.2em auto;
   display: block;
   cursor: zoom-in;
+  /* A drag that starts on an image must extend the TEXT selection, not begin a
+     native image drag — that is one of the "sometimes I can't select" cases.
+     (Deliberately NOT `user-select: none`: that would make the image an
+     unselectable island mid-drag.) */
+  -webkit-user-drag: none;
 }
 .reader-prose figure {
   margin: 1.2em 0;
@@ -209,12 +223,58 @@
   text-decoration-color: rgb(var(--accent));
 }
 
-/* ── highlights (alphaXiv-style OVERLAY layer) ──────────────────────────── */
-/* Highlights are NOT injected into the article. They are translucent boxes in
-   an absolutely-positioned layer that sits OVER the text, at content-relative
-   coordinates. Nothing about the article DOM changes ⇒ a React re-render can
-   never wipe a highlight (the old "闪一下就消失" bug is structurally impossible).
-   The layer is click-through so text selection still works underneath it. */
+/* ── highlights (painted by the BROWSER) ────────────────────────────────── */
+/* Registered through the CSS Custom Highlight API in ./highlighter.ts — the
+   same machinery that paints ::selection. Nothing is injected into the article
+   and no rectangles are positioned, so a highlight tracks the glyphs exactly,
+   follows reflow for free, and cannot interfere with selecting text.
+   The .reader-hl-* overlay rules further below are the FALLBACK for browsers
+   without CSS.highlights; keep the two palettes in sync. */
+
+::highlight(reader-hl-yellow) {
+  background-color: var(--hl-yellow);
+}
+::highlight(reader-hl-green) {
+  background-color: var(--hl-green);
+}
+::highlight(reader-hl-blue) {
+  background-color: var(--hl-blue);
+}
+::highlight(reader-hl-pink) {
+  background-color: var(--hl-pink);
+}
+/* Other readers' shared notes — a barely-there tint plus the dotted underline
+   the overlay used to fake with a border. ::highlight() supports
+   text-decoration but NOT border/box-shadow; illegal declarations are dropped
+   individually, so keep only styleable properties here. */
+::highlight(reader-hl-community) {
+  background-color: var(--hl-community);
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--hl-community-line);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+/* jump/citation flash — highlight pseudo-elements are not animatable, so this
+   is a flat accent wash that ./highlighter.ts clears on a timer. */
+::highlight(reader-hl-flash) {
+  background-color: var(--hl-flash);
+}
+/* The custom properties above are resolved against the HIGHLIGHTED element, so
+   the reader's 浅色/护眼/深色 themes just work — including a runtime swap. */
+
+/* Hovering a painted mark is clickable (opens the note popover) — there is no
+   element to put a cursor on, so ReaderShell toggles this class on the
+   container from the hit-test. */
+.reader-scroll-hit {
+  cursor: pointer;
+}
+
+/* ── highlight fallback: overlay boxes ─────────────────────────────────── */
+/* Only used when CSS.highlights is unavailable. Boxes come from per-text-node
+   rects (anchoring.textRects), never from Range.getClientRects() — the latter
+   also returns the border box of every fully contained block element, which is
+   what used to paint highlights over margins and blank space. */
 
 .reader-hl-layer {
   position: absolute;
@@ -225,80 +285,49 @@
   pointer-events: none;
   z-index: 1;
 }
-/* alphaXiv keeps highlights LIGHT so the glyphs stay crisp. `mix-blend-mode:
-   multiply` makes each translucent box TINT the text underneath instead of
-   fogging it (the boxes paint at z-index:1 OVER the text). Alphas are ~0.28,
-   well below the old 0.4 that "挡住字体". */
+/* mix-blend-mode is deliberately absent: .reader-hl-layer has z-index, which
+   creates a stacking context, which ISOLATES the boxes from the text backdrop —
+   so `multiply` silently degraded to source-over and only made the fill look
+   dirty. Flat, light alphas keep the glyphs readable. */
 .reader-hl-box {
   position: absolute;
   border-radius: 3px;
   pointer-events: none;
-  mix-blend-mode: multiply;
-  /* nudge to hug the glyph baseline rather than the line box */
-  margin-top: -1px;
-  padding-bottom: 2px;
 }
 .reader-hl-box-yellow {
-  background-color: rgba(250, 224, 122, 0.3);
+  background-color: var(--hl-yellow);
 }
 .reader-hl-box-green {
-  background-color: rgba(150, 224, 178, 0.28);
+  background-color: var(--hl-green);
 }
 .reader-hl-box-blue {
-  background-color: rgba(150, 190, 250, 0.3);
+  background-color: var(--hl-blue);
 }
 .reader-hl-box-pink {
-  background-color: rgba(244, 178, 210, 0.3);
+  background-color: var(--hl-pink);
 }
 /* Other readers' shared notes — a barely-there tint + dotted underline
    (details live in the 笔记 sidebar + margin avatars). */
 .reader-hl-box-community {
-  background-color: rgba(139, 122, 240, 0.1);
-  border-bottom: 2px dotted rgba(124, 108, 240, 0.85);
+  background-color: var(--hl-community);
+  border-bottom: 2px dotted var(--hl-community-line);
 }
 /* jump/citation flash — a pulsing accent wash that fades out. */
 .reader-hl-box-flash {
-  background-color: rgba(139, 122, 240, 0.22);
+  background-color: var(--hl-flash);
   animation: reader-hl-flash 0.9s ease-out 2;
 }
 @keyframes reader-hl-flash {
   0%,
   100% {
     box-shadow: 0 0 0 0 rgba(139, 122, 240, 0);
-    background-color: rgba(139, 122, 240, 0.14);
   }
   50% {
     box-shadow: 0 0 0 3px rgba(139, 122, 240, 0.45);
-    background-color: rgba(139, 122, 240, 0.34);
   }
 }
-/* Dark themes: multiply would darken on a dark bg — use screen and slightly
-   stronger fills so the marks read against the dark page. */
-.reader-root[data-reader-theme='dark'] .reader-hl-box,
-[data-theme='dark'] .reader-root[data-reader-theme='auto'] .reader-hl-box {
-  mix-blend-mode: screen;
-}
-.reader-root[data-reader-theme='dark'] .reader-hl-box-yellow,
-[data-theme='dark'] .reader-root[data-reader-theme='auto'] .reader-hl-box-yellow {
-  background-color: rgba(202, 160, 40, 0.32);
-}
-.reader-root[data-reader-theme='dark'] .reader-hl-box-green,
-[data-theme='dark'] .reader-root[data-reader-theme='auto'] .reader-hl-box-green {
-  background-color: rgba(52, 150, 90, 0.3);
-}
-.reader-root[data-reader-theme='dark'] .reader-hl-box-blue,
-[data-theme='dark'] .reader-root[data-reader-theme='auto'] .reader-hl-box-blue {
-  background-color: rgba(70, 120, 220, 0.32);
-}
-.reader-root[data-reader-theme='dark'] .reader-hl-box-pink,
-[data-theme='dark'] .reader-root[data-reader-theme='auto'] .reader-hl-box-pink {
-  background-color: rgba(200, 90, 150, 0.3);
-}
-.reader-root[data-reader-theme='dark'] .reader-hl-box-community,
-[data-theme='dark'] .reader-root[data-reader-theme='auto'] .reader-hl-box-community {
-  background-color: rgba(148, 130, 255, 0.16);
-}
-
+/* The dark palette lives entirely in the --hl-* tokens above, so the overlay
+   and ::highlight() can never drift apart. */
 /* community-drawer quote left borders */
 .hl-border-yellow {
   border-left-color: #facc15;

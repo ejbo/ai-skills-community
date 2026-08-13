@@ -7,6 +7,7 @@ import { auth } from '@/lib/auth';
 import { relativeTime } from '@/lib/i18n-date';
 import { getDocBySlug } from '@/lib/library-queries';
 import { CATEGORY_NAME_BY_SLUG, isDocType } from '@/lib/library/types';
+import { pickOverview, pickText } from '@/lib/library/i18n-content';
 import { withBasePath } from '@/lib/base-path';
 import { BackButton } from '@/components/BackButton';
 import { Avatar } from '@/components/Avatar';
@@ -83,6 +84,11 @@ export default async function DocDetailPage({
   const hasFile = doc.format !== 'url' && Boolean(doc.fileUrl);
   const typeLabel = tl(`docType.${isDocType(doc.docType) ? doc.docType : 'other'}`);
   const formatLabel = doc.format === 'url' ? t('format_web') : FORMAT_LABELS[doc.format] ?? doc.format;
+  // Stored prose is bilingual (lib/library/i18n-content.ts) — resolve it here so
+  // the client components below never see two languages at once.
+  const localizedSummary = pickText(locale, doc.summary, doc.summaryEn);
+  const localizedAbstract = pickText(locale, doc.abstractMd, doc.abstractMdEn);
+  const localizedOverview = pickOverview(locale, doc.aiOverview, doc.aiOverviewEn);
 
   return (
     <div className="container max-w-5xl py-8">
@@ -313,19 +319,19 @@ export default async function DocDetailPage({
             </div>
           ) : (
             <>
-              {doc.summary && <p className="text-lg text-muted">{doc.summary}</p>}
+              {localizedSummary && <p className="text-lg text-muted">{localizedSummary}</p>}
 
-              {doc.abstractMd && (
+              {localizedAbstract && (
                 <section className="surface rounded-2xl p-5">
                   <h2 className="text-sm font-semibold tracking-tight text-muted">{t('abstract_title')}</h2>
                   <div className="mt-2">
-                    <MarkdownRenderer content={doc.abstractMd} />
+                    <MarkdownRenderer content={localizedAbstract} />
                   </div>
                 </section>
               )}
 
               <AiDigest
-                overview={doc.aiOverview}
+                overview={localizedOverview}
                 aiIndexState={doc.aiIndexState}
                 aiError={doc.aiError}
                 docId={doc.id}
@@ -396,10 +402,17 @@ async function TocRow({
   chapter,
 }: {
   slug: string;
-  chapter: { chapterIndex: number; title: string | null; charCount: number; aiSummary: string | null };
+  chapter: {
+    chapterIndex: number;
+    title: string | null;
+    charCount: number;
+    aiSummary: string | null;
+    aiSummaryEn: string | null;
+  };
 }) {
   const t = await getTranslations('library');
   const locale = await getLocale();
+  const chapterSummary = pickText(locale, chapter.aiSummary, chapter.aiSummaryEn);
   return (
     <li>
       <Link
@@ -413,10 +426,8 @@ async function TocRow({
           <span className="block truncate">
             {chapter.title ?? t('chapter_n', { num: chapter.chapterIndex + 1 })}
           </span>
-          {chapter.aiSummary && (
-            <span className="mt-0.5 block text-xs leading-relaxed text-muted">
-              {chapter.aiSummary}
-            </span>
+          {chapterSummary && (
+            <span className="mt-0.5 block text-xs leading-relaxed text-muted">{chapterSummary}</span>
           )}
         </span>
         <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted">

@@ -7,6 +7,7 @@ import { apiReason } from '@/lib/api-errors';
 import { toPublicAuthor } from '@/lib/user-identity';
 import { uniqueVideoSlug } from '@/lib/video/slug';
 import { probeVideoDurationSec, statVideoFileAsync, videoPublicUrl } from '@/lib/video/storage';
+import { generateShortSubtitles } from '@/lib/video/subtitles';
 import { listShorts, SHORT_FEED_SELECT } from '@/lib/video/shorts-queries';
 import {
   MAX_SHORT_CAPTION_CHARS,
@@ -143,6 +144,10 @@ export async function POST(req: Request) {
     },
     select: SHORT_FEED_SELECT,
   });
+
+  // 字幕: whisper ASR + LLM translation in the background — best-effort, takes
+  // a while on CPU; the tracks appear on the row when ready.
+  void generateShortSubtitles(short.id);
 
   return NextResponse.json({
     ok: true,

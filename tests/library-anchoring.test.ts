@@ -4,7 +4,8 @@ import {
   getTextOffsetOfPoint,
   rangeFromOffsets,
   locateMark,
-  wrapRange,
+  rootTextLength,
+  textRects,
 } from '@/components/library/reader/anchoring';
 
 function mount(html: string): HTMLElement {
@@ -47,7 +48,9 @@ describe('reader offset anchoring', () => {
     range.setEnd(last, last.data.length);
     const charStart = getTextOffsetOfPoint(root, range.startContainer, range.startOffset);
     const charEnd = getTextOffsetOfPoint(root, range.endContainer, range.endOffset);
-    const rebuilt = rangeFromOffsets(root, charStart, charEnd);
+    expect(charStart).not.toBeNull();
+    expect(charEnd).not.toBeNull();
+    const rebuilt = rangeFromOffsets(root, charStart!, charEnd!);
     expect(rebuilt!.toString()).toBe(range.toString());
   });
 
@@ -66,25 +69,53 @@ describe('reader offset anchoring', () => {
     expect(p2.contains(range!.startContainer)).toBe(true);
   });
 
-  it('wrapRange marks exactly the offset span (no over/under-selection)', () => {
-    const root = mount('<p>one two three four five</p>');
-    const raw = rawText(root);
-    const start = raw.indexOf('two');
-    const end = raw.indexOf('four') + 'four'.length;
-    const range = rangeFromOffsets(root, start, end)!;
-    const marks = wrapRange(range, 'reader-hl reader-hl-yellow', 'hl1');
-    expect(marks.length).toBeGreaterThan(0);
-    const marked = Array.from(root.querySelectorAll('mark[data-hl-id="hl1"]'))
-      .map((m) => m.textContent)
-      .join('');
-    expect(marked).toBe(raw.slice(start, end));
-  });
-
   it('locateMark falls back to quote when offsets are stale', () => {
     const root = mount('<p>needle in a haystack</p>');
     // Offsets far past the content → fall back to quote search.
     const range = locateMark(root, { charStart: 9999, charEnd: 10005, quote: 'needle' });
     expect(range).not.toBeNull();
     expect(range!.toString()).toBe('needle');
+  });
+
+  it('locateMark REJECTS in-bounds offsets that no longer match the quote', () => {
+    // The regression that made highlights land on unrelated sentences: the
+    // guard used to accept any offset range at least as long as the quote, so a
+    // shifted document painted the wrong words forever.
+    const root = mount('<p>AAAA needle BBBB</p>');
+    const range = locateMark(root, { charStart: 0, charEnd: 6, quote: 'needle' });
+    expect(range).not.toBeNull();
+    expect(range!.toString()).toBe('needle'); // not "AAAA n"
+  });
+
+  it('locateMark re-anchors by quote after the text above it shifts', () => {
+    const root = mount('<p>needle in a haystack</p>');
+    const raw = rawText(root);
+    const at = raw.indexOf('needle');
+    // Content inserted ABOVE pushes every stored offset out of alignment.
+    root.insertAdjacentHTML('afterbegin', '<p>a newly prepended paragraph</p>');
+    const range = locateMark(root, { charStart: at, charEnd: at + 6, quote: 'needle' });
+    expect(range).not.toBeNull();
+    expect(range!.toString()).toBe('needle');
+  });
+
+  it('re-anchors against replaced content (the cached text walk self-invalidates)', () => {
+    const root = mount('<p>first body text</p>');
+    expect(rootTextLength(root)).toBe('first body text'.length);
+    // A remount replaces every text node; ranges built from the stale walk
+    // would be detached and paint nothing.
+    root.innerHTML = '<p>a completely different body</p>';
+    expect(rootTextLength(root)).toBe('a completely different body'.length);
+    const range = locateMark(root, { charStart: 2, charEnd: 13, quote: 'completely' });
+    expect(range).not.toBeNull();
+    expect(range!.startContainer.isConnected).toBe(true);
+    expect(root.contains(range!.startContainer)).toBe(true);
+  });
+
+  it('textRects never throws (jsdom has no layout, so it yields nothing)', () => {
+    const root = mount('<p>one two</p><p>three four</p>');
+    const raw = rawText(root);
+    const range = rangeFromOffsets(root, raw.indexOf('two'), raw.indexOf('four') + 4)!;
+    expect(() => textRects(range)).not.toThrow();
+    expect(Array.isArray(textRects(range))).toBe(true);
   });
 });

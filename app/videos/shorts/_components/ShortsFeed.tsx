@@ -40,6 +40,8 @@ interface Props {
    * rewrites the query string before the drawer mounts.
    */
   initialFocus: { itemId: string; commentId: string } | null;
+  /** ?comments=1 (embedded players' comment button) — open the drawer on the deep-linked item. */
+  autoOpenComments: boolean;
   /** ?upload=1 entry link (homepage / strip 上传 buttons) — open the dialog on mount. */
   autoOpenUpload: boolean;
 }
@@ -51,6 +53,7 @@ export function ShortsFeed({
   sort,
   currentUser,
   initialFocus,
+  autoOpenComments,
   autoOpenUpload,
 }: Props) {
   const t = useTranslations('shorts');
@@ -351,8 +354,12 @@ export function ShortsFeed({
         <ShortsUploadDialog onClose={() => setUploadOpen(false)} onPublished={onPublished} />
       )}
       <AutoOpenComments
-        enabled={initialFocus !== null}
-        item={items.find((s) => s.id === initialFocus?.itemId) ?? null}
+        enabled={initialFocus !== null || autoOpenComments}
+        item={
+          initialFocus
+            ? (items.find((s) => s.id === initialFocus.itemId) ?? null)
+            : (items[0] ?? null)
+        }
         onOpen={(item) => setDrawerFor(item)}
       />
     </div>

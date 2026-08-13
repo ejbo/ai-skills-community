@@ -57,11 +57,23 @@ export async function buildChatContext(
   const chapters = await prisma.libraryChapter.findMany({
     where: { docId },
     orderBy: { chapterIndex: 'asc' },
-    select: { chapterIndex: true, title: true, aiSummary: true, aiKeywords: true },
+    select: {
+      chapterIndex: true,
+      title: true,
+      aiSummary: true,
+      aiSummaryEn: true,
+      aiKeywords: true,
+    },
   });
+  // `aiSummary` is pinned to 简体中文 (it is the 中文 half of the bilingual pair),
+  // so for an English DOCUMENT the index would no longer share surface forms
+  // with an English question. Prefer the English twin there; `aiKeywords` stay
+  // in the source language either way.
+  const preferEn = doc.language === 'en';
   const indexLines = chapters.slice(0, INDEX_LINES_CAP).map((c) => {
     const keywords = c.aiKeywords.length > 0 ? ` ｜ ${c.aiKeywords.join('、')}` : '';
-    return `第${c.chapterIndex + 1}章《${c.title ?? '未命名'}》：${c.aiSummary ?? ''}${keywords}`;
+    const summary = (preferEn ? c.aiSummaryEn || c.aiSummary : c.aiSummary) ?? '';
+    return `第${c.chapterIndex + 1}章《${c.title ?? '未命名'}》：${summary}${keywords}`;
   });
 
   let provider: LLMProvider;

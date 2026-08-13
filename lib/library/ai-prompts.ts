@@ -48,9 +48,15 @@ export function chapterSummaryPrompt(input: {
   chapterText: string;
 }): { system: string; user: string; maxTokens?: number } {
   return {
+    // The output language must be stated: without it the model mirrors the
+    // source document, so the stored column silently drifts between 中文 and
+    // English — and the bilingual read contract (i18n-content.ts) assumes this
+    // column IS 中文. `keywords` are the exception: retrieval matches them
+    // literally against the source text, so they stay in the source language.
     system:
       '你是知识库的索引编辑，负责为文档的每个章节生成检索索引条目。' +
       '只输出一个 JSON 对象，格式：{"summary":"不超过120字的章节概要","keywords":["最多6个正文中原样出现的关键词"]}，' +
+      'summary 必须使用简体中文；keywords 必须保持正文中的原始语言与写法。' +
       '不要输出任何其他内容。',
     user: [
       `文档标题：《${input.docTitle}》`,
@@ -77,6 +83,9 @@ export function overviewPrompt(input: {
       '"keyPoints":["3-8条核心要点"],"questions":["3-5个值得向本文档提出的问题"],' +
       '"docType":"book|paper|blog|article|report|other",' +
       '"categories":["1-3个主题分类 slug"]}，不要输出任何其他内容。' +
+      // Same reason as chapterSummaryPrompt: this column is the 中文 half of the
+      // bilingual pair, so the language must be pinned, not inferred.
+      'summary / outline / keyPoints / questions 全部使用简体中文输出。' +
       `categories 只能从固定表中选：${catTable}；没有合适的就返回空数组。`,
     user: [
       `文档标题：《${input.title}》`,
@@ -87,6 +96,98 @@ export function overviewPrompt(input: {
       numbered || '（无）',
     ].join('\n'),
   };
+}
+
+/**
+ * English twin of a finished 中文 导读. Translating the FINISHED object (rather
+ * than re-generating from the chapter summaries) keeps the two versions saying
+ * the same thing and costs one call instead of a second full read.
+ */
+export function translateOverviewPrompt(input: { title: string; overview: AiOverview }): {
+  system: string;
+  user: string;
+  maxTokens?: number;
+} {
+  return {
+    system:
+      'You are a precise technical translator. Translate the given JSON object from Chinese into ' +
+      'natural, idiomatic English. Preserve the EXACT JSON structure and array lengths — translate ' +
+      'only the string values. Keep technical terms, product names, code identifiers and proper ' +
+      'nouns in their original form. Output ONE JSON object with the keys ' +
+      '{"summary":string,"outline":string[],"keyPoints":string[],"questions":string[]} and nothing else.',
+    user: [
+      `Document title: ${input.title}`,
+      '',
+      'JSON to translate:',
+      JSON.stringify(
+        {
+          summary: input.overview.summary,
+          outline: input.overview.outline,
+          keyPoints: input.overview.keyPoints,
+          questions: input.overview.questions,
+        },
+        null,
+        0,
+      ),
+    ].join('\n'),
+  };
+}
+
+/**
+ * Parse a translated 导读. Returns null unless a usable summary came back.
+ * Caps are ~3x the 中文 ones (parseOverview): a CJK character carries roughly a
+ * whole English word, so 1.5x caps sliced almost every translation mid-word.
+ */
+export function parseTranslatedOverview(text: string): AiOverview | null {
+  const obj = extractJsonObject(text);
+  if (!obj) return null;
+  const summary = asStr(obj.summary);
+  if (!summary) return null;
+  return {
+    summary: summary.length > 1200 ? summary.slice(0, 1200) : summary,
+    outline: asStrList(obj.outline, 12, 600),
+    keyPoints: asStrList(obj.keyPoints, 10, 900),
+    questions: asStrList(obj.questions, 6, 600),
+  };
+}
+
+/**
+ * Batch English twins for chapter index summaries (shown in the 目录). Batched
+ * because a 120-chapter EPUB must not become 120 extra calls; the reply is
+ * keyed by chapter index so a partial/reordered answer still lands correctly.
+ */
+export function translateChapterSummariesPrompt(input: {
+  items: { chapterIndex: number; title: string | null; summary: string }[];
+}): { system: string; user: string; maxTokens?: number } {
+  return {
+    system:
+      'You are a precise technical translator. Translate each Chinese chapter summary into natural ' +
+      'English. Keep technical terms and proper nouns in their original form. Output ONE JSON object ' +
+      'of the form {"items":[{"i":<the same index integer>,"summary":"<English translation>"}]} ' +
+      'covering every input item, and nothing else.',
+    user: JSON.stringify(
+      { items: input.items.map((it) => ({ i: it.chapterIndex, title: it.title, summary: it.summary })) },
+      null,
+      0,
+    ),
+  };
+}
+
+/** Map chapterIndex → English summary. Tolerant: unparseable ⇒ empty map. */
+export function parseTranslatedChapterSummaries(text: string): Map<number, string> {
+  const out = new Map<number, string>();
+  const obj = extractJsonObject(text);
+  if (!obj || !Array.isArray(obj.items)) return out;
+  for (const raw of obj.items) {
+    if (!raw || typeof raw !== 'object') continue;
+    const item = raw as Record<string, unknown>;
+    const i = Number(item.i);
+    const summary = asStr(item.summary);
+    if (!Number.isInteger(i) || !summary) continue;
+    // ~3x the 160-char 中文 cap in parseChapterSummary, for the same reason.
+    out.set(i, summary.length > 500 ? summary.slice(0, 500) : summary);
+  }
+  return out;
 }
 
 export function retrievePrompt(input: {

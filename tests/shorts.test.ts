@@ -96,3 +96,37 @@ describe('shortTitleFromCaption', () => {
     expect(shortTitleFromCaption('\n\n正文')).toBe('短视频');
   });
 });
+
+describe('subtitle VTT helpers', async () => {
+  const { parseVtt, buildVtt, detectSubtitleLang } = await import('@/lib/video/subtitles-shared');
+
+  it('parses and rebuilds a VTT round-trip', () => {
+    const vtt = 'WEBVTT\n\n00:00:01.000 --> 00:00:03.500\n大家好\n\n00:00:03.500 --> 00:00:06.000\n欢迎来到 AI Community\n';
+    const cues = parseVtt(vtt);
+    expect(cues).toHaveLength(2);
+    expect(cues[0]).toEqual({ start: '00:00:01.000', end: '00:00:03.500', text: '大家好' });
+    expect(buildVtt(cues)).toContain('00:00:03.500 --> 00:00:06.000\n欢迎来到 AI Community');
+  });
+
+  it('tolerates hour-less timestamps, cue ids and settings', () => {
+    const vtt = 'WEBVTT\n\n1\n01:02.000 --> 01:04.000 align:center\nhello there\n';
+    const cues = parseVtt(vtt);
+    expect(cues).toHaveLength(1);
+    expect(cues[0].start).toBe('01:02.000');
+    expect(cues[0].text).toBe('hello there');
+  });
+
+  it('ignores malformed blocks instead of throwing', () => {
+    expect(parseVtt('WEBVTT\n\nnot a cue at all')).toEqual([]);
+    expect(parseVtt('')).toEqual([]);
+  });
+
+  it('detects zh vs en cue language', () => {
+    expect(
+      detectSubtitleLang([{ start: '0', end: '1', text: '这是一段中文字幕内容' }]),
+    ).toBe('zh');
+    expect(
+      detectSubtitleLang([{ start: '0', end: '1', text: 'this is english subtitle text' }]),
+    ).toBe('en');
+  });
+});

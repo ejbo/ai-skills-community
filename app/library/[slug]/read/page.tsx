@@ -1,4 +1,5 @@
 import { notFound, redirect } from 'next/navigation';
+import { getLocale } from 'next-intl/server';
 import { requireUser } from '@/lib/admin';
 import { getDocReaderData } from '@/lib/library-queries';
 import { ReaderShell } from '@/components/library/reader/ReaderShell';
@@ -34,6 +35,7 @@ export default async function LibraryReaderPage({
     { id: session.user.id, isAdmin: session.user.isAdmin },
     Number.isFinite(requested) ? Math.trunc(requested) : -1,
     view,
+    await getLocale(),
   );
   // Restricted/private doc without an approved grant → the detail page hosts
   // the 申请阅读 flow.

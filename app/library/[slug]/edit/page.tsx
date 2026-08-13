@@ -4,6 +4,9 @@ import { auth } from '@/lib/auth';
 import { getDocBySlug } from '@/lib/library-queries';
 import { BackButton } from '@/components/BackButton';
 import { DocEditor } from './DocEditor';
+// The chapter editor renders the chapter with the READER's typography
+// (.reader-prose), so this route needs the reader stylesheet too.
+import '../read/reader.css';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +34,9 @@ export default async function DocEditPage({ params }: { params: { slug: string }
           title: doc.title,
           author: doc.author,
           summary: doc.summary,
+          summaryEn: doc.summaryEn,
           abstractMd: doc.abstractMd,
+          abstractMdEn: doc.abstractMdEn,
           docType: doc.docType,
           categories: doc.categories,
           visibility: doc.visibility,

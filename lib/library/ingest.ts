@@ -502,7 +502,10 @@ export async function updateChapterContent(
       }
       await tx.libraryChapter.update({
         where: { id: chapter.id },
-        data: { html, charCount: text.length, aiSummary: null, aiKeywords: [] },
+        // aiSummaryEn must die with aiSummary: pickText falls back across
+        // languages, so a lone English twin would render as an English sentence
+        // in the 中文 目录 — describing content that was just edited away.
+        data: { html, charCount: text.length, aiSummary: null, aiSummaryEn: null, aiKeywords: [] },
       });
       // Recompute doc-level stats and mark the AI index stale.
       const texts = await tx.libraryChunk.findMany({

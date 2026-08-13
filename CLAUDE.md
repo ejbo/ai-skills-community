@@ -286,8 +286,32 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   shorts — viewCount ranks the hot feed). AI 文案润色 lives in `lib/video/shorts-caption.ts`,
   SERVER-ONLY (its extractJsonObject chain reaches yauzl/node:crypto — client components import
   only the import-free `lib/video/shorts-shared.ts`). 精选 (admin `featured`, /manage/shorts or
-  PATCH `/api/shorts/[id]`) feeds the homepage + /videos strips (`featuredShorts`: featured first,
-  hot backfill). i18n namespace `shorts`.
+  PATCH `/api/shorts/[id]`) feeds every embed surface (`featuredShorts`: featured first, hot
+  backfill). i18n namespace `shorts`.
+  **ONE player code path**: `ShortsCell` (app/videos/shorts/_components/) is THE short player —
+  rail (赞/评论/收藏/分享/字幕/静音), caption + uploader + date, drag-seek, double-tap like, view
+  ping. `ShortsShowcase` (app/_components/home/) is a chrome-only wrapper (slide transitions,
+  wheel/touch/chevrons/dots/counter/fullscreen, play-only-in-viewport) — NEVER fork a second
+  player; embeds pass `embed` + `onEnded` and route comments to `/videos/shorts?v=<id>&comments=1`
+  (drawer auto-opens; `?upload=1` auto-opens the upload dialog — the visible entry points).
+  Surfaces: homepage hero band v3 (left: welcome→今日简报→热门Skills 2×2; right: full-height
+  showcase), GeekHub `/videos?tab=shorts` (Douyin-style: showcase hero + side cards + vertical
+  card grid), and the immersive feed. RSC boundaries build items via
+  `annotateShortsViewer`+`toShortView` (lib/video/shorts-queries.ts) — never hand-map.
+  **字幕 (subtitles)**: `lib/video/subtitles.ts` — best-effort local ASR + translation, fired on
+  publish and via POST `/api/shorts/[id]/subtitles` (author/admin). ffmpeg extracts 16k wav →
+  a LOCAL whisper binary transcribes to VTT — ZERO-CONFIG discovery for pull-only servers:
+  binary = `WHISPER_BIN` override, else `whisper-cli` on PATH → `~/whisper.cpp/build/bin/whisper-cli`
+  (systemd PATH lacks user builds) → `whisper` (openai-whisper, model NAME via WHISPER_MODEL);
+  ggml model = `WHISPER_MODEL` override, else best `ggml-*.bin` in `~/models/` or
+  `<LOCAL_STORAGE_DIR>/models/` (large-v3-turbo → … → tiny) → house LLM
+  (getLibraryProvider) translates cues 中↔EN (unavailable ⇒ original track only, noted in
+  `subtitleError`). Tracks stored as `subtitle/<nanoid>.vtt` in the videos storage (file route
+  serves text/vtt), columns `subtitleStatus/SrcLang/ZhKey/ZhUrl/EnKey/EnUrl/Error/At`
+  (migration `20260813000000_add_short_subtitles`); pure VTT helpers in
+  `lib/video/subtitles-shared.ts` (unit-testable, no env). Player renders `<track>`s and drives
+  `textTracks[].mode` imperatively; selector cycles 关→中→EN, persisted `shorts:subtitle`;
+  `video::cue` styled in globals.css.
 - **表情包 (Stickers, migration `20260807150000_add_stickers_polls`)**: WeChat-style personal
   meme library, ONE integration pair — the 😊 button in `RichTextEditor`'s toolbar (every
   composer gets it) and a src-prefix branch in `MarkdownRenderer`. `UserSticker` = per-user
@@ -367,25 +391,61 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   the FIRST SSE frame `{"citations":[...]}` (a header would blow nginx `proxy_buffer_size`);
   `fetch-url.ts` has an SSRF guard with MANUAL per-hop redirect validation (RFC1918 allowed only
   when `ENABLE_SSO`); WeChat images need the lazy `data-src` promotion in `extract-html.ts` and
-  are RE-HOSTED locally at ingest (mmbiz blocks hotlinks); highlight anchoring matches quotes with
-  ALL whitespace stripped (DOM text nodes abut across blocks); EPUB entries stream with zip-bomb
+  are RE-HOSTED locally at ingest (mmbiz blocks hotlinks); EPUB entries stream with zip-bomb
   caps. Visibility mirrors skills (public/restricted/private + `LibraryAccessRequest`); uploader
   edits at `/library/<slug>/edit` set `metaPinned`/`categoriesPinned` so re-extraction/AI never
   overwrite. 细分类 = fixed taxonomy in `lib/library/types.ts` (LIBRARY_CATEGORIES) — don't switch
   to free tags. 评论 copies the feedback thread contract; 评分 recomputes avg in a transaction.
-  Shared reading notes = per-user-per-doc `LibraryProgress.shareNotes` (community drawer +
-  dotted `data-chl-id` marks; own marks use `data-hl-id` — keep the datasets separate). Admin AI
+  Shared reading notes = per-user-per-doc `LibraryProgress.shareNotes`. Admin AI
   override lives in `LibrarySetting` via `getLibraryProvider()` (/manage/library), falling back
-  to env `LLM_*`. **PDF 原版 view** = self-hosted pdf.js renderer (`components/library/reader/PdfView.tsx`,
-  `pdfjs-dist`; worker + cmaps + standard_fonts copied to `public/pdfjs/` — no CDN on intranet). Canvas
-  render + pdf.js TextLayer in OUR DOM, so selection/高亮/批注/社区标注/AI 引用跳转/翻译 all work on the
-  faithful render exactly like the 精读 (extracted) view; pages are virtualized (visible ±2). Highlights
-  anchor by quote-search (charStart only a tiebreak), so a mark created in one view re-anchors in the
-  other despite different offset spaces. `LibraryChapter.pageStart/pageEnd` (0-based inclusive, PDF only)
-  map chapters↔pages for TOC/citation jumps. PDF opens in 原版 by default; 精读 is the toggle. Uploaded
-  `.html` is served `text/plain` from the file route (rendering stored user HTML on-origin = XSS). Reader
-  marks survive scrolling: PdfView repaints per page render; extracted view has a 600ms idempotent
-  scroll-repaint safety net. 选中翻译 via `/api/library/translate` (中↔英 auto-direction, LLM).
+  to env `LLM_*`. **PDF 原版 view** = the browser's own `<iframe>` viewer (pixel-faithful, reliable
+  zoom/selection, NO annotation — that lives in 精读). PDF opens in 原版 by default; 精读 is the
+  toggle, and any TOC/citation/note jump switches to it. `LibraryChapter.pageStart/pageEnd`
+  (0-based inclusive, PDF only) record the chapter↔page span. Uploaded `.html` is served
+  `text/plain` from the file route (rendering stored user HTML on-origin = XSS). 选中翻译 via
+  `/api/library/translate` (中↔英 auto-direction, LLM).
+  - **Reader marks are painted BY THE BROWSER** (`components/library/reader/highlighter.ts`,
+    CSS Custom Highlight API + `::highlight()` rules in `read/reader.css`, keyed on the `--hl-*`
+    tokens so 浅色/护眼/深色 come free). Nothing is injected into the article and NO rectangles are
+    positioned, which is the whole point: the Ranges are LIVE, so marks follow reflow with zero
+    recompute, and painting can never disturb a selection. Do NOT go back to overlay boxes —
+    `Range.getClientRects()` also returns the border box of every fully contained block, which is
+    what painted highlights over margins/blank space and made empty space clickable. Anything
+    needing geometry (the no-`CSS.highlights` fallback boxes, MarginNotes' gutter, hit-testing)
+    goes through `anchoring.textRects`/`textBounds`, never `getClientRects` on the composite range.
+    Clicks hit-test with `caretPositionFromPoint` + `isPointInRange` (exact, not rect containment);
+    a click on an own mark opens `MarkPopover` (palette + the annotation, editable in place +
+    delete), on a shared one `CommunityNotePopover`.
+  - **Anchoring** (`anchoring.ts`): offsets primary, quote fallback. `locateMark` only trusts the
+    offset range when its text STARTS with the stored quote — that check is load-bearing (it used
+    to end in `|| got.length >= want.length`, which is true for every highlight, so shifted content
+    painted the wrong sentence forever). Quote matching strips ALL whitespace (DOM text nodes abut
+    across blocks). The TreeWalker pass is memoized per root in a self-invalidating WeakMap.
+    `getTextOffsetOfPoint` returns **null** on a rejected point — never 0, which used to anchor at
+    the top of the chapter. A selection is resolved from its START container (then END), so
+    cross-chapter (连续滚动) and header-touching selections anchor to the chapter they start in
+    instead of being silently dropped. A debounced MutationObserver re-anchors after anything
+    rewrites the text nodes (chiefly Chrome/Edge in-page translation, which collapses every Range).
+  - **Bilingual stored content** (migration `20260813120000_library_bilingual_content`):
+    `aiOverview`/`aiOverviewEn`, `summary`/`summaryEn`, `abstractMd`/`abstractMdEn`,
+    `LibraryChapter.aiSummary`/`aiSummaryEn`. 中文 is the source of truth AND the fallback;
+    `lib/library/i18n-content.ts` (`pickText`/`pickOverview`) resolves per viewer locale at the
+    SERVER boundary (fr reads the English twin). The indexer generates 中文 first, then translates
+    the finished 导读 in ONE call and the chapter summaries in batches — best-effort, so a failed
+    translation never fails the index run. `force: true` (重新索引) is what backfills existing docs.
+    **Never translate `aiKeywords`** — retrieval matches them literally against source text — and
+    retrieval always reads the 中文 `aiSummary`; `aiSummaryEn` is display-only. `abstractMd*` is
+    human-authored: the uploader fills both languages in the 中文/English tab, AI never touches it.
+  - **Chapter editing** (`/library/<slug>/edit` → 编辑): `LibraryChapter.html` is an HTML field, so
+    it is edited as HTML — `components/library/ChapterHtmlEditor.tsx` is a contenteditable surface
+    wearing the reader's own `.reader-prose` (排版 mode, the default) with a 源码 textarea escape
+    hatch. Do NOT route it through `RichTextEditor`: that is the markdown-native editor for `*Md`
+    fields and its markdown-it + ProseMirror round trip drops table/colspan, figure/figcaption,
+    sup/sub, span, mark — exactly the tags `sanitizeChapterHtml` deliberately keeps. The sanitizer
+    pre-normalizes generic containers (`div`/`section`/…) into `<p>` BEFORE DOMPurify, because
+    DOMPurify unwraps them and `<div>a</div><div>b</div>` would otherwise collapse into "ab",
+    destroying `htmlToPlainText`'s paragraph boundaries and every offset derived from them.
+    Editing a chapter does NOT remap existing highlights — the quote fallback re-anchors them.
 - **i18n (中/EN/FR) — no hardcoded UI strings**: every user-visible string lives in
   `messages/{zh-CN,en,fr}.json` (zh-CN is the source of truth; all three files must stay at
   **key parity** — the merge script in the i18n work checks this, and a missing key renders the

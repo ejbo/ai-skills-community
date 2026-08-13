@@ -6,6 +6,7 @@ import { Star } from 'lucide-react';
 import type { DocCardData } from '@/lib/library-queries';
 import { DOC_TYPE_LABELS } from '@/lib/library/types';
 import { relativeTime } from '@/lib/i18n-date';
+import { pickText } from '@/lib/library/i18n-content';
 import { DocCover } from './DocCover';
 import { rememberListScroll } from './ScrollMemory';
 
@@ -22,6 +23,7 @@ export function DocCard(props: DocCardProps) {
   const typeLabel =
     props.docType in DOC_TYPE_LABELS ? tl(`docType.${props.docType}`) : props.docType;
   const source = props.siteName ?? props.author;
+  const summary = pickText(locale, props.summary, props.summaryEn);
   const progress =
     typeof props.progressPercent === 'number' && props.progressPercent > 0
       ? Math.min(100, Math.max(0, props.progressPercent))
@@ -62,7 +64,7 @@ export function DocCard(props: DocCardProps) {
         <h3 className="line-clamp-2 text-sm font-semibold tracking-tight group-hover:text-accent-600">
           {props.title}
         </h3>
-        {props.summary && <p className="line-clamp-2 text-xs text-muted">{props.summary}</p>}
+        {summary && <p className="line-clamp-2 text-xs text-muted">{summary}</p>}
         <div className="mt-auto flex flex-wrap items-center gap-x-1.5 gap-y-1 pt-1 text-[11px] text-muted">
           {source && (
             <>

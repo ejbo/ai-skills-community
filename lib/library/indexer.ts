@@ -4,6 +4,7 @@
 // it NEVER throws; every failure lands on the row (aiIndexState + aiError)
 // and a rerun resumes from the last checkpoint (chapters with aiSummary null).
 
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
 import { LLMConfigError, type LLMProvider } from '@/lib/llm';
@@ -14,8 +15,13 @@ import {
   overviewPrompt,
   parseChapterSummary,
   parseOverview,
+  parseTranslatedChapterSummaries,
+  parseTranslatedOverview,
   sampleChapterText,
+  translateChapterSummariesPrompt,
+  translateOverviewPrompt,
 } from './ai-prompts';
+import type { AiOverview } from './types';
 
 const STALE_LOCK_MS = 10 * 60 * 1000;
 const CHAPTER_SAMPLE_TOKENS = 12_000;
@@ -23,6 +29,9 @@ const CHAPTER_SAMPLE_TOKENS = 12_000;
 // must not turn into 2000 calls. Chapters beyond the cap stay unindexed (the
 // retrieval index lines are capped at 80 chapters anyway).
 const MAX_INDEX_CHAPTERS = 120;
+// Chapter summaries are translated in batches so a 120-chapter book costs ~5
+// extra calls, not 120. Small enough that one truncated reply loses little.
+const TRANSLATE_BATCH = 25;
 
 export async function runDocIndexing(docId: string, opts?: { force?: boolean }): Promise<void> {
   const usage = { input: 0, output: 0 };
@@ -51,6 +60,7 @@ export async function runDocIndexing(docId: string, opts?: { force?: boolean }):
         status: true,
         deletedAt: true,
         summary: true,
+        summaryEn: true,
         docTypePinned: true,
         categories: true,
         categoriesPinned: true,
@@ -89,7 +99,7 @@ export async function runDocIndexing(docId: string, opts?: { force?: boolean }):
       // Genuinely empty chapters are re-skipped cheaply via charCount === 0.
       await prisma.libraryChapter.updateMany({
         where: { docId, aiSummary: '' },
-        data: { aiSummary: null, aiKeywords: [] },
+        data: { aiSummary: null, aiSummaryEn: null, aiKeywords: [] },
       });
     }
 
@@ -107,7 +117,14 @@ export async function runDocIndexing(docId: string, opts?: { force?: boolean }):
     const chapters = await prisma.libraryChapter.findMany({
       where: { docId },
       orderBy: { chapterIndex: 'asc' },
-      select: { id: true, chapterIndex: true, title: true, charCount: true, aiSummary: true },
+      select: {
+        id: true,
+        chapterIndex: true,
+        title: true,
+        charCount: true,
+        aiSummary: true,
+        aiSummaryEn: true,
+      },
     });
 
     for (const chapter of chapters.slice(0, MAX_INDEX_CHAPTERS)) {
@@ -159,9 +176,15 @@ export async function runDocIndexing(docId: string, opts?: { force?: boolean }):
       if (!parsed && firstBadReply === null) firstBadReply = reply;
       await prisma.libraryChapter.update({
         where: { id: chapter.id },
-        data: { aiSummary: parsed?.summary ?? '', aiKeywords: parsed?.keywords ?? [] },
+        data: {
+          aiSummary: parsed?.summary ?? '',
+          // A regenerated 中文 summary invalidates its English twin.
+          aiSummaryEn: null,
+          aiKeywords: parsed?.keywords ?? [],
+        },
       });
       chapter.aiSummary = parsed?.summary ?? '';
+      chapter.aiSummaryEn = null;
     }
 
     const chapterSummaries = chapters
@@ -221,10 +244,18 @@ export async function runDocIndexing(docId: string, opts?: { force?: boolean }):
     }
 
     const { docType, categories, ...overview } = parsed;
+
+    // Commit the 中文 result FIRST. The English pass below is several more LLM
+    // calls; running it before this write meant a process death (deploy,
+    // systemd restart) mid-translation discarded a finished 中文 导读 AND left
+    // aiIndexState stuck on 'running', which every non-force rerun then honours.
+    // `aiOverviewEn: DbNull` invalidates any previous translation up front — a
+    // failed pass must not leave an English 导读 describing the OLD content.
     await prisma.libraryDoc.update({
       where: { id: docId },
       data: {
         aiOverview: overview,
+        aiOverviewEn: Prisma.DbNull,
         ...(doc.summary === '' ? { summary: overview.summary } : {}),
         ...(!doc.docTypePinned && docType ? { docType } : {}),
         ...(!doc.categoriesPinned && doc.categories.length === 0 && categories.length > 0
@@ -241,8 +272,111 @@ export async function runDocIndexing(docId: string, opts?: { force?: boolean }):
         aiTokensOutput: { increment: usage.output },
       },
     });
+    usage.input = 0; // committed — the pass below accounts for its own tokens
+    usage.output = 0;
+
+    // ── English twin (best-effort) ────────────────────────────────────────
+    // 中文 is the source of truth; a failed translation must never fail the
+    // index run — the reader just falls back to 中文 (lib/library/i18n-content).
+    const overviewEn = await translateOverview(provider, doc.title, overview, usage);
+    await translateChapterSummaries(
+      provider,
+      chapters.filter((c) => c.aiSummary && !c.aiSummaryEn),
+      usage,
+    );
+    await prisma.libraryDoc
+      .update({
+        where: { id: docId },
+        data: {
+          ...(overviewEn ? { aiOverviewEn: overviewEn } : {}),
+          // Gate on the ENGLISH column's own emptiness. Gating on `summary`
+          // instead let an empty 中文 blurb authorize overwriting an English one
+          // the uploader had typed in the edit page's English tab.
+          ...(overviewEn && doc.summaryEn === '' ? { summaryEn: overviewEn.summary } : {}),
+          aiTokensInput: { increment: usage.input },
+          aiTokensOutput: { increment: usage.output },
+        },
+      })
+      .catch(() => {});
   } catch (e) {
     console.error('[library] runDocIndexing failed', e);
     await fail((e as Error)?.message ?? '未知错误');
+  }
+}
+
+type Usage = { input: number; output: number };
+
+function addUsage(usage: Usage, out: { usage: { input: number; output: number } | null }): void {
+  if (out.usage) {
+    usage.input += out.usage.input;
+    usage.output += out.usage.output;
+  }
+}
+
+/**
+ * English twin of the 中文 导读. Returns null on ANY failure (LLM error, an
+ * unparseable reply, a reasoning model that never emitted JSON) — the caller
+ * simply stores no English version and the reader falls back to 中文.
+ */
+async function translateOverview(
+  provider: LLMProvider,
+  title: string,
+  overview: AiOverview,
+  usage: Usage,
+): Promise<AiOverview | null> {
+  try {
+    const prompt = translateOverviewPrompt({ title, overview });
+    const out = await provider.complete({
+      system: prompt.system,
+      messages: [{ role: 'user', content: prompt.user }],
+      maxTokens: prompt.maxTokens,
+      json: true,
+    });
+    addUsage(usage, out);
+    return parseTranslatedOverview(out.text);
+  } catch (e) {
+    console.error('[library] overview translation failed', (e as Error)?.message);
+    return null;
+  }
+}
+
+/**
+ * Fill `aiSummaryEn` for chapters that have a 中文 summary but no English one.
+ * Batched, best-effort, and idempotent: a chapter the model skipped simply
+ * stays null and the 目录 renders its 中文 summary.
+ */
+async function translateChapterSummaries(
+  provider: LLMProvider,
+  chapters: { id: string; chapterIndex: number; title: string | null; aiSummary: string | null }[],
+  usage: Usage,
+): Promise<void> {
+  const items = chapters
+    .filter((c) => c.aiSummary)
+    .map((c) => ({ id: c.id, chapterIndex: c.chapterIndex, title: c.title, summary: c.aiSummary! }));
+  for (let i = 0; i < items.length; i += TRANSLATE_BATCH) {
+    const batch = items.slice(i, i + TRANSLATE_BATCH);
+    try {
+      const prompt = translateChapterSummariesPrompt({ items: batch });
+      const out = await provider.complete({
+        system: prompt.system,
+        messages: [{ role: 'user', content: prompt.user }],
+        maxTokens: prompt.maxTokens,
+        json: true,
+      });
+      addUsage(usage, out);
+      const byIndex = parseTranslatedChapterSummaries(out.text);
+      await Promise.all(
+        batch.map(async (it) => {
+          const en = byIndex.get(it.chapterIndex);
+          if (!en) return;
+          await prisma.libraryChapter
+            .update({ where: { id: it.id }, data: { aiSummaryEn: en } })
+            .catch(() => {});
+        }),
+      );
+    } catch (e) {
+      console.error('[library] chapter summary translation failed', (e as Error)?.message);
+      return; // a broken model won't get better on the next batch
+    }
   }
 }

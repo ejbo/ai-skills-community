@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { AUTHOR_IDENTITY_SELECT } from '@/lib/user-identity';
 import { isDocType, isLibraryCategory, type AiOverview } from '@/lib/library/types';
+import { asAiOverview, pickOverview, pickText } from '@/lib/library/i18n-content';
 
 // Member reads only ever surface docs that finished extraction and were not
 // soft-deleted; drafts/failures stay visible to their uploader and admins.
@@ -58,6 +59,7 @@ const DOC_CARD_SELECT = {
   visibility: true,
   format: true,
   summary: true,
+  summaryEn: true,
   siteName: true,
   coverUrl: true,
   estReadMinutes: true,
@@ -84,6 +86,8 @@ export interface DocCardData {
   visibility: string;
   format: string;
   summary: string;
+  /** English card blurb; empty ⇒ the card falls back to `summary` (中文). */
+  summaryEn: string;
   siteName: string | null;
   coverUrl: string | null;
   estReadMinutes: number;
@@ -229,7 +233,9 @@ const DOC_DETAIL_SELECT = {
   status: true,
   processingError: true,
   summary: true,
+  summaryEn: true,
   abstractMd: true,
+  abstractMdEn: true,
   sourceUrl: true,
   siteName: true,
   publishedAt: true,
@@ -247,6 +253,7 @@ const DOC_DETAIL_SELECT = {
   likeCount: true,
   shelfCount: true,
   aiOverview: true,
+  aiOverviewEn: true,
   aiModel: true,
   aiIndexedAt: true,
   aiIndexState: true,
@@ -257,7 +264,7 @@ const DOC_DETAIL_SELECT = {
   uploader: AUTHOR_SELECT,
   chapters: {
     orderBy: { chapterIndex: 'asc' },
-    select: { chapterIndex: true, title: true, charCount: true, aiSummary: true },
+    select: { chapterIndex: true, title: true, charCount: true, aiSummary: true, aiSummaryEn: true },
   },
 } satisfies Prisma.LibraryDocSelect;
 
@@ -313,7 +320,8 @@ export async function getDocBySlug(slug: string, viewer: { id: string; isAdmin: 
 
   return {
     ...doc,
-    aiOverview: doc.aiOverview as AiOverview | null,
+    aiOverview: asAiOverview(doc.aiOverview),
+    aiOverviewEn: asAiOverview(doc.aiOverviewEn),
     shelvedByMe,
     likedByMe,
     progressPercent,
@@ -396,6 +404,9 @@ export async function getDocReaderData(
   viewer: { id: string; isAdmin: boolean },
   chapterIndex: number,
   view?: 'flow' | 'paged',
+  /** Viewer's UI locale — picks the stored language of 导读 / 章节摘要 (both
+   *  are resolved HERE so the client payload carries one language, not two). */
+  locale?: string,
 ): Promise<ReaderData | 'no_access' | null> {
   const userId = viewer.id;
   const doc = await prisma.libraryDoc.findUnique({
@@ -413,6 +424,7 @@ export async function getDocReaderData(
       chapterCount: true,
       wordCount: true,
       aiOverview: true,
+      aiOverviewEn: true,
       aiIndexState: true,
       language: true,
       commentCount: true,
@@ -438,6 +450,7 @@ export async function getDocReaderData(
         title: true,
         charCount: true,
         aiSummary: true,
+        aiSummaryEn: true,
         pageStart: true,
         pageEnd: true,
       },
@@ -512,7 +525,7 @@ export async function getDocReaderData(
       fileUrl: doc.fileUrl,
       chapterCount: doc.chapterCount,
       wordCount: doc.wordCount,
-      aiOverview: doc.aiOverview as AiOverview | null,
+      aiOverview: pickOverview(locale, asAiOverview(doc.aiOverview), asAiOverview(doc.aiOverviewEn)),
       aiIndexState: doc.aiIndexState,
       language: doc.language,
       commentCount: doc.commentCount,
@@ -521,7 +534,10 @@ export async function getDocReaderData(
     flowAvailable,
     chapters,
     initialChapter: resolved,
-    toc,
+    toc: toc.map(({ aiSummaryEn, ...c }) => ({
+      ...c,
+      aiSummary: pickText(locale, c.aiSummary, aiSummaryEn) || null,
+    })),
     progress: progress ?? null,
     highlights,
   };

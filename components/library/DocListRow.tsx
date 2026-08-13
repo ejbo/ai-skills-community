@@ -6,6 +6,7 @@ import { MessageSquare, Star } from 'lucide-react';
 import type { DocCardData } from '@/lib/library-queries';
 import { CATEGORY_NAME_BY_SLUG, DOC_TYPE_LABELS } from '@/lib/library/types';
 import { relativeTime } from '@/lib/i18n-date';
+import { pickText } from '@/lib/library/i18n-content';
 import { DocCover } from './DocCover';
 import { rememberListScroll } from './ScrollMemory';
 
@@ -23,6 +24,7 @@ export function DocListRow(props: DocListRowProps) {
   const typeLabel =
     props.docType in DOC_TYPE_LABELS ? tl(`docType.${props.docType}`) : props.docType;
   const source = props.siteName ?? props.author;
+  const summary = pickText(locale, props.summary, props.summaryEn);
 
   return (
     <Link
@@ -66,8 +68,8 @@ export function DocListRow(props: DocListRowProps) {
         <h3 className="mt-1.5 truncate text-[15px] font-semibold tracking-tight group-hover:text-accent-600">
           {props.title}
         </h3>
-        {props.summary && (
-          <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-muted">{props.summary}</p>
+        {summary && (
+          <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-muted">{summary}</p>
         )}
 
         <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted">

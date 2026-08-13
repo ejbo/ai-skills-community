@@ -20,9 +20,9 @@ const CLUSTER_GAP = 44; // notes whose markers are within this many px merge
  * 页边批注角标 — other readers' shared notes shown as avatar stacks in the
  * right gutter, clustered by vertical position (a paragraph / region where
  * several people annotated collapses into ONE stack). Click a stack to see
- * everyone's notes at that spot. Positions are read from the in-text
- * `mark[data-chl-id]` elements, so this tracks both the extracted view and
- * the 原版 PDF text layer, and recomputes on scroll / render.
+ * everyone's notes at that spot. Positions come from the annotation's live
+ * Range (getRect → anchoring.textBounds); nothing is injected into the article,
+ * so this recomputes on scroll / resize / note-set change instead.
  */
 export function MarginNotes({
   containerRef,
@@ -36,7 +36,7 @@ export function MarginNotes({
   notes: CommunityNote[];
   /** Any value that changes when the visible note set / view / chapter does. */
   version: string | number;
-  /** Viewport rect of a note's painted range (CSS Custom Highlight ranges). */
+  /** Viewport rect of a note's painted TEXT (never the containing block box). */
   getRect: (noteId: string) => DOMRect | null;
   onJump: (note: CommunityNote) => void;
   onOpenPanel: (noteId: string) => void;

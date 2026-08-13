@@ -71,6 +71,7 @@ export function contentTypeForKey(key: string): string {
     png: 'image/png',
     webp: 'image/webp',
     avif: 'image/avif',
+    vtt: 'text/vtt', // 字幕 tracks (subtitle/ namespace)
   };
   return map[ext] ?? 'application/octet-stream';
 }

@@ -1,9 +1,16 @@
-// Pure DOM anchoring utilities for the reader. Highlights are re-anchored by
-// quote text (whitespace-normalized), with the stored charStart used only to
-// pick the nearest occurrence. Every step is defensive: anything that cannot
-// be resolved is silently skipped — a lost highlight must never break reading.
+// Pure DOM anchoring utilities for the reader. A highlight is located by its
+// exact character offsets, with the stored quote as the verification key and
+// the fallback when the rendered text has shifted. Every step is defensive:
+// anything that cannot be resolved is silently skipped — a lost highlight must
+// never break reading.
+//
+// Nothing here MUTATES the article. Painting is the browser's job (CSS Custom
+// Highlight API, see ./highlighter.ts); this module only produces Ranges.
 
 const FILE_URL_RE = /(src|href)="\/api\/library\/file\//g;
+
+/** How much of the stored quote must line up with the offset range to trust it. */
+const QUOTE_PROBE_CHARS = 24;
 
 /**
  * Chapter HTML stores media URLs root-relative; prefix them with the deploy
@@ -17,19 +24,37 @@ export function applyBasePathToHtml(html: string): string {
 }
 
 /**
+ * Inverse of applyBasePathToHtml — media URLs are STORED root-relative, so any
+ * editor that round-trips displayed HTML back to the server must undo the
+ * prefix or the next deploy-path change would bake `/ai-community` into the DB.
+ */
+export function stripBasePathFromHtml(html: string): string {
+  const bp = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+  if (!bp) return html;
+  return html.split(`="${bp}/api/library/file/`).join('="/api/library/file/');
+}
+
+/**
  * Linear text offset of a DOM point within `root` — the length of the
  * concatenated text-node content before (node, offset). Matches how highlight
  * charStart/charEnd are recorded, so offsets stay self-consistent client-side.
+ * Null when the browser rejects the point: returning 0 there used to silently
+ * anchor the highlight at the TOP of the chapter.
  */
-export function getTextOffsetOfPoint(root: HTMLElement, node: Node, offset: number): number {
+export function getTextOffsetOfPoint(root: HTMLElement, node: Node, offset: number): number | null {
   try {
     const r = document.createRange();
     r.selectNodeContents(root);
     r.setEnd(node, offset);
     return r.toString().length;
   } catch {
-    return 0;
+    return null;
   }
+}
+
+/** Total text length of a chapter root, in the same offset space. */
+export function rootTextLength(root: HTMLElement): number {
+  return segmentsFor(root).raw.length;
 }
 
 interface Segment {
@@ -37,7 +62,17 @@ interface Segment {
   start: number;
 }
 
-function collectSegments(root: HTMLElement): { raw: string; segments: Segment[] } {
+interface Segments {
+  raw: string;
+  segments: Segment[];
+}
+
+// One TreeWalker pass per chapter root, reused across every mark. Re-anchoring
+// N highlights used to walk the whole chapter N times and rebuild its full text
+// N times, which starved the main thread of mousemove events mid-drag.
+let segmentCache = new WeakMap<HTMLElement, Segments>();
+
+function collectSegments(root: HTMLElement): Segments {
   const segments: Segment[] = [];
   let raw = '';
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -47,6 +82,42 @@ function collectSegments(root: HTMLElement): { raw: string; segments: Segment[] 
     raw += t.data;
   }
   return { raw, segments };
+}
+
+/**
+ * Cached segments for `root`, revalidated on every read. Ranges built from
+ * detached text nodes register fine but paint NOTHING, so a stale cache would
+ * silently unpaint every mark — this probe is correctness, not caching hygiene.
+ *
+ * Probing only the first segment is not enough: chapter HTML is pretty-printed,
+ * so segment 0 is usually a whitespace-only node between block tags, and the
+ * in-page translators that motivate this check rewrite only nodes that carry
+ * text. Both ends plus the total length catch a partial rewrite.
+ */
+function segmentsFor(root: HTMLElement): Segments {
+  const cached = segmentCache.get(root);
+  if (cached && isCacheLive(root, cached)) return cached;
+  const fresh = collectSegments(root);
+  segmentCache.set(root, fresh);
+  return fresh;
+}
+
+function isCacheLive(root: HTMLElement, cached: Segments): boolean {
+  const { segments, raw } = cached;
+  if (segments.length === 0) return (root.textContent ?? '').length === 0;
+  const first = segments[0].node;
+  const last = segments[segments.length - 1].node;
+  if (!first.isConnected || !last.isConnected) return false;
+  if (!root.contains(first) || !root.contains(last)) return false;
+  // textContent concatenates the same text nodes collectSegments walks, so a
+  // length change means nodes were added, removed or rewritten in between.
+  return (root.textContent ?? '').length === raw.length;
+}
+
+/** Drop the cached text walk for a root, or for every root when omitted. */
+export function invalidateAnchorCache(root?: HTMLElement): void {
+  if (root) segmentCache.delete(root);
+  else segmentCache = new WeakMap();
 }
 
 function pointAt(segments: Segment[], rawOffset: number): { node: Text; offset: number } | null {
@@ -80,7 +151,7 @@ export function locateQuote(root: HTMLElement, quote: string, nearCharStart: num
   try {
     const target = quote.replace(/\s+/g, '');
     if (!target) return null;
-    const { raw, segments } = collectSegments(root);
+    const { raw, segments } = segmentsFor(root);
     if (!raw) return null;
 
     // Whitespace-free haystack + map from normalized index → raw index.
@@ -126,7 +197,7 @@ export function locateQuote(root: HTMLElement, quote: string, nearCharStart: num
 export function rangeFromOffsets(root: HTMLElement, start: number, end: number): Range | null {
   try {
     if (!(end > start)) return null;
-    const { segments } = collectSegments(root);
+    const { segments } = segmentsFor(root);
     if (segments.length === 0) return null;
     const s = pointAt(segments, start);
     const e = pointAt(segments, end);
@@ -147,170 +218,83 @@ export function locateMark(
 ): Range | null {
   const byOffset = rangeFromOffsets(root, m.charStart, m.charEnd);
   if (byOffset) {
-    // Cheap sanity check: the offset range's text should share a prefix with
-    // the stored quote (guards against content that shifted after re-extract).
+    // The offset range must actually START with the stored quote, otherwise the
+    // rendered text has shifted (re-extract / chapter edit / a changed
+    // sanitizer) and the offsets now point at unrelated words.
+    //
+    // The previous form ended in `|| got.length >= want.length`, where `want`
+    // was a ≤24-char prefix — true for essentially every highlight, so the
+    // check always passed and the quote fallback below was unreachable. That is
+    // what let stale offsets paint over the wrong sentence forever.
     const got = byOffset.toString().replace(/\s+/g, '');
-    const want = m.quote.replace(/\s+/g, '').slice(0, 24);
-    if (!want || got.replace(/\s+/g, '').startsWith(want) || got.length >= want.length) {
-      return byOffset;
-    }
+    const want = m.quote.replace(/\s+/g, '');
+    const probe = want.slice(0, QUOTE_PROBE_CHARS);
+    if (!probe || got.startsWith(probe)) return byOffset;
   }
   return locateQuote(root, m.quote, m.charStart);
 }
 
 /**
- * Wrap every text-node portion covered by `range` in its own <mark> (text
- * nodes are split at the boundaries, so cross-paragraph quotes become several
- * marks sharing one data-hl-id). Returns the created marks.
+ * The rectangles a range's TEXT actually occupies — one per line box, nothing
+ * else.
+ *
+ * Do NOT use Range.getClientRects() for this. CSSOM-View defines it as the text
+ * boxes PLUS "the border boxes of each element selected by the range whose
+ * parent is not selected", so a range spanning a paragraph break also yields a
+ * full-column-width, full-height rect for every contained <p>/<li>/<figure>,
+ * and a contained <a>/<strong> yields a duplicate box over its own text. That
+ * is what painted highlights over margins, blank space and images ("框到额外的
+ * 位置") and made blank space inside a highlighted paragraph clickable.
+ *
+ * A range confined to a single Text node selects no elements, so per-text-node
+ * sub-ranges give exactly the glyph line boxes.
  */
-export function wrapRange(range: Range, className: string, hlId?: string): HTMLElement[] {
-  const marks: HTMLElement[] = [];
+export function textRects(range: Range): DOMRect[] {
   try {
-    const targets: { node: Text; start: number; end: number }[] = [];
-    const ancestor = range.commonAncestorContainer;
-    if (ancestor.nodeType === Node.TEXT_NODE) {
-      targets.push({ node: ancestor as Text, start: range.startOffset, end: range.endOffset });
-    } else {
-      const walker = document.createTreeWalker(ancestor, NodeFilter.SHOW_TEXT);
-      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-        const t = n as Text;
-        if (!range.intersectsNode(t)) continue;
-        const start = t === range.startContainer ? range.startOffset : 0;
-        const end = t === range.endContainer ? range.endOffset : t.data.length;
-        if (end > start) targets.push({ node: t, start, end });
+    const start = range.startContainer;
+    const end = range.endContainer;
+    if (start.nodeType === Node.TEXT_NODE && start === end) {
+      return Array.from(range.getClientRects());
+    }
+    const scope =
+      range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+        ? range.commonAncestorContainer.parentNode
+        : range.commonAncestorContainer;
+    if (!scope) return [];
+    const out: DOMRect[] = [];
+    const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const t = n as Text;
+      if (!t.data || !range.intersectsNode(t)) continue;
+      const s = t === start ? range.startOffset : 0;
+      const e = t === end ? range.endOffset : t.data.length;
+      if (e <= s) continue; // a node the range only touches at a boundary
+      const sub = document.createRange();
+      sub.setStart(t, s);
+      sub.setEnd(t, e);
+      for (const r of Array.from(sub.getClientRects())) {
+        if (r.width >= 1 && r.height >= 1) out.push(r);
       }
     }
-    for (const { node, start, end } of targets) {
-      let piece = node;
-      if (start > 0) piece = piece.splitText(start);
-      if (end - start < piece.data.length) piece.splitText(end - start);
-      if (!piece.data) continue;
-      const mark = document.createElement('mark');
-      mark.className = className;
-      if (hlId) mark.dataset.hlId = hlId;
-      piece.parentNode?.insertBefore(mark, piece);
-      mark.appendChild(piece);
-      marks.push(mark);
-    }
+    return out;
   } catch {
-    /* partial wraps are harmless — clearHighlights resets everything */
-  }
-  return marks;
-}
-
-export function unwrapMark(mark: HTMLElement): void {
-  const parent = mark.parentNode;
-  if (!parent) return;
-  while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
-  parent.removeChild(mark);
-}
-
-export function esc(id: string): string {
-  return typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
-    ? CSS.escape(id)
-    : id.replace(/"/g, '\\"');
-}
-
-export interface AnchorableHighlight {
-  id: string;
-  quote: string;
-  charStart: number;
-  color: string;
-}
-
-/** Re-anchor and paint the given highlights; unresolvable ones are skipped. */
-export function applyHighlights(root: HTMLElement, highlights: AnchorableHighlight[]): void {
-  for (const hl of highlights) {
-    try {
-      if (root.querySelector(`mark[data-hl-id="${esc(hl.id)}"]`)) continue;
-      const range = locateQuote(root, hl.quote, hl.charStart);
-      if (!range) continue;
-      wrapRange(range, `reader-hl reader-hl-${hl.color}`, hl.id);
-    } catch {
-      /* skip */
-    }
+    return [];
   }
 }
 
-/** Unwrap every highlight (and temp flash) mark and re-merge text nodes. */
-export function clearHighlights(root: HTMLElement): void {
-  try {
-    root
-      .querySelectorAll('mark[data-hl-id], mark.reader-hl-temp')
-      .forEach((m) => unwrapMark(m as HTMLElement));
-    root.normalize();
-  } catch {
-    /* ignore */
+/** Union of a range's text rects — the geometry MarginNotes anchors to. */
+export function textBounds(range: Range): DOMRect | null {
+  const rects = textRects(range);
+  if (rects.length === 0) return null;
+  let top = Infinity;
+  let left = Infinity;
+  let bottom = -Infinity;
+  let right = -Infinity;
+  for (const r of rects) {
+    top = Math.min(top, r.top);
+    left = Math.min(left, r.left);
+    bottom = Math.max(bottom, r.bottom);
+    right = Math.max(right, r.right);
   }
-}
-
-export function recolorHighlight(root: HTMLElement, id: string, color: string): void {
-  try {
-    root.querySelectorAll(`mark[data-hl-id="${esc(id)}"]`).forEach((m) => {
-      (m as HTMLElement).className = `reader-hl reader-hl-${color}`;
-    });
-  } catch {
-    /* ignore */
-  }
-}
-
-export function removeHighlightMarks(root: HTMLElement, id: string): void {
-  try {
-    root.querySelectorAll(`mark[data-hl-id="${esc(id)}"]`).forEach((m) => unwrapMark(m as HTMLElement));
-    root.normalize();
-  } catch {
-    /* ignore */
-  }
-}
-
-/**
- * Community annotation markers (other readers' shared notes): dotted-underline
- * marks with their own dataset key so own-highlight logic never touches them.
- */
-export function applyCommunityMarks(
-  root: HTMLElement,
-  notes: { id: string; quote: string; charStart: number }[],
-): void {
-  for (const note of notes) {
-    try {
-      if (root.querySelector(`mark[data-chl-id="${esc(note.id)}"]`)) continue;
-      const range = locateQuote(root, note.quote, note.charStart);
-      if (!range) continue;
-      const marks = wrapRange(range, 'reader-hl-community');
-      for (const m of marks) m.dataset.chlId = note.id;
-    } catch {
-      /* skip */
-    }
-  }
-}
-
-export function clearCommunityMarks(root: HTMLElement): void {
-  try {
-    root.querySelectorAll('mark[data-chl-id]').forEach((m) => unwrapMark(m as HTMLElement));
-    root.normalize();
-  } catch {
-    /* ignore */
-  }
-}
-
-/**
- * Scroll to `quote` (nearest `nearCharStart`) and flash it with a temporary
- * mark that unwraps itself. Used by citation jumps and pending cross-chapter
- * jumps. Returns whether the quote was found.
- */
-export function flashQuote(root: HTMLElement, quote: string, nearCharStart: number): boolean {
-  const range = locateQuote(root, quote, nearCharStart);
-  if (!range) return false;
-  const marks = wrapRange(range, 'reader-hl-temp reader-hl-flash');
-  if (marks.length === 0) return false;
-  marks[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
-  window.setTimeout(() => {
-    marks.forEach(unwrapMark);
-    try {
-      root.normalize();
-    } catch {
-      /* ignore */
-    }
-  }, 2400);
-  return true;
+  return new DOMRect(left, top, right - left, bottom - top);
 }

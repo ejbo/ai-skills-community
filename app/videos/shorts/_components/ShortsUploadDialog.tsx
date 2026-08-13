@@ -1,14 +1,18 @@
 'use client';
 
-// 上传短视频 dialog: pick a video (≤500 MB, ≤5 min), probe duration/size via a
-// detached <video>, auto-capture a poster frame to canvas, raw-body XHR upload
-// (house protocol — XHR for upload.onprogress; the fetch basePath shim does NOT
-// cover XHR, so endpoints are wrapped in withBasePath explicitly), then publish
-// via POST /api/shorts. The caption field has an AI 润色 assist.
+// 上传短视频 dialog. Two phases: a full-bleed drag&drop pick zone, then a
+// side-by-side edit layout (vertical preview left, caption + AI 润色 right).
+// Upload rides the house raw-body XHR protocol (XHR for upload.onprogress; the
+// fetch basePath shim does NOT cover XHR, so endpoints are wrapped in
+// withBasePath explicitly). Publishing kicks off背景字幕生成 server-side.
+//
+// Design system notes: one radius scale (dialog 2xl, elements xl), single
+// accent, label-above-input, visible focus rings, tactile :active presses,
+// inline progress instead of spinners where the shape is known.
 
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Clapperboard, Loader2, Sparkles, Upload, X } from 'lucide-react';
+import { Captions, Clock, Film, Loader2, Proportions, Sparkles, Upload, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
 import { withBasePath } from '@/lib/base-path';
@@ -67,9 +71,7 @@ function uploadRaw(
 }
 
 /** Probe duration/dimensions and capture a poster frame from a picked file. */
-async function probeAndCapture(
-  url: string,
-): Promise<{ meta: Meta; poster: Blob | null }> {
+async function probeAndCapture(url: string): Promise<{ meta: Meta; poster: Blob | null }> {
   const video = document.createElement('video');
   video.preload = 'metadata';
   video.muted = true;
@@ -166,6 +168,7 @@ export function ShortsUploadDialog({ onClose, onPublished }: Props) {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [poster, setPoster] = useState<Blob | null>(null);
   const [probing, setProbing] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const [caption, setCaption] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
   const [phase, setPhase] = useState<'idle' | 'uploading' | 'publishing'>('idle');
@@ -238,6 +241,14 @@ export function ShortsUploadDialog({ onClose, onPublished }: Props) {
     } finally {
       setProbing(false);
     }
+  }
+
+  function resetPick() {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    setFile(null);
+    setObjectUrl(null);
+    setMeta(null);
+    setPoster(null);
   }
 
   async function polish() {
@@ -316,7 +327,7 @@ export function ShortsUploadDialog({ onClose, onPublished }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
       onClick={() => {
         if (!busy) onClose();
       }}
@@ -325,160 +336,208 @@ export function ShortsUploadDialog({ onClose, onPublished }: Props) {
       <div
         role="dialog"
         aria-label={t('upload_title')}
-        className="max-h-[90dvh] w-[min(94vw,560px)] overflow-y-auto rounded-2xl bg-white p-5 text-zinc-900 shadow-2xl dark:bg-zinc-950 dark:text-zinc-100"
+        className="max-h-[90dvh] w-[min(94vw,640px)] overflow-y-auto rounded-2xl bg-white text-zinc-900 shadow-2xl dark:bg-zinc-950 dark:text-zinc-100"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="flex items-center gap-2 text-base font-semibold">
-            <Clapperboard className="h-4.5 w-4.5 text-accent-500" />
-            {t('upload_title')}
-          </h2>
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
+          <div>
+            <h2 className="text-base font-semibold">{t('upload_title')}</h2>
+            <p className="mt-0.5 text-xs text-muted">{t('upload_sub')}</p>
+          </div>
           <button
             type="button"
             onClick={() => {
               if (!busy) onClose();
             }}
-            className="flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            className="flex h-8 w-8 items-center justify-center rounded-xl text-zinc-500 transition hover:bg-zinc-100 active:scale-95 dark:hover:bg-zinc-800"
             aria-label={t('close')}
           >
             <X className="h-4.5 w-4.5" />
           </button>
         </div>
 
-        {/* File pick / preview */}
-        {!file ? (
-          <label className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-zinc-300 px-6 py-12 text-center transition hover:border-accent-400 hover:bg-accent-500/5 dark:border-zinc-700">
-            <Upload className="h-8 w-8 text-zinc-400" />
-            <div>
-              <p className="text-sm font-medium">{t('pick_video')}</p>
-              <p className="mt-1 text-xs text-muted">
-                {t('pick_hint', { minutes: Math.round(MAX_SHORT_DURATION_SEC / 60), mb: 500 })}
-              </p>
-            </div>
-            <input
-              type="file"
-              accept="video/mp4,video/webm,video/quicktime"
-              className="hidden"
-              onChange={(e) => {
-                void pick(e.target.files);
-                e.target.value = '';
+        <div className="px-6 py-5">
+          {!file ? (
+            /* Phase 1 — pick / drop */
+            <label
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
               }}
-            />
-          </label>
-        ) : (
-          <div className="space-y-2">
-            {objectUrl && (
-              // eslint-disable-next-line jsx-a11y/media-has-caption -- user-picked local preview
-              <video
-                src={objectUrl}
-                controls
-                muted
-                playsInline
-                className="max-h-64 w-full rounded-xl bg-black"
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                void pick(e.dataTransfer.files);
+              }}
+              className={`flex cursor-pointer flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed px-6 py-16 text-center transition ${
+                dragOver
+                  ? 'border-accent-500 bg-accent-500/10'
+                  : 'border-zinc-300 hover:border-accent-400 hover:bg-accent-500/5 dark:border-zinc-700'
+              }`}
+            >
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-500/10 text-accent-600 dark:text-accent-400">
+                <Upload className="h-6 w-6" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold">
+                  {dragOver ? t('drop_to_select') : t('pick_video')}
+                </p>
+                <p className="mt-1.5 text-xs text-muted">
+                  {t('pick_hint', { minutes: Math.round(MAX_SHORT_DURATION_SEC / 60), mb: 500 })}
+                </p>
+              </div>
+              <input
+                type="file"
+                accept="video/mp4,video/webm,video/quicktime"
+                className="hidden"
+                onChange={(e) => {
+                  void pick(e.target.files);
+                  e.target.value = '';
+                }}
               />
-            )}
-            <div className="flex items-center justify-between text-xs text-muted">
-              <span className="truncate">{file.name}</span>
-              <span className="flex shrink-0 items-center gap-2">
-                {probing ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : meta ? (
-                  <>
-                    <span>{formatDuration(Math.round(meta.duration))}</span>
-                    {meta.width > 0 && meta.height > 0 && (
-                      <span>
-                        {meta.width}×{meta.height}
-                      </span>
-                    )}
-                  </>
-                ) : null}
+            </label>
+          ) : (
+            /* Phase 2 — preview + caption */
+            <div className="grid gap-5 sm:grid-cols-[190px,minmax(0,1fr)]">
+              <div className="mx-auto w-full max-w-[220px]">
+                <div className="relative aspect-[9/16] overflow-hidden rounded-xl bg-black ring-1 ring-zinc-200 dark:ring-zinc-800">
+                  {objectUrl && (
+                    // eslint-disable-next-line jsx-a11y/media-has-caption -- user-picked local preview
+                    <video
+                      src={objectUrl}
+                      controls
+                      muted
+                      playsInline
+                      className="h-full w-full object-contain"
+                    />
+                  )}
+                  {probing && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                      <Loader2 className="h-5 w-5 animate-spin text-white" />
+                    </div>
+                  )}
+                </div>
                 {!busy && (
                   <button
                     type="button"
-                    onClick={() => {
-                      if (objectUrl) URL.revokeObjectURL(objectUrl);
-                      setFile(null);
-                      setObjectUrl(null);
-                      setMeta(null);
-                      setPoster(null);
-                    }}
-                    className="font-medium text-accent-600 hover:underline dark:text-accent-400"
+                    onClick={resetPick}
+                    className="mt-2 w-full rounded-xl border border-zinc-200 py-1.5 text-xs font-medium text-zinc-600 transition hover:bg-zinc-50 active:scale-[0.98] dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
                   >
                     {t('repick')}
                   </button>
                 )}
-              </span>
-            </div>
-            {meta && meta.width > meta.height && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">{t('landscape_hint')}</p>
-            )}
-          </div>
-        )}
+              </div>
 
-        {/* Caption + AI polish */}
-        <div className="mt-4">
-          <div className="mb-1.5 flex items-center justify-between">
-            <label htmlFor="shorts-caption" className="text-sm font-medium">
-              {t('caption_label')}
-            </label>
-            <button
-              type="button"
-              onClick={() => void polish()}
-              disabled={aiBusy || !caption.trim() || busy}
-              className="inline-flex items-center gap-1 rounded-full bg-accent-500/10 px-2.5 py-1 text-xs font-medium text-accent-600 transition hover:bg-accent-500/20 disabled:opacity-40 dark:text-accent-400"
-            >
-              {aiBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-              {t('ai_polish')}
-            </button>
-          </div>
-          <textarea
-            id="shorts-caption"
-            value={caption}
-            onChange={(e) => setCaption(e.target.value.slice(0, MAX_SHORT_CAPTION_CHARS))}
-            rows={4}
-            disabled={busy}
-            placeholder={t('caption_placeholder')}
-            className="w-full resize-none rounded-xl border border-zinc-300 bg-transparent px-3 py-2.5 text-sm outline-none transition focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-700"
-          />
-          <p className="mt-1 text-right text-[11px] tabular-nums text-muted">
-            {caption.length}/{MAX_SHORT_CAPTION_CHARS}
-          </p>
+              <div className="min-w-0">
+                {/* Meta chips */}
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                  <span className="inline-flex max-w-[180px] items-center gap-1 rounded-full bg-zinc-100 px-2.5 py-1 text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">
+                    <Film className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{file.name}</span>
+                  </span>
+                  {meta && (
+                    <>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2.5 py-1 tabular-nums text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">
+                        <Clock className="h-3 w-3" />
+                        {formatDuration(Math.round(meta.duration))}
+                      </span>
+                      {meta.width > 0 && meta.height > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2.5 py-1 tabular-nums text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">
+                          <Proportions className="h-3 w-3" />
+                          {meta.width}×{meta.height}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+                {meta && meta.width > meta.height && (
+                  <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                    {t('landscape_hint')}
+                  </p>
+                )}
+
+                {/* Caption */}
+                <div className="mt-4">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <label htmlFor="shorts-caption" className="text-sm font-medium">
+                      {t('caption_label')}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => void polish()}
+                      disabled={aiBusy || !caption.trim() || busy}
+                      className="inline-flex items-center gap-1 rounded-full bg-accent-500/10 px-2.5 py-1 text-xs font-medium text-accent-600 transition hover:bg-accent-500/20 active:scale-95 disabled:opacity-40 dark:text-accent-400"
+                    >
+                      {aiBusy ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3.5 w-3.5" />
+                      )}
+                      {t('ai_polish')}
+                    </button>
+                  </div>
+                  <textarea
+                    id="shorts-caption"
+                    value={caption}
+                    onChange={(e) => setCaption(e.target.value.slice(0, MAX_SHORT_CAPTION_CHARS))}
+                    rows={5}
+                    disabled={busy}
+                    placeholder={t('caption_placeholder')}
+                    className="w-full resize-none rounded-xl border border-zinc-300 bg-transparent px-3.5 py-3 text-sm outline-none transition focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-700"
+                  />
+                  <div className="mt-1 flex items-center justify-between text-[11px] text-muted">
+                    <span className="inline-flex items-center gap-1">
+                      <Captions className="h-3 w-3" />
+                      {t('subtitle_hint')}
+                    </span>
+                    <span className="tabular-nums">
+                      {caption.length}/{MAX_SHORT_CAPTION_CHARS}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Progress */}
-        {phase === 'uploading' && (
-          <div className="mt-2">
-            <div className="h-1.5 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
-              <div
-                className="h-full rounded-full bg-accent-500 transition-[width]"
-                style={{ width: `${pct}%` }}
-              />
+        {/* Footer */}
+        <div className="border-t border-zinc-200 px-6 py-4 dark:border-zinc-800">
+          {phase === 'uploading' && (
+            <div className="mb-3">
+              <div className="h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-900">
+                <div
+                  className="h-full rounded-full bg-accent-500 transition-[width]"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <p className="mt-1.5 text-xs tabular-nums text-muted">
+                {t('uploading', { pct: Math.round(pct) })}
+              </p>
             </div>
-            <p className="mt-1 text-xs text-muted">{t('uploading', { pct: Math.round(pct) })}</p>
+          )}
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (!busy) onClose();
+              }}
+              disabled={busy}
+              className="rounded-xl px-4 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 active:scale-[0.98] disabled:opacity-40 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              {t('cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={() => void publish()}
+              disabled={!ready}
+              className="inline-flex items-center gap-2 rounded-xl bg-accent-500 px-6 py-2 text-sm font-semibold text-white transition hover:bg-accent-600 active:scale-[0.98] disabled:opacity-40"
+            >
+              {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+              {phase === 'publishing' ? t('publishing') : t('publish')}
+            </button>
           </div>
-        )}
-
-        {/* Actions */}
-        <div className="mt-5 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              if (!busy) onClose();
-            }}
-            disabled={busy}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-40 dark:text-zinc-300 dark:hover:bg-zinc-800"
-          >
-            {t('cancel')}
-          </button>
-          <button
-            type="button"
-            onClick={() => void publish()}
-            disabled={!ready}
-            className="inline-flex items-center gap-2 rounded-lg bg-accent-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-accent-600 disabled:opacity-40"
-          >
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-            {phase === 'publishing' ? t('publishing') : t('publish')}
-          </button>
         </div>
       </div>
     </div>

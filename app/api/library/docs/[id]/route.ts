@@ -38,7 +38,9 @@ const patchSchema = z.object({
   title: z.string().trim().min(1, '标题不能为空').max(300).optional(),
   author: z.string().trim().max(200).optional(),
   summary: z.string().trim().max(1000).optional(),
+  summaryEn: z.string().trim().max(1000).optional(),
   abstractMd: z.string().trim().max(20_000).optional(),
+  abstractMdEn: z.string().trim().max(20_000).optional(),
   docType: z.enum(['book', 'paper', 'blog', 'article', 'report', 'other']).optional(),
   categories: z.array(z.string()).max(8).optional(),
   visibility: z.enum(['public', 'restricted', 'private']).optional(),
@@ -70,12 +72,15 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       { status: 400 },
     );
   }
-  const { title, author, summary, abstractMd, docType, categories, visibility } = parsed.data;
+  const { title, author, summary, summaryEn, abstractMd, abstractMdEn, docType, categories, visibility } =
+    parsed.data;
   if (
     title === undefined &&
     author === undefined &&
     summary === undefined &&
+    summaryEn === undefined &&
     abstractMd === undefined &&
+    abstractMdEn === undefined &&
     docType === undefined &&
     categories === undefined &&
     visibility === undefined
@@ -83,14 +88,17 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: 'invalid_input', reason: '没有需要修改的内容' }, { status: 400 });
   }
 
-  const metaTouched = title !== undefined || author !== undefined || summary !== undefined;
+  const metaTouched =
+    title !== undefined || author !== undefined || summary !== undefined || summaryEn !== undefined;
   const updated = await prisma.libraryDoc.update({
     where: { id: doc.id },
     data: {
       ...(title !== undefined ? { title } : {}),
       ...(author !== undefined ? { author: author || null } : {}),
       ...(summary !== undefined ? { summary } : {}),
+      ...(summaryEn !== undefined ? { summaryEn } : {}),
       ...(abstractMd !== undefined ? { abstractMd } : {}),
+      ...(abstractMdEn !== undefined ? { abstractMdEn } : {}),
       ...(metaTouched ? { metaPinned: true } : {}),
       ...(docType !== undefined && isDocType(docType) ? { docType, docTypePinned: true } : {}),
       ...(categories !== undefined
