@@ -170,6 +170,9 @@ export function ShortsUploadDialog({ onClose, onPublished }: Props) {
   const [probing, setProbing] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [caption, setCaption] = useState('');
+  const [origin, setOrigin] = useState<'original' | 'repost'>('original');
+  const [sourceUrl, setSourceUrl] = useState('');
+  const [sourceAuthor, setSourceAuthor] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
   const [phase, setPhase] = useState<'idle' | 'uploading' | 'publishing'>('idle');
   const [pct, setPct] = useState(0);
@@ -279,6 +282,10 @@ export function ShortsUploadDialog({ onClose, onPublished }: Props) {
 
   async function publish() {
     if (!file || !meta || !caption.trim() || busy) return;
+    if (origin === 'repost' && (!/^https?:\/\//.test(sourceUrl.trim()) || !sourceAuthor.trim())) {
+      pushToast('error', t('err_source_required'));
+      return;
+    }
     setPhase('uploading');
     setPct(0);
     try {
@@ -303,6 +310,9 @@ export function ShortsUploadDialog({ onClose, onPublished }: Props) {
           durationSec: Math.max(1, Math.round(meta.duration)),
           width: meta.width || undefined,
           height: meta.height || undefined,
+          originType: origin,
+          sourceUrl: origin === 'repost' ? sourceUrl.trim() : undefined,
+          sourceAuthor: origin === 'repost' ? sourceAuthor.trim() : undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -323,7 +333,14 @@ export function ShortsUploadDialog({ onClose, onPublished }: Props) {
     }
   }
 
-  const ready = Boolean(file && meta && caption.trim()) && !probing && !busy;
+  const ready =
+    Boolean(file && meta && caption.trim()) &&
+    (origin === 'original' || Boolean(sourceUrl.trim() && sourceAuthor.trim())) &&
+    !probing &&
+    !busy;
+
+  const inputCls =
+    'w-full rounded-xl border border-zinc-300 bg-transparent px-3.5 py-2.5 text-sm outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-zinc-500/15 dark:border-zinc-700 dark:focus:border-zinc-400';
 
   return (
     <div
@@ -373,11 +390,11 @@ export function ShortsUploadDialog({ onClose, onPublished }: Props) {
               }}
               className={`flex cursor-pointer flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed px-6 py-16 text-center transition ${
                 dragOver
-                  ? 'border-accent-500 bg-accent-500/10'
-                  : 'border-zinc-300 hover:border-accent-400 hover:bg-accent-500/5 dark:border-zinc-700'
+                  ? 'border-zinc-900 bg-zinc-100/70 dark:border-zinc-200 dark:bg-zinc-900'
+                  : 'border-zinc-300 hover:border-zinc-500 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:border-zinc-500 dark:hover:bg-zinc-900/60'
               }`}
             >
-              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-500/10 text-accent-600 dark:text-accent-400">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">
                 <Upload className="h-6 w-6" />
               </span>
               <div>
@@ -458,6 +475,64 @@ export function ShortsUploadDialog({ onClose, onPublished }: Props) {
                   </p>
                 )}
 
+                {/* 内容来源: 自创 / 搬运 */}
+                <div className="mt-4">
+                  <p className="mb-1.5 text-sm font-medium">{t('origin_label')}</p>
+                  <div className="flex gap-2">
+                    {(['original', 'repost'] as const).map((o) => (
+                      <button
+                        key={o}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setOrigin(o)}
+                        aria-pressed={origin === o}
+                        className={`rounded-xl border px-4 py-1.5 text-sm font-medium transition active:scale-[0.98] ${
+                          origin === o
+                            ? 'border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-zinc-900'
+                            : 'border-zinc-300 text-zinc-600 hover:border-zinc-500 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-zinc-500'
+                        }`}
+                      >
+                        {t(o === 'original' ? 'origin_original' : 'origin_repost')}
+                      </button>
+                    ))}
+                  </div>
+                  {origin === 'repost' && (
+                    <div className="mt-3 space-y-3">
+                      <div>
+                        <label htmlFor="shorts-source-url" className="mb-1 block text-xs font-medium">
+                          {t('source_url_label')}
+                        </label>
+                        <input
+                          id="shorts-source-url"
+                          type="url"
+                          value={sourceUrl}
+                          onChange={(e) => setSourceUrl(e.target.value)}
+                          disabled={busy}
+                          placeholder={t('source_url_placeholder')}
+                          className={inputCls}
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor="shorts-source-author"
+                          className="mb-1 block text-xs font-medium"
+                        >
+                          {t('source_author_label')}
+                        </label>
+                        <input
+                          id="shorts-source-author"
+                          type="text"
+                          value={sourceAuthor}
+                          onChange={(e) => setSourceAuthor(e.target.value.slice(0, 100))}
+                          disabled={busy}
+                          placeholder={t('source_author_placeholder')}
+                          className={inputCls}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Caption */}
                 <div className="mt-4">
                   <div className="mb-1.5 flex items-center justify-between">
@@ -468,7 +543,7 @@ export function ShortsUploadDialog({ onClose, onPublished }: Props) {
                       type="button"
                       onClick={() => void polish()}
                       disabled={aiBusy || !caption.trim() || busy}
-                      className="inline-flex items-center gap-1 rounded-full bg-accent-500/10 px-2.5 py-1 text-xs font-medium text-accent-600 transition hover:bg-accent-500/20 active:scale-95 disabled:opacity-40 dark:text-accent-400"
+                      className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-200 active:scale-95 disabled:opacity-40 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
                     >
                       {aiBusy ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -485,7 +560,7 @@ export function ShortsUploadDialog({ onClose, onPublished }: Props) {
                     rows={5}
                     disabled={busy}
                     placeholder={t('caption_placeholder')}
-                    className="w-full resize-none rounded-xl border border-zinc-300 bg-transparent px-3.5 py-3 text-sm outline-none transition focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-700"
+                    className={`${inputCls} resize-none`}
                   />
                   <div className="mt-1 flex items-center justify-between text-[11px] text-muted">
                     <span className="inline-flex items-center gap-1">
@@ -508,7 +583,7 @@ export function ShortsUploadDialog({ onClose, onPublished }: Props) {
             <div className="mb-3">
               <div className="h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-900">
                 <div
-                  className="h-full rounded-full bg-accent-500 transition-[width]"
+                  className="h-full rounded-full bg-zinc-900 transition-[width] dark:bg-white"
                   style={{ width: `${pct}%` }}
                 />
               </div>
@@ -532,7 +607,7 @@ export function ShortsUploadDialog({ onClose, onPublished }: Props) {
               type="button"
               onClick={() => void publish()}
               disabled={!ready}
-              className="inline-flex items-center gap-2 rounded-xl bg-accent-500 px-6 py-2 text-sm font-semibold text-white transition hover:bg-accent-600 active:scale-[0.98] disabled:opacity-40"
+              className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 px-6 py-2 text-sm font-semibold text-white transition hover:bg-zinc-700 active:scale-[0.98] disabled:opacity-40 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
             >
               {busy && <Loader2 className="h-4 w-4 animate-spin" />}
               {phase === 'publishing' ? t('publishing') : t('publish')}

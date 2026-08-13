@@ -254,14 +254,3 @@
 [data-theme='dark'] .hljs-deletion {
   color: #ffa198;
 }
-
-/* 随刷短视频字幕 (WebVTT ::cue) — 抖音-style: translucent pill, readable on any
-   frame. Applies to the shorts player's <track> rendering only (scoped by the
-   shorts video elements being the only ones with subtitle tracks). */
-video::cue {
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
-  font-size: 1rem;
-  line-height: 1.5;
-  border-radius: 4px;
-}

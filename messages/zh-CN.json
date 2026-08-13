@@ -5,8 +5,8 @@
     "empty": "暂无通知"
   },
   "nav": {
-    "browse": "Skills Center",
-    "videos": "Geek Hub",
+    "browse": "Skills",
+    "videos": "Videos",
     "library": "知识库",
     "discussion": "讨论区",
     "events": "活动",
@@ -2099,7 +2099,9 @@
     "show_highlights_without_notes": "显示没有笔记的划线",
     "loading_similar": "加载中…",
     "no_similar_docs": "暂无相似文档",
-    "n_min_read": "{count} 分钟阅读"
+    "n_min_read": "{count} 分钟阅读",
+    "selection_shortcuts_hint": "快捷键 1–4 上色 · N 记笔记",
+    "selection_none_hint": "在正文中选中一段文字（浏览器原生选择），这里会出现上色 / 笔记 / 翻译 / 问 AI。"
   },
   "skills_misc": {
     "categories_subtitle": "按场景挑选合适的 Skill。",
@@ -2183,7 +2185,8 @@
     "topic_locked": "该帖子已被锁定，无法回复",
     "too_many_pinned": "置顶数量已达上限（{max} 条），请先取消其他置顶",
     "upload_quota": "今日上传流量已达上限，请明天再试",
-    "rate_limited": "操作过于频繁，请稍后再试"
+    "rate_limited": "操作过于频繁，请稍后再试",
+    "short_source_required": "搬运视频必须填写原视频链接和原作者"
   },
   "stickers": {
     "title": "我的表情包",
@@ -2318,13 +2321,22 @@
     "prev": "上一个",
     "next": "下一个",
     "fullscreen": "全屏",
-    "tab_videos": "视频",
-    "tab_shorts": "短视频",
+    "tab_videos": "Geek Videos",
+    "tab_shorts": "Shorts",
     "browse_latest": "最新发布",
     "subtitles": "字幕",
     "subtitles_off": "关",
     "upload_sub": "竖屏 9:16 观感最佳 · 发布后自动生成中英字幕",
     "drop_to_select": "松开选择该视频",
-    "subtitle_hint": "发布后自动识别语音，生成中英字幕"
+    "subtitle_hint": "发布后自动识别语音，生成中英字幕",
+    "origin_label": "内容来源",
+    "origin_original": "自创",
+    "origin_repost": "搬运",
+    "source_url_label": "原视频链接",
+    "source_url_placeholder": "https://…",
+    "source_author_label": "原作者",
+    "source_author_placeholder": "原作者名称",
+    "err_source_required": "搬运视频必须填写原视频链接和原作者",
+    "panel_info": "详情"
   }
 }

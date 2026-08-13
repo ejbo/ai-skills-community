@@ -30,7 +30,7 @@ interface SearchParams {
   tab?: string;
 }
 
-/** GeekHub 视频 | 短视频 tab switcher (segmented control under the breadcrumb). */
+/** Videos tab switcher: Shorts (default) | Geek Videos. */
 function VideosTabs({
   active,
   videosLabel,
@@ -45,13 +45,13 @@ function VideosTabs({
   const off = 'text-muted hover:text-zinc-800 dark:hover:text-zinc-200';
   return (
     <div className="flex w-fit items-center gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-900">
-      <Link href="/videos" className={`${base} ${active === 'videos' ? on : off}`}>
-        <Clapperboard className="h-4 w-4" />
-        {videosLabel}
-      </Link>
-      <Link href="/videos?tab=shorts" className={`${base} ${active === 'shorts' ? on : off}`}>
+      <Link href="/videos" className={`${base} ${active === 'shorts' ? on : off}`}>
         <Play className="h-4 w-4" />
         {shortsLabel}
+      </Link>
+      <Link href="/videos?tab=videos" className={`${base} ${active === 'videos' ? on : off}`}>
+        <Clapperboard className="h-4 w-4" />
+        {videosLabel}
       </Link>
     </div>
   );
@@ -63,8 +63,12 @@ export default async function VideosPage({ searchParams }: { searchParams: Searc
   const categories = await listVideoCategories();
   const categoryPills = categories.map((c) => ({ slug: c.slug, name: c.name }));
 
-  // ── 短视频 tab (Douyin-style browse; same unified player) ──────────────────
-  if (searchParams.tab === 'shorts') {
+  const isBrowse = Boolean(
+    searchParams.q || searchParams.category || searchParams.sort || searchParams.page,
+  );
+
+  // ── Shorts tab — the DEFAULT view (Douyin-style browse; unified player) ────
+  if (!isBrowse && searchParams.tab !== 'videos') {
     const actor = await getVideoActor();
     const viewerId = actor?.id ?? null;
     const viewerIsAdmin = actor?.isAdmin ?? false;
@@ -79,25 +83,24 @@ export default async function VideosPage({ searchParams }: { searchParams: Searc
 
     return (
       <div className="container animate-fade-in py-6">
-        <VideoBreadcrumb items={[{ label: t('nav'), href: '/videos' }, { label: ts('title') }]} />
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <VideosTabs active="shorts" videosLabel={ts('tab_videos')} shortsLabel={ts('tab_shorts')} />
           <Link
             href="/videos/shorts?upload=1"
-            className="inline-flex items-center gap-1.5 rounded-full bg-accent-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-accent-600"
+            className="inline-flex items-center gap-1.5 rounded-full bg-zinc-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-zinc-700 active:scale-95 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
           >
             <Plus className="h-4 w-4" />
             {ts('upload')}
           </Link>
         </div>
-        <ShortsBrowse heroItems={heroItems} latest={latest} />
+        <ShortsBrowse
+          heroItems={heroItems}
+          latest={latest}
+          currentUser={actor ? { id: actor.id, isAdmin: actor.isAdmin } : null}
+        />
       </div>
     );
   }
-
-  const isBrowse = Boolean(
-    searchParams.q || searchParams.category || searchParams.sort || searchParams.page,
-  );
 
   // ── Home (Netflix billboard + rails) ───────────────────────────────────────
   if (!isBrowse) {
@@ -106,11 +109,8 @@ export default async function VideosPage({ searchParams }: { searchParams: Searc
 
     return (
       <div className="animate-fade-in">
-        <div className="container pt-4">
-          <VideoBreadcrumb items={[{ label: t('nav') }]} />
-          <div className="mt-3">
-            <VideosTabs active="videos" videosLabel={ts('tab_videos')} shortsLabel={ts('tab_shorts')} />
-          </div>
+        <div className="container pt-6">
+          <VideosTabs active="videos" videosLabel={ts('tab_videos')} shortsLabel={ts('tab_shorts')} />
         </div>
         {feed.hero.length > 0 && (
           <div className="container">
@@ -147,7 +147,7 @@ export default async function VideosPage({ searchParams }: { searchParams: Searc
 
   return (
     <div className="container animate-fade-in py-6">
-      <VideoBreadcrumb items={[{ label: t('nav'), href: '/videos' }, { label: browseLeaf }]} />
+      <VideoBreadcrumb items={[{ label: t('nav'), href: '/videos?tab=videos' }, { label: browseLeaf }]} />
       <div className="space-y-4">
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{t('feed.title')}</h1>
         <SearchBar />
@@ -174,6 +174,8 @@ export default async function VideosPage({ searchParams }: { searchParams: Searc
 
 function buildHref(searchParams: SearchParams, page: number): string {
   const sp = new URLSearchParams();
+  // Pagination must stay inside the Geek Videos tab (bare /videos = Shorts).
+  sp.set('tab', 'videos');
   if (searchParams.q) sp.set('q', searchParams.q);
   if (searchParams.category) sp.set('category', searchParams.category);
   if (searchParams.sort) sp.set('sort', searchParams.sort);

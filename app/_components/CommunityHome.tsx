@@ -10,7 +10,6 @@ import {
   MessagesSquare,
   Newspaper,
   Play,
-  Plus,
   Sparkles,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -110,7 +109,7 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
       <section className="relative overflow-hidden border-b border-zinc-200 dark:border-zinc-800">
         <HeroBackdrop intensity="soft" />
         <div className="container relative py-6 md:py-8">
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr),420px] xl:grid-cols-[minmax(0,1fr),460px]">
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr),370px] xl:grid-cols-[minmax(0,1fr),400px]">
             {/* LEFT column */}
             <div className="min-w-0">
               <p className="animate-rise text-xs font-semibold uppercase tracking-[0.2em] text-accent-600 dark:text-accent-400">
@@ -248,36 +247,24 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
                   </span>
                   {t('shorts_title')}
                 </h2>
-                <div className="flex shrink-0 items-center gap-3">
-                  <Link
-                    href="/videos/shorts?upload=1"
-                    className="inline-flex items-center gap-1 rounded-full bg-accent-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-accent-600"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    {ts('upload')}
-                  </Link>
-                  <Link
-                    href="/videos/shorts"
-                    className="group flex items-center gap-1 text-sm font-medium text-accent-600 transition hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
-                  >
-                    {t('view_all')}
-                    <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
-                  </Link>
-                </div>
+                <Link
+                  href="/videos/shorts"
+                  className="group flex shrink-0 items-center gap-1 text-sm font-medium text-accent-600 transition hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
+                >
+                  {t('view_all')}
+                  <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
+                </Link>
               </div>
               {shortItems.length > 0 ? (
-                <ShortsShowcase items={shortItems} className="min-h-[560px] flex-1" />
+                <ShortsShowcase
+                  items={shortItems}
+                  className="min-h-[520px] flex-1"
+                  currentUser={{ id: user.id, isAdmin: user.isAdmin }}
+                />
               ) : (
-                <div className="surface flex min-h-[560px] flex-1 flex-col items-center justify-center gap-3 rounded-2xl px-6 text-center">
+                <div className="surface flex min-h-[520px] flex-1 flex-col items-center justify-center gap-3 rounded-2xl px-6 text-center">
                   <p className="text-sm font-medium">{ts('empty_title')}</p>
                   <p className="max-w-xs text-xs text-muted">{ts('empty_hint')}</p>
-                  <Link
-                    href="/videos/shorts?upload=1"
-                    className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-accent-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-accent-600"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    {ts('upload')}
-                  </Link>
                 </div>
               )}
             </div>

@@ -309,9 +309,21 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   `subtitleError`). Tracks stored as `subtitle/<nanoid>.vtt` in the videos storage (file route
   serves text/vtt), columns `subtitleStatus/SrcLang/ZhKey/ZhUrl/EnKey/EnUrl/Error/At`
   (migration `20260813000000_add_short_subtitles`); pure VTT helpers in
-  `lib/video/subtitles-shared.ts` (unit-testable, no env). Player renders `<track>`s and drives
-  `textTracks[].mode` imperatively; selector cycles 关→中→EN, persisted `shorts:subtitle`;
-  `video::cue` styled in globals.css.
+  `lib/video/subtitles-shared.ts` (unit-testable, no env). **Cues are rendered by US, not the
+  browser**: tracks run in `hidden` mode (cuechange still fires) and the active cue is drawn as an
+  overlay INSIDE the visible frame just above the caption — native `::cue` paints at the bottom of
+  the video ELEMENT (its letterbox), which on a tall cell lands at the page bottom. Selector
+  cycles 关→中→EN, persisted `shorts:subtitle`.
+  **内容来源** (migration `20260813150000_add_short_origin`): `originType original|repost` +
+  `sourceUrl/sourceAuthor` — 搬运 REQUIRES both (server 400 `source_required`); shown in the cell
+  meta + the 详情 panel. **Feed desktop layout is 抖音-style**: left swipe feed + right
+  `ShortsSidePanel` (详情 | 评论 tabs, follows the active item; comments = the same
+  CommentSection); mobile keeps the bottom-sheet drawer (`ShortsCommentsDrawer`, which also has a
+  `variant="fixed"` body-portal form the embedded players use for in-place 评论). Nav renames:
+  Skills Center→Skills, Geek Hub→Videos; `/videos` DEFAULTS to the Shorts tab (Geek Videos =
+  `?tab=videos` — pagination/breadcrumbs must carry it). Shorts CTAs are NEUTRAL (zinc/white
+  solids) — the user explicitly rejected accent-blue "AI-looking" buttons; homepage shorts header
+  has view-all ONLY (no upload button).
 - **表情包 (Stickers, migration `20260807150000_add_stickers_polls`)**: WeChat-style personal
   meme library, ONE integration pair — the 😊 button in `RichTextEditor`'s toolbar (every
   composer gets it) and a src-prefix branch in `MarkdownRenderer`. `UserSticker` = per-user
@@ -404,6 +416,16 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   (0-based inclusive, PDF only) record the chapter↔page span. Uploaded `.html` is served
   `text/plain` from the file route (rendering stored user HTML on-origin = XSS). 选中翻译 via
   `/api/library/translate` (中↔英 auto-direction, LLM).
+  - **Text selection in the reader is the BROWSER'S, untouched.** There is deliberately NO floating
+    selection toolbar, no hover hit-testing, no `mousedown`/`mousemove` handler and nothing rendered
+    over the article. A `fixed` panel that parks on the text and `preventDefault`s mousedown so its
+    own buttons can act on the live selection is exactly what made the text under it unselectable —
+    the user hit it repeatedly and had it removed. **Do not reintroduce one.** Acting on a selection
+    lives where it cannot touch the text: the 我的笔记 panel composer (which reads the selection
+    passively on `mouseup` into `lastSelectionRef` + `selectionQuote`) and the `1`–`4` / `N`
+    keyboard shortcuts. Popovers for marks that ALREADY exist are fine — they open on `click`, after
+    the drag is over. `MarginNotes` gutter stacks hide themselves when the gutter is under 56px,
+    for the same reason.
   - **Reader marks are painted BY THE BROWSER** (`components/library/reader/highlighter.ts`,
     CSS Custom Highlight API + `::highlight()` rules in `read/reader.css`, keyed on the `--hl-*`
     tokens so 浅色/护眼/深色 come free). Nothing is injected into the article and NO rectangles are

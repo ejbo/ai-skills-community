@@ -9,30 +9,33 @@
 // fullscreen, auto-advance on ended, and play-only-while-on-screen.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronDown, ChevronUp, Maximize2 } from 'lucide-react';
+import { Maximize2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { ShortsCell } from '@/app/videos/shorts/_components/ShortsCell';
-import type { ShortView } from '@/app/videos/shorts/_components/types';
+import { ShortsCommentsDrawer } from '@/app/videos/shorts/_components/ShortsCommentsDrawer';
+import type { ShortsCurrentUser, ShortView } from '@/app/videos/shorts/_components/types';
 
 const SLIDE_MS = 380;
 
 export function ShortsShowcase({
   items,
   className = 'h-[560px] xl:h-[600px]',
+  currentUser = null,
 }: {
   items: ShortView[];
   className?: string;
+  /** For the side comment sheet (点评论 opens it in place, 抖音-style). */
+  currentUser?: ShortsCurrentUser | null;
 }) {
   const t = useTranslations('shorts');
-  const router = useRouter();
 
   const [idx, setIdx] = useState(0);
   const [dir, setDir] = useState(1);
   const [muted, setMuted] = useState(true);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [inView, setInView] = useState(false);
+  const [commentsFor, setCommentsFor] = useState<ShortView | null>(null);
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const animatingRef = useRef(false);
@@ -148,7 +151,7 @@ export function ShortsShowcase({
             muted={muted}
             reduceMotion={reduceMotion}
             onToggleMute={() => persistMuted(!muted)}
-            onOpenComments={() => router.push(`/videos/shorts?v=${item.id}&comments=1`)}
+            onOpenComments={() => setCommentsFor(item)}
             onEnded={items.length > 1 ? () => go(1) : undefined}
           />
         </motion.div>
@@ -171,36 +174,29 @@ export function ShortsShowcase({
         <Maximize2 className="h-3.5 w-3.5" />
       </button>
 
-      {/* Prev/next + dots (right edge, vertically centered) */}
+      {/* Position dots (right edge; wheel/swipe navigate) */}
       {items.length > 1 && (
-        <div className="absolute right-2.5 top-1/2 z-10 flex -translate-y-1/2 flex-col items-center gap-2">
-          <button
-            type="button"
-            onClick={() => go(-1)}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-sm transition hover:bg-white/30"
-            aria-label={t('prev')}
-          >
-            <ChevronUp className="h-4 w-4" />
-          </button>
-          <div className="flex flex-col items-center gap-1 py-1">
-            {items.slice(0, 12).map((s, i) => (
-              <span
-                key={s.id}
-                className={`h-1.5 w-1.5 rounded-full transition ${
-                  i === idx % Math.min(items.length, 12) ? 'scale-125 bg-white' : 'bg-white/35'
-                }`}
-              />
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={() => go(1)}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-sm transition hover:bg-white/30"
-            aria-label={t('next')}
-          >
-            <ChevronDown className="h-4 w-4" />
-          </button>
+        <div className="absolute right-2.5 top-1/2 z-10 flex -translate-y-1/2 flex-col items-center gap-1 py-1">
+          {items.slice(0, 12).map((s, i) => (
+            <span
+              key={s.id}
+              className={`h-1.5 w-1.5 rounded-full transition ${
+                i === idx % Math.min(items.length, 12) ? 'scale-125 bg-white' : 'bg-white/35'
+              }`}
+            />
+          ))}
         </div>
+      )}
+
+      {/* 抖音-style in-place comment sheet (portaled to <body>) */}
+      {commentsFor && (
+        <ShortsCommentsDrawer
+          variant="fixed"
+          short={commentsFor}
+          currentUser={currentUser}
+          focusCommentId={null}
+          onClose={() => setCommentsFor(null)}
+        />
       )}
     </div>
   );

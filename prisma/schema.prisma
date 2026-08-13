@@ -678,6 +678,11 @@ enum VideoSubtitleStatus {
   failed // 生成失败（subtitleError 存原因）
 }
 
+enum VideoOriginType {
+  original // 自创
+  repost // 搬运（必须附 sourceUrl + sourceAuthor）
+}
+
 enum VideoCommentStatus {
   visible
   hidden
@@ -753,6 +758,10 @@ model Video {
   // 随刷短视频: member-uploaded vertical shorts live in the same table but are
   // excluded from every long-video surface (rails/browse) and vice versa.
   isShort     Boolean         @default(false)
+  // 内容来源 (shorts): 搬运 requires the original link + author, shown in 详情.
+  originType   VideoOriginType @default(original)
+  sourceUrl    String?
+  sourceAuthor String?
   uploaderId  String
   categoryId  String?
   language    String?

@@ -50,6 +50,10 @@ export function ReaderRightPanel(props: {
   focusNoteId: string | null;
   onJumpCommunity: (note: CommunityNote) => void;
   onSaveSelectionNote: (noteText: string) => boolean;
+  selectionQuote: string | null;
+  onHighlightSelection: (color: 'yellow' | 'green' | 'blue' | 'pink') => void;
+  onAskAiSelection: () => void;
+  onTranslateSelection: () => void;
   // comments
   commentCount: number;
 }) {
@@ -126,6 +130,10 @@ export function ReaderRightPanel(props: {
               focusNoteId={props.focusNoteId}
               onJumpCommunity={props.onJumpCommunity}
               onSaveSelectionNote={props.onSaveSelectionNote}
+              selectionQuote={props.selectionQuote}
+              onHighlightSelection={props.onHighlightSelection}
+              onAskAiSelection={props.onAskAiSelection}
+              onTranslateSelection={props.onTranslateSelection}
             />
           </div>
         )}

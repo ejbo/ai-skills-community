@@ -5,8 +5,8 @@
     "empty": "Aucune notification"
   },
   "nav": {
-    "browse": "Skills Center",
-    "videos": "Geek Hub",
+    "browse": "Skills",
+    "videos": "Videos",
     "library": "Bibliothèque",
     "discussion": "Discussions",
     "events": "Événements",
@@ -2099,7 +2099,9 @@
     "show_highlights_without_notes": "Afficher les surlignages sans note",
     "loading_similar": "Chargement…",
     "no_similar_docs": "Aucun document similaire pour l’instant",
-    "n_min_read": "{count} min de lecture"
+    "n_min_read": "{count} min de lecture",
+    "selection_shortcuts_hint": "Touches 1–4 pour colorer · N pour annoter",
+    "selection_none_hint": "Sélectionnez du texte dans l'article (sélection native du navigateur) : les actions surligner / annoter / traduire / demander à l'IA apparaissent ici."
   },
   "skills_misc": {
     "categories_subtitle": "Choisissez le Skill adapté à votre besoin.",
@@ -2183,7 +2185,8 @@
     "topic_locked": "Ce sujet est verrouillé : les réponses sont désactivées.",
     "too_many_pinned": "La limite d’épinglage ({max}) est atteinte — désépinglez d’abord un élément.",
     "upload_quota": "Vous avez atteint votre quota de téléversement du jour — réessayez demain.",
-    "rate_limited": "Trop de requêtes, veuillez ralentir"
+    "rate_limited": "Trop de requêtes, veuillez ralentir",
+    "short_source_required": "Un repost doit inclure le lien et l'auteur d'origine"
   },
   "stickers": {
     "title": "Mes mèmes",
@@ -2318,13 +2321,22 @@
     "prev": "Précédent",
     "next": "Suivant",
     "fullscreen": "Plein écran",
-    "tab_videos": "Vidéos",
-    "tab_shorts": "Clips",
+    "tab_videos": "Geek Videos",
+    "tab_shorts": "Shorts",
     "browse_latest": "Récents",
     "subtitles": "Sous-titres",
     "subtitles_off": "Non",
     "upload_sub": "Le format vertical 9:16 rend mieux · sous-titres 中/EN générés après publication",
     "drop_to_select": "Déposez pour sélectionner cette vidéo",
-    "subtitle_hint": "La parole est transcrite après publication, sous-titres 中/EN"
+    "subtitle_hint": "La parole est transcrite après publication, sous-titres 中/EN",
+    "origin_label": "Provenance",
+    "origin_original": "Création",
+    "origin_repost": "Repost",
+    "source_url_label": "Lien de la vidéo d'origine",
+    "source_url_placeholder": "https://…",
+    "source_author_label": "Auteur d'origine",
+    "source_author_placeholder": "Nom de l'auteur d'origine",
+    "err_source_required": "Un repost doit inclure le lien et l'auteur d'origine",
+    "panel_info": "Détails"
   }
 }

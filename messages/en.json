@@ -5,8 +5,8 @@
     "empty": "No notifications yet"
   },
   "nav": {
-    "browse": "Skills Center",
-    "videos": "Geek Hub",
+    "browse": "Skills",
+    "videos": "Videos",
     "library": "Library",
     "discussion": "Discussion",
     "events": "Events",
@@ -2099,7 +2099,9 @@
     "show_highlights_without_notes": "Show highlights without notes",
     "loading_similar": "Loading…",
     "no_similar_docs": "No similar documents yet",
-    "n_min_read": "{count} min read"
+    "n_min_read": "{count} min read",
+    "selection_shortcuts_hint": "Keys 1–4 to colour · N to note",
+    "selection_none_hint": "Select text in the article (plain browser selection) and the highlight / note / translate / ask-AI actions appear here."
   },
   "skills_misc": {
     "categories_subtitle": "Pick the right Skill for what you are working on.",
@@ -2183,7 +2185,8 @@
     "topic_locked": "This topic is locked and cannot be replied to.",
     "too_many_pinned": "The pin limit ({max}) is reached — unpin something first.",
     "upload_quota": "You have hit today’s upload quota — please try again tomorrow.",
-    "rate_limited": "Too many requests, please slow down"
+    "rate_limited": "Too many requests, please slow down",
+    "short_source_required": "Reposts must include the original link and author"
   },
   "stickers": {
     "title": "My stickers",
@@ -2318,13 +2321,22 @@
     "prev": "Previous",
     "next": "Next",
     "fullscreen": "Fullscreen",
-    "tab_videos": "Videos",
+    "tab_videos": "Geek Videos",
     "tab_shorts": "Shorts",
     "browse_latest": "Latest",
     "subtitles": "Subtitles",
     "subtitles_off": "Off",
     "upload_sub": "Vertical 9:16 looks best · 中/EN subtitles are generated after publishing",
     "drop_to_select": "Drop to select this video",
-    "subtitle_hint": "Speech is transcribed after publishing, with 中/EN subtitles"
+    "subtitle_hint": "Speech is transcribed after publishing, with 中/EN subtitles",
+    "origin_label": "Source",
+    "origin_original": "Original",
+    "origin_repost": "Repost",
+    "source_url_label": "Original video link",
+    "source_url_placeholder": "https://…",
+    "source_author_label": "Original author",
+    "source_author_placeholder": "Original author's name",
+    "err_source_required": "Reposts must include the original link and author",
+    "panel_info": "Details"
   }
 }

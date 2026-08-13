@@ -6,9 +6,11 @@ import {
   Eye,
   EyeOff,
   Highlighter,
+  Languages,
   Loader2,
   MessageCircle,
   Send,
+  Sparkles,
   StickyNote,
   Trash2,
 } from 'lucide-react';
@@ -17,6 +19,7 @@ import { DeptTag } from '@/components/DeptTag';
 import { pushToast } from '@/components/Toaster';
 import { relativeTime } from '@/lib/i18n-date';
 import { SidePanel } from './SidePanel';
+import { HIGHLIGHT_COLORS, type HighlightColor } from './MarkPopover';
 import type { TocEntry } from './TocPanel';
 import type { CommunityNote } from './community-types';
 
@@ -56,6 +59,13 @@ export interface NotesTabProps {
   /** Create a highlight-with-note from the reader's current selection; returns
    *  true on success, false when there is nothing selected to anchor to. */
   onSaveSelectionNote: (noteText: string) => boolean;
+  /** Quote of the reader's current selection, or null. Read passively on
+   *  mouseup — this panel is where selection actions live now that there is no
+   *  floating toolbar over the text. */
+  selectionQuote: string | null;
+  onHighlightSelection: (color: HighlightColor) => void;
+  onAskAiSelection: () => void;
+  onTranslateSelection: () => void;
   docId: string;
   toc: TocEntry[];
   version: number;
@@ -84,6 +94,10 @@ export interface NotesTabProps {
 export function NotesTab({
   active,
   onSaveSelectionNote,
+  selectionQuote,
+  onHighlightSelection,
+  onAskAiSelection,
+  onTranslateSelection,
   docId,
   toc,
   version,
@@ -338,8 +352,51 @@ export function NotesTab({
 
   return (
     <div ref={listRef} className="h-full overflow-y-auto overscroll-contain">
-      {/* note composer — highlight the doc to quote, then jot a note */}
+      {/* Selection actions. Deliberately HERE and not floating over the article:
+          a panel on the text that swallows mousedown is what made the text
+          under it unselectable. Selecting is now purely the browser's. */}
       <div className="rborder border-b px-4 py-3">
+        {selectionQuote ? (
+          <div className="mb-2.5">
+            <p className="r-muted mb-2 line-clamp-3 border-l-2 border-accent-500/60 pl-2 text-xs leading-relaxed">
+              {selectionQuote}
+            </p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {HIGHLIGHT_COLORS.map((color, i) => (
+                <button
+                  key={color}
+                  type="button"
+                  title={`${t('highlight_color', { color })} (${i + 1})`}
+                  aria-label={t('highlight_color', { color })}
+                  onClick={() => onHighlightSelection(color)}
+                  className={`hl-dot-${color} h-5 w-5 rounded-full transition hover:scale-110`}
+                />
+              ))}
+              <span className="rborder mx-0.5 h-4 w-px border-l" />
+              <button
+                type="button"
+                onClick={onTranslateSelection}
+                className="r-muted grid h-7 w-7 place-items-center rounded-lg transition hover:bg-[var(--reader-hover)] hover:text-[var(--reader-accent)]"
+                title={t('translate')}
+                aria-label={t('translate')}
+              >
+                <Languages className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={onAskAiSelection}
+                className="r-muted grid h-7 w-7 place-items-center rounded-lg transition hover:bg-[var(--reader-hover)] hover:text-[var(--reader-accent)]"
+                title={t('ask_ai_short')}
+                aria-label={t('ask_ai_short')}
+              >
+                <Sparkles className="h-4 w-4" />
+              </button>
+              <span className="r-muted ml-auto text-[11px]">{t('selection_shortcuts_hint')}</span>
+            </div>
+          </div>
+        ) : (
+          <p className="r-muted mb-2.5 text-[11px] leading-relaxed">{t('selection_none_hint')}</p>
+        )}
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value.slice(0, 1000))}
@@ -687,7 +744,15 @@ export function NotesPanel({
   open,
   onClose,
   ...rest
-}: Omit<NotesTabProps, 'active' | 'onSaveSelectionNote'> & {
+}: Omit<
+  NotesTabProps,
+  | 'active'
+  | 'onSaveSelectionNote'
+  | 'selectionQuote'
+  | 'onHighlightSelection'
+  | 'onAskAiSelection'
+  | 'onTranslateSelection'
+> & {
   open: boolean;
   onClose: () => void;
 }) {
@@ -695,7 +760,15 @@ export function NotesPanel({
   if (!open) return null;
   return (
     <SidePanel side="right" title={t('notes_title')} onClose={onClose} widthClass="lg:w-[360px]">
-      <NotesTab active={open} onSaveSelectionNote={() => false} {...rest} />
+      <NotesTab
+        active={open}
+        onSaveSelectionNote={() => false}
+        selectionQuote={null}
+        onHighlightSelection={() => {}}
+        onAskAiSelection={() => {}}
+        onTranslateSelection={() => {}}
+        {...rest}
+      />
     </SidePanel>
   );
 }

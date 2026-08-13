@@ -263,13 +263,6 @@
 /* The custom properties above are resolved against the HIGHLIGHTED element, so
    the reader's 浅色/护眼/深色 themes just work — including a runtime swap. */
 
-/* Hovering a painted mark is clickable (opens the note popover) — there is no
-   element to put a cursor on, so ReaderShell toggles this class on the
-   container from the hit-test. */
-.reader-scroll-hit {
-  cursor: pointer;
-}
-
 /* ── highlight fallback: overlay boxes ─────────────────────────────────── */
 /* Only used when CSS.highlights is unavailable. Boxes come from per-text-node
    rects (anchoring.textRects), never from Range.getClientRects() — the latter

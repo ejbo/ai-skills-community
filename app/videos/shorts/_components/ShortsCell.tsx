@@ -126,18 +126,44 @@ export function ShortsCell({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.id]);
 
-  // Drive the <track> elements imperatively (React has no `mode` prop).
+  // Subtitles are rendered by US, not the browser: native ::cue paints at the
+  // bottom of the <video> ELEMENT (its letterbox), which on a tall cell lands
+  // at the page bottom, far below the visible frame. Tracks run in `hidden`
+  // mode (cuechange still fires) and the active cue text is drawn as our own
+  // overlay just above the caption block, 抖音-style.
+  const [cueText, setCueText] = useState('');
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
+    const readActive = () => {
+      if (subMode === 'off') {
+        setCueText('');
+        return;
+      }
+      const tr = Array.from(el.textTracks).find((t) => t.language === subMode);
+      const active = tr?.activeCues;
+      setCueText(
+        active && active.length
+          ? Array.from(active)
+              .map((c) => (c as VTTCue).text)
+              .join('\n')
+          : '',
+      );
+    };
     const apply = () => {
       for (const tr of Array.from(el.textTracks)) {
-        tr.mode = tr.language === subMode ? 'showing' : 'disabled';
+        tr.mode = tr.language === subMode && subMode !== 'off' ? 'hidden' : 'disabled';
+        tr.removeEventListener('cuechange', readActive);
+        tr.addEventListener('cuechange', readActive);
       }
+      readActive();
     };
     apply();
     el.textTracks.addEventListener('addtrack', apply);
-    return () => el.textTracks.removeEventListener('addtrack', apply);
+    return () => {
+      el.textTracks.removeEventListener('addtrack', apply);
+      for (const tr of Array.from(el.textTracks)) tr.removeEventListener('cuechange', readActive);
+    };
   }, [subMode, nearActive, item.subtitleZhUrl, item.subtitleEnUrl]);
 
   function cycleSubtitle() {
@@ -414,6 +440,20 @@ export function ShortsCell({
         ))}
       </AnimatePresence>
 
+      {/* Custom-rendered subtitle cue — sits INSIDE the visible frame, just
+          above the caption block */}
+      {cueText && (
+        <div
+          className={`pointer-events-none absolute inset-x-0 z-[6] flex justify-center px-8 ${
+            embed ? 'bottom-[88px]' : 'bottom-[116px]'
+          }`}
+        >
+          <span className="max-w-full whitespace-pre-wrap rounded-md bg-black/60 px-3 py-1.5 text-center text-[15px] font-medium leading-snug text-white">
+            {cueText}
+          </span>
+        </div>
+      )}
+
       {/* Paused glyph / tap-to-play */}
       {active && paused && !needsTap && (
         <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center">
@@ -492,7 +532,7 @@ export function ShortsCell({
             icon={
               <Captions
                 className={`${embed ? 'h-6 w-6' : 'h-7 w-7'} ${
-                  subMode !== 'off' ? 'text-accent-400' : 'text-white'
+                  subMode !== 'off' ? 'text-white' : 'text-white/50'
                 }`}
               />
             }
@@ -534,7 +574,9 @@ export function ShortsCell({
             <div>
               <p
                 className={`whitespace-pre-wrap text-sm leading-relaxed text-white/90 ${
-                  expanded ? 'max-h-40 overflow-y-auto' : 'line-clamp-2'
+                  expanded
+                    ? 'max-h-40 overflow-y-auto pr-1 [scrollbar-color:rgba(255,255,255,0.35)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/40 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-1'
+                    : 'line-clamp-2'
                 }`}
               >
                 {caption}
@@ -550,19 +592,22 @@ export function ShortsCell({
               )}
             </div>
           )}
-          <p className="flex items-center gap-3 text-[11px] text-white/50">
+          <p className="flex flex-wrap items-center gap-3 text-[11px] text-white/50">
             <span className="inline-flex items-center gap-1">
               <Eye className="h-3 w-3" />
               {formatCount(item.viewCount)}
             </span>
             {item.durationSec > 0 && <span>{formatDuration(item.durationSec)}</span>}
-            {embed && (
-              <Link
-                href={`/videos/shorts?v=${item.id}`}
-                className="pointer-events-auto font-medium text-accent-300 hover:text-accent-200 hover:underline"
+            {item.originType === 'repost' && item.sourceUrl && (
+              <a
+                href={item.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="pointer-events-auto underline-offset-2 hover:text-white hover:underline"
               >
-                {t('strip_view_all')} →
-              </Link>
+                {t('origin_repost')} · {item.sourceAuthor}
+              </a>
             )}
           </p>
         </div>

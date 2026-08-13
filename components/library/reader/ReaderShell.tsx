@@ -16,12 +16,12 @@ import { MarginNotes } from './MarginNotes';
 import type { CommunityNote } from './community-types';
 import {
   CommunityNotePopover,
+  HIGHLIGHT_COLORS,
   MarkPopover,
-  SelectionMenu,
   type HighlightColor,
   type SelectionContext,
   type SelectionPayload,
-} from './SelectionMenu';
+} from './MarkPopover';
 import { useReaderPrefs, READER_WIDTHS } from './reader-prefs';
 import { ReaderHighlighter, supportsNativeHighlights, type HlBox } from './highlighter';
 import { getTextOffsetOfPoint, invalidateAnchorCache, rootTextLength } from './anchoring';
@@ -123,6 +123,10 @@ export function ReaderShell({
     left: number;
   } | null>(null);
   const [savingNote, setSavingNote] = useState(false);
+  // Mirror of lastSelectionRef for RENDER (the 我的笔记 composer shows the quote
+  // and enables its actions). Written on mouseup only — the drag is over by
+  // then, so this can never disturb the selection it describes.
+  const [selectionQuote, setSelectionQuote] = useState<string | null>(null);
   // The mark popover hosts a note textarea — while it is open, nothing may
   // unmount the popover out from under an unsaved draft.
   const [editingMarkNote, setEditingMarkNote] = useState(false);
@@ -130,7 +134,6 @@ export function ReaderShell({
   // re-attached on every keystroke in the note editor.
   const editingMarkNoteRef = useRef(false);
   editingMarkNoteRef.current = editingMarkNote;
-  const [hoveringMark, setHoveringMark] = useState(false);
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
   const [chatPrefill, setChatPrefill] = useState<{ text: string; nonce: number } | null>(
     initialChat ? { text: initialChat, nonce: 0 } : null,
@@ -189,7 +192,6 @@ export function ReaderShell({
   const draggingRef = useRef(false);
   // Latest `repaint` for listeners that must outlive its identity changes.
   const repaintRef = useRef<() => void>(() => {});
-  const hoverRafRef = useRef<number | null>(null);
 
   const showOriginalPdf = doc.format === 'pdf' && pdfView === 'original' && !!doc.fileUrl;
   const visibleCommunityNotes = useMemo(
@@ -528,7 +530,17 @@ export function ReaderShell({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [typographyOpen, markPopover, rightPanel.open, closeRight, tocOpen, lightbox, goChapter, currentChapter]);
+  }, [
+    typographyOpen,
+    markPopover,
+    communityPopover,
+    rightPanel.open,
+    closeRight,
+    tocOpen,
+    lightbox,
+    goChapter,
+    currentChapter,
+  ]);
 
   // ── community notes ───────────────────────────────────────────────────
 
@@ -696,7 +708,9 @@ export function ReaderShell({
         // An unresolvable selection must CLEAR the ref, not leave the previous
         // one standing — otherwise the composer silently anchors the note to a
         // passage the user selected minutes ago, possibly in another chapter.
-        lastSelectionRef.current = captureSelection();
+        const captured = captureSelection();
+        lastSelectionRef.current = captured;
+        setSelectionQuote(captured?.quote ?? null);
       }
       // Fallback path: reconcile any layout change the drag guard skipped.
       if (wasDragging && !nativeHl) requestAnimationFrame(repaint);
@@ -758,6 +772,7 @@ export function ReaderShell({
   // A selection anchored in a chapter that is no longer mounted cannot be saved.
   useEffect(() => {
     lastSelectionRef.current = null;
+    setSelectionQuote(null);
   }, [chaptersKey]);
 
   // Flash a range: paint it, scroll it into view, auto-clear.
@@ -972,6 +987,27 @@ export function ReaderShell({
     }
   }
 
+  // ── acting on a selection ─────────────────────────────────────────────
+  // Everything below reads the selection PASSIVELY (captured on mouseup) and
+  // renders nothing over the article. There is no floating toolbar any more:
+  // an opaque panel sitting on the text and preventDefault-ing mousedown is
+  // what made the text under it unselectable. Entry points are the 我的笔记
+  // panel and the 1-4 / N keyboard shortcuts.
+
+  const takeSelection = useCallback((): SelectionPayload | null => {
+    const payload = lastSelectionRef.current;
+    if (!payload) {
+      pushToast('info', t('notes_composer_needs_selection'));
+      return null;
+    }
+    return payload;
+  }, [t]);
+
+  const clearSelection = useCallback(() => {
+    lastSelectionRef.current = null;
+    setSelectionQuote(null);
+  }, []);
+
   // 我的笔记 composer: turn the last in-article selection into a highlight that
   // carries `noteText`. Returns false when there's nothing selected to anchor.
   const saveSelectionNote = useCallback(
@@ -979,13 +1015,37 @@ export function ReaderShell({
       const payload = lastSelectionRef.current;
       const body = noteText.trim();
       if (!payload || !body) return false;
-      lastSelectionRef.current = null;
+      clearSelection();
       void createHighlight(payload, 'yellow', false, body);
       return true;
     },
     // createHighlight is a stable function declaration in this scope.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [clearSelection],
+  );
+
+  const highlightSelection = useCallback(
+    (color: HighlightColor) => {
+      const payload = takeSelection();
+      if (!payload) return;
+      clearSelection();
+      void createHighlight(payload, color, false);
+    },
+    // createHighlight is a stable function declaration in this scope.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [takeSelection, clearSelection],
+  );
+
+  const noteSelection = useCallback(
+    () => {
+      const payload = takeSelection();
+      if (!payload) return;
+      clearSelection();
+      void createHighlight(payload, 'yellow', true);
+    },
+    // createHighlight is a stable function declaration in this scope.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [takeSelection, clearSelection],
   );
 
   async function recolor(id: string, color: HighlightColor) {
@@ -1067,29 +1127,6 @@ export function ReaderShell({
     setCommunityPopover(null);
   }
 
-  // Painted marks have no element to hang a cursor on — hit-test on move so a
-  // clickable annotation still LOOKS clickable. Coalesced to one test per frame:
-  // hit-testing reads layout per mark and a doc may carry hundreds.
-  const onContentMove = useCallback((e: React.MouseEvent) => {
-    if (hoverRafRef.current !== null) return;
-    const { clientX, clientY } = e;
-    hoverRafRef.current = requestAnimationFrame(() => {
-      hoverRafRef.current = null;
-      const h = highlighterRef.current;
-      if (!h) return;
-      const sel = window.getSelection();
-      if (sel && !sel.isCollapsed) return; // mid-drag: leave the I-beam alone
-      setHoveringMark(h.anyHitAt(clientX, clientY));
-    });
-  }, []);
-
-  useEffect(
-    () => () => {
-      if (hoverRafRef.current !== null) cancelAnimationFrame(hoverRafRef.current);
-    },
-    [],
-  );
-
   /** Save (or clear) the note on an existing highlight, from the mark popover.
    *  Resolves to whether it persisted — the popover keeps the draft on false. */
   async function saveMarkNote(id: string, text: string): Promise<boolean> {
@@ -1124,6 +1161,11 @@ export function ReaderShell({
     },
     [t, openTab],
   );
+
+  const askAiAboutSelection = useCallback(() => {
+    const payload = takeSelection();
+    if (payload) handleAskAi(payload.quote);
+  }, [takeSelection, handleAskAi]);
 
   const handleCitationJump = useCallback(
     (citation: Citation) => {
@@ -1188,7 +1230,7 @@ export function ReaderShell({
 
   const handleTranslate = useCallback((text: string, anchorPos: { top: number; left: number }) => {
     setTranslate({
-      top: Math.min(anchorPos.top + 16, window.innerHeight - 200),
+      top: Math.min(anchorPos.top, window.innerHeight - 220),
       left: Math.min(Math.max(anchorPos.left, 180), window.innerWidth - 180),
       text,
       result: null,
@@ -1220,6 +1262,38 @@ export function ReaderShell({
       }
     })();
   }, [t]);
+
+  // Selection shortcuts — the keyboard replaces the floating toolbar that used
+  // to sit on the text. Silent when nothing is selected, so a stray keypress
+  // while reading does nothing.
+  useEffect(() => {
+    if (showOriginalPdf) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      if (!lastSelectionRef.current) return;
+      const colorIndex = ['1', '2', '3', '4'].indexOf(e.key);
+      if (colorIndex !== -1) {
+        e.preventDefault();
+        highlightSelection(HIGHLIGHT_COLORS[colorIndex]);
+      } else if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        noteSelection();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showOriginalPdf, highlightSelection, noteSelection]);
+
+  const translateSelection = useCallback(() => {
+    const payload = takeSelection();
+    if (!payload) return;
+    handleTranslate(payload.quote.slice(0, 3000), {
+      top: Math.round(window.innerHeight * 0.28),
+      left: Math.round(window.innerWidth / 2),
+    });
+  }, [takeSelection, handleTranslate]);
 
   // ── render ────────────────────────────────────────────────────────────
 
@@ -1307,11 +1381,7 @@ export function ReaderShell({
           <div
             ref={scrollRef}
             onClick={onContentClick}
-            onMouseMove={onContentMove}
-            onMouseLeave={() => setHoveringMark(false)}
-            className={`relative h-full min-w-0 flex-1 overflow-y-auto overscroll-contain ${
-              hoveringMark ? 'reader-scroll-hit' : ''
-            }`}
+            className="relative h-full min-w-0 flex-1 overflow-y-auto overscroll-contain"
           >
             {/* Fallback overlay only — empty on browsers with CSS.highlights,
                 where the marks are painted by the browser itself. */}
@@ -1409,20 +1479,15 @@ export function ReaderShell({
             focusNoteId={focusNoteId}
             onJumpCommunity={handleCommunityJump}
             onSaveSelectionNote={saveSelectionNote}
+            selectionQuote={selectionQuote}
+            onHighlightSelection={highlightSelection}
+            onAskAiSelection={askAiAboutSelection}
+            onTranslateSelection={translateSelection}
             commentCount={doc.commentCount}
           />
         )}
       </div>
 
-      {!showOriginalPdf && (
-        <SelectionMenu
-          capture={captureSelection}
-          onHighlight={(payload, color) => void createHighlight(payload, color, false)}
-          onNote={(payload) => void createHighlight(payload, 'yellow', true)}
-          onAskAi={handleAskAi}
-          onTranslate={handleTranslate}
-        />
-      )}
 
       {translate && (
         <div

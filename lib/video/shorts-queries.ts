@@ -35,6 +35,9 @@ export const SHORT_FEED_SELECT = {
   subtitleStatus: true,
   subtitleZhUrl: true,
   subtitleEnUrl: true,
+  originType: true,
+  sourceUrl: true,
+  sourceAuthor: true,
   uploader: AUTHOR_IDENTITY_SELECT,
 } satisfies Prisma.VideoSelect;
 
@@ -99,6 +102,9 @@ export function toShortView(s: ShortFeedRow, viewerIsAdmin: boolean) {
     subtitleStatus: s.subtitleStatus,
     subtitleZhUrl: s.subtitleZhUrl,
     subtitleEnUrl: s.subtitleEnUrl,
+    originType: s.originType,
+    sourceUrl: s.sourceUrl,
+    sourceAuthor: s.sourceAuthor,
     uploader: toPublicAuthor(s.uploader, viewerIsAdmin),
     likedByMe: s.likedByMe,
     favoritedByMe: s.favoritedByMe,

@@ -50,6 +50,9 @@ const createSchema = z.object({
   durationSec: z.number().int().min(1).max(60 * 60),
   width: z.number().int().min(1).max(8192).optional(),
   height: z.number().int().min(1).max(8192).optional(),
+  originType: z.enum(['original', 'repost']).default('original'),
+  sourceUrl: z.string().trim().url().max(500).optional(),
+  sourceAuthor: z.string().trim().min(1).max(100).optional(),
 });
 
 // POST /api/shorts (any logged-in user) — publish an uploaded short.
@@ -118,6 +121,14 @@ export async function POST(req: Request) {
     );
   }
 
+  // 搬运 must credit the original: link + author are mandatory.
+  if (d.originType === 'repost' && (!d.sourceUrl || !d.sourceAuthor)) {
+    return NextResponse.json(
+      { error: 'source_required', reason: await apiReason('short_source_required') },
+      { status: 400 },
+    );
+  }
+
   const title = shortTitleFromCaption(d.caption);
   const slug = await uniqueVideoSlug(title);
 
@@ -141,6 +152,9 @@ export async function POST(req: Request) {
       width: d.width ?? null,
       height: d.height ?? null,
       durationSec,
+      originType: d.originType,
+      sourceUrl: d.originType === 'repost' ? d.sourceUrl : null,
+      sourceAuthor: d.originType === 'repost' ? d.sourceAuthor : null,
     },
     select: SHORT_FEED_SELECT,
   });

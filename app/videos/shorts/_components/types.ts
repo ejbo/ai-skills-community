@@ -24,6 +24,10 @@ export interface ShortView {
   subtitleStatus: 'none' | 'processing' | 'ready' | 'failed';
   subtitleZhUrl: string | null;
   subtitleEnUrl: string | null;
+  /** 内容来源: 搬运 (repost) carries the original link + author. */
+  originType: 'original' | 'repost';
+  sourceUrl: string | null;
+  sourceAuthor: string | null;
   uploader: PublicAuthor;
   likedByMe: boolean;
   favoritedByMe: boolean;

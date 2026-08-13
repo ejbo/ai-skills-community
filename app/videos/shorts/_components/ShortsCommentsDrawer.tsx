@@ -6,6 +6,7 @@
 // reads `focus` from window.location.search itself, which the feed preserves).
 
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Loader2, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { CommentSection } from '@/components/video/CommentSection';
@@ -14,13 +15,25 @@ import type { ShortsCurrentUser, ShortView } from './types';
 
 interface Props {
   short: ShortView;
-  currentUser: ShortsCurrentUser;
+  currentUser: ShortsCurrentUser | null;
   /** Deep-linked comment to scroll/highlight (notification ?focus=), else null. */
   focusCommentId: string | null;
+  /**
+   * 'absolute' = scoped to the fullscreen feed root (default);
+   * 'fixed' = portaled to <body> — used by embedded players (homepage / tab)
+   * so 点评论 opens the 抖音-style side sheet without leaving the page.
+   */
+  variant?: 'absolute' | 'fixed';
   onClose: () => void;
 }
 
-export function ShortsCommentsDrawer({ short, currentUser, focusCommentId, onClose }: Props) {
+export function ShortsCommentsDrawer({
+  short,
+  currentUser,
+  focusCommentId,
+  variant = 'absolute',
+  onClose,
+}: Props) {
   const t = useTranslations('shorts');
   const [data, setData] = useState<{
     comments: VideoCommentView[];
@@ -56,8 +69,12 @@ export function ShortsCommentsDrawer({ short, currentUser, focusCommentId, onClo
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  return (
-    <div className="absolute inset-0 z-[15] bg-black/40" onClick={onClose} role="presentation">
+  const content = (
+    <div
+      className={`${variant === 'fixed' ? 'fixed z-[90]' : 'absolute z-[15]'} inset-0 bg-black/40`}
+      onClick={onClose}
+      role="presentation"
+    >
       <div
         role="dialog"
         aria-label={t('comments')}
@@ -83,11 +100,15 @@ export function ShortsCommentsDrawer({ short, currentUser, focusCommentId, onClo
               initialComments={data.comments}
               initialCursor={data.nextCursor}
               focusCommentId={focusCommentId}
-              currentUser={{
-                id: currentUser.id,
-                isAdmin: currentUser.isAdmin,
-                handle: currentUser.handle,
-              }}
+              currentUser={
+                currentUser
+                  ? {
+                      id: currentUser.id,
+                      isAdmin: currentUser.isAdmin,
+                      handle: currentUser.handle,
+                    }
+                  : null
+              }
             />
           ) : failed ? (
             <p className="py-10 text-center text-sm text-zinc-500">{t('load_failed')}</p>
@@ -100,4 +121,6 @@ export function ShortsCommentsDrawer({ short, currentUser, focusCommentId, onClo
       </div>
     </div>
   );
+
+  return variant === 'fixed' ? createPortal(content, document.body) : content;
 }

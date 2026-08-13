@@ -24,6 +24,7 @@ import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
 import { ShortsCell } from './ShortsCell';
 import { ShortsCommentsDrawer } from './ShortsCommentsDrawer';
+import { ShortsSidePanel, type PanelTab } from './ShortsSidePanel';
 import { ShortsUploadDialog } from './ShortsUploadDialog';
 import type { ShortsCellApi, ShortsCurrentUser, ShortView } from './types';
 
@@ -70,6 +71,19 @@ export function ShortsFeed({
   const [hintVisible, setHintVisible] = useState(false);
   // Consumed on first drawer close so a later manual open doesn't re-highlight.
   const [pendingFocus, setPendingFocus] = useState(initialFocus);
+  // Desktop right panel (抖音 layout): 详情 | 评论 follows the active video.
+  const [panelTab, setPanelTab] = useState<PanelTab>(
+    initialFocus || autoOpenComments ? 'comments' : 'info',
+  );
+
+  // 评论 entry: desktop switches the side panel tab; mobile opens the sheet.
+  function openComments(item: ShortView) {
+    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches) {
+      setPanelTab('comments');
+    } else {
+      setDrawerFor(item);
+    }
+  }
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cellRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -246,7 +260,9 @@ export function ShortsFeed({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black text-white" style={{ height: '100dvh' }}>
+    <div className="fixed inset-0 z-[60] flex bg-black text-white" style={{ height: '100dvh' }}>
+      {/* LEFT — the swipe feed */}
+      <div className="relative min-w-0 flex-1">
       <div
         ref={containerRef}
         role="feed"
@@ -275,7 +291,7 @@ export function ShortsFeed({
               muted={muted}
               reduceMotion={reduceMotion}
               onToggleMute={() => persistMuted(!muted)}
-              onOpenComments={() => setDrawerFor(item)}
+              onOpenComments={() => openComments(item)}
               registerApi={registerApi}
             />
           </div>
@@ -287,7 +303,7 @@ export function ShortsFeed({
             <button
               type="button"
               onClick={() => setUploadOpen(true)}
-              className="mt-2 inline-flex items-center gap-2 rounded-full bg-accent-500 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-accent-600"
+              className="mt-2 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-200 active:scale-95"
             >
               <Plus className="h-4 w-4" />
               {t('upload')}
@@ -313,7 +329,7 @@ export function ShortsFeed({
           <button
             type="button"
             onClick={() => setUploadOpen(true)}
-            className="pointer-events-auto ml-auto inline-flex items-center gap-1.5 rounded-full bg-accent-500 px-4 py-1.5 text-xs font-semibold text-white shadow-lg transition hover:bg-accent-600"
+            className="pointer-events-auto ml-auto inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-zinc-900 shadow-lg transition hover:bg-zinc-200 active:scale-95"
           >
             <Plus className="h-4 w-4" />
             {t('upload')}
@@ -337,6 +353,7 @@ export function ShortsFeed({
         </div>
       )}
 
+      {/* Mobile comment sheet (desktop uses the side panel instead) */}
       {drawerFor && (
         <ShortsCommentsDrawer
           short={drawerFor}
@@ -350,6 +367,25 @@ export function ShortsFeed({
           }}
         />
       )}
+      </div>
+
+      {/* RIGHT — 抖音-style detail/comments panel (desktop only) */}
+      {items.length > 0 && (
+        <aside className="hidden w-[400px] shrink-0 flex-col border-l border-zinc-200 bg-white text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 lg:flex xl:w-[440px]">
+          <ShortsSidePanel
+            item={items[Math.min(active, items.length - 1)]}
+            currentUser={currentUser}
+            tab={panelTab}
+            onTabChange={setPanelTab}
+            focusCommentId={
+              pendingFocus && items[Math.min(active, items.length - 1)]?.id === pendingFocus.itemId
+                ? pendingFocus.commentId
+                : null
+            }
+          />
+        </aside>
+      )}
+
       {uploadOpen && (
         <ShortsUploadDialog onClose={() => setUploadOpen(false)} onPublished={onPublished} />
       )}
@@ -360,7 +396,7 @@ export function ShortsFeed({
             ? (items.find((s) => s.id === initialFocus.itemId) ?? null)
             : (items[0] ?? null)
         }
-        onOpen={(item) => setDrawerFor(item)}
+        onOpen={openComments}
       />
     </div>
   );

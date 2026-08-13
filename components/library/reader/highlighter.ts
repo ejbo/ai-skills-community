@@ -234,13 +234,13 @@ export class ReaderHighlighter {
    * second gate because the caret API snaps to the NEAREST text even when the
    * click lands in the margin.
    */
-  private hitAt(kind: 'own' | 'community' | 'any', x: number, y: number): Hit | null {
+  private hitAt(kind: 'own' | 'community', x: number, y: number): Hit | null {
     // One caret resolution for the whole pass — it forces layout.
     const caret = caretAt(x, y);
     // Reverse so the most-recently-added (usually the shortest/topmost) wins.
     for (let i = this.hits.length - 1; i >= 0; i--) {
       const h = this.hits[i];
-      if (kind !== 'any' && h.kind !== kind) continue;
+      if (h.kind !== kind) continue;
       // Cheap superset reject first: the bounding box also covers the block
       // boxes of contained elements, so it never excludes a real hit.
       const bounds = h.range.getBoundingClientRect();
@@ -273,11 +273,6 @@ export class ReaderHighlighter {
     const h = this.hitAt('community', x, y);
     if (!h) return null;
     return { id: h.id, rect: textBounds(h.range) ?? h.range.getBoundingClientRect() };
-  }
-
-  /** Any mark under the point — drives the pointer cursor affordance. */
-  anyHitAt(x: number, y: number): boolean {
-    return this.hitAt('any', x, y) !== null;
   }
 
   communityRect(noteId: string): DOMRect | null {

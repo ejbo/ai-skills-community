@@ -15,6 +15,8 @@ interface Cluster {
 }
 
 const CLUSTER_GAP = 44; // notes whose markers are within this many px merge
+/** Gutter width an avatar stack needs before it is allowed to render at all. */
+const MIN_GUTTER = 56;
 
 /**
  * 页边批注角标 — other readers' shared notes shown as avatar stacks in the
@@ -56,6 +58,20 @@ export function MarginNotes({
     if (!container) return;
     const crect = container.getBoundingClientRect();
     setGutterX(crect.right);
+
+    // Only render when there is REAL gutter to render into. The stacks are
+    // `fixed` buttons; on a narrow window (or with the right panel open) the
+    // reading column fills the container and they would sit ON the text, where
+    // a mousedown starting under one cannot begin a selection. Nothing may
+    // overlay the article — the notes stay reachable from the 笔记 panel and by
+    // clicking the annotation itself.
+    const article = container.querySelector('.reader-prose');
+    const room = article ? crect.right - article.getBoundingClientRect().right : 0;
+    if (room < MIN_GUTTER) {
+      setClusters([]);
+      setOpen(null);
+      return;
+    }
 
     // Position each note by its painted range's viewport rect, keeping only
     // those in the visible band.

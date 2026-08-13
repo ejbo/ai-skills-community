@@ -9,14 +9,16 @@ import { Heart, Play } from 'lucide-react';
 import { withBasePath } from '@/lib/base-path';
 import { formatCount, formatDuration } from '@/lib/video/types';
 import { ShortsShowcase } from '@/app/_components/home/ShortsShowcase';
-import type { ShortView } from '@/app/videos/shorts/_components/types';
+import type { ShortsCurrentUser, ShortView } from '@/app/videos/shorts/_components/types';
 
 export async function ShortsBrowse({
   heroItems,
   latest,
+  currentUser,
 }: {
   heroItems: ShortView[];
   latest: ShortView[];
+  currentUser: ShortsCurrentUser | null;
 }) {
   const ts = await getTranslations('shorts');
   const sideCards = latest.filter((s) => !heroItems.slice(0, 1).some((h) => h.id === s.id)).slice(0, 2);
@@ -27,7 +29,11 @@ export async function ShortsBrowse({
       {/* Hero player + side cards (Douyin 精选 layout) */}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr),300px] xl:grid-cols-[minmax(0,1fr),340px]">
         {heroItems.length > 0 ? (
-          <ShortsShowcase items={heroItems} className="h-[500px] xl:h-[560px]" />
+          <ShortsShowcase
+            items={heroItems}
+            className="h-[500px] xl:h-[560px]"
+            currentUser={currentUser}
+          />
         ) : (
           <div className="surface flex h-[500px] flex-col items-center justify-center gap-3 rounded-2xl px-6 text-center xl:h-[560px]">
             <p className="text-sm font-medium">{ts('empty_title')}</p>

@@ -1,11 +1,18 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+// Popovers for EXISTING marks. There is deliberately NO floating selection
+// toolbar here any more: an opaque `fixed` panel positioned over the article —
+// preventDefault-ing mousedown so its own buttons could act on the live
+// selection — is exactly what made text under it unselectable. Selecting text
+// in the reader is now 100% the browser's own behaviour, with nothing rendered
+// over the text and nothing listening on the way down.
+//
+// Acting on a selection lives in the 我的笔记 panel (which reads the selection
+// passively, on mouseup) and on the 1-4 / N keyboard shortcuts.
+
+import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Check, Copy, Languages, Loader2, StickyNote, Sparkles, Trash2 } from 'lucide-react';
-import { copyText } from '@/lib/clipboard';
-import { pushToast } from '@/components/Toaster';
-import { textRects } from './anchoring';
+import { Check, Loader2, StickyNote, Trash2 } from 'lucide-react';
 
 export const HIGHLIGHT_COLORS = ['yellow', 'green', 'blue', 'pink'] as const;
 export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number];
@@ -22,195 +29,6 @@ export interface SelectionContext {
   chapterIndex: number;
 }
 
-/** Toolbar height incl. padding — used to decide whether it fits above the text. */
-const MENU_H = 56;
-
-interface Placement {
-  top: number;
-  left: number;
-  /** true ⇒ the toolbar sits ABOVE the selection and is translated up. */
-  above: boolean;
-}
-
-/** Where the toolbar goes for the current selection, or null if it has none. */
-function placeFor(range: Range): Placement | null {
-  // Text rects only — a range spanning a paragraph break also reports the block
-  // BORDER boxes, whose top edge would park the toolbar over unrelated text.
-  const rects = textRects(range);
-  const first = rects[0] ?? range.getBoundingClientRect();
-  const last = rects[rects.length - 1] ?? first;
-  if (!first || (first.width < 1 && first.height < 1)) return null;
-  const clampX = (x: number) => Math.min(Math.max(x, 130), window.innerWidth - 130);
-  // Above unless it would collide with the reader chrome; then below the last
-  // line. The old code clamped `top` to 64 instead, which parked the toolbar on
-  // top of the header for selections near the top of the viewport.
-  // `above` is translated up, so `top` is the toolbar's BOTTOM edge there and
-  // its TOP edge here — the two branches clamp against different limits.
-  if (first.top - MENU_H >= 64) {
-    return { top: first.top - 10, left: clampX(first.left + first.width / 2), above: true };
-  }
-  return {
-    top: Math.min(last.bottom + 10, window.innerHeight - MENU_H - 8),
-    left: clampX(last.left + last.width / 2),
-    above: false,
-  };
-}
-
-/** Floating menu above (or below) a text selection inside a chapter article. */
-export function SelectionMenu({
-  capture,
-  onHighlight,
-  onNote,
-  onAskAi,
-  onTranslate,
-}: {
-  /** Resolve the live selection into an anchorable payload (null = not in an article). */
-  capture: () => SelectionPayload | null;
-  onHighlight: (payload: SelectionPayload, color: HighlightColor) => void;
-  onNote: (payload: SelectionPayload) => void;
-  onAskAi: (quote: string) => void;
-  /** Selection translation — anchored near the menu position. */
-  onTranslate: (text: string, anchor: { top: number; left: number }) => void;
-}) {
-  const t = useTranslations('reader');
-  const tc = useTranslations('common');
-  const [pos, setPos] = useState<Placement | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  const refresh = useCallback(() => {
-    const sel = window.getSelection();
-    if (!sel || sel.isCollapsed || sel.rangeCount === 0 || !sel.toString().trim()) {
-      setPos(null);
-      return;
-    }
-    if (!capture()) {
-      setPos(null);
-      return;
-    }
-    setPos(placeFor(sel.getRangeAt(0)));
-  }, [capture]);
-
-  useEffect(() => {
-    const onUp = (e: Event) => {
-      // Ignore pointer-ups on the menu itself (clicking a button collapses nothing).
-      if (menuRef.current && e.target instanceof Node && menuRef.current.contains(e.target)) return;
-      window.setTimeout(refresh, 0);
-    };
-    // Any mousedown OUTSIDE the toolbar dismisses it immediately. Without this
-    // the toolbar stays parked over the two lines above the previous selection
-    // and swallows the mousedown that would start the next drag there — the
-    // "sometimes I just can't select" case.
-    const onDown = (e: Event) => {
-      if (menuRef.current && e.target instanceof Node && menuRef.current.contains(e.target)) return;
-      setPos(null);
-    };
-    const onSelChange = () => {
-      const sel = window.getSelection();
-      if (!sel || sel.isCollapsed) setPos(null);
-    };
-    document.addEventListener('mousedown', onDown, true);
-    document.addEventListener('touchstart', onDown, true);
-    document.addEventListener('mouseup', onUp);
-    document.addEventListener('touchend', onUp);
-    document.addEventListener('selectionchange', onSelChange);
-    return () => {
-      document.removeEventListener('mousedown', onDown, true);
-      document.removeEventListener('touchstart', onDown, true);
-      document.removeEventListener('mouseup', onUp);
-      document.removeEventListener('touchend', onUp);
-      document.removeEventListener('selectionchange', onSelChange);
-    };
-  }, [refresh]);
-
-  function dismiss(clearSelection: boolean) {
-    if (clearSelection) window.getSelection()?.removeAllRanges();
-    setPos(null);
-  }
-
-  if (!pos) return null;
-
-  return (
-    <div
-      ref={menuRef}
-      role="toolbar"
-      aria-label={t('selection_toolbar')}
-      className={`reader-panel rborder fixed z-50 flex -translate-x-1/2 items-center gap-1.5 rounded-xl border px-2.5 py-2 shadow-xl ${
-        pos.above ? '-translate-y-full' : ''
-      }`}
-      style={{ top: pos.top, left: pos.left }}
-      // The toolbar is not all buttons — it has padding, gaps and a divider.
-      // A mousedown landing on any of those would collapse the selection the
-      // toolbar exists to act on, and `selectionchange` would then hide it
-      // mid-click. This does NOT make it a mousedown black hole: the
-      // dismiss-on-outside listener above already exempts targets inside it.
-      onMouseDown={(e) => e.preventDefault()}
-    >
-      {HIGHLIGHT_COLORS.map((color) => (
-        <button
-          key={color}
-          type="button"
-          aria-label={t('highlight_color', { color })}
-          // preventDefault per BUTTON keeps the selection alive while clicking,
-          // without making the whole toolbar a mousedown black hole.
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => {
-            const payload = capture();
-            if (!payload) return dismiss(true);
-            onHighlight(payload, color);
-            dismiss(true);
-          }}
-          className={`hl-dot-${color} h-5 w-5 rounded-full transition hover:scale-110`}
-        />
-      ))}
-      <span className="rborder mx-0.5 h-4 w-px border-l" />
-      <MenuButton
-        label={t('note')}
-        onClick={() => {
-          const payload = capture();
-          if (!payload) return dismiss(true);
-          onNote(payload);
-          dismiss(true);
-        }}
-      >
-        <StickyNote className="h-4 w-4" />
-      </MenuButton>
-      <MenuButton
-        label={tc('copy')}
-        onClick={async () => {
-          const text = window.getSelection()?.toString() ?? '';
-          const ok = text ? await copyText(text) : false;
-          pushToast(ok ? 'success' : 'error', ok ? tc('copied') : tc('copy_failed'));
-          dismiss(false);
-        }}
-      >
-        <Copy className="h-4 w-4" />
-      </MenuButton>
-      <MenuButton
-        label={t('translate')}
-        onClick={() => {
-          const text = (window.getSelection()?.toString() ?? '').trim().slice(0, 3000);
-          if (!text || !pos) return dismiss(true);
-          onTranslate(text, { top: pos.top, left: pos.left });
-          dismiss(false);
-        }}
-      >
-        <Languages className="h-4 w-4" />
-      </MenuButton>
-      <MenuButton
-        label={t('ask_ai_short')}
-        onClick={() => {
-          const payload = capture();
-          if (!payload) return dismiss(true);
-          onAskAi(payload.quote);
-          dismiss(true);
-        }}
-      >
-        <Sparkles className="h-4 w-4" />
-      </MenuButton>
-    </div>
-  );
-}
-
 function MenuButton({
   label,
   onClick,
@@ -225,7 +43,6 @@ function MenuButton({
       type="button"
       aria-label={label}
       title={label}
-      onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className="r-muted grid h-7 w-7 place-items-center rounded-lg transition hover:bg-[var(--reader-hover)] hover:text-[var(--reader-accent)]"
     >
