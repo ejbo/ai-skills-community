@@ -199,9 +199,9 @@ async function translateCues(cues: VttCue[], target: 'zh' | 'en'): Promise<VttCu
 
 // ── The pipeline ─────────────────────────────────────────────────────────────
 
-const AUDIO_TIMEOUT_MS = 2 * 60 * 1000;
-// Whisper on CPU can take ~duration×few for the base model; cap generously.
-const WHISPER_TIMEOUT_MS = 20 * 60 * 1000;
+// Uploads have NO duration cap, so give long videos generous processing room.
+const AUDIO_TIMEOUT_MS = 10 * 60 * 1000;
+const WHISPER_TIMEOUT_MS = 90 * 60 * 1000;
 
 async function transcribeToVtt(audioPath: string, workDir: string): Promise<string | null> {
   const w = await detectWhisper();

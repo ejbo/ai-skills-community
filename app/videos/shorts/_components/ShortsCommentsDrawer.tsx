@@ -1,16 +1,17 @@
 'use client';
 
-// Comment drawer for the 随刷 feed: bottom sheet on mobile, right-side panel on
-// desktop. Mounts the video board's existing CommentSection (same routes, same
-// 2-level thread contract, same ?focus= deep-link resolution — the section
-// reads `focus` from window.location.search itself, which the feed preserves).
+// 评论 overlay for the shorts players, on the shared HostPanel shell:
+// transparent click-catcher (video keeps playing, never grays out), slides
+// from inside the player. 'sheet' = mobile bottom sheet in the fullscreen
+// feed; 'panel' = right-side panel inside an embedded player.
+// Host wraps the conditional render in <AnimatePresence> for the exit slide.
 
 import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Loader2, X } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { CommentSection } from '@/components/video/CommentSection';
 import type { VideoCommentView } from '@/lib/video/queries';
+import { HostPanel, PANEL_SCROLL_CLS } from './HostPanel';
 import type { ShortsCurrentUser, ShortView } from './types';
 
 interface Props {
@@ -18,12 +19,7 @@ interface Props {
   currentUser: ShortsCurrentUser | null;
   /** Deep-linked comment to scroll/highlight (notification ?focus=), else null. */
   focusCommentId: string | null;
-  /**
-   * 'absolute' = scoped to the fullscreen feed root (default);
-   * 'fixed' = portaled to <body> — used by embedded players (homepage / tab)
-   * so 点评论 opens the 抖音-style side sheet without leaving the page.
-   */
-  variant?: 'absolute' | 'fixed';
+  variant?: 'sheet' | 'panel';
   onClose: () => void;
 }
 
@@ -31,7 +27,7 @@ export function ShortsCommentsDrawer({
   short,
   currentUser,
   focusCommentId,
-  variant = 'absolute',
+  variant = 'sheet',
   onClose,
 }: Props) {
   const t = useTranslations('shorts');
@@ -61,66 +57,34 @@ export function ShortsCommentsDrawer({
     };
   }, [short.slug]);
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  const content = (
-    <div
-      className={`${variant === 'fixed' ? 'fixed z-[90]' : 'absolute z-[15]'} inset-0 bg-black/40`}
-      onClick={onClose}
-      role="presentation"
-    >
-      <div
-        role="dialog"
-        aria-label={t('comments')}
-        className="absolute inset-x-0 bottom-0 flex h-[72dvh] flex-col rounded-t-2xl bg-white text-zinc-900 shadow-2xl dark:bg-zinc-950 dark:text-zinc-100 md:inset-x-auto md:right-0 md:top-0 md:h-full md:w-[420px] md:rounded-none"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-          <p className="text-sm font-semibold">{t('comments')}</p>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
-            aria-label={t('close')}
-          >
-            <X className="h-4.5 w-4.5" />
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-          {data ? (
-            <CommentSection
-              key={short.slug}
-              slug={short.slug}
-              initialComments={data.comments}
-              initialCursor={data.nextCursor}
-              focusCommentId={focusCommentId}
-              currentUser={
-                currentUser
-                  ? {
-                      id: currentUser.id,
-                      isAdmin: currentUser.isAdmin,
-                      handle: currentUser.handle,
-                    }
-                  : null
-              }
-            />
-          ) : failed ? (
-            <p className="py-10 text-center text-sm text-zinc-500">{t('load_failed')}</p>
-          ) : (
-            <div className="flex justify-center py-10">
-              <Loader2 className="h-5 w-5 animate-spin text-zinc-400" />
-            </div>
-          )}
-        </div>
+  return (
+    <HostPanel variant={variant} title={t('comments')} closeLabel={t('close')} onClose={onClose}>
+      <div className={`${PANEL_SCROLL_CLS} px-4 py-4`}>
+        {data ? (
+          <CommentSection
+            key={short.slug}
+            slug={short.slug}
+            initialComments={data.comments}
+            initialCursor={data.nextCursor}
+            focusCommentId={focusCommentId}
+            currentUser={
+              currentUser
+                ? {
+                    id: currentUser.id,
+                    isAdmin: currentUser.isAdmin,
+                    handle: currentUser.handle,
+                  }
+                : null
+            }
+          />
+        ) : failed ? (
+          <p className="py-10 text-center text-sm text-zinc-400">{t('load_failed')}</p>
+        ) : (
+          <div className="flex justify-center py-10">
+            <Loader2 className="h-5 w-5 animate-spin text-zinc-400" />
+          </div>
+        )}
       </div>
-    </div>
+    </HostPanel>
   );
-
-  return variant === 'fixed' ? createPortal(content, document.body) : content;
 }

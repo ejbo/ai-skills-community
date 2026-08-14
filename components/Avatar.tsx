@@ -24,8 +24,13 @@ export function Avatar({
   name: string;
   src?: string | null;
   size?: Size;
-  /** Fallback-badge style: `solid` (accent fill) or `subtle` (tinted). */
-  tone?: 'solid' | 'subtle';
+  /**
+   * Fallback-badge style: `solid` (accent fill), `subtle` (tinted accent) or
+   * `neutral` (grey). `neutral` exists for surfaces that carry no accent
+   * colour at all, like the homepage; `solid` is the navbar default and must
+   * not be redefined.
+   */
+  tone?: 'solid' | 'subtle' | 'neutral';
   className?: string;
 }) {
   const dims = SIZE[size];
@@ -41,9 +46,13 @@ export function Avatar({
   }
   const initial = (name?.trim()?.charAt(0) || 'U').toUpperCase();
   const toneCls =
-    tone === 'subtle'
-      ? 'bg-accent-500/15 text-accent-600 dark:text-accent-300'
-      : 'bg-accent-500 text-white';
+    tone === 'neutral'
+      ? 'bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200'
+      : tone === 'subtle'
+        ? 'bg-accent-500/15 text-accent-600 dark:text-accent-300'
+        : // Ink, not accent: this is the navbar fallback badge, so an indigo
+          // disc sat above every page as the loudest chroma in the chrome.
+          'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900';
   return (
     <span
       className={`flex ${dims} shrink-0 items-center justify-center rounded-full font-semibold uppercase ${toneCls} ${className}`}

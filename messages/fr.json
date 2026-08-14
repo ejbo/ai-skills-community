@@ -21,6 +21,7 @@
     "logout": "Se déconnecter",
     "profile": "Profil",
     "settings": "Paramètres",
+    "language": "Langue",
     "search_placeholder": "Rechercher sur le site…",
     "search_hint": "Rechercher des skills, livres, discussions, vidéos, utilisateurs…",
     "search_empty": "Aucun résultat",
@@ -45,7 +46,6 @@
   "home": {
     "trending": "Tendances de la semaine",
     "welcome_back": "Bon retour, {name}",
-    "community_kicker": "AI Community",
     "hot_skills": "Skills populaires",
     "hot_videos": "Vidéos geek populaires",
     "shorts_title": "Clips à la une",
@@ -92,13 +92,34 @@
     "topic_meta": "{replies, plural, one {# réponse} other {# réponses}} · {views, plural, one {# vue} other {# vues}}",
     "doc_read_minutes": "≈ {min} min",
     "rank_sr": "Classement {rank}",
-    "briefing_title": "Brief du jour",
-    "briefing_new_label": "Nouveau aujourd'hui :",
-    "briefing_skills": "{count, plural, one {# skill} other {# skills}}",
-    "briefing_posts": "{count, plural, one {# publication} other {# publications}}",
-    "briefing_shorts": "{count, plural, one {# clip} other {# clips}}",
     "briefing_events_label": "À venir :",
-    "briefing_no_events": "aucun événement"
+    "briefing_no_events": "aucun événement",
+    "stat_new_skills": "Nouveaux skills",
+    "stat_new_posts": "Nouveaux posts",
+    "stat_new_shorts": "Nouvelles vidéos"
+  },
+  "github_trending": {
+    "title": "Tendances GitHub",
+    "sub": "Ce que l'open source regarde en ce moment",
+    "period_daily": "Aujourd'hui",
+    "period_weekly": "Cette semaine",
+    "period_monthly": "Ce mois-ci",
+    "gained_daily": "{count, plural, one {# étoile aujourd''hui} other {# étoiles aujourd''hui}}",
+    "gained_weekly": "{count, plural, one {# étoile cette semaine} other {# étoiles cette semaine}}",
+    "gained_monthly": "{count, plural, one {# étoile ce mois-ci} other {# étoiles ce mois-ci}}",
+    "stars_sr": "{count, plural, one {# étoile} other {# étoiles}}",
+    "forks_sr": "{count, plural, one {# fork} other {# forks}}",
+    "issues_sr": "{count, plural, one {# issue ouverte} other {# issues ouvertes}}",
+    "rank_sr": "Rang {rank}",
+    "updated": "Mis à jour {time}",
+    "cached": "En cache",
+    "view_all": "Voir sur GitHub",
+    "empty": "Rien de tendance sur cette période",
+    "error_title": "Tendances GitHub indisponibles",
+    "error_hint": "Ce serveur ne peut pas joindre github.com pour le moment. Réessayez plus tard.",
+    "retry": "Réessayer",
+    "loading": "Chargement des tendances GitHub",
+    "count": "{count, plural, one {# dépôt} other {# dépôts}}"
   },
   "browse": {
     "title": "Parcourir les skills",
@@ -2295,7 +2316,7 @@
     "close": "Fermer",
     "upload_title": "Publier un clip",
     "pick_video": "Choisir un fichier vidéo",
-    "pick_hint": "MP4 / WebM / MOV, {minutes} min et {mb} Mo max",
+    "pick_hint": "MP4 / WebM / MOV, sans limite de taille ni de durée",
     "repick": "Choisir un autre",
     "landscape_hint": "Vidéo en paysage détectée — le format vertical (9:16) rend mieux dans le flux",
     "caption_label": "Description",
@@ -2337,6 +2358,11 @@
     "source_author_label": "Auteur d'origine",
     "source_author_placeholder": "Nom de l'auteur d'origine",
     "err_source_required": "Un repost doit inclure le lien et l'auteur d'origine",
-    "panel_info": "Détails"
+    "panel_info": "Détails",
+    "panel_works": "Ses vidéos",
+    "works_empty": "Aucune autre vidéo",
+    "works_playing": "En lecture",
+    "author_profile": "Voir le profil",
+    "exit_fullscreen": "Quitter le plein écran"
   }
 }

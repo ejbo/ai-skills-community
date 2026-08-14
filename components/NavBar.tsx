@@ -7,6 +7,7 @@ import { SearchTrigger } from './SearchTrigger';
 import { NavLink } from './NavLink';
 import { NavBarShell } from './NavBarShell';
 import { NotificationBell } from './NotificationBell';
+import { LanguageSwitcher } from './LanguageSwitcher';
 import { getTranslations } from 'next-intl/server';
 import { withBasePath } from '@/lib/base-path';
 
@@ -42,6 +43,8 @@ export async function NavBar({ session }: { session: Session | null }) {
             <MessageSquarePlus className="h-4 w-4" />
           </Link>
           {session?.user && <NotificationBell />}
+          {/* Language sits immediately left of the avatar — 设置 → 语言 was too deep to find. */}
+          <LanguageSwitcher />
           {session?.user ? (
             <UserMenu user={session.user} />
           ) : (

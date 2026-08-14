@@ -45,7 +45,7 @@ export async function ShortsBrowse({
             <Link
               key={s.id}
               href={`/videos/shorts?v=${s.id}`}
-              className="group relative overflow-hidden rounded-2xl bg-zinc-900 ring-1 ring-black/5 transition hover:ring-accent-500/50"
+              className="group relative overflow-hidden rounded-2xl bg-zinc-900 ring-1 ring-black/5 transition hover:ring-zinc-900/25 dark:hover:ring-white/25"
             >
               {s.posterUrl && (
                 // eslint-disable-next-line @next/next/no-img-element -- same-origin stored poster
@@ -89,7 +89,7 @@ export async function ShortsBrowse({
           <div className="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
             {gridItems.map((s) => (
               <Link key={s.id} href={`/videos/shorts?v=${s.id}`} className="group block">
-                <div className="relative aspect-[9/16] overflow-hidden rounded-xl bg-zinc-900 ring-1 ring-black/5 transition group-hover:ring-accent-500/50">
+                <div className="relative aspect-[9/16] overflow-hidden rounded-xl bg-zinc-900 ring-1 ring-black/5 transition group-hover:ring-zinc-900/25 dark:group-hover:ring-white/25">
                   {s.posterUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element -- same-origin stored poster
                     <img

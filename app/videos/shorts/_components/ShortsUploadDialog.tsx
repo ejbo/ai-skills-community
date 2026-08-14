@@ -17,11 +17,7 @@ import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
 import { withBasePath } from '@/lib/base-path';
 import { formatDuration } from '@/lib/video/types';
-import {
-  MAX_SHORT_CAPTION_CHARS,
-  MAX_SHORT_DURATION_SEC,
-  MAX_SHORT_VIDEO_BYTES,
-} from '@/lib/video/shorts-shared';
+import { MAX_SHORT_CAPTION_CHARS } from '@/lib/video/shorts-shared';
 import type { ShortView } from './types';
 
 const ACCEPTED_TYPES = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
@@ -214,10 +210,6 @@ export function ShortsUploadDialog({ onClose, onPublished }: Props) {
       pushToast('error', t('err_unsupported'));
       return;
     }
-    if (f.size > MAX_SHORT_VIDEO_BYTES) {
-      pushToast('error', t('err_too_large'));
-      return;
-    }
     if (objectUrl) URL.revokeObjectURL(objectUrl);
     const url = URL.createObjectURL(f);
     setFile(f);
@@ -227,13 +219,6 @@ export function ShortsUploadDialog({ onClose, onPublished }: Props) {
     setProbing(true);
     try {
       const { meta: m, poster: p } = await probeAndCapture(url);
-      if (m.duration > MAX_SHORT_DURATION_SEC + 1) {
-        pushToast('error', t('err_too_long', { max: Math.round(MAX_SHORT_DURATION_SEC / 60) }));
-        setFile(null);
-        setObjectUrl(null);
-        URL.revokeObjectURL(url);
-        return;
-      }
       setMeta(m);
       setPoster(p);
     } catch {
@@ -401,9 +386,7 @@ export function ShortsUploadDialog({ onClose, onPublished }: Props) {
                 <p className="text-sm font-semibold">
                   {dragOver ? t('drop_to_select') : t('pick_video')}
                 </p>
-                <p className="mt-1.5 text-xs text-muted">
-                  {t('pick_hint', { minutes: Math.round(MAX_SHORT_DURATION_SEC / 60), mb: 500 })}
-                </p>
+                <p className="mt-1.5 text-xs text-muted">{t('pick_hint')}</p>
               </div>
               <input
                 type="file"

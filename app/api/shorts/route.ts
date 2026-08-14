@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
-import { rateLimit } from '@/lib/rate-limit';
 import { apiReason } from '@/lib/api-errors';
 import { toPublicAuthor } from '@/lib/user-identity';
 import { uniqueVideoSlug } from '@/lib/video/slug';
@@ -11,7 +10,6 @@ import { generateShortSubtitles } from '@/lib/video/subtitles';
 import { listShorts, SHORT_FEED_SELECT } from '@/lib/video/shorts-queries';
 import {
   MAX_SHORT_CAPTION_CHARS,
-  MAX_SHORT_DURATION_SEC,
   isValidShortPosterKey,
   isValidShortSourceKey,
   parseShortsSort,
@@ -21,19 +19,29 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 // GET /api/shorts?cursor=&limit=&sort= (login) — feed pages for the swipe UI.
 export async function GET(req: Request) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
   const sp = new URL(req.url).searchParams;
+  // ?uploader=<handle> — TA 的作品 panel (resolved to an id server-side).
+  const uploaderHandle = sp.get('uploader')?.trim();
+  let uploaderId: string | null = null;
+  if (uploaderHandle) {
+    const uploader = await prisma.user.findUnique({
+      where: { handle: uploaderHandle },
+      select: { id: true },
+    });
+    if (!uploader) return NextResponse.json({ items: [], hasMore: false, nextCursor: null });
+    uploaderId = uploader.id;
+  }
   const { items, hasMore, nextCursor } = await listShorts({
     cursor: sp.get('cursor'),
     limit: Number(sp.get('limit') ?? 8),
     sort: parseShortsSort(sp.get('sort')),
     viewerId: session.user.id,
+    uploaderId,
   });
   const adm = Boolean(session.user.isAdmin);
   return NextResponse.json({
@@ -47,7 +55,7 @@ const createSchema = z.object({
   caption: z.string().trim().min(1).max(MAX_SHORT_CAPTION_CHARS),
   videoKey: z.string().min(1).max(200),
   posterKey: z.string().min(1).max(200).optional(),
-  durationSec: z.number().int().min(1).max(60 * 60),
+  durationSec: z.number().int().min(1).max(24 * 60 * 60),
   width: z.number().int().min(1).max(8192).optional(),
   height: z.number().int().min(1).max(8192).optional(),
   originType: z.enum(['original', 'repost']).default('original'),
@@ -59,14 +67,6 @@ const createSchema = z.object({
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
-
-  const gate = rateLimit(`shorts:create:${session.user.id}`, 20, DAY_MS);
-  if (!gate.allowed) {
-    return NextResponse.json(
-      { error: 'rate_limited', reason: await apiReason('rate_limited'), resetAt: gate.resetAt },
-      { status: 429 },
-    );
-  }
 
   const body = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(body);
@@ -108,18 +108,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
   }
 
-  // Enforce the "shorts are short" cap on the REAL container duration when the
-  // box has ffprobe (client-probed durationSec is attacker-controlled); fall
-  // back to the client value where ffprobe is absent (best-effort by design,
-  // same posture as faststartRemux).
+  // NO duration limit (product decision) — ffprobe only CORRECTS the metadata
+  // so the feed shows the real duration (client-probed value is the fallback).
   const probed = await probeVideoDurationSec(d.videoKey);
   const durationSec = probed !== null ? Math.max(1, Math.round(probed)) : d.durationSec;
-  if (durationSec > MAX_SHORT_DURATION_SEC) {
-    return NextResponse.json(
-      { error: 'too_long', reason: await apiReason('invalid_request') },
-      { status: 400 },
-    );
-  }
 
   // 搬运 must credit the original: link + author are mandatory.
   if (d.originType === 'repost' && (!d.sourceUrl || !d.sourceAuthor)) {
@@ -148,7 +140,9 @@ export async function POST(req: Request) {
       posterKey: d.posterKey ?? null,
       posterUrl: d.posterKey ? videoPublicUrl(d.posterKey) : null,
       mimeType: videoStat.contentType,
-      sizeBytes: videoStat.size,
+      // Video.sizeBytes is Int (int32) — with no upload cap a huge file must
+      // clamp instead of overflowing the column (display-only value).
+      sizeBytes: Math.min(videoStat.size, 2_147_483_647),
       width: d.width ?? null,
       height: d.height ?? null,
       durationSec,

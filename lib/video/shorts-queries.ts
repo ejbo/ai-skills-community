@@ -116,6 +116,8 @@ export interface ListShortsOptions {
   cursor?: string | null;
   limit?: number;
   viewerId?: string | null;
+  /** Filter to one uploader (TA 的作品 panel). */
+  uploaderId?: string | null;
 }
 
 export async function listShorts(opts: ListShortsOptions) {
@@ -136,6 +138,7 @@ export async function listShorts(opts: ListShortsOptions) {
   const rows = await prisma.video.findMany({
     where: {
       ...SHORTS_PUBLIC,
+      ...(opts.uploaderId ? { uploaderId: opts.uploaderId } : {}),
       ...(cursor
         ? {
             OR: [

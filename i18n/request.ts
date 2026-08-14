@@ -1,8 +1,10 @@
 import { getRequestConfig } from 'next-intl/server';
 import { cookies, headers } from 'next/headers';
 
-export const SUPPORTED_LOCALES = ['zh-CN', 'en', 'fr'] as const;
-export type Locale = (typeof SUPPORTED_LOCALES)[number];
+// The locale list lives in lib/locales.ts (import-free) so the client switchers
+// share it; re-exported here because existing callers import it from this module.
+export { SUPPORTED_LOCALES, type Locale } from '@/lib/locales';
+import { SUPPORTED_LOCALES, type Locale } from '@/lib/locales';
 
 function pickLocale(): Locale {
   // The cookie is the user's explicit choice (set in 设置 → 语言) and wins;

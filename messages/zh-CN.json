@@ -21,6 +21,7 @@
     "logout": "退出登录",
     "profile": "个人主页",
     "settings": "设置",
+    "language": "语言",
     "search_placeholder": "全站搜索…",
     "search_hint": "搜索技能、书籍、讨论、视频、用户…",
     "search_empty": "没有找到相关内容",
@@ -45,7 +46,6 @@
   "home": {
     "trending": "本周趋势",
     "welcome_back": "欢迎回来，{name}",
-    "community_kicker": "AI Community",
     "hot_skills": "热门 Skills",
     "hot_videos": "热门极客视频",
     "shorts_title": "精选短视频",
@@ -92,13 +92,34 @@
     "topic_meta": "{replies} 回复 · {views} 浏览",
     "doc_read_minutes": "约 {min} 分钟",
     "rank_sr": "热门第 {rank} 名",
-    "briefing_title": "今日简报",
-    "briefing_new_label": "今日新增",
-    "briefing_skills": "{count} 个 Skill",
-    "briefing_posts": "{count} 条动态",
-    "briefing_shorts": "{count} 条短视频",
     "briefing_events_label": "即将举行",
-    "briefing_no_events": "暂无活动"
+    "briefing_no_events": "暂无活动",
+    "stat_new_skills": "新 Skills",
+    "stat_new_posts": "新动态",
+    "stat_new_shorts": "新短视频"
+  },
+  "github_trending": {
+    "title": "GitHub 热榜",
+    "sub": "开源世界这一阵子在看什么",
+    "period_daily": "今日",
+    "period_weekly": "本周",
+    "period_monthly": "本月",
+    "gained_daily": "今日新增 {count} 颗 star",
+    "gained_weekly": "本周新增 {count} 颗 star",
+    "gained_monthly": "本月新增 {count} 颗 star",
+    "stars_sr": "共 {count} 颗 star",
+    "forks_sr": "共 {count} 次 fork",
+    "issues_sr": "{count} 个待处理 issue",
+    "rank_sr": "第 {rank} 名",
+    "updated": "更新于 {time}",
+    "cached": "缓存数据",
+    "view_all": "在 GitHub 查看",
+    "empty": "这个时间段暂时没有数据",
+    "error_title": "取不到 GitHub 热榜",
+    "error_hint": "服务器当前访问不了 github.com，可以稍后再试。",
+    "retry": "重试",
+    "loading": "正在获取 GitHub 热榜",
+    "count": "共 {count} 个"
   },
   "browse": {
     "title": "浏览 Skills",
@@ -2295,7 +2316,7 @@
     "close": "关闭",
     "upload_title": "上传短视频",
     "pick_video": "选择视频文件",
-    "pick_hint": "MP4 / WebM / MOV，不超过 {minutes} 分钟、{mb} MB",
+    "pick_hint": "MP4 / WebM / MOV，无大小与时长限制",
     "repick": "重新选择",
     "landscape_hint": "检测到横屏视频——竖屏（9:16）在随刷里观感更好",
     "caption_label": "视频描述",
@@ -2337,6 +2358,11 @@
     "source_author_label": "原作者",
     "source_author_placeholder": "原作者名称",
     "err_source_required": "搬运视频必须填写原视频链接和原作者",
-    "panel_info": "详情"
+    "panel_info": "详情",
+    "panel_works": "TA 的作品",
+    "works_empty": "还没有其他作品",
+    "works_playing": "播放中",
+    "author_profile": "进入主页",
+    "exit_fullscreen": "退出全屏"
   }
 }

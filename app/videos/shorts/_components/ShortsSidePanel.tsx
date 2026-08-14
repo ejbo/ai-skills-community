@@ -14,12 +14,13 @@ import { CommentSection } from '@/components/video/CommentSection';
 import { relativeTime } from '@/lib/i18n-date';
 import { formatCount, formatDuration } from '@/lib/video/types';
 import type { VideoCommentView } from '@/lib/video/queries';
+import { ShortsAuthorWorks } from './ShortsAuthorWorks';
 import type { ShortsCurrentUser, ShortView } from './types';
 
 const SCROLL_CLS =
   'min-h-0 flex-1 overflow-y-auto [scrollbar-width:thin] [scrollbar-color:rgba(148,163,184,0.5)_transparent] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-400/50 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-1.5';
 
-export type PanelTab = 'info' | 'comments';
+export type PanelTab = 'info' | 'comments' | 'works';
 
 interface Props {
   item: ShortView;
@@ -28,9 +29,18 @@ interface Props {
   onTabChange: (tab: PanelTab) => void;
   /** Deep-linked comment (notification ?focus=) for THIS item, else null. */
   focusCommentId: string | null;
+  /** TA 的作品 card click → jump the feed to that short. */
+  onJumpTo: (item: ShortView) => void;
 }
 
-export function ShortsSidePanel({ item, currentUser, tab, onTabChange, focusCommentId }: Props) {
+export function ShortsSidePanel({
+  item,
+  currentUser,
+  tab,
+  onTabChange,
+  focusCommentId,
+  onJumpTo,
+}: Props) {
   const t = useTranslations('shorts');
   const locale = useLocale();
 
@@ -90,9 +100,28 @@ export function ShortsSidePanel({ item, currentUser, tab, onTabChange, focusComm
             <span className="absolute -bottom-px left-0 right-0 h-0.5 rounded-full bg-zinc-900 dark:bg-white" />
           )}
         </button>
+        <button type="button" onClick={() => onTabChange('works')} className={tabCls(tab === 'works')}>
+          {t('panel_works')}
+          {tab === 'works' && (
+            <span className="absolute -bottom-px left-0 right-0 h-0.5 rounded-full bg-zinc-900 dark:bg-white" />
+          )}
+        </button>
       </div>
 
-      {tab === 'info' ? (
+      {tab === 'works' ? (
+        <div className={`${SCROLL_CLS} px-5 py-4`}>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <p className="min-w-0 truncate text-sm font-medium">{item.uploader.displayName}</p>
+            <Link
+              href={`/users/${item.uploader.handle}`}
+              className="shrink-0 text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-800 hover:underline dark:text-zinc-400 dark:hover:text-zinc-200"
+            >
+              {t('author_profile')}
+            </Link>
+          </div>
+          <ShortsAuthorWorks handle={item.uploader.handle} currentId={item.id} onSelect={onJumpTo} />
+        </div>
+      ) : tab === 'info' ? (
         <div className={`${SCROLL_CLS} px-5 py-5`}>
           {/* Uploader */}
           <div className="flex items-center gap-3">

@@ -117,14 +117,17 @@ export function NotificationBell() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.15 }}
-            className="surface absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl p-1 shadow-lg"
+            // The PANEL is what's bounded (not just the list inside it): the header
+            // stays pinned and the items scroll within a fixed-height card instead of
+            // the popover growing down the page with 20 unread notifications.
+            className="surface absolute right-0 top-full mt-2 flex max-h-[min(70vh,28rem)] w-80 max-w-[calc(100vw-2rem)] flex-col rounded-xl p-1 shadow-lg"
           >
-            <div className="flex items-center justify-between px-3 py-2">
+            <div className="flex shrink-0 items-center justify-between px-3 py-2">
               <span className="text-sm font-semibold">{t('title')}</span>
               {unread > 0 && (
                 <button
                   onClick={markAll}
-                  className="inline-flex items-center gap-1 text-xs text-muted transition hover:text-accent-600"
+                  className="inline-flex items-center gap-1 text-xs text-muted transition hover:text-zinc-900 dark:hover:text-zinc-50"
                 >
                   <CheckCheck className="h-3.5 w-3.5" />
                   {t('mark_all_read')}
@@ -132,7 +135,9 @@ export function NotificationBell() {
               )}
             </div>
 
-            <div className="max-h-[60vh] overflow-auto">
+            {/* overscroll-contain: without it, hitting the end of the list chained the
+                wheel to the page — which also slid the auto-hiding navbar away. */}
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
               {items.length === 0 ? (
                 <div className="px-3 py-10 text-center text-sm text-muted">{t('empty')}</div>
               ) : (
@@ -141,11 +146,11 @@ export function NotificationBell() {
                     key={n.id}
                     onClick={() => onItemClick(n)}
                     className={`flex w-full gap-2 rounded-lg px-3 py-2 text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${
-                      n.read ? '' : 'bg-accent-500/5'
+                      n.read ? '' : 'bg-zinc-100/70 dark:bg-white/[0.04]'
                     }`}
                   >
                     <span
-                      className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.read ? 'bg-transparent' : 'bg-accent-500'}`}
+                      className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.read ? 'bg-transparent' : 'bg-zinc-900 dark:bg-zinc-100'}`}
                       aria-hidden
                     />
                     <span className="min-w-0 flex-1">

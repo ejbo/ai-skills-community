@@ -34,7 +34,26 @@ export function ReaderContent({
   registerRoot,
 }: Props) {
   const t = useTranslations('reader');
-  const processed = useMemo(() => applyBasePathToHtml(html), [html]);
+  /**
+   * The dangerouslySetInnerHTML OBJECT must be memoized, not just the string.
+   *
+   * React 18.3's `updateProperties` diffs props by IDENTITY (`nextProp !==
+   * lastProp`) and, for `dangerouslySetInnerHTML`, then calls `setInnerHTMLImpl`
+   * unconditionally — it never compares `__html`. A fresh `{ __html }` literal
+   * per render therefore made React destroy and rebuild every child of this
+   * <article> on EVERY re-render of the reader — including every scroll frame,
+   * since progress tracking sets state per frame.
+   *
+   * That is what made text impossible to select (the nodes under the pointer
+   * were replaced mid-drag) and highlights invisible (their anchored Ranges
+   * pointed at detached text nodes, so the browser painted nothing). Verified
+   * in Chrome: the innerHTML setter fired from React's commitUpdate right after
+   * mouseup, replacing all 5 children.
+   *
+   * With a stable object identity React skips the prop entirely and the article
+   * DOM is never touched after mount.
+   */
+  const inner = useMemo(() => ({ __html: applyBasePathToHtml(html) }), [html]);
   const byline = [author, siteName].filter(Boolean).join(' · ');
 
   return (
@@ -64,7 +83,7 @@ export function ReaderContent({
         )}
       </header>
 
-      <article ref={registerRoot} className="reader-prose" dangerouslySetInnerHTML={{ __html: processed }} />
+      <article ref={registerRoot} className="reader-prose" dangerouslySetInnerHTML={inner} />
 
       {mode === 'paged' && chapterCount > 1 && (
         <nav className="rborder mt-14 flex items-center justify-between gap-3 border-t pt-6">

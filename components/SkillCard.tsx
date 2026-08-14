@@ -1,6 +1,7 @@
 import Link from 'next/link';
-import { formatDistanceToNowStrict } from 'date-fns';
+import { useLocale } from 'next-intl';
 import type { SkillVisibility } from '@prisma/client';
+import { relativeTime } from '@/lib/i18n-date';
 import { SourceBadge } from './SourceBadge';
 import { VisibilityBadge } from './VisibilityBadge';
 import { StatRow } from './StatRow';
@@ -24,6 +25,7 @@ export interface SkillCardProps {
 }
 
 export function SkillCard(props: SkillCardProps) {
+  const locale = useLocale();
   const updated = typeof props.updatedAt === 'string' ? new Date(props.updatedAt) : props.updatedAt;
   return (
     <Link
@@ -32,7 +34,7 @@ export function SkillCard(props: SkillCardProps) {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-base font-semibold tracking-tight group-hover:text-accent-600">
+          <h3 className="truncate text-base font-semibold tracking-tight decoration-zinc-300 underline-offset-2 transition-colors group-hover:underline dark:decoration-zinc-600">
             {props.name}
           </h3>
           <p className="mt-1 line-clamp-2 text-sm text-muted">{props.summary}</p>
@@ -44,10 +46,17 @@ export function SkillCard(props: SkillCardProps) {
       </div>
       <div className="flex items-center justify-between gap-2 border-t border-zinc-100 pt-3 dark:border-zinc-800/60">
         <div className="flex items-center gap-2 text-xs text-muted">
-          <Avatar name={props.author.displayName} src={props.author.avatarUrl} size="xs" tone="subtle" />
+          <Avatar
+            name={props.author.displayName}
+            src={props.author.avatarUrl}
+            size="xs"
+            tone="neutral"
+          />
           <span className="truncate">{props.author.displayName}</span>
           <span>·</span>
-          <span>{formatDistanceToNowStrict(updated, { addSuffix: true })}</span>
+          {/* Bare formatDistanceToNowStrict is English-only — it leaked
+              "3 days ago" into the 中文 card. */}
+          <span>{relativeTime(updated, locale)}</span>
         </div>
       </div>
       <StatRow stats={props.stats} />

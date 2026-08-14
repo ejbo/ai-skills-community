@@ -39,7 +39,7 @@ export function UserMenu({ user }: { user: MenuUser }) {
         aria-label={user.displayName ?? user.email}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 transition hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 dark:hover:bg-zinc-800"
+        className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 transition hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 dark:focus-visible:ring-zinc-100 dark:hover:bg-zinc-800"
       >
         <Avatar name={user.displayName ?? user.email} src={user.avatarUrl ?? user.image ?? null} size="sm" />
         <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />

@@ -78,14 +78,14 @@ export function VideoCard({ video }: { video: VideoCardType }) {
       onHoverEnd={endHover}
       onFocus={startHover}
       onBlur={endHover}
-      animate={reduceMotion ? undefined : { scale: hovered ? 1.05 : 1, y: hovered ? -6 : 0 }}
+      animate={reduceMotion ? undefined : { scale: hovered ? 1.02 : 1, y: hovered ? -2 : 0 }}
       transition={{ type: 'spring', stiffness: 320, damping: 26 }}
       className="group relative"
       style={{ transformOrigin: 'center', zIndex: hovered ? 30 : 0 }}
     >
       <Link
         href={`/videos/${video.slug}`}
-        className="flex flex-col gap-2.5 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+        className="flex flex-col gap-2.5 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 dark:focus-visible:ring-zinc-100"
       >
         <div
           className={`relative aspect-video w-full overflow-hidden rounded-xl bg-zinc-100 transition-shadow duration-200 dark:bg-zinc-900 ${

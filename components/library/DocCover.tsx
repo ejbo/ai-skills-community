@@ -29,11 +29,19 @@ export function DocCover({
   coverUrl,
   docType,
   className = '',
+  mono = false,
 }: {
   title: string;
   coverUrl: string | null;
   docType: string;
   className?: string;
+  /**
+   * Grey out the spine. The hashed hue is real identity on the 知识库 surfaces
+   * (a shelf of coloured spines is how you find a book again), but on the
+   * homepage those thumbnails are 8px wide and were the only rainbow on an
+   * otherwise monochrome page. Opt-in so the library keeps its colour.
+   */
+  mono?: boolean;
 }) {
   if (coverUrl) {
     // eslint-disable-next-line @next/next/no-img-element -- stored root-relative upload, basePath applied here
@@ -41,7 +49,7 @@ export function DocCover({
       <img
         src={withBasePath(coverUrl)}
         alt=""
-        className={`overflow-hidden object-cover ${className}`}
+        className={`overflow-hidden object-cover ${mono ? 'grayscale' : ''} ${className}`}
       />
     );
   }
@@ -51,13 +59,16 @@ export function DocCover({
   const h2 = (h1 + 40 + ((hash >>> 9) % 80)) % 360;
   const Icon = TYPE_ICONS[docType] ?? File;
   const initial = (Array.from(title.trim())[0] ?? '#').toUpperCase();
+  // Same hash, read as lightness instead of hue: the spines stay distinguishable
+  // from each other without introducing a palette.
+  const backgroundImage = mono
+    ? `linear-gradient(160deg, hsl(0 0% ${70 - (hash % 12)}%), hsl(0 0% ${42 - ((hash >>> 9) % 14)}%))`
+    : `linear-gradient(135deg, hsl(${h1} 60% 42%), hsl(${h2} 65% 28%))`;
 
   return (
     <div
       className={`relative flex items-center justify-center overflow-hidden ${className}`}
-      style={{
-        backgroundImage: `linear-gradient(135deg, hsl(${h1} 60% 42%), hsl(${h2} 65% 28%))`,
-      }}
+      style={{ backgroundImage }}
       aria-hidden
     >
       <span className="select-none text-[1.75em] font-semibold text-white/90">{initial}</span>

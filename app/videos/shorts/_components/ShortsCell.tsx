@@ -53,6 +53,8 @@ interface Props {
   embed?: boolean;
   /** When set, the video does NOT loop — the host advances (auto-next). */
   onEnded?: () => void;
+  /** Avatar click → open the uploader's works panel (falls back to profile link). */
+  onOpenAuthor?: () => void;
   /** Feed-only: imperative API registry for keyboard shortcuts. */
   index?: number;
   registerApi?: (index: number, api: ShortsCellApi | null) => void;
@@ -68,6 +70,7 @@ export function ShortsCell({
   onOpenComments,
   embed = false,
   onEnded,
+  onOpenAuthor,
   index = 0,
   registerApi,
 }: Props) {
@@ -440,20 +443,6 @@ export function ShortsCell({
         ))}
       </AnimatePresence>
 
-      {/* Custom-rendered subtitle cue — sits INSIDE the visible frame, just
-          above the caption block */}
-      {cueText && (
-        <div
-          className={`pointer-events-none absolute inset-x-0 z-[6] flex justify-center px-8 ${
-            embed ? 'bottom-[88px]' : 'bottom-[116px]'
-          }`}
-        >
-          <span className="max-w-full whitespace-pre-wrap rounded-md bg-black/60 px-3 py-1.5 text-center text-[15px] font-medium leading-snug text-white">
-            {cueText}
-          </span>
-        </div>
-      )}
-
       {/* Paused glyph / tap-to-play */}
       {active && paused && !needsTap && (
         <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center">
@@ -479,13 +468,24 @@ export function ShortsCell({
           embed ? 'bottom-20 right-2 gap-4' : 'bottom-24 right-2.5 gap-5 md:right-4'
         }`}
       >
-        <Link
-          href={`/users/${item.uploader.handle}`}
-          className="mb-0.5 rounded-full ring-2 ring-white/90 drop-shadow-lg transition hover:ring-accent-400"
-          aria-label={item.uploader.displayName}
-        >
-          <Avatar name={item.uploader.displayName} src={item.uploader.avatarUrl} size={embed ? 'md' : 'lg'} />
-        </Link>
+        {onOpenAuthor ? (
+          <button
+            type="button"
+            onClick={onOpenAuthor}
+            className="mb-0.5 rounded-full ring-2 ring-white/90 drop-shadow-lg transition hover:scale-105 hover:ring-white active:scale-95"
+            aria-label={item.uploader.displayName}
+          >
+            <Avatar name={item.uploader.displayName} src={item.uploader.avatarUrl} size={embed ? 'md' : 'lg'} />
+          </button>
+        ) : (
+          <Link
+            href={`/users/${item.uploader.handle}`}
+            className="mb-0.5 rounded-full ring-2 ring-white/90 drop-shadow-lg transition hover:ring-white"
+            aria-label={item.uploader.displayName}
+          >
+            <Avatar name={item.uploader.displayName} src={item.uploader.avatarUrl} size={embed ? 'md' : 'lg'} />
+          </Link>
+        )}
         <RailButton
           label={t('like')}
           count={likeCount}
@@ -513,7 +513,7 @@ export function ShortsCell({
           icon={
             <Bookmark
               className={`${embed ? 'h-7 w-7' : 'h-8 w-8'} transition ${
-                favorited ? 'fill-amber-400 text-amber-400' : 'fill-white text-white'
+                favorited ? 'fill-white text-white' : 'fill-white/70 text-white/70'
               }`}
             />
           }
@@ -548,12 +548,22 @@ export function ShortsCell({
         </button>
       </div>
 
-      {/* Caption overlay: uploader + date, expandable description, counts */}
+      {/* Caption overlay: uploader + date, expandable description, counts.
+          The subtitle cue lives INSIDE this container, above the text block —
+          it rides up automatically with the caption height, so the two can
+          never overlap. */}
       <div
         className={`pointer-events-none absolute inset-x-0 bottom-0 z-[5] bg-gradient-to-t from-black/80 via-black/35 to-transparent pl-4 pr-16 ${
           embed ? 'pb-5 pt-14' : 'pb-8 pt-20'
         }`}
       >
+        {cueText && (
+          <div className="pointer-events-none mb-3 flex justify-center px-2">
+            <span className="max-w-full whitespace-pre-wrap rounded-md bg-black/60 px-3 py-1.5 text-center text-[15px] font-medium leading-snug text-white">
+              {cueText}
+            </span>
+          </div>
+        )}
         <div className="pointer-events-auto max-w-xl space-y-1.5 text-white">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <Link

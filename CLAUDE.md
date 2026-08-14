@@ -279,9 +279,11 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   only at active ±2 (decoder windowing is correctness, not perf), muted-first autoplay with
   persisted unmute (`localStorage shorts:sound`) + play()-rejection tap-to-play fallback, keyset
   `createdAt|id` / hot `o:<n>` cursors (lib/video/shorts-queries.ts). Member upload =
-  `/api/shorts/upload` (raw-body protocol, 500 MB/5 min caps, own 2 GB/day ledger, faststart remux);
-  publish = POST `/api/shorts` re-validating echoed keys (shape + on-disk + not-attached-elsewhere)
-  and ffprobe-ing REAL duration when available (client value is advisory). Views count ONLY via the
+  `/api/shorts/upload` (raw-body protocol; **NO limits by product decision** — no size cap, no
+  duration cap, no daily byte budget, no per-day publish cap; only a 30/min burst limiter. Do NOT
+  reintroduce caps. `sizeBytes` clamps at int32 max; faststart remux, skipped >2GB as a perf guard);
+  publish = POST `/api/shorts` re-validating echoed keys (shape + on-disk + not-attached-elsewhere);
+  ffprobe only CORRECTS durationSec metadata (client value is the fallback). Views count ONLY via the
   deduped `/api/shorts/[id]/view` (VideoView sessionHash; the long-video +1-per-open ping 404s
   shorts — viewCount ranks the hot feed). AI 文案润色 lives in `lib/video/shorts-caption.ts`,
   SERVER-ONLY (its extractJsonObject chain reaches yauzl/node:crypto — client components import
@@ -317,13 +319,58 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   **内容来源** (migration `20260813150000_add_short_origin`): `originType original|repost` +
   `sourceUrl/sourceAuthor` — 搬运 REQUIRES both (server 400 `source_required`); shown in the cell
   meta + the 详情 panel. **Feed desktop layout is 抖音-style**: left swipe feed + right
-  `ShortsSidePanel` (详情 | 评论 tabs, follows the active item; comments = the same
-  CommentSection); mobile keeps the bottom-sheet drawer (`ShortsCommentsDrawer`, which also has a
-  `variant="fixed"` body-portal form the embedded players use for in-place 评论). Nav renames:
+  `ShortsSidePanel` (详情 | 评论 | TA 的作品 tabs, follows the active item; comments = the same
+  CommentSection; works = `ShortsAuthorWorks`, fed by `GET /api/shorts?uploader=<handle>`). ALL
+  shorts overlays (评论 sheet/panel, TA 的作品) ride the shared `HostPanel` shell: **transparent
+  click-catcher, NO scrim** (a black/40 scrim grayed the video — user rejected it), sliding from
+  INSIDE the player container; hosts wrap conditional renders in `<AnimatePresence>` for the exit
+  slide. Avatar click opens TA 的作品 (NOT the profile — profile link lives in the panel header);
+  subtitle cue renders INSIDE the caption gradient container above the text block so it rides up
+  with the caption and can never overlap it. Embed fullscreen is a TOGGLE tracked via
+  `fullscreenchange` (wheel/touch listeners live on the fullscreened element, so 上下刷 works in
+  fullscreen; ↑/↓/M added while fullscreen). Nav renames:
   Skills Center→Skills, Geek Hub→Videos; `/videos` DEFAULTS to the Shorts tab (Geek Videos =
   `?tab=videos` — pagination/breadcrumbs must carry it). Shorts CTAs are NEUTRAL (zinc/white
   solids) — the user explicitly rejected accent-blue "AI-looking" buttons; homepage shorts header
   has view-all ONLY (no upload button).
+- **首页 (signed-in home) is 黑白 by contract**: `app/_components/CommunityHome.tsx`. Band order is
+  hero (greeting + 今日 figures, **GitHub 热榜**, shorts player) → 社区此刻 → 热门 Skills → 热门视频;
+  热门 Skills deliberately sits BELOW 社区此刻 (it used to own the hero-left slot the 热榜 now has).
+  The page carries **no accent colour of its own** — the only saturated pixels are the video frames
+  and GitHub's per-language dot, both of which are data. Do not reintroduce tinted icon chips
+  (`bg-accent-500/15` + icon), accent link colours, blurred colour glows, or hue-per-category pills;
+  that combination is exactly what the user rejected as "太 AI". `HeroBackdrop` is now colourless
+  (hairline grid + neutral overhead light + an inlined feTurbulence grain tile; the light-mode
+  gradient MUST keep its `dark:hidden` or it washes out the dark hero). `SectionHeader` closes with
+  a hairline rule instead of a chip. **No `contain: paint` on the hero section** — paint containment
+  makes it a containing block for `position: fixed` descendants, the same trap as `card-hover`'s
+  transform. De-colouring reached shared components on purpose (`Avatar` default tone + new
+  `neutral` tone, `SourceBadge`/`VisibilityBadge`/`TokenCostBadge`, `NotificationBell`,
+  `DocCover`'s opt-in `mono` prop, `VideoCard` hover damped to 1.02/-2px): leaving any of them
+  would put coloured chips back inside the homepage's own sections. `tailwind.config.ts`'s
+  `accent-*` ramp and the `--accent` CSS var are intentionally UNCHANGED — the other ~66 routes
+  still use them.
+- **GitHub 热榜**: `lib/github-trending-shared.ts` is the pure, unit-tested half (types +
+  `parseTrendingHtml`, dependency-free regex — one trending page is ~650 KB and gets re-parsed on
+  every cache miss, so no jsdom; it drops `<svg>` blocks WHOLE before tag-stripping because the
+  path `d` attributes are full of digits that would otherwise be parsed as the star count).
+  `lib/github-trending.ts` is server-only: `egressFetch` (github.com is EXTERNAL, so it tunnels
+  through the corporate proxy on the intranet), a per-period module cache, in-flight dedupe, a
+  2 MB body cap, and a 60 s failure backoff — without that backoff an unreachable github.com would
+  fire a fresh 15 s request on every homepage render. **Refresh cadence is `GITHUB_TRENDING_TTL_HOURS`,
+  default 12** (≈2 upstream hits/day/window, 6 across all three; trending itself only moves daily,
+  so a short TTL buys nothing and just spends the outbound budget). Past the TTL the cached list is
+  still served INSTANTLY while a refresh runs behind it; a request only waits on github.com again
+  past `max(24 h, 2 × TTL)`, so raising the TTL can never put a blocking fetch back on the
+  homepage's critical path. The RSC calls
+  `getTrendingWithin('daily', 1500)` (the homepage is `force-dynamic`, so a cold cache must NOT
+  block the render; past the budget it returns null and the client leaf fetches from
+  `/api/github-trending`) plus `warmTrending()` for the other two windows. `GITHUB_TOKEN` is
+  optional and only unlocks REST enrichment (topics/license/issues) — unauthenticated is 60
+  req/hour and one full refresh costs up to 75, so it is skipped entirely when unset and the row
+  must look complete without it. Contributor avatars are deliberately NOT rendered: the intranet
+  cannot reach `avatars.githubusercontent.com`. i18n namespace `github_trending`; star/fork totals
+  are formatted `en-US` on purpose so a 中文 viewer sees `12.4k` like github.com, not `1.2万`.
 - **表情包 (Stickers, migration `20260807150000_add_stickers_polls`)**: WeChat-style personal
   meme library, ONE integration pair — the 😊 button in `RichTextEditor`'s toolbar (every
   composer gets it) and a src-prefix branch in `MarkdownRenderer`. `UserSticker` = per-user
@@ -416,6 +463,18 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   (0-based inclusive, PDF only) record the chapter↔page span. Uploaded `.html` is served
   `text/plain` from the file route (rendering stored user HTML on-origin = XSS). 选中翻译 via
   `/api/library/translate` (中↔英 auto-direction, LLM).
+  - **`ReaderContent` MUST memoize the `dangerouslySetInnerHTML` OBJECT, not just the string**
+    (`const inner = useMemo(() => ({ __html: … }), [html])`). React 18.3's `updateProperties` diffs
+    props by IDENTITY (`nextProp !== lastProp`) and then calls `setInnerHTMLImpl` unconditionally —
+    it never compares `__html`. A fresh `{ __html }` literal per render therefore rebuilt every
+    child of the `<article>` on EVERY re-render, including every scroll frame (progress tracking
+    sets state per frame). That single line was the root cause of the whole multi-round reader
+    saga: text could not be selected (the nodes under the pointer were replaced mid-drag),
+    highlights "flashed and disappeared", and anchored Ranges silently detached so the browser
+    painted nothing. Confirmed in Chrome by trapping the `innerHTML` setter — it fired from
+    React's `commitUpdate` right after mouseup. Do not "simplify" it back to an inline literal.
+    (`CodeViewer.tsx` and `app/skills/[slug]/FilesTab.tsx` still have the inline form — same latent
+    bug, lower stakes.)
   - **Text selection in the reader is the BROWSER'S, untouched.** There is deliberately NO floating
     selection toolbar, no hover hit-testing, no `mousedown`/`mousemove` handler and nothing rendered
     over the article. A `fixed` panel that parks on the text and `preventDefault`s mousedown so its
@@ -472,8 +531,12 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   `messages/{zh-CN,en,fr}.json` (zh-CN is the source of truth; all three files must stay at
   **key parity** — the merge script in the i18n work checks this, and a missing key renders the
   raw key path in prod). Read via `useTranslations('<ns>')` (client) / `await getTranslations('<ns>')`
-  (server RSC); the locale comes from the `locale` cookie (设置 → 语言) with Accept-Language as the
-  first-visit default (`i18n/request.ts`). Rules that cost real time:
+  (server RSC); the locale comes from the `locale` cookie with Accept-Language as the
+  first-visit default (`i18n/request.ts`). The cookie is written by TWO surfaces —
+  `components/LanguageSwitcher.tsx` (navbar, left of the avatar; the discoverable one) and
+  设置 → 语言 — both through `lib/locales.ts`, which is the import-free single source of the
+  locale list (`LOCALE_OPTIONS`/`SUPPORTED_LOCALES`, re-exported by `i18n/request.ts`) so a new
+  language is added in ONE place. Rules that cost real time:
   - **`labels` is the shared taxonomy namespace** — `docType.*`, `discussionCategory.*`,
     `eventKind.*`, `eventMode.*`, `visibility.*`, `skillStatus.*`, `libCategory.*`. The Chinese
     label maps still in `lib/**` (`DOC_TYPE_LABELS`, `CATEGORY_META`, `EVENT_KINDS`…) are kept for

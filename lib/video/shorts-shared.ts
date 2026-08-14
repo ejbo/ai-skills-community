@@ -5,15 +5,13 @@
 // (server-only — its graph reaches yauzl/node:crypto via lib/skill-assist).
 
 // ── Limits ───────────────────────────────────────────────────────────────────
-/** Per-file cap for a short's source video (member upload; admin board is 5 GB). */
-export const MAX_SHORT_VIDEO_BYTES = 500 * 1024 * 1024; // 500 MB
-/** Per-file cap for the auto-captured poster frame. */
+// 明确的产品决定（用户拍板）：短视频上传 NO caps — no duration limit, no file-size
+// limit, no daily byte budget. Do not reintroduce them. The stream saver still
+// needs a number, so the "cap" is effectively-infinite.
+export const MAX_SHORT_VIDEO_BYTES = Number.MAX_SAFE_INTEGER;
+/** Per-file cap for the auto-captured poster frame (never hit — ~100KB JPEGs). */
 export const MAX_SHORT_POSTER_BYTES = 10 * 1024 * 1024; // 10 MB
-/** Shorts are short: reject sources longer than this (client-probed, clamped). */
-export const MAX_SHORT_DURATION_SEC = 300; // 5 min
 export const MAX_SHORT_CAPTION_CHARS = 500;
-/** Rolling per-user daily upload budget for shorts (separate from 讨论区's). */
-export const SHORT_BYTES_PER_DAY = 2 * 1024 * 1024 * 1024; // 2 GB
 
 // ── Storage-key validation ───────────────────────────────────────────────────
 // Upload responses hand the client a storage key which it echoes back into

@@ -21,6 +21,7 @@
     "logout": "Sign out",
     "profile": "Profile",
     "settings": "Settings",
+    "language": "Language",
     "search_placeholder": "Search everything…",
     "search_hint": "Search skills, books, discussions, videos, users…",
     "search_empty": "No matching results",
@@ -45,7 +46,6 @@
   "home": {
     "trending": "Trending this week",
     "welcome_back": "Welcome back, {name}",
-    "community_kicker": "AI Community",
     "hot_skills": "Trending Skills",
     "hot_videos": "Trending Geek Videos",
     "shorts_title": "Featured shorts",
@@ -92,13 +92,34 @@
     "topic_meta": "{replies, plural, one {# reply} other {# replies}} · {views, plural, one {# view} other {# views}}",
     "doc_read_minutes": "~{min} min read",
     "rank_sr": "Trending rank {rank}",
-    "briefing_title": "Today's briefing",
-    "briefing_new_label": "New today:",
-    "briefing_skills": "{count, plural, one {# skill} other {# skills}}",
-    "briefing_posts": "{count, plural, one {# post} other {# posts}}",
-    "briefing_shorts": "{count, plural, one {# short} other {# shorts}}",
     "briefing_events_label": "Upcoming:",
-    "briefing_no_events": "no events yet"
+    "briefing_no_events": "no events yet",
+    "stat_new_skills": "New skills",
+    "stat_new_posts": "New posts",
+    "stat_new_shorts": "New shorts"
+  },
+  "github_trending": {
+    "title": "GitHub Trending",
+    "sub": "What open source is looking at right now",
+    "period_daily": "Today",
+    "period_weekly": "This week",
+    "period_monthly": "This month",
+    "gained_daily": "{count, plural, one {# star today} other {# stars today}}",
+    "gained_weekly": "{count, plural, one {# star this week} other {# stars this week}}",
+    "gained_monthly": "{count, plural, one {# star this month} other {# stars this month}}",
+    "stars_sr": "{count, plural, one {# star} other {# stars}}",
+    "forks_sr": "{count, plural, one {# fork} other {# forks}}",
+    "issues_sr": "{count, plural, one {# open issue} other {# open issues}}",
+    "rank_sr": "Rank {rank}",
+    "updated": "Updated {time}",
+    "cached": "Cached",
+    "view_all": "View on GitHub",
+    "empty": "Nothing trending in this window",
+    "error_title": "GitHub Trending is unavailable",
+    "error_hint": "This server cannot reach github.com right now. Try again in a moment.",
+    "retry": "Retry",
+    "loading": "Loading GitHub Trending",
+    "count": "{count, plural, one {# repo} other {# repos}}"
   },
   "browse": {
     "title": "Browse Skills",
@@ -2295,7 +2316,7 @@
     "close": "Close",
     "upload_title": "Upload a short",
     "pick_video": "Choose a video file",
-    "pick_hint": "MP4 / WebM / MOV, up to {minutes} min and {mb} MB",
+    "pick_hint": "MP4 / WebM / MOV, no size or duration limits",
     "repick": "Choose another",
     "landscape_hint": "Landscape video detected — vertical (9:16) looks best in the feed",
     "caption_label": "Description",
@@ -2337,6 +2358,11 @@
     "source_author_label": "Original author",
     "source_author_placeholder": "Original author's name",
     "err_source_required": "Reposts must include the original link and author",
-    "panel_info": "Details"
+    "panel_info": "Details",
+    "panel_works": "Their videos",
+    "works_empty": "No other videos yet",
+    "works_playing": "Playing",
+    "author_profile": "View profile",
+    "exit_fullscreen": "Exit fullscreen"
   }
 }

@@ -6,11 +6,8 @@ import {
   CalendarDays,
   Clapperboard,
   Flame,
-  Megaphone,
   MessagesSquare,
-  Newspaper,
   Play,
-  Sparkles,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { getLocale } from 'next-intl/server';
@@ -19,12 +16,13 @@ import { DISCOVERABLE_SKILL_WHERE, SKILL_CARD_SELECT } from '@/lib/skill-queries
 import { SkillCard } from '@/components/SkillCard';
 import { VideoGrid } from '@/components/video/VideoGrid';
 import { ShortsShowcase } from './home/ShortsShowcase';
+import { GithubTrending } from './home/GithubTrending';
 import { trendingVideos } from '@/lib/video/queries';
 import { annotateShortsViewer, featuredShorts, toShortView } from '@/lib/video/shorts-queries';
+import { getTrendingWithin, warmTrending } from '@/lib/github-trending';
 import { listTopics } from '@/lib/discussion-queries';
 import { listEvents } from '@/lib/event-queries';
 import { browseDocs } from '@/lib/library-queries';
-import { CategoryChip } from '@/app/discussion/_components/badges';
 import { EventTimeCard } from '@/app/events/_components/EventTime';
 import { DocCover } from '@/components/library/DocCover';
 import { getTranslations } from 'next-intl/server';
@@ -38,14 +36,26 @@ interface HomeUser {
   isAdmin: boolean;
 }
 
-/** Community home shown to signed-in users at `/`. */
+/**
+ * Community home shown to signed-in users at `/`.
+ *
+ * Visual contract: ink on paper. The page carries no accent colour of its own,
+ * so the only saturated pixels are the ones that ARE the content — the video
+ * frames in the shorts player and GitHub's per-language dot. Everything else is
+ * zinc, hairlines and tabular numerals. Do not reintroduce tinted icon chips,
+ * accent link colours or blurred colour glows; that combination is what made
+ * this page read as a template.
+ *
+ * Band order, top to bottom: hero (greeting + today's figures, GitHub 热榜,
+ * shorts player), 社区此刻, 热门 Skills, 热门视频.
+ */
 export async function CommunityHome({ user }: { user: HomeUser }) {
   const t = await getTranslations('home');
   const tl = await getTranslations('labels');
   const ts = await getTranslations('shorts');
   const locale = await getLocale();
 
-  // 今日简报 counts from the server's local midnight.
+  // 今日 figures count from the server's local midnight.
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
@@ -60,6 +70,7 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
     newSkillsToday,
     newPostsToday,
     newShortsToday,
+    trending,
   ] = await Promise.all([
     prisma.skill.findMany({
       where: DISCOVERABLE_SKILL_WHERE,
@@ -84,7 +95,15 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
     prisma.video.count({
       where: { isShort: true, status: 'published', deletedAt: null, createdAt: { gte: todayStart } },
     }),
+    // Bounded: github.com sits behind a corporate proxy on the intranet deploy
+    // and this page is force-dynamic. Past the budget we render without it and
+    // the client leaf picks the data up from /api/github-trending.
+    getTrendingWithin('daily', 1500),
   ]);
+
+  // Pull the other two windows into the server cache so the day/week/month
+  // switch is instant. No-ops while the cache is warm or the last fetch failed.
+  warmTrending();
 
   // Player payload: viewer like/favorite flags + identity trim, same contract
   // as the 随刷 feed page.
@@ -98,171 +117,95 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
   const events = eventsRes.items.filter((e) => !e.cancelled).slice(0, 3);
   const docs = docsRes.items;
   const panelCount = [topics.length, events.length, docs.length].filter((n) => n > 0).length;
-  const panelCols =
-    panelCount >= 3 ? 'lg:grid-cols-3' : panelCount === 2 ? 'lg:grid-cols-2' : '';
+  const panelCols = panelCount >= 3 ? 'lg:grid-cols-3' : panelCount === 2 ? 'lg:grid-cols-2' : '';
+
+  const nf = new Intl.NumberFormat(locale);
+  const today = new Intl.DateTimeFormat(locale, {
+    month: 'long',
+    day: 'numeric',
+    weekday: 'short',
+  }).format(new Date());
 
   return (
     <div>
-      {/* Hero band v3 — LEFT: greeting → 今日简报 → 热门 Skills (2×2);
-          RIGHT: 刷视频 player stretching the full band height (welcome top to
-          skills bottom). One grid row with default stretch does the height. */}
-      <section className="relative overflow-hidden border-b border-zinc-200 dark:border-zinc-800">
-        <HeroBackdrop intensity="soft" />
-        <div className="container relative py-6 md:py-8">
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr),370px] xl:grid-cols-[minmax(0,1fr),400px]">
-            {/* LEFT column */}
-            <div className="min-w-0">
-              <p className="animate-rise text-xs font-semibold uppercase tracking-[0.2em] text-accent-600 dark:text-accent-400">
-                {t('community_kicker')}
-              </p>
-              <h1
-                className="animate-rise mt-1.5 text-2xl font-semibold tracking-tight md:text-3xl"
-                style={{ animationDelay: '60ms' }}
-              >
+      {/* HERO BAND. Two columns split by a rule, not by a gap: greeting and the
+          GitHub list stack on the left, the shorts player runs the full height
+          on the right. The band gets a definite height at lg so the list has
+          something to scroll inside; below lg it is three stacked blocks. */}
+      {/* No `contain: paint` here, tempting as it is for the grain layer: paint
+          containment makes this section a containing block for `position: fixed`
+          descendants, which is the same trap that broke lightbox overlays under
+          `card-hover`'s transform. */}
+      <section className="relative overflow-hidden border-b border-zinc-200/90 dark:border-zinc-800">
+        <HeroBackdrop />
+        <div className="container relative py-7 md:py-9">
+          <div className="grid gap-6 lg:h-[clamp(580px,calc(100vh-200px),780px)] lg:grid-cols-[minmax(0,1fr),372px] lg:grid-rows-[auto,minmax(0,1fr)] lg:gap-x-0 lg:gap-y-6 xl:grid-cols-[minmax(0,1fr),400px]">
+            {/* Greeting + today's figures */}
+            <div className="min-w-0 lg:col-start-1 lg:row-start-1 lg:pr-8">
+              <h1 className="text-2xl font-semibold leading-tight tracking-[-0.02em] md:text-[28px]">
                 {t('welcome_back', { name: user.displayName })}
               </h1>
-              <p
-                className="animate-rise mt-1.5 max-w-xl text-sm text-muted md:text-base"
-                style={{ animationDelay: '120ms' }}
-              >
-                {t('community_sub_v2')}
-              </p>
+              <p className="mt-2 max-w-[52ch] text-sm text-muted">{t('community_sub_v2')}</p>
 
-              {/* 今日简报 — directly under the welcome copy */}
-              <div className="animate-rise mt-5" style={{ animationDelay: '160ms' }}>
-                <div className="surface rounded-2xl p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="flex items-center gap-2 text-sm font-semibold">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-accent-500/15 text-accent-600 dark:text-accent-400">
-                        <Newspaper className="h-3.5 w-3.5" />
-                      </span>
-                      {t('briefing_title')}
-                    </p>
-                    <span className="text-xs text-muted">
-                      {new Intl.DateTimeFormat(locale, {
-                        month: 'long',
-                        day: 'numeric',
-                        weekday: 'short',
-                      }).format(new Date())}
-                    </span>
+              <div className="mt-5 border-y border-zinc-200/90 py-3.5 dark:border-zinc-800">
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                  <div className="flex divide-x divide-zinc-200/90 dark:divide-zinc-800">
+                    <Figure value={nf.format(newSkillsToday)} label={t('stat_new_skills')} />
+                    <Figure value={nf.format(newPostsToday)} label={t('stat_new_posts')} />
+                    <Figure value={nf.format(newShortsToday)} label={t('stat_new_shorts')} />
                   </div>
-                  <div className="mt-3 space-y-2 text-sm">
-                    <div className="flex items-start gap-2">
-                      <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-500" />
-                      <p className="min-w-0 text-zinc-700 dark:text-zinc-300">
-                        <span className="text-muted">{t('briefing_new_label')}</span>{' '}
-                        {t('briefing_skills', { count: newSkillsToday })} ·{' '}
-                        {t('briefing_posts', { count: newPostsToday })} ·{' '}
-                        {t('briefing_shorts', { count: newShortsToday })}
-                      </p>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <CalendarDays className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-500" />
-                      {events.length > 0 ? (
-                        <Link
-                          href={`/events/${events[0].id}`}
-                          className="min-w-0 truncate text-zinc-700 hover:text-accent-600 hover:underline dark:text-zinc-300 dark:hover:text-accent-400"
-                        >
-                          <span className="text-muted">{t('briefing_events_label')}</span>{' '}
-                          {events[0].title}
-                        </Link>
-                      ) : (
-                        <p className="text-muted">
-                          {t('briefing_events_label')} {t('briefing_no_events')}
-                        </p>
-                      )}
-                    </div>
-                    {announcement && (
-                      <div className="flex items-start gap-2">
-                        <Megaphone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-500" />
-                        <Link
-                          href={`/announcements/${announcement.id}`}
-                          className="min-w-0 truncate text-zinc-700 hover:text-accent-600 hover:underline dark:text-zinc-300 dark:hover:text-accent-400"
-                        >
-                          <span className="text-muted">{t('announcement_label')}</span>{' '}
-                          {announcement.title}
-                        </Link>
-                      </div>
-                    )}
-                  </div>
+                  <span className="shrink-0 text-xs text-muted">{today}</span>
                 </div>
-              </div>
 
-              {/* 热门 Skills — 2×2 inside the left column */}
-              <div className="mt-8">
-                <SectionHeader
-                  icon={<Flame className="h-4 w-4" />}
-                  title={t('hot_skills')}
-                  href="/skills"
-                  linkLabel={t('view_all')}
-                />
-                {skills.length === 0 ? (
-                  <div className="surface rounded-2xl px-6 py-12 text-center text-sm text-muted">
-                    {t('no_skills_yet')}{' '}
-                    <Link
-                      href="/skills/new"
-                      className="text-accent-600 hover:underline dark:text-accent-400"
-                    >
-                      {t('be_first')}
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    {skills.map((s, i) => (
-                      <Reveal key={s.id} delay={(i % 2) * 0.06} className="h-full">
-                        <div className="group relative h-full">
-                          <span className="sr-only">{t('rank_sr', { rank: i + 1 })}</span>
-                          <RankBadge rank={i + 1} />
-                          <SkillCard
-                            slug={s.slug}
-                            name={s.name}
-                            summary={s.summary}
-                            sourceType={s.sourceType}
-                            visibility={s.visibility}
-                            author={s.author}
-                            updatedAt={s.updatedAt}
-                            stats={{
-                              downloads: s.downloadCount,
-                              likes: s.likeCount,
-                              rating: s.avgRating,
-                              reviewCount: s.reviewCount,
-                              tokens: s.tokenCostEstimate,
-                            }}
-                          />
-                        </div>
-                      </Reveal>
-                    ))}
+                {(events.length > 0 || announcement) && (
+                  <div className="mt-3.5 space-y-1.5">
+                    {events.length > 0 && (
+                      <BriefLine
+                        label={t('briefing_events_label')}
+                        href={`/events/${events[0].id}`}
+                        text={events[0].title}
+                      />
+                    )}
+                    {announcement && (
+                      <BriefLine
+                        label={t('announcement_label')}
+                        href={`/announcements/${announcement.id}`}
+                        text={announcement.title}
+                      />
+                    )}
                   </div>
                 )}
               </div>
             </div>
 
-            {/* RIGHT column — 刷视频, full band height (same unified player as
-                the 随刷 feed; ShortsShowcase only adds embed chrome) */}
-            <div className="animate-rise flex min-w-0 flex-col" style={{ animationDelay: '200ms' }}>
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <h2 className="flex items-center gap-2.5 text-xl font-semibold tracking-tight">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-accent-500/15 text-accent-600 dark:text-accent-400">
-                    <Play className="h-4 w-4" />
-                  </span>
+            {/* GitHub 热榜 — the slot 热门 Skills used to occupy. */}
+            <div className="min-w-0 lg:col-start-1 lg:row-start-2 lg:min-h-0 lg:pr-8">
+              <GithubTrending initial={trending} className="h-[440px] lg:h-full" />
+            </div>
+
+            {/* Shorts player, full band height on the right of the rule. */}
+            <div className="flex min-w-0 flex-col lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:min-h-0 lg:border-l lg:border-zinc-200/90 lg:pl-8 dark:lg:border-zinc-800">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
+                  <Play className="h-4 w-4 text-zinc-400 dark:text-zinc-500" aria-hidden />
                   {t('shorts_title')}
                 </h2>
                 <Link
                   href="/videos/shorts"
-                  className="group flex shrink-0 items-center gap-1 text-sm font-medium text-accent-600 transition hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300"
+                  className="group flex shrink-0 items-center gap-1 text-xs font-medium text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
                 >
                   {t('view_all')}
-                  <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
+                  <ArrowRight className="h-3 w-3" aria-hidden />
                 </Link>
               </div>
               {shortItems.length > 0 ? (
                 <ShortsShowcase
                   items={shortItems}
-                  className="min-h-[520px] flex-1"
+                  className="min-h-[520px] flex-1 lg:min-h-0"
                   currentUser={{ id: user.id, isAdmin: user.isAdmin }}
                 />
               ) : (
-                <div className="surface flex min-h-[520px] flex-1 flex-col items-center justify-center gap-3 rounded-2xl px-6 text-center">
+                <div className="surface flex min-h-[520px] flex-1 flex-col items-center justify-center gap-2 rounded-xl px-6 text-center lg:min-h-0">
                   <p className="text-sm font-medium">{ts('empty_title')}</p>
                   <p className="max-w-xs text-xs text-muted">{ts('empty_hint')}</p>
                 </div>
@@ -272,15 +215,15 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
         </div>
       </section>
 
-      {/* Community now — light list panels, not heavy cards. */}
+      {/* 社区此刻 — list panels, not feature cards. */}
       {panelCount > 0 && (
-        <section className="container pb-10 md:pb-12">
+        <section className="container pb-10 pt-10 md:pb-12 md:pt-12">
           <Reveal>
             <SectionHeader icon={<Activity className="h-4 w-4" />} title={t('community_now')} />
           </Reveal>
           <div className={`grid grid-cols-1 gap-4 ${panelCols}`}>
             {topics.length > 0 && (
-              <Reveal delay={0.05} className="h-full">
+              <Reveal className="h-full">
                 <Panel
                   icon={<MessagesSquare className="h-3.5 w-3.5" />}
                   title={t('panel_topics')}
@@ -288,27 +231,25 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
                   linkLabel={t('go_discussion')}
                 >
                   {topics.map((topic) => (
-                    <Link
-                      key={topic.id}
-                      href={`/discussion/topics/${topic.id}`}
-                      className="block rounded-xl px-2.5 py-2 transition hover:bg-zinc-50 dark:hover:bg-zinc-900/60"
-                    >
+                    <Row key={topic.id} href={`/discussion/topics/${topic.id}`}>
                       <div className="flex items-center gap-2">
                         <span className="min-w-0 flex-1 truncate text-sm font-medium">
                           {topic.title}
                         </span>
-                        <CategoryChip category={topic.categories[0] ?? topic.category} />
+                        <Chip>
+                          {tl(`discussionCategory.${topic.categories[0] ?? topic.category}`)}
+                        </Chip>
                       </div>
                       <p className="mt-0.5 text-xs tabular-nums text-muted">
                         {t('topic_meta', { replies: topic.replyCount, views: topic.viewCount })}
                       </p>
-                    </Link>
+                    </Row>
                   ))}
                 </Panel>
               </Reveal>
             )}
             {events.length > 0 && (
-              <Reveal delay={0.1} className="h-full">
+              <Reveal className="h-full">
                 <Panel
                   icon={<CalendarDays className="h-3.5 w-3.5" />}
                   title={t('panel_events')}
@@ -316,18 +257,12 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
                   linkLabel={t('go_events')}
                 >
                   {events.map((ev) => (
-                    <Link
-                      key={ev.id}
-                      href={`/events/${ev.id}`}
-                      className="block rounded-xl px-2.5 py-2 transition hover:bg-zinc-50 dark:hover:bg-zinc-900/60"
-                    >
+                    <Row key={ev.id} href={`/events/${ev.id}`}>
                       <div className="flex items-center gap-2">
                         <span className="min-w-0 flex-1 truncate text-sm font-medium">
                           {ev.title}
                         </span>
-                        <span className="inline-flex shrink-0 items-center rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-600 dark:text-accent-300">
-                          {tl(`eventKind.${ev.kind}`)}
-                        </span>
+                        <Chip>{tl(`eventKind.${ev.kind}`)}</Chip>
                       </div>
                       <p className="mt-0.5 truncate text-xs text-muted">
                         <EventTimeCard
@@ -339,13 +274,13 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
                         />
                         {ev.city ? ` · ${ev.city}` : ''}
                       </p>
-                    </Link>
+                    </Row>
                   ))}
                 </Panel>
               </Reveal>
             )}
             {docs.length > 0 && (
-              <Reveal delay={0.15} className="h-full">
+              <Reveal className="h-full">
                 <Panel
                   icon={<BookOpen className="h-3.5 w-3.5" />}
                   title={t('panel_library')}
@@ -353,27 +288,26 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
                   linkLabel={t('go_library')}
                 >
                   {docs.map((doc) => (
-                    <Link
-                      key={doc.id}
-                      href={`/library/${doc.slug}`}
-                      className="flex items-center gap-3 rounded-xl px-2.5 py-2 transition hover:bg-zinc-50 dark:hover:bg-zinc-900/60"
-                    >
-                      <DocCover
-                        title={doc.title}
-                        coverUrl={doc.coverUrl}
-                        docType={doc.docType}
-                        className="h-11 w-8 shrink-0 rounded-md"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{doc.title}</p>
-                        <p className="mt-0.5 truncate text-xs text-muted">
-                          {doc.author || doc.siteName || doc.uploader.displayName}
-                          {doc.estReadMinutes > 0
-                            ? ` · ${t('doc_read_minutes', { min: doc.estReadMinutes })}`
-                            : ''}
-                        </p>
+                    <Row key={doc.id} href={`/library/${doc.slug}`}>
+                      <div className="flex items-center gap-3">
+                        <DocCover
+                          title={doc.title}
+                          coverUrl={doc.coverUrl}
+                          docType={doc.docType}
+                          mono
+                          className="h-11 w-8 shrink-0 rounded"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">{doc.title}</p>
+                          <p className="mt-0.5 truncate text-xs text-muted">
+                            {doc.author || doc.siteName || doc.uploader.displayName}
+                            {doc.estReadMinutes > 0
+                              ? ` · ${t('doc_read_minutes', { min: doc.estReadMinutes })}`
+                              : ''}
+                          </p>
+                        </div>
                       </div>
-                    </Link>
+                    </Row>
                   ))}
                 </Panel>
               </Reveal>
@@ -382,7 +316,56 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
         </section>
       )}
 
-      {/* Trending geek videos */}
+      {/* 热门 Skills — moved below 社区此刻, now full width. */}
+      <section className="container pb-12 md:pb-14">
+        <Reveal>
+          <SectionHeader
+            icon={<Flame className="h-4 w-4" />}
+            title={t('hot_skills')}
+            href="/skills"
+            linkLabel={t('view_all')}
+          />
+        </Reveal>
+        {skills.length === 0 ? (
+          <div className="surface rounded-xl px-6 py-12 text-center text-sm text-muted">
+            {t('no_skills_yet')}{' '}
+            <Link
+              href="/skills/new"
+              className="font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-2 dark:text-zinc-100 dark:decoration-zinc-600"
+            >
+              {t('be_first')}
+            </Link>
+          </div>
+        ) : (
+          <Reveal>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {skills.map((s, i) => (
+                <div key={s.id} className="h-full">
+                  <span className="sr-only">{t('rank_sr', { rank: i + 1 })}</span>
+                  <SkillCard
+                    slug={s.slug}
+                    name={s.name}
+                    summary={s.summary}
+                    sourceType={s.sourceType}
+                    visibility={s.visibility}
+                    author={s.author}
+                    updatedAt={s.updatedAt}
+                    stats={{
+                      downloads: s.downloadCount,
+                      likes: s.likeCount,
+                      rating: s.avgRating,
+                      reviewCount: s.reviewCount,
+                      tokens: s.tokenCostEstimate,
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          </Reveal>
+        )}
+      </section>
+
+      {/* 热门视频 */}
       {videos.length > 0 && (
         <section className="container pb-16">
           <Reveal>
@@ -393,7 +376,7 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
               linkLabel={t('view_all')}
             />
           </Reveal>
-          <Reveal delay={0.05}>
+          <Reveal>
             <VideoGrid videos={videos} />
           </Reveal>
         </section>
@@ -402,7 +385,38 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
   );
 }
 
-/** Compact list panel for the 社区此刻 band: header, rows, footer link. */
+/** One of today's three figures. Mono digits, plain-text label. */
+function Figure({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="px-4 first:pl-0 last:pr-0">
+      <div className="font-mono text-[22px] font-medium leading-none tabular-nums">{value}</div>
+      <div className="mt-1.5 text-[11px] text-muted">{label}</div>
+    </div>
+  );
+}
+
+/** "活动 · <title>" line under the figures. */
+function BriefLine({ label, href, text }: { label: string; href: string; text: string }) {
+  return (
+    <Link href={href} className="group flex min-w-0 items-baseline gap-2 text-xs">
+      <span className="shrink-0 text-muted">{label}</span>
+      <span className="min-w-0 truncate decoration-zinc-300 underline-offset-2 group-hover:underline dark:decoration-zinc-600">
+        {text}
+      </span>
+    </Link>
+  );
+}
+
+/** Neutral taxonomy chip. Replaces the hue-per-category pills on this page. */
+function Chip({ children }: { children: ReactNode }) {
+  return (
+    <span className="inline-flex shrink-0 items-center rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+      {children}
+    </span>
+  );
+}
+
+/** Compact list panel for the 社区此刻 band: header, ruled rows, footer link. */
 function Panel({
   icon,
   title,
@@ -417,38 +431,30 @@ function Panel({
   children: ReactNode;
 }) {
   return (
-    <div className="surface flex h-full flex-col rounded-2xl p-2">
-      <div className="flex items-center gap-2 px-2.5 pb-1.5 pt-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-accent-500/15 text-accent-600 dark:text-accent-400">
-          {icon}
-        </span>
+    <div className="surface flex h-full flex-col overflow-hidden rounded-xl">
+      <div className="flex items-center gap-2 border-b border-zinc-100 px-4 py-2.5 dark:border-zinc-800/80">
+        <span className="text-zinc-400 dark:text-zinc-500">{icon}</span>
         <h3 className="text-sm font-semibold">{title}</h3>
       </div>
-      <div className="flex-1">{children}</div>
+      <div className="flex-1 divide-y divide-zinc-100 dark:divide-zinc-800/70">{children}</div>
       <Link
         href={href}
-        className="group mt-1 flex items-center gap-1 rounded-xl px-2.5 py-2 text-xs font-medium text-accent-600 transition hover:bg-accent-500/5 dark:text-accent-400"
+        className="group flex items-center gap-1 border-t border-zinc-100 px-4 py-2.5 text-xs font-medium text-zinc-600 transition-colors hover:text-zinc-900 dark:border-zinc-800/80 dark:text-zinc-400 dark:hover:text-zinc-100"
       >
         {linkLabel}
-        <ArrowRight className="h-3 w-3 transition-transform duration-200 group-hover:translate-x-0.5" />
+        <ArrowRight className="h-3 w-3" aria-hidden />
       </Link>
     </div>
   );
 }
 
-function RankBadge({ rank }: { rank: number }) {
-  const top3 = rank <= 3;
+function Row({ href, children }: { href: string; children: ReactNode }) {
   return (
-    // pointer-events-none keeps the card fully clickable; group-hover mirrors .card-hover's lift.
-    <span
-      aria-hidden
-      className={`pointer-events-none absolute -left-2 -top-2 z-10 grid h-7 w-7 place-items-center rounded-full text-xs font-bold tabular-nums ring-2 ring-white transition-transform duration-[180ms] group-hover:-translate-y-0.5 dark:ring-zinc-950 ${
-        top3
-          ? 'bg-accent-500 text-white'
-          : 'bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300'
-      }`}
+    <Link
+      href={href}
+      className="block px-4 py-2.5 transition-colors hover:bg-zinc-50 dark:hover:bg-white/[0.03]"
     >
-      {rank}
-    </span>
+      {children}
+    </Link>
   );
 }

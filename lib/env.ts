@@ -25,6 +25,20 @@ const optStr = () =>
       return t ? t : undefined;
     });
 
+/**
+ * Numeric hours with a default and a sane range. A typo (`12h`, `twelve`) or an
+ * out-of-range value falls back to the default instead of failing the whole env
+ * parse, which on this box would take the app down over a cosmetic knob.
+ */
+const hours = (def: number, min: number, max: number) =>
+  z
+    .string()
+    .optional()
+    .transform((v) => {
+      const n = Number.parseFloat((v ?? '').trim());
+      return Number.isFinite(n) && n >= min && n <= max ? n : def;
+    });
+
 const schema = z.object({
   DATABASE_URL: z.string().url(),
   AUTH_SECRET: z.string().min(16),
@@ -105,6 +119,23 @@ const schema = z.object({
 
   INITIAL_ADMIN_EMAIL: z.string().email().default('admin@example.com'),
   INITIAL_ADMIN_PASSWORD: z.string().min(6).default('changeme'),
+
+  /**
+   * Optional PAT for the GitHub 热榜 panel (lib/github-trending.ts). The ranking
+   * itself is scraped and needs no token; the token only unlocks the REST
+   * enrichment step (topics / license / open issues / last push), which is
+   * skipped entirely when unset because the unauthenticated 60 req/hour budget
+   * cannot cover a full refresh of all three periods.
+   */
+  GITHUB_TOKEN: optStr(),
+  /**
+   * How long a fetched 热榜 counts as fresh, in hours. Default 12 = github.com
+   * is hit about twice a day per window. GitHub recomputes trending slowly, so
+   * a short TTL buys nothing and just spends the outbound budget. Raise to 24
+   * for once a day; the panel keeps showing the last good list in between and
+   * says how old it is.
+   */
+  GITHUB_TRENDING_TTL_HOURS: hours(12, 0.25, 168),
 
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_SKILLS_REPO: z

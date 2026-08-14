@@ -8,12 +8,16 @@
 // with an animation lock, wheel/touch/chevron navigation, dots + counter,
 // fullscreen, auto-advance on ended, and play-only-while-on-screen.
 
+import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Maximize2 } from 'lucide-react';
+import { Maximize2, Minimize2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { ShortsCell } from '@/app/videos/shorts/_components/ShortsCell';
 import { ShortsCommentsDrawer } from '@/app/videos/shorts/_components/ShortsCommentsDrawer';
+import { ShortsAuthorWorks } from '@/app/videos/shorts/_components/ShortsAuthorWorks';
+import { HostPanel, PANEL_SCROLL_CLS } from '@/app/videos/shorts/_components/HostPanel';
 import type { ShortsCurrentUser, ShortView } from '@/app/videos/shorts/_components/types';
 
 const SLIDE_MS = 380;
@@ -29,6 +33,7 @@ export function ShortsShowcase({
   currentUser?: ShortsCurrentUser | null;
 }) {
   const t = useTranslations('shorts');
+  const router = useRouter();
 
   const [idx, setIdx] = useState(0);
   const [dir, setDir] = useState(1);
@@ -36,6 +41,8 @@ export function ShortsShowcase({
   const [reduceMotion, setReduceMotion] = useState(false);
   const [inView, setInView] = useState(false);
   const [commentsFor, setCommentsFor] = useState<ShortView | null>(null);
+  const [authorFor, setAuthorFor] = useState<ShortView | null>(null);
+  const [isFs, setIsFs] = useState(false);
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const animatingRef = useRef(false);
@@ -104,13 +111,41 @@ export function ShortsShowcase({
     return () => obs.disconnect();
   }, []);
 
-  function fullscreen() {
+  // Fullscreen is a TOGGLE (the button must exit too), tracked via the real
+  // fullscreenchange event so Esc keeps the icon honest.
+  useEffect(() => {
+    const onChange = () => setIsFs(document.fullscreenElement === rootRef.current);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
+  function toggleFullscreen() {
     try {
-      void rootRef.current?.requestFullscreen?.();
+      if (document.fullscreenElement === rootRef.current) void document.exitFullscreen();
+      else void rootRef.current?.requestFullscreen?.();
     } catch {
       /* unsupported */
     }
   }
+
+  // 放大后可以上下刷: in fullscreen, arrow keys page through (wheel/touch
+  // already work — their listeners live on the fullscreened element).
+  useEffect(() => {
+    if (!isFs) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        go(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        go(-1);
+      } else if (e.key === 'm' || e.key === 'M') {
+        persistMuted(!muted);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isFs, go, muted, persistMuted]);
 
   if (!item) return null;
 
@@ -152,6 +187,7 @@ export function ShortsShowcase({
             reduceMotion={reduceMotion}
             onToggleMute={() => persistMuted(!muted)}
             onOpenComments={() => setCommentsFor(item)}
+            onOpenAuthor={() => setAuthorFor(item)}
             onEnded={items.length > 1 ? () => go(1) : undefined}
           />
         </motion.div>
@@ -164,14 +200,14 @@ export function ShortsShowcase({
         </span>
       )}
 
-      {/* Fullscreen (top-right) */}
+      {/* Fullscreen toggle (top-right) */}
       <button
         type="button"
-        onClick={fullscreen}
+        onClick={toggleFullscreen}
         className="absolute right-2.5 top-2.5 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-sm transition hover:bg-white/30"
-        aria-label={t('fullscreen')}
+        aria-label={isFs ? t('exit_fullscreen') : t('fullscreen')}
       >
-        <Maximize2 className="h-3.5 w-3.5" />
+        {isFs ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
       </button>
 
       {/* Position dots (right edge; wheel/swipe navigate) */}
@@ -188,16 +224,55 @@ export function ShortsShowcase({
         </div>
       )}
 
-      {/* 抖音-style in-place comment sheet (portaled to <body>) */}
-      {commentsFor && (
-        <ShortsCommentsDrawer
-          variant="fixed"
-          short={commentsFor}
-          currentUser={currentUser}
-          focusCommentId={null}
-          onClose={() => setCommentsFor(null)}
-        />
-      )}
+      {/* In-player 评论 panel — slides from inside the widget, video keeps playing */}
+      <AnimatePresence>
+        {commentsFor && (
+          <ShortsCommentsDrawer
+            variant="panel"
+            short={commentsFor}
+            currentUser={currentUser}
+            focusCommentId={null}
+            onClose={() => setCommentsFor(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* In-player TA 的作品 panel (avatar click) */}
+      <AnimatePresence>
+        {authorFor && (
+          <HostPanel
+            variant="panel"
+            title={<span className="block truncate">{authorFor.uploader.displayName}</span>}
+            headerExtra={
+              <Link
+                href={`/users/${authorFor.uploader.handle}`}
+                className="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-800 hover:underline dark:text-zinc-400 dark:hover:text-zinc-200"
+              >
+                {t('author_profile')}
+              </Link>
+            }
+            closeLabel={t('close')}
+            onClose={() => setAuthorFor(null)}
+          >
+            <div className={`${PANEL_SCROLL_CLS} px-4 py-4`}>
+              <ShortsAuthorWorks
+                handle={authorFor.uploader.handle}
+                currentId={item.id}
+                onSelect={(s) => {
+                  setAuthorFor(null);
+                  const i = items.findIndex((x) => x.id === s.id);
+                  if (i >= 0) {
+                    setDir(i > idx ? 1 : -1);
+                    setIdx(i);
+                  } else {
+                    router.push(`/videos/shorts?v=${s.id}`);
+                  }
+                }}
+              />
+            </div>
+          </HostPanel>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

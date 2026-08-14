@@ -19,9 +19,13 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { AnimatePresence } from 'framer-motion';
 import { ChevronDown, ChevronLeft, Loader2, Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
+import { HostPanel, PANEL_SCROLL_CLS } from './HostPanel';
+import { ShortsAuthorWorks } from './ShortsAuthorWorks';
 import { ShortsCell } from './ShortsCell';
 import { ShortsCommentsDrawer } from './ShortsCommentsDrawer';
 import { ShortsSidePanel, type PanelTab } from './ShortsSidePanel';
@@ -58,6 +62,7 @@ export function ShortsFeed({
   autoOpenUpload,
 }: Props) {
   const t = useTranslations('shorts');
+  const router = useRouter();
 
   const [items, setItems] = useState<ShortView[]>(initialItems);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
@@ -76,6 +81,8 @@ export function ShortsFeed({
     initialFocus || autoOpenComments ? 'comments' : 'info',
   );
 
+  const [authorSheetFor, setAuthorSheetFor] = useState<ShortView | null>(null);
+
   // 评论 entry: desktop switches the side panel tab; mobile opens the sheet.
   function openComments(item: ShortView) {
     if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches) {
@@ -83,6 +90,24 @@ export function ShortsFeed({
     } else {
       setDrawerFor(item);
     }
+  }
+
+  // 头像 → TA 的作品: desktop = side panel tab, mobile = bottom sheet.
+  function openAuthor(item: ShortView) {
+    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches) {
+      setPanelTab('works');
+    } else {
+      setAuthorSheetFor(item);
+    }
+  }
+
+  // Works card click: jump in place when the short is already loaded, else
+  // reload the feed at it (deep link keeps sort context).
+  function jumpTo(target: ShortView) {
+    setAuthorSheetFor(null);
+    const i = items.findIndex((s) => s.id === target.id);
+    if (i >= 0) go(i);
+    else router.push(`/videos/shorts?v=${target.id}`);
   }
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -292,6 +317,7 @@ export function ShortsFeed({
               reduceMotion={reduceMotion}
               onToggleMute={() => persistMuted(!muted)}
               onOpenComments={() => openComments(item)}
+              onOpenAuthor={() => openAuthor(item)}
               registerApi={registerApi}
             />
           </div>
@@ -354,19 +380,50 @@ export function ShortsFeed({
       )}
 
       {/* Mobile comment sheet (desktop uses the side panel instead) */}
-      {drawerFor && (
-        <ShortsCommentsDrawer
-          short={drawerFor}
-          currentUser={currentUser}
-          focusCommentId={
-            pendingFocus && pendingFocus.itemId === drawerFor.id ? pendingFocus.commentId : null
-          }
-          onClose={() => {
-            if (pendingFocus && drawerFor.id === pendingFocus.itemId) setPendingFocus(null);
-            setDrawerFor(null);
-          }}
-        />
-      )}
+      <AnimatePresence>
+        {drawerFor && (
+          <ShortsCommentsDrawer
+            variant="sheet"
+            short={drawerFor}
+            currentUser={currentUser}
+            focusCommentId={
+              pendingFocus && pendingFocus.itemId === drawerFor.id ? pendingFocus.commentId : null
+            }
+            onClose={() => {
+              if (pendingFocus && drawerFor.id === pendingFocus.itemId) setPendingFocus(null);
+              setDrawerFor(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Mobile TA 的作品 sheet */}
+      <AnimatePresence>
+        {authorSheetFor && (
+          <HostPanel
+            variant="sheet"
+            title={<span className="block truncate">{authorSheetFor.uploader.displayName}</span>}
+            headerExtra={
+              <Link
+                href={`/users/${authorSheetFor.uploader.handle}`}
+                className="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-800 hover:underline dark:text-zinc-400 dark:hover:text-zinc-200"
+              >
+                {t('author_profile')}
+              </Link>
+            }
+            closeLabel={t('close')}
+            onClose={() => setAuthorSheetFor(null)}
+          >
+            <div className={`${PANEL_SCROLL_CLS} px-4 py-4`}>
+              <ShortsAuthorWorks
+                handle={authorSheetFor.uploader.handle}
+                currentId={items[Math.min(active, items.length - 1)]?.id ?? null}
+                onSelect={jumpTo}
+              />
+            </div>
+          </HostPanel>
+        )}
+      </AnimatePresence>
       </div>
 
       {/* RIGHT — 抖音-style detail/comments panel (desktop only) */}
@@ -382,6 +439,7 @@ export function ShortsFeed({
                 ? pendingFocus.commentId
                 : null
             }
+            onJumpTo={jumpTo}
           />
         </aside>
       )}
