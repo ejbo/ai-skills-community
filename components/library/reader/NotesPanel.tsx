@@ -6,11 +6,10 @@ import {
   Eye,
   EyeOff,
   Highlighter,
-  Languages,
   Loader2,
   MessageCircle,
   Send,
-  Sparkles,
+  Settings2,
   StickyNote,
   Trash2,
 } from 'lucide-react';
@@ -64,8 +63,6 @@ export interface NotesTabProps {
    *  floating toolbar over the text. */
   selectionQuote: string | null;
   onHighlightSelection: (color: HighlightColor) => void;
-  onAskAiSelection: () => void;
-  onTranslateSelection: () => void;
   docId: string;
   toc: TocEntry[];
   version: number;
@@ -96,8 +93,6 @@ export function NotesTab({
   onSaveSelectionNote,
   selectionQuote,
   onHighlightSelection,
-  onAskAiSelection,
-  onTranslateSelection,
   docId,
   toc,
   version,
@@ -352,16 +347,18 @@ export function NotesTab({
 
   return (
     <div ref={listRef} className="h-full overflow-y-auto overscroll-contain">
-      {/* Selection actions. Deliberately HERE and not floating over the article:
-          a panel on the text that swallows mousedown is what made the text
-          under it unselectable. Selecting is now purely the browser's. */}
+      {/* Selection actions — ANNOTATION ONLY. 翻译 is a reading mode in the Aa
+          menu and 问 AI lives in the 助手 tab; mixing all four here is what made
+          this panel unreadable. Deliberately not floating over the article: a
+          panel on the text that swallows mousedown is what made the text under
+          it unselectable. */}
       <div className="rborder border-b px-4 py-3">
         {selectionQuote ? (
           <div className="mb-2.5">
-            <p className="r-muted mb-2 line-clamp-3 border-l-2 border-accent-500/60 pl-2 text-xs leading-relaxed">
+            <p className="r-muted mb-2 line-clamp-2 border-l-2 border-accent-500/60 pl-2 text-xs leading-relaxed">
               {selectionQuote}
             </p>
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex items-center gap-1.5">
               {HIGHLIGHT_COLORS.map((color, i) => (
                 <button
                   key={color}
@@ -372,25 +369,6 @@ export function NotesTab({
                   className={`hl-dot-${color} h-5 w-5 rounded-full transition hover:scale-110`}
                 />
               ))}
-              <span className="rborder mx-0.5 h-4 w-px border-l" />
-              <button
-                type="button"
-                onClick={onTranslateSelection}
-                className="r-muted grid h-7 w-7 place-items-center rounded-lg transition hover:bg-[var(--reader-hover)] hover:text-[var(--reader-accent)]"
-                title={t('translate')}
-                aria-label={t('translate')}
-              >
-                <Languages className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={onAskAiSelection}
-                className="r-muted grid h-7 w-7 place-items-center rounded-lg transition hover:bg-[var(--reader-hover)] hover:text-[var(--reader-accent)]"
-                title={t('ask_ai_short')}
-                aria-label={t('ask_ai_short')}
-              >
-                <Sparkles className="h-4 w-4" />
-              </button>
               <span className="r-muted ml-auto text-[11px]">{t('selection_shortcuts_hint')}</span>
             </div>
           </div>
@@ -417,52 +395,60 @@ export function NotesTab({
         </div>
       </div>
 
-      {/* toggles */}
-      <div className="rborder space-y-2.5 border-b px-4 py-3 text-sm">
-        <label className="flex cursor-pointer items-center justify-between gap-3">
-          <span>
-            {t('share_my_notes')}
-            <span className="r-muted block text-xs">{t('share_my_notes_desc')}</span>
-          </span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={shareNotes}
-            disabled={savingShare}
-            onClick={() => void toggleShare(!shareNotes)}
-            className={toggleCls(shareNotes)}
-          >
-            <span className={knobCls(shareNotes)} />
-          </button>
-        </label>
-        <label className="flex cursor-pointer items-center justify-between gap-3">
-          <span>
-            {t('show_others_notes')}
-            <span className="r-muted block text-xs">{t('show_others_notes_desc')}</span>
-          </span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={showOthers}
-            onClick={() => onShowOthersChange(!showOthers)}
-            className={toggleCls(showOthers)}
-          >
-            <span className={knobCls(showOthers)} />
-          </button>
-        </label>
-        <label className="flex cursor-pointer items-center justify-between gap-3">
-          <span>{t('show_highlights_without_notes')}</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={showBare}
-            onClick={() => setShowBare((v) => !v)}
-            className={toggleCls(showBare)}
-          >
-            <span className={knobCls(showBare)} />
-          </button>
-        </label>
-      </div>
+      {/* Display/sharing switches — folded away by default. They are settings,
+          not content, and three always-open rows pushed the actual notes below
+          the fold. */}
+      <details className="rborder group border-b">
+        <summary className="r-muted flex cursor-pointer list-none items-center gap-1.5 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide transition hover:text-[var(--reader-fg)]">
+          <Settings2 className="h-3.5 w-3.5" />
+          {t('notes_display_settings')}
+        </summary>
+        <div className="space-y-2.5 px-4 pb-3 text-sm">
+          <label className="flex cursor-pointer items-center justify-between gap-3">
+            <span>
+              {t('share_my_notes')}
+              <span className="r-muted block text-xs">{t('share_my_notes_desc')}</span>
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={shareNotes}
+              disabled={savingShare}
+              onClick={() => void toggleShare(!shareNotes)}
+              className={toggleCls(shareNotes)}
+            >
+              <span className={knobCls(shareNotes)} />
+            </button>
+          </label>
+          <label className="flex cursor-pointer items-center justify-between gap-3">
+            <span>
+              {t('show_others_notes')}
+              <span className="r-muted block text-xs">{t('show_others_notes_desc')}</span>
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showOthers}
+              onClick={() => onShowOthersChange(!showOthers)}
+              className={toggleCls(showOthers)}
+            >
+              <span className={knobCls(showOthers)} />
+            </button>
+          </label>
+          <label className="flex cursor-pointer items-center justify-between gap-3">
+            <span>{t('show_highlights_without_notes')}</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showBare}
+              onClick={() => setShowBare((v) => !v)}
+              className={toggleCls(showBare)}
+            >
+              <span className={knobCls(showBare)} />
+            </button>
+          </label>
+        </div>
+      </details>
 
       {/* per-user filter */}
       {showOthers && authorStats.size > 0 && (
@@ -750,8 +736,6 @@ export function NotesPanel({
   | 'onSaveSelectionNote'
   | 'selectionQuote'
   | 'onHighlightSelection'
-  | 'onAskAiSelection'
-  | 'onTranslateSelection'
 > & {
   open: boolean;
   onClose: () => void;
@@ -765,8 +749,6 @@ export function NotesPanel({
         onSaveSelectionNote={() => false}
         selectionQuote={null}
         onHighlightSelection={() => {}}
-        onAskAiSelection={() => {}}
-        onTranslateSelection={() => {}}
         {...rest}
       />
     </SidePanel>

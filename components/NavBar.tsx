@@ -29,6 +29,7 @@ export async function NavBar({ session }: { session: Session | null }) {
           <NavLink href="/library">{t('library')}</NavLink>
           <NavLink href="/discussion">{t('discussion')}</NavLink>
           <NavLink href="/events">{t('events')}</NavLink>
+          <NavLink href="/votes">{t('votes')}</NavLink>
           <NavLink href="/docs">{t('docs')}</NavLink>
         </nav>
         <div className="flex flex-1 items-center justify-end gap-1">

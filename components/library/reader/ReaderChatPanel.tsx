@@ -65,6 +65,8 @@ export function AssistantTab({
   questions,
   prefill,
   onCitationJump,
+  selectionQuote,
+  onAskAiSelection,
 }: {
   active: boolean;
   docId: string;
@@ -72,6 +74,9 @@ export function AssistantTab({
   questions: string[];
   prefill: { text: string; nonce: number } | null;
   onCitationJump: (citation: Citation) => void;
+  /** Reader's current selection — 问 AI belongs HERE, not in the notes tab. */
+  selectionQuote: string | null;
+  onAskAiSelection: () => void;
 }) {
   const t = useTranslations('reader');
   const router = useRouter();
@@ -423,6 +428,23 @@ export function AssistantTab({
 
       {error && (
         <div className="border-t border-danger/30 bg-danger/5 px-4 py-2 text-xs text-danger">{error}</div>
+      )}
+
+      {/* 引用选中段落 — the 问 AI entry point, next to the thing it feeds. */}
+      {selectionQuote && (
+        <div className="rborder flex items-start gap-2 border-t px-3 py-2">
+          <p className="r-muted line-clamp-2 min-w-0 flex-1 border-l-2 border-accent-500/60 pl-2 text-xs leading-relaxed">
+            {selectionQuote}
+          </p>
+          <button
+            type="button"
+            onClick={onAskAiSelection}
+            className="rborder inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition hover:border-accent-500 hover:text-[var(--reader-accent)]"
+          >
+            <Sparkles className="h-3 w-3" />
+            {t('ask_about_selection')}
+          </button>
+        </div>
       )}
 
       <div className="rborder flex items-end gap-2 border-t p-3">

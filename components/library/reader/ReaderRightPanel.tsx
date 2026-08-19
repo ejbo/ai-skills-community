@@ -53,7 +53,6 @@ export function ReaderRightPanel(props: {
   selectionQuote: string | null;
   onHighlightSelection: (color: 'yellow' | 'green' | 'blue' | 'pink') => void;
   onAskAiSelection: () => void;
-  onTranslateSelection: () => void;
   // comments
   commentCount: number;
 }) {
@@ -106,6 +105,8 @@ export function ReaderRightPanel(props: {
               questions={props.questions}
               prefill={props.prefill}
               onCitationJump={props.onCitationJump}
+              selectionQuote={props.selectionQuote}
+              onAskAiSelection={props.onAskAiSelection}
             />
           </div>
         )}
@@ -132,8 +133,6 @@ export function ReaderRightPanel(props: {
               onSaveSelectionNote={props.onSaveSelectionNote}
               selectionQuote={props.selectionQuote}
               onHighlightSelection={props.onHighlightSelection}
-              onAskAiSelection={props.onAskAiSelection}
-              onTranslateSelection={props.onTranslateSelection}
             />
           </div>
         )}

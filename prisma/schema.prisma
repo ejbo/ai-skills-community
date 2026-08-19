@@ -127,6 +127,12 @@ model User {
   createdPolls Poll[]        @relation("CreatedPolls")
   pollVotes    PollVote[]
 
+  // ── 投票活动 back-relations (virtual; no SQL columns on User) ──
+  createdVoteActivities VoteActivity[] @relation("CreatedVoteActivities")
+  voteBallots           VoteBallot[]
+  voteSubmissions       VoteEntry[]    @relation("VoteSubmissions")
+  voteComments          VoteComment[]  @relation("VoteComments")
+
   @@index([handle])
   @@index([email])
   @@index([isAdmin])
@@ -1772,4 +1778,211 @@ model PollVote {
   @@id([optionId, userId])
   @@index([pollId, userId])
   @@index([userId, createdAt])
+}
+
+// ─── 投票活动（Media Vote / Contest）──────────────────────────────────────
+// Standalone contest votes over uploaded works (images/videos): a creator
+// bulk-uploads entries into a resumable draft, sets the ballot rules
+// (per-person budget / per-entry cap / deadline / results visibility), then
+// publishes a gallery page where members spend their votes. DISTINCT from the
+// embedded Poll* widgets ([poll:<id>] tokens) — different product, own tables.
+// Self-contained: Vote* models FK only to User or Vote*. Denormalized counts
+// are RECOMPUTED from VoteBallot rows inside the vote transaction (poll
+// pattern, immune to increment drift); results visibility is enforced
+// server-side in lib/vote-queries.ts (counts omitted, never ship-then-hide).
+// Media lives under LOCAL_STORAGE_DIR/vote-media/ (lib/votes/storage.ts),
+// served by /api/votes/media/[...key] (login + Range).
+
+enum VoteActivityStatus {
+  draft // creator still composing/uploading — visible only to creator + admins
+  published // live (voting gated by startAt / endAt / closedAt)
+}
+
+enum VoteEntryKind {
+  image
+  video
+}
+
+enum VoteResultsMode {
+  realtime // 实时公开：票数与排行随时可见
+  after_end // 截止后公布：进行中隐藏票数（默认，防马太效应）
+  creator_only // 仅发起人可见：结束后也不公开票数
+}
+
+enum VoteBudgetPeriod {
+  total // 每人整个活动共 N 票
+  daily // 每人每天 N 票（按北京时间刷新）
+}
+
+enum VoteEntryStatus {
+  approved // 展示中（发起人上传默认；开审核时成员投稿需通过）
+  pending // 待审核（仅投稿者 + 发起人可见）
+  rejected // 已驳回（仅投稿者可见，reviewNote 说明理由；不占投稿配额）
+}
+
+enum VoteSubmissionMedia {
+  image
+  video
+  both
+}
+
+enum VoteFormField {
+  required // 必填
+  optional // 选填
+  off // 不收集
+}
+
+enum VoteEntryOrder {
+  random // 每个观看者种子乱序（消除位置偏差，默认）
+  upload // 按编号（上传顺序）
+  votes // 按票数（仅当结果可见时生效）
+}
+
+model VoteActivity {
+  id            String             @id @default(cuid())
+  creatorId     String
+  title         String
+  descriptionMd String             @default("")
+  // 滚动公告条文案（组织者随时改，空 = 不显示）。
+  announcement  String             @default("")
+  coverUrl      String? // root-relative; withBasePath at render. null ⇒ first entry thumb
+  status        VoteActivityStatus @default(draft)
+  publishedAt   DateTime?
+  startAt       DateTime? // 定时开始；null = 发布即开始
+  endAt         DateTime? // 截止 UTC instant；null = 手动结束
+  closedAt      DateTime? // 提前结束
+  votesPerUser  Int                @default(10)
+  budgetPeriod  VoteBudgetPeriod   @default(total)
+  maxPerEntry   Int                @default(1) // 单作品上限（daily 时按天）
+  allowRevoke   Boolean            @default(true) // 截止前允许撤票改投
+  resultsMode   VoteResultsMode    @default(after_end)
+  showTitles    Boolean            @default(true) // 显示作品名称（关 = 只显示编号）
+  showAuthors   Boolean            @default(false) // 显示作者；关 = 匿名评选，结束后公示
+  entryOrder    VoteEntryOrder     @default(random)
+  // 文件名解析规则（lib/votes/shared.ts VoteNameRule）：前缀剥离 + 分隔符切段
+  // → 作品名/作者/工号。上传时应用；重新应用跳过手工改过的行。
+  nameRule      Json?
+  // ── 成员自主投稿（报名+审核 flow）──
+  // 投稿窗口 = published 且未结束；startAt 只挡投票不挡投稿，所以“先发布晚开投”
+  // 天然构成 征集期 → 投票期 两阶段。
+  allowSubmissions      Boolean             @default(false)
+  submissionReview      Boolean             @default(true) // 投稿需发起人审核后展示
+  submissionMedia       VoteSubmissionMedia @default(both)
+  maxSubmissionsPerUser Int                 @default(1)
+  maxSubmissionMb       Int? // 单文件大小上限（MB）；null = 不限
+  submitTitle           VoteFormField       @default(required)
+  submitAuthorName      VoteFormField       @default(required) // 预填 displayName，可改
+  // 工号 LOCKED 为投稿人本人的 huaweiW3Id（服务端强制，客户端只读展示）。
+  submitAuthorNo        VoteFormField       @default(required)
+  submitDescription     VoteFormField       @default(optional) // 作品描述（灯箱详情面板展示）
+  // 自定义表单字段 [{id,label,required}]（lib/votes/shared.ts VoteCustomField）；
+  // 答案存 VoteEntry.formData {fieldId: answer}。
+  submissionFields      Json?
+  submissionNote        String              @default("") // 投稿须知（弹窗顶部展示）
+  // 允许成员对作品评论（灯箱评论 tab；发起人可关）。
+  allowComments         Boolean             @default(true)
+  featured      Boolean            @default(false) // admin 精选（hub 顶部推荐位）
+  featuredAt    DateTime?
+  entryCount    Int                @default(0) // 非隐藏作品数（entry 增删/隐藏时重算）
+  voteCount     Int                @default(0) // 总票数（vote tx 内重算）
+  voterCount    Int                @default(0) // 参与人数 distinct voters（vote tx 内重算）
+  deletedAt     DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  creator  User          @relation("CreatedVoteActivities", fields: [creatorId], references: [id], onDelete: Cascade)
+  entries  VoteEntry[]
+  ballots  VoteBallot[]
+  comments VoteComment[]
+
+  @@index([status, deletedAt, endAt])
+  @@index([featured, featuredAt])
+  @@index([creatorId, createdAt])
+  @@index([deletedAt, createdAt])
+}
+
+model VoteEntry {
+  id           String        @id @default(cuid())
+  activityId   String
+  entryNo      Int // 编号 1..N，上传时分配；展示与搜索用（“搜 42 号投我”）
+  kind         VoteEntryKind
+  // Unique: the DB backstops racing publishes double-claiming one uploaded
+  // file (Postgres unique ignores NULLs, so absent posters never conflict).
+  fileKey      String  @unique // "image/<nanoid>.jpg" | "video/<nanoid>.mp4" under vote-media/
+  fileUrl      String // root-relative /api/votes/media/<key>
+  posterKey    String? @unique // 视频封面（客户端抓帧上传，best-effort）
+  posterUrl    String?
+  originalName String        @default("") // 原始文件名 — 解析规则的输入，创建者可见
+  title        String        @default("") // 解析/手工填写的作品名
+  // 作品描述（成员投稿填写；灯箱详情面板展示，导出含此列）。
+  description  String        @default("")
+  // 自定义表单答案 {fieldId: answer}，字段定义在 activity.submissionFields。
+  formData     Json?
+  authorName   String        @default("") // 解析出的作者
+  authorNo     String        @default("") // 解析出的工号（存小写，员工名单契约）
+  titleEdited  Boolean       @default(false) // 手工改过 — 重新应用规则时跳过
+  mimeType     String        @default("")
+  sizeBytes    Int           @default(0) // int32 clamp（同 Video）
+  durationSec  Int           @default(0)
+  hidden       Boolean       @default(false) // 停用/下架：前台隐藏，票数保留
+  // 成员投稿：submitterId 记录投稿人（发起人代传为 null）；status 走审核流。
+  // 画廊/榜单/计数一律只含 status=approved（服务端裁剪，同票数可见性契约）。
+  submitterId  String?
+  status       VoteEntryStatus @default(approved)
+  reviewNote   String        @default("") // 驳回理由，仅投稿者可见
+  voteCount    Int           @default(0) // vote tx 内从 VoteBallot 重算
+  commentCount Int           @default(0) // guarded array tx（like-route pattern）
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  activity  VoteActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  submitter User?        @relation("VoteSubmissions", fields: [submitterId], references: [id], onDelete: SetNull)
+  ballots   VoteBallot[]
+  comments  VoteComment[]
+
+  @@unique([activityId, entryNo])
+  @@index([activityId, hidden, entryNo])
+  @@index([activityId, status])
+  @@index([activityId, voteCount])
+  @@index([submitterId])
+}
+
+model VoteBallot {
+  activityId String
+  entryId    String
+  userId     String
+  // 同一 (entry, user, day) 的累计票数（maxPerEntry 允许 >1 时叠加）。
+  count      Int      @default(1)
+  // 预算周期桶：total 模式恒为 ''；daily 模式为北京时间 'YYYY-MM-DD'。
+  day        String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  activity VoteActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  entry    VoteEntry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([entryId, userId, day])
+  @@index([activityId, userId, day])
+  @@index([entryId])
+  @@index([userId, createdAt])
+}
+
+// 作品评论 — 灯箱右侧评论 tab 的轻量扁平列表（无楼中楼；这是活动内的小场景，
+// 与 feedback 的两级线程契约刻意不同）。发起人可用 allowComments 关闭。
+model VoteComment {
+  id         String   @id @default(cuid())
+  activityId String
+  entryId    String
+  authorId   String
+  body       String // 纯文本（whitespace-pre-wrap 渲染，非 markdown）
+  createdAt  DateTime @default(now())
+
+  activity VoteActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  entry    VoteEntry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  author   User         @relation("VoteComments", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([entryId, createdAt])
+  @@index([activityId])
+  @@index([authorId])
 }

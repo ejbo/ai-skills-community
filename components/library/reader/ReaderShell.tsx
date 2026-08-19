@@ -102,13 +102,10 @@ export function ReaderShell({
     tab: 'assistant',
   });
   const notesOpen = rightPanel.open && rightPanel.tab === 'notes';
-  const chatOpen = rightPanel.open && rightPanel.tab === 'assistant';
   const openTab = useCallback((tab: RightTab) => setRightPanel({ open: true, tab }), []);
-  const toggleTab = useCallback(
-    (tab: RightTab) =>
-      setRightPanel((p) => (p.open && p.tab === tab ? { ...p, open: false } : { open: true, tab })),
-    [],
-  );
+  // ONE chrome button for the whole panel: it opens on whichever tab was last
+  // used, so 助手 / 我的笔记 / 评论 / 相似 are a tab switch, not four entry points.
+  const togglePanel = useCallback(() => setRightPanel((p) => ({ ...p, open: !p.open })), []);
   const closeRight = useCallback(() => setRightPanel((p) => ({ ...p, open: false })), []);
   const [typographyOpen, setTypographyOpen] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
@@ -1280,12 +1277,17 @@ export function ReaderShell({
       } else if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
         noteSelection();
+      } else if (e.key === 't' || e.key === 'T') {
+        e.preventDefault();
+        translateSelectionRef.current();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [showOriginalPdf, highlightSelection, noteSelection]);
 
+  // Held in a ref so the shortcut effect above (declared earlier) can reach it.
+  const translateSelectionRef = useRef<() => void>(() => {});
   const translateSelection = useCallback(() => {
     const payload = takeSelection();
     if (!payload) return;
@@ -1294,6 +1296,7 @@ export function ReaderShell({
       left: Math.round(window.innerWidth / 2),
     });
   }, [takeSelection, handleTranslate]);
+  translateSelectionRef.current = translateSelection;
 
   // ── render ────────────────────────────────────────────────────────────
 
@@ -1334,11 +1337,9 @@ export function ReaderShell({
         chapterLabel={chapterLabel}
         sourceUrl={doc.sourceUrl}
         tocOpen={tocOpen}
-        notesOpen={notesOpen}
-        chatOpen={chatOpen}
+        panelOpen={rightPanel.open}
         onToggleToc={() => setTocOpen((v) => !v)}
-        onToggleNotes={() => toggleTab('notes')}
-        onToggleChat={() => toggleTab('assistant')}
+        onTogglePanel={togglePanel}
         typographyOpen={typographyOpen}
         onToggleTypography={() => setTypographyOpen((v) => !v)}
         onCloseTypography={() => setTypographyOpen(false)}
@@ -1482,7 +1483,6 @@ export function ReaderShell({
             selectionQuote={selectionQuote}
             onHighlightSelection={highlightSelection}
             onAskAiSelection={askAiAboutSelection}
-            onTranslateSelection={translateSelection}
             commentCount={doc.commentCount}
           />
         )}

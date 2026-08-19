@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { ArrowLeft, ExternalLink, List, Sparkles, StickyNote } from 'lucide-react';
+import { ArrowLeft, ExternalLink, List, PanelRight } from 'lucide-react';
 import { TypographyPopover } from './TypographyPopover';
 import type { ReaderPrefs } from './reader-prefs';
 
@@ -13,11 +13,10 @@ interface Props {
   chapterLabel: string | null;
   sourceUrl: string | null;
   tocOpen: boolean;
-  notesOpen: boolean;
-  chatOpen: boolean;
+  /** ONE toggle for the whole right panel — its tabs (助手/笔记/评论/相似) live inside. */
+  panelOpen: boolean;
   onToggleToc: () => void;
-  onToggleNotes: () => void;
-  onToggleChat: () => void;
+  onTogglePanel: () => void;
   typographyOpen: boolean;
   onToggleTypography: () => void;
   onCloseTypography: () => void;
@@ -39,11 +38,9 @@ export function ReaderChrome({
   chapterLabel,
   sourceUrl,
   tocOpen,
-  notesOpen,
-  chatOpen,
+  panelOpen,
   onToggleToc,
-  onToggleNotes,
-  onToggleChat,
+  onTogglePanel,
   typographyOpen,
   onToggleTypography,
   onCloseTypography,
@@ -126,9 +123,6 @@ export function ReaderChrome({
           <ChromeButton label={t('toc')} active={tocOpen} onClick={onToggleToc}>
             <List className="h-4 w-4" />
           </ChromeButton>
-          <ChromeButton label={t('notes_title')} active={notesOpen} onClick={onToggleNotes}>
-            <StickyNote className="h-4 w-4" />
-          </ChromeButton>
           <div className="relative">
             <button
               type="button"
@@ -151,8 +145,8 @@ export function ReaderChrome({
               flow={flow}
             />
           </div>
-          <ChromeButton label={t('ask_ai')} active={chatOpen} onClick={onToggleChat}>
-            <Sparkles className="h-4 w-4" />
+          <ChromeButton label={t('side_panel')} active={panelOpen} onClick={onTogglePanel}>
+            <PanelRight className="h-4 w-4" />
           </ChromeButton>
           {sourceUrl && (
             <a

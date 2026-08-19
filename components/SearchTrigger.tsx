@@ -13,6 +13,7 @@ import {
   Boxes,
   Lightbulb,
   CalendarDays,
+  Vote as VoteIcon,
   Loader2,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -31,6 +32,7 @@ type GroupKey =
   | 'library'
   | 'discussions'
   | 'events'
+  | 'votes'
   | 'packs'
   | 'feedback';
 
@@ -44,6 +46,7 @@ interface Results {
   library: { slug: string; title: string; author: string; date: string }[];
   discussions: { kind: 'topic' | 'post'; id: string; title: string; author: string; date: string }[];
   events: { id: string; title: string; author: string; date: string }[];
+  votes: { id: string; title: string; author: string; date: string }[];
   packs: { slug: string; name: string; date: string }[];
   feedback: { id: string; title: string; author: string; date: string }[];
 }
@@ -57,6 +60,7 @@ const EMPTY: Results = {
   library: [],
   discussions: [],
   events: [],
+  votes: [],
   packs: [],
   feedback: [],
 };
@@ -80,6 +84,7 @@ const GROUP_ICON: Record<GroupKey, typeof FileCode2> = {
   library: BookOpen,
   discussions: MessagesSquare,
   events: CalendarDays,
+  votes: VoteIcon,
   packs: Boxes,
   feedback: Lightbulb,
 };
@@ -92,6 +97,7 @@ const GROUP_LABEL_KEY: Record<GroupKey, string> = {
   library: 'search_library',
   discussions: 'search_discussion',
   events: 'search_events',
+  votes: 'search_votes',
   packs: 'search_packs',
   feedback: 'search_feedback',
 };
@@ -176,6 +182,7 @@ export function SearchTrigger() {
             library: data.library ?? [],
             discussions: data.discussions ?? [],
             events: data.events ?? [],
+            votes: data.votes ?? [],
             packs: data.packs ?? [],
             feedback: data.feedback ?? [],
           });
@@ -259,6 +266,15 @@ export function SearchTrigger() {
         href: `/events/${e.id}`,
         label: e.title,
         meta: `${e.author} · ${reldate(e.date, locale)}`,
+      }),
+    );
+    results.votes.forEach((v) =>
+      items.push({
+        group: 'votes',
+        key: `vt:${v.id}`,
+        href: `/votes/${v.id}`,
+        label: v.title,
+        meta: `${v.author} · ${reldate(v.date, locale)}`,
       }),
     );
     results.packs.forEach((p) =>

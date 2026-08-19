@@ -29,6 +29,7 @@ export interface SiteSearchResults {
   packs: { slug: string; name: string; date: Date }[];
   feedback: { id: string; title: string; author: string; date: Date }[];
   events: { id: string; title: string; author: string; date: Date }[];
+  votes: { id: string; title: string; author: string; date: Date }[];
 }
 
 export const EMPTY_SEARCH_RESULTS: SiteSearchResults = {
@@ -42,6 +43,7 @@ export const EMPTY_SEARCH_RESULTS: SiteSearchResults = {
   packs: [],
   feedback: [],
   events: [],
+  votes: [],
 };
 
 export async function searchSite(
@@ -55,7 +57,7 @@ export async function searchSite(
   const perType = Math.min(50, Math.max(1, opts.perType ?? 6));
   const contains = { contains: q, mode: 'insensitive' as const };
 
-  const [skills, users, categories, tags, videos, libraryDocs, topics, posts, packs, feedback, events] =
+  const [skills, users, categories, tags, videos, libraryDocs, topics, posts, packs, feedback, events, votes] =
     await Promise.all([
       prisma.skill.findMany({
         where: {
@@ -184,6 +186,22 @@ export async function searchSite(
         orderBy: { startAt: 'desc' },
         take: perType,
       }),
+      // 投票活动 — drafts stay out (creator-only surface).
+      prisma.voteActivity.findMany({
+        where: {
+          deletedAt: null,
+          status: 'published',
+          OR: [{ title: contains }, { descriptionMd: contains }],
+        },
+        select: {
+          id: true,
+          title: true,
+          createdAt: true,
+          creator: { select: { displayName: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: perType,
+      }),
     ]);
 
   return {
@@ -240,6 +258,12 @@ export async function searchSite(
       title: e.title,
       author: e.author.displayName,
       date: e.startAt,
+    })),
+    votes: votes.map((v) => ({
+      id: v.id,
+      title: v.title,
+      author: v.creator.displayName,
+      date: v.createdAt,
     })),
   };
 }

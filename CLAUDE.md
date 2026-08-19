@@ -324,7 +324,16 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   shorts overlays (评论 sheet/panel, TA 的作品) ride the shared `HostPanel` shell: **transparent
   click-catcher, NO scrim** (a black/40 scrim grayed the video — user rejected it), sliding from
   INSIDE the player container; hosts wrap conditional renders in `<AnimatePresence>` for the exit
-  slide. Avatar click opens TA 的作品 (NOT the profile — profile link lives in the panel header);
+  slide. **Embedded players (ShortsShowcase) go further: the panel is INLINE** — root is a flex
+  row, the panel animates width 0%→62% (max 400px) and the video region RESIZES to make room
+  (covering the video was rejected); the widget's wheel handler must ignore events inside
+  `[data-shorts-panel]` or the comment list can't scroll. Embed fullscreen adds
+  `h-[100dvh] w-screen` when active (Tailwind's fixed-height class otherwise beats the UA
+  :fullscreen sizing and the video stays small). 评论 composer (`CommentComposer`, shared with the
+  long-video detail page) is 抖音-lightweight BY DEFAULT: auto-growing textarea pill (Enter 发送)
+  + 图片/表情包 buttons appending markdown + a small round icon send button; the full
+  RichTextEditor sits behind an explicit 富文本 toggle — do not make rich the default again.
+  Comment likes already exist (`VideoCommentLike` + ♡ in CommentItem). Avatar click opens TA 的作品 (NOT the profile — profile link lives in the panel header);
   subtitle cue renders INSIDE the caption gradient container above the text block so it rides up
   with the caption and can never overlap it. Embed fullscreen is a TOGGLE tracked via
   `fullscreenchange` (wheel/touch listeners live on the fullscreened element, so 上下刷 works in
@@ -417,6 +426,84 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   options replaced wholesale); after votes, only 提前结束. The composer dialog doubles as
   the editor (`pollId` prop) and broadcasts `POLL_UPDATED_EVENT` (lib/polls-shared.ts) so
   mounted previews refetch. Deleting the embedding content orphans the poll — accepted.
+- **投票活动 (Media Votes, migration `20260817000000_add_vote_activities`)**: standalone
+  作品评选 at `/votes` — DISTINCT from the embedded `[poll:<id>]` widgets (`Poll*` model
+  names are taken; these are `VoteActivity`/`VoteEntry`/`VoteBallot`). Creator drafts an
+  activity (POST `/api/votes`), bulk-uploads image/video entries via the raw-body protocol
+  (`/api/votes/[id]/upload`): **every upload immediately creates a VoteEntry row — that IS
+  the resumable draft** (refresh loses nothing); client captures video posters
+  (probeAndCapture), ffprobe corrects duration, faststart remux, video size uncapped by
+  product decision. 文件名解析 (`lib/votes/shared.ts` `VoteNameRule`: prefix strip +
+  delimiter-SET split — every char is a delimiter, '-' escaped for the char class —
+  → 作品名/作者/工号, 工号 lowercased per the EmployeeDirectory contract) applies at upload
+  and via `/api/votes/[id]/apply-rule`; hand-edited rows carry `titleEdited` and are never
+  re-overwritten (the server sets it only on a REAL value change — a no-op blur must not
+  flag). Ballots: 每人 N 票 total or per-Beijing-day (`VoteBallot.day` bucket, `''` for
+  total); **budgetPeriod locks once anyone voted** (`budget_period_locked` — switching
+  would re-bucket and orphan every ballot); per-entry cap; 撤票 works on HIDDEN entries
+  too (hiding keeps votes but must never trap a voter's budget). All counters are
+  RECOMPUTED from ballot rows inside a Serializable tx with jittered P2034 retries (every
+  vote rewrites the same VoteActivity row — contention is real, don't drop the backoff).
+  Results visibility (realtime / after_end / creator_only) and 匿名评选
+  (showAuthors=false ⇒ authors hidden until over, then auto-revealed) are trimmed
+  SERVER-side in `lib/vote-queries.ts` — hub cards, detail payload, vote responses,
+  winner thumbs and the CSV all gate; the gallery order is a seeded per-viewer shuffle
+  (`seededShuffle('${viewerId}:${activityId}')` — stable across reloads, different across
+  viewers, kills position bias) and the lightbox tracks the ENTRY ID, never a list index
+  (re-sorts must not swap the viewed entry). **`/votes` is login-walled by layout** (like
+  `/videos`) because vote media (`LOCAL_STORAGE_DIR/vote-media/`, served by
+  `/api/votes/media/[...key]` with Range) requires auth — an anonymous gallery would 401
+  every image. Cover keys echoed by the client are re-validated (shape + on-disk) AND
+  refcounted against other activities before accept/unlink (no ownership ledger for
+  covers). CSV export: BOM + ASCII filename + Excel formula-injection guard; 排名 computed
+  over non-hidden APPROVED entries only (must agree with the published gallery; other rows
+  get an empty rank); private accounts' handle (= W3 工号) is trimmed for non-admin
+  exporters like department. Admin: featured toggle + soft delete at `/manage/votes`
+  (logAdmin'd); hub `/votes` = 精选 band + 进行中(按截止排序)/已结束(冠军封面)/我发起的.
+  i18n namespace `votes`; global search bucket `votes` (published only).
+  **成员投稿 (migrations `20260817120000_add_vote_submissions` +
+  `20260817180000_vote_desc_forms_comments`)**: creator opt-in (`allowSubmissions`) with 审核
+  (`submissionReview`, default ON), accepted media, per-user quota, per-file MB cap (null =
+  不限, layered UNDER the house caps), per-field form config (作品名/作者/工号/作品描述 each
+  必填/选填/关闭 — 作者/工号 default REQUIRED) plus creator-defined CUSTOM form fields
+  (`submissionFields` Json, `parseCustomFields`/`resolveCustomAnswers` in lib/votes/shared.ts,
+  answers on `VoteEntry.formData`, surfaced in the lightbox 详情 panel / 数据 tab / export,
+  gated with titlesVisible) and 投稿须知. **工号 value NEVER comes from the client**: it is
+  stamped from the submitter's own `huaweiW3Id` — 'required' always stamps (403
+  `huawei_required` when unbound), 'optional' honors an explicit `includeAuthorNo` opt-in
+  (blank stays blank — a private user keeps their W3 id off the entry); 作者名 prefills
+  editable, backfilled only when required-and-blank. **投票 itself requires a W3-bound
+  account when `env.ENABLE_SSO`** (vote route 403 `huawei_required`; `viewer.canVote` in the
+  payload drives the disabled state + hint — password-only accounts can browse, not vote).
+  `VoteEntry` gained `submitterId`/`status(approved|pending|rejected)`/`reviewNote` + UNIQUE
+  `fileKey`/`posterKey` (DB backstop against double-claimed uploads). **Every gallery-facing
+  read/count is now `hidden:false AND status:'approved'`** — maintained via
+  `recountVisibleEntries` inside the SAME tx as any entry create/delete/hide/review
+  (Serializable + P2034 retry). Submission window = published && !voteOver — `startAt`
+  gates VOTING only, so publish-empty + future startAt = 先征集后投票 (publish allows 0
+  entries when allowSubmissions). Member flow is two-phase like shorts:
+  `/api/votes/[id]/submissions/upload` (raw body) then POST `/api/votes/[id]/submissions`
+  (re-validates keys shape+on-disk+unclaimed INSIDE the Serializable quota tx; remux/probe
+  AFTER the row exists so racing publishes can't double-remux one file; fileKey-unique P2002
+  → 400, never retried). Member rows are born `titleEdited=true` (apply-rule never touches
+  them); rejected rows don't consume quota; pending/rejected are visible ONLY to their
+  submitter (mySubmissions — fetched for any logged-in viewer even if the mode was later
+  turned off, or withdraw would vanish) + creator/admin (edit payload, 通过/驳回 in the
+  entries table). Submitter may withdraw (DELETE own entry) while the activity isn't over.
+  **Round 3 additions**: `VoteComment` (作品评论 — deliberately FLAT plain-text, hard delete,
+  NOT the 2-level thread contract; creator toggle `allowComments`; guarded array tx on
+  `VoteEntry.commentCount`; list = newest 100 rendered oldest-first — desc scan + reverse,
+  an asc take would pin the oldest 100; comments on hidden/unapproved entries 404 for
+  non-managers). The lightbox has a right side panel (详情: description/custom answers/rank;
+  评论: EntryComments). Gallery renders WINDOWED (GRID_PAGE=48 + IntersectionObserver
+  sentinel — DOM count, not payload, is the load concern) and offers a 榜单 list view when
+  results are visible ('shown' feeds both the list and lightbox nav). VoteEditor is 5 TABS
+  (基本信息/投票规则/成员投稿/作品/数据); the 数据 tab is the PRIMARY stats surface
+  (`/api/votes/[id]/stats` ranked entries + distinct-voter counts; per-entry voter lists
+  lazy via `/entries/[entryId]/ballots`; ballot-fetch failures are NOT cached as empty).
+  Export is ONE detailed CSV (entry row + indented per-ballot rows, dynamic custom-field
+  columns; same privacy trims). Custom-answer rows key on the field `id`, never the label
+  (labels can collide).
 - **员工名单 (Employee Directory)**: admin roster at `/manage/employees` (`EmployeeDirectory` model;
   bulk import via paste / CSV / XLSX — parsers in `lib/employee-import.ts`, merge rules in
   `lib/employee-admin.ts`; 工号 canonicalized to lowercase at write time — the DB unique index is

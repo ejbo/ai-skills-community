@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowLeft, LayoutDashboard, Users, BookOpen, BookUser, Package, Boxes, Clapperboard, FolderTree, History, Megaphone, MessagesSquare, Play } from 'lucide-react';
+import { ArrowLeft, LayoutDashboard, Users, BookOpen, BookUser, Package, Boxes, Clapperboard, FolderTree, History, Megaphone, MessagesSquare, Play, Vote } from 'lucide-react';
 import { requireAdmin } from '@/lib/admin';
 import './manage.css';
 
@@ -15,6 +15,7 @@ export default async function ManageLayout({ children }: { children: React.React
     { href: '/manage/videos', label: '视频管理', icon: <Clapperboard className="h-4 w-4" /> },
     { href: '/manage/shorts', label: '短视频', icon: <Play className="h-4 w-4" /> },
     { href: '/manage/discussion', label: '讨论管理', icon: <MessagesSquare className="h-4 w-4" /> },
+    { href: '/manage/votes', label: '投票活动', icon: <Vote className="h-4 w-4" /> },
     { href: '/manage/library', label: '知识库', icon: <BookOpen className="h-4 w-4" /> },
     { href: '/manage/categories', label: '类别', icon: <FolderTree className="h-4 w-4" /> },
     { href: '/manage/announcements', label: '公告', icon: <Megaphone className="h-4 w-4" /> },

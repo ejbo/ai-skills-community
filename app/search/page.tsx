@@ -10,6 +10,7 @@ import {
   Boxes,
   Lightbulb,
   CalendarDays,
+  Vote as VoteIcon,
   SearchX,
 } from 'lucide-react';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -113,6 +114,17 @@ export default async function SearchPage({
               href: `/events/${e.id}`,
               label: e.title,
               meta: `${e.author} · ${reldate(e.date)}`,
+            })),
+          },
+          {
+            key: 'votes' as const,
+            label: t('search_votes'),
+            icon: VoteIcon,
+            rows: results.votes.map((v) => ({
+              key: v.id,
+              href: `/votes/${v.id}`,
+              label: v.title,
+              meta: `${v.author} · ${reldate(v.date)}`,
             })),
           },
           {
