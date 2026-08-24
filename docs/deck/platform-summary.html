@@ -1,0 +1,2866 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>平台建设总结 · AI4News 与 AI 社区</title>
+<style>
+:root{
+  --red:#C7000B; --red-br:#E60012; --red-dk:#8C0008; --red-tint:#FBEDED;
+  --blue:#0A4A7A; --blue-dk:#1A2942; --blue-tint:#F1F6FB; --violet:#6A3D8F; --amber:#B26A00; --green:#2E6B33;
+  --ink:#1F1F1F; --body:#2A2A2A; --sub:#666; --line:#D2D2D2; --zebra:#F6F8FB;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#8A8A8A;color:var(--ink);
+  font-family:"Microsoft YaHei","PingFang SC","Segoe UI","Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.deck{display:flex;flex-direction:column;align-items:center;gap:20px;padding:20px 0}
+.slide{position:relative;width:1280px;height:720px;background:#fff;overflow:hidden;
+  display:flex;flex-direction:column;padding:22px 36px 0;box-shadow:0 3px 16px rgba(0,0,0,.3)}
+
+.hdr{flex:none;height:22px;display:flex;align-items:center;justify-content:space-between}
+.tabs{display:flex;gap:4px}
+.tab{font-size:12px;line-height:21px;padding:0 12px;background:#EDEDED;color:#555;border:1px solid #DCDCDC}
+.tab.on{background:var(--red);color:#fff;border-color:var(--red);font-weight:700}
+.corner{font-size:11.5px;color:var(--sub);letter-spacing:.4px}
+.corner b{color:var(--red)}
+
+.h1{flex:none;margin-top:12px;font-size:31px;line-height:1.18;font-weight:700;color:var(--red)}
+.h1.s{font-size:27px}
+.sub{flex:none;margin-top:7px;font-size:15px;color:var(--sub);line-height:1.4}
+.rule{flex:none;height:3px;background:var(--red);margin-top:9px}
+.body{flex:1 1 auto;min-height:0;display:flex;gap:14px;padding:14px 0 9px}
+.body.col{flex-direction:column}
+.col{display:flex;flex-direction:column;gap:11px;min-width:0}
+.row{display:flex;gap:12px;min-height:0}
+
+.mod{border:1px solid var(--line);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.mod>h3{flex:none;font-size:15px;font-weight:700;color:#fff;background:var(--red);padding:7px 12px;
+  display:flex;align-items:center;justify-content:space-between;gap:10px}
+.mod>h3 span{font-weight:400;font-size:12.5px;opacity:.92}
+.mod.b>h3{background:var(--blue)} .mod.d>h3{background:var(--blue-dk)}
+.mod.v>h3{background:var(--violet)} .mod.g>h3{background:var(--green)} .mod.a>h3{background:var(--amber)}
+.mod>.in{flex:1 1 auto;min-height:0;padding:11px 12px;overflow:hidden}
+.mod>.in.p0{padding:0}
+.mod>.in.sp{display:flex;flex-direction:column;justify-content:space-between}
+.mod>.in.sp>ul.b{flex:1;display:flex;flex-direction:column;justify-content:space-between}
+.mod>.in.sp>ul.b>li{margin-bottom:0}
+
+ul.b{list-style:none}
+ul.b>li{position:relative;padding-left:15px;font-size:15px;line-height:1.5;margin-bottom:9px;color:var(--body)}
+ul.b>li:before{content:"";position:absolute;left:0;top:8px;width:7px;height:7px;background:var(--red)}
+ul.b>li:last-child{margin-bottom:0}
+ul.b.sm>li{font-size:14px;line-height:1.45;margin-bottom:7px}
+ul.b.sm>li:before{top:7px;width:6px;height:6px}
+ul.b.bl>li:before{background:var(--blue)}
+b{font-weight:700} .r{color:var(--red);font-weight:700} .rd{color:var(--red-dk);font-weight:700}
+.bl{color:var(--blue);font-weight:700} .gy{color:var(--sub)}
+.mono{font-family:Consolas,Menlo,monospace;font-size:13.5px;background:#F2F2F2;border:1px solid #E4E4E4;padding:1px 5px}
+
+table{width:100%;border-collapse:collapse;font-size:14px}
+table.fill{height:100%}
+th{background:var(--blue);color:#fff;font-weight:700;text-align:left;padding:7px 10px;border:1px solid #fff;font-size:13.5px}
+td{border:1px solid var(--line);padding:7px 10px;vertical-align:middle;line-height:1.4}
+tbody tr:nth-child(odd){background:var(--zebra)}
+table.rh th{background:var(--red)}
+table.sm{font-size:13.5px} table.sm td{padding:5px 9px}
+table.xs{font-size:13px} table.xs td{padding:4px 8px} table.xs th{font-size:12.5px;padding:5px 8px}
+
+.shot{position:relative;flex:none;line-height:0;background:#111;border:1px solid #BBB;overflow:hidden}
+.shot img{width:100%;display:block}
+.cap{flex:none;font-size:12.5px;color:var(--sub);line-height:1.45;padding-top:6px}
+.cap b{color:var(--red-dk)}
+
+.scene{background:var(--red-tint);border-left:5px solid var(--red);padding:9px 13px;font-size:14.5px;line-height:1.45}
+.scene b{color:var(--red-dk)}
+.note{background:var(--blue-tint);border-left:5px solid var(--blue);padding:9px 13px;font-size:14.5px;line-height:1.45}
+.note.g{background:#F1F8F1;border-left-color:var(--green)}
+
+.cards{display:flex;gap:13px}
+.card{flex:1;border:1px solid var(--line);border-top:5px solid var(--red);display:flex;flex-direction:column;
+  padding:14px 15px}
+.card .t{font-size:17px;font-weight:700;line-height:1.25;color:var(--red-dk)}
+.card .d{font-size:14px;color:#444;line-height:1.5;margin-top:9px}
+.card .tagline{margin-top:auto;padding-top:10px;font-size:13px;color:var(--red);font-weight:700;
+  border-top:1px solid #E8E8E8;width:100%}
+.card.blue{border-top-color:var(--blue)} .card.blue .t{color:var(--blue)}
+.card.green{border-top-color:var(--green)} .card.green .t{color:var(--green)}
+.card.violet{border-top-color:var(--violet)} .card.violet .t{color:var(--violet)}
+
+/* 编号圆点 */
+.n{display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;background:var(--red);
+  color:#fff;font-size:12px;font-weight:700;border-radius:50%;font-family:Arial,sans-serif;margin-right:6px;
+  vertical-align:1px}
+.n.b2{background:var(--blue)} .n.g2{background:var(--green)} .n.v2{background:var(--violet)}
+
+/* 横向流程链 */
+.flow{display:flex;align-items:stretch;gap:0}
+.flow .stp{flex:1;border:1px solid var(--line);border-top:4px solid var(--red);padding:10px 12px;
+  display:flex;flex-direction:column;min-width:0}
+.flow .stp .st{font-size:15px;font-weight:700;color:var(--red-dk);line-height:1.25}
+.flow .stp .sd{font-size:13px;color:#444;line-height:1.45;margin-top:7px}
+.flow .stp .sw{margin-top:auto;padding-top:8px;font-size:12px;color:var(--sub)}
+.flow .arw{flex:none;width:26px;display:flex;align-items:center;justify-content:center;
+  color:var(--red);font-size:20px;font-weight:700;font-family:Arial,sans-serif}
+
+/* 分层堆栈 */
+.tier{flex:1;display:flex;align-items:stretch;border:1px solid var(--line);margin-bottom:8px;min-height:0}
+.tier:last-child{margin-bottom:0}
+.tier .lb{flex:none;width:150px;background:var(--red);color:#fff;font-size:14.5px;font-weight:700;
+  padding:9px 12px;display:flex;flex-direction:column;justify-content:center;line-height:1.3}
+.tier .lb em{font-style:normal;font-size:11.5px;font-weight:400;opacity:.9;margin-top:3px}
+.tier .ct{flex:1;padding:8px 12px;font-size:13px;line-height:1.5;color:var(--body);min-width:0;align-self:center}
+.tier.t2 .lb{background:#A8000A} .tier.t3 .lb{background:var(--blue)}
+.tier.t4 .lb{background:var(--blue-dk)} .tier.t5 .lb{background:var(--green)}
+.chip{display:inline-block;border:1px solid var(--line);background:#F7F7F7;padding:1px 7px;font-size:12.5px;
+  margin:2px 4px 2px 0;color:#333}
+.chip.r2{border-color:#EFC0C4;background:var(--red-tint);color:var(--red-dk)}
+.chip.b3{border-color:#C3D8E8;background:var(--blue-tint);color:var(--blue)}
+
+.kpis{display:flex;gap:12px}
+.kpi{flex:1;border:1px solid var(--line);padding:10px 12px;text-align:center}
+.kpi .v{font-size:30px;font-weight:700;color:var(--red);line-height:1.1}
+.kpi .k{font-size:12.5px;color:var(--sub);margin-top:5px;line-height:1.35}
+
+.bar{flex:none;background:var(--red);color:#fff;padding:11px 16px 12px;margin:0 -36px;
+  font-size:15px;line-height:1.45;font-weight:600}
+.bar em{font-style:normal;background:rgba(255,255,255,.24);padding:0 4px}
+
+.ft{flex:none;height:32px;display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--sub)}
+.ft img{height:19px;display:block}
+
+.end{padding:0;display:block}
+.end .ct{height:100%;padding:120px 60px 36px}
+.end .ty{font-size:62px;font-weight:700;letter-spacing:-1px}
+.end .ms{margin-top:26px;font-size:17px;line-height:1.7;max-width:840px}
+.end .ms .en{display:block;color:var(--sub);font-size:14px;margin-top:7px}
+.end .cp{position:absolute;left:60px;right:60px;bottom:24px;font-size:8.5px;color:#8A8A8A;line-height:1.55}
+.end .lg{position:absolute;right:56px;bottom:64px}
+.end .lg img{height:44px;display:block}
+
+@page{size:1280px 720px;margin:0}
+@media print{
+  html,body{background:#fff}.deck{gap:0;padding:0}
+  .slide{page-break-after:always;box-shadow:none}.slide:last-child{page-break-after:auto}
+}
+
+/* ===== 图形工具箱 ===== */
+.grid6{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.gbox{border:1px solid var(--line);border-top:4px solid var(--red);padding:9px 11px;display:flex;flex-direction:column;min-height:0}
+.gbox h4{font-size:14.5px;color:var(--red-dk);font-weight:700}
+.gbox h4 em{font-style:normal;font-size:11px;color:var(--sub);font-weight:400;margin-left:5px}
+.gbox .gd{font-size:12.5px;color:#444;line-height:1.45;margin-top:6px}
+.gbox .gt{margin-top:auto;padding-top:6px;font-size:11.5px;color:var(--red);font-weight:700}
+.gbox.b{border-top-color:var(--blue)} .gbox.b h4{color:var(--blue)} .gbox.b .gt{color:var(--blue)}
+.gbox.g{border-top-color:var(--green)} .gbox.g h4{color:var(--green)} .gbox.g .gt{color:var(--green)}
+.gbox.v{border-top-color:var(--violet)} .gbox.v h4{color:var(--violet)} .gbox.v .gt{color:var(--violet)}
+
+.pipe{display:flex;align-items:stretch}
+.pipe .seg{flex:1;border:1px solid var(--line);border-top:3px solid var(--blue);padding:8px 10px;min-width:0;display:flex;flex-direction:column}
+.pipe .seg .pt{font-size:14px;font-weight:700;color:var(--blue)}
+.pipe .seg .pd{font-size:12.5px;color:#444;line-height:1.45;margin-top:5px}
+.pipe .seg .pn{margin-top:auto;padding-top:6px;font-size:11.5px;color:var(--sub)}
+.pipe .ar{flex:none;width:22px;display:flex;align-items:center;justify-content:center;color:var(--blue);font:700 15px Arial}
+.pipe.r .seg{border-top-color:var(--red)} .pipe.r .seg .pt{color:var(--red-dk)} .pipe.r .ar{color:var(--red)}
+
+.states{display:flex;align-items:center}
+.st-node{flex:none;border:2px solid var(--red);padding:7px 11px;font-size:13px;font-weight:700;color:var(--red-dk);background:var(--red-tint);text-align:center}
+.st-node.gray{border-color:#BBB;color:#666;background:#F5F5F5}
+.st-arrow{flex:1;height:2px;background:var(--line);position:relative;margin:0 3px}
+.st-arrow em{position:absolute;left:50%;top:-17px;transform:translateX(-50%);font-style:normal;font-size:11px;color:var(--sub);white-space:nowrap}
+.st-arrow:after{content:"";position:absolute;right:0;top:-4px;border-left:7px solid var(--line);border-top:5px solid transparent;border-bottom:5px solid transparent}
+
+.gantt{display:flex;flex-direction:column;gap:9px}
+.gantt .grow{display:flex;align-items:center;gap:10px}
+.gantt .glb{flex:none;width:128px;font-size:13px;font-weight:700;line-height:1.3}
+.gantt .glb em{display:block;font-style:normal;font-size:11px;color:var(--sub);font-weight:400}
+.gantt .track{flex:1;position:relative;height:30px;background:#F4F6F8;border:1px solid #E2E6EA}
+.gantt .barr{position:absolute;top:0;bottom:0;background:var(--red);color:#fff;font-size:12px;line-height:30px;padding:0 9px;white-space:nowrap;overflow:hidden;font-weight:700}
+.gantt .barr.b2{background:var(--blue)} .gantt .barr.b3{background:var(--blue-dk)}
+.gantt .scale{display:flex;margin-left:138px;font-size:11px;color:var(--sub);border-top:1px solid var(--line);padding-top:4px}
+.gantt .scale span{flex:1;text-align:center}
+
+.bars{display:flex;flex-direction:column;gap:8px}
+.brow{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.brow .blb{flex:none;width:132px;text-align:right;color:#333}
+.brow .btr{flex:1;height:18px;background:#F0F2F4;position:relative}
+.brow .bfl{height:100%;background:var(--red)}
+.brow .bfl.b2{background:var(--blue)} .brow .bfl.gy2{background:#C9CDD2}
+.brow .bvl{flex:none;width:96px;font-size:12px;color:var(--sub)}
+
+.funnel{display:flex;flex-direction:column;align-items:center;gap:4px}
+.funnel .fstep{border:1px solid var(--line);background:#fff;text-align:center;padding:7px 10px;font-size:13px;line-height:1.3}
+.funnel .fstep b{color:var(--red-dk)}
+.funnel .fdrop{font-size:11.5px;color:var(--red);font-weight:700}
+
+.radial{display:grid;grid-template-columns:1fr 168px 1fr;gap:12px;align-items:center}
+.radial .hub{border:2px solid var(--red);background:var(--red-tint);padding:14px 10px;text-align:center;font-size:14.5px;font-weight:700;color:var(--red-dk);line-height:1.35}
+.radial .hub em{display:block;font-style:normal;font-size:11.5px;color:var(--sub);font-weight:400;margin-top:5px}
+.spokes{display:flex;flex-direction:column;gap:7px}
+.spoke{border:1px solid var(--line);padding:6px 10px;font-size:12.5px;background:#fff;line-height:1.4}
+.spoke b{color:var(--blue)}
+
+.shield{display:flex;flex-direction:column;gap:7px}
+.shield .lay{display:flex;align-items:stretch;border:1px solid var(--line)}
+.shield .lay .no{flex:none;width:36px;background:var(--blue-dk);color:#fff;font:700 13px Arial;display:flex;align-items:center;justify-content:center}
+.shield .lay .tx{flex:1;padding:7px 11px;font-size:12.5px;line-height:1.45}
+.shield .lay .tx b{color:var(--blue-dk)}
+
+.ba{display:flex;align-items:stretch}
+.ba .side{flex:1;border:1px solid var(--line);padding:10px 12px}
+.ba .side.bf{background:#FAFAFA}
+.ba .side h5{font-size:13px;font-weight:700;color:var(--sub);margin-bottom:7px}
+.ba .side.af h5{color:var(--red)}
+.ba .mid{flex:none;width:34px;display:flex;align-items:center;justify-content:center;color:var(--red);font:700 20px Arial}
+
+.matrix{display:grid;grid-template-columns:90px 1fr 1fr 1fr;gap:8px}
+.matrix .mh{font-size:12.5px;font-weight:700;color:#fff;background:var(--blue);padding:5px 8px;text-align:center}
+.matrix .mrl{font-size:12.5px;font-weight:700;color:var(--blue-dk);display:flex;align-items:center;padding:0 4px;line-height:1.3}
+.matrix .mc{border:1px solid var(--line);padding:6px 8px;font-size:12px;line-height:1.4;min-height:46px}
+.matrix .mc b{color:var(--red-dk)}
+.matrix .mc.on{background:var(--red-tint);border-color:#EFC0C4}
+.quad{position:relative;border:1px solid var(--line);background:#FCFCFD;overflow:hidden}
+.quad .ax-x,.quad .ax-y{position:absolute;font-size:11.5px;color:var(--sub)}
+.quad .cell{position:absolute;border:1.5px solid var(--red);background:#fff;padding:6px 8px;font-size:11.5px;line-height:1.38;width:172px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.quad .cell b{color:var(--red);display:block;margin-bottom:3px;font-size:13px}
+.ladder{display:flex;align-items:flex-end;gap:9px}
+.ladder .stepb{flex:1;border:1px solid var(--line);border-bottom:4px solid var(--red);background:#fff;display:flex;flex-direction:column;justify-content:flex-start;padding:9px 10px;min-width:0}
+.ph{flex:1;min-height:0;border:2px dashed #C9A6A8;background:#FDF7F7;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;text-align:center;padding:12px;gap:5px}
+.ph .big{font-size:14px;font-weight:700;color:var(--red)}
+.ph .sm2{font-size:12px;color:#8A6E70;line-height:1.45}
+
+
+
+/* ===== AI4News 页面的作用域样式 ===== */
+.nd *{box-sizing:border-box;margin:0;padding:0}
+.slide.nd{position:relative;width:1280px;height:720px;background:#fff;overflow:hidden;
+  display:flex;flex-direction:column;padding:22px 36px 0;box-shadow:0 3px 16px rgba(0,0,0,.3)}
+.nd .hdr{flex:none;height:22px;display:flex;align-items:center;justify-content:space-between}
+.nd .tabs{display:flex;gap:4px}
+.nd .tab{font-size:12px;line-height:21px;padding:0 12px;background:#EDEDED;color:#555;border:1px solid #DCDCDC}
+.nd .tab.on{background:var(--red);color:#fff;border-color:var(--red);font-weight:700}
+.nd .corner{font-size:11.5px;color:var(--sub);letter-spacing:.4px}
+.nd .corner b{color:var(--red)}
+.nd .h1{flex:none;margin-top:12px;font-size:31px;line-height:1.18;font-weight:700;color:var(--red)}
+.nd .sub{flex:none;margin-top:7px;font-size:15px;color:var(--sub);line-height:1.4}
+.nd .rule{flex:none;height:3px;background:var(--red);margin-top:9px}
+.nd .body{flex:1 1 auto;min-height:0;display:flex;gap:14px;padding:14px 0 9px}
+.nd .col{display:flex;flex-direction:column;gap:11px;min-width:0}
+.nd .mod{border:1px solid var(--line);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.nd .mod>h3{flex:none;font-size:15px;font-weight:700;color:#fff;background:var(--red);padding:7px 12px;
+  display:flex;align-items:center;justify-content:space-between;gap:10px}
+.nd .mod>h3 span{font-weight:400;font-size:12.5px;opacity:.92}
+.nd .mod.b>h3{background:var(--blue)}
+.nd .mod.d>h3{background:var(--blue-dk)}
+.nd .mod.v>h3{background:var(--violet)}
+.nd .mod.g>h3{background:var(--green)}
+.nd .mod>.in{flex:1 1 auto;min-height:0;padding:11px 12px;overflow:hidden}
+.nd .mod>.in.p0{padding:0}
+.nd ul.b{list-style:none}
+.nd ul.b>li{position:relative;padding-left:15px;font-size:15px;line-height:1.5;margin-bottom:9px;color:var(--body)}
+.nd ul.b>li:before{content:"";position:absolute;left:0;top:8px;width:7px;height:7px;background:var(--red)}
+.nd ul.b>li:last-child{margin-bottom:0}
+.nd ul.b.sm>li{font-size:13.5px;line-height:1.45;margin-bottom:7px;padding-left:13px}
+.nd ul.b.sm>li:before{width:6px;height:6px;top:7px}
+.nd b{font-weight:700}
+.nd .r{color:var(--red);font-weight:700}
+.nd .rd{color:var(--red-dk);font-weight:700}
+.nd .bl{color:var(--blue);font-weight:700}
+.nd .mono{font-family:Consolas,Menlo,monospace;font-size:13px;background:#F2F2F2;border:1px solid #E4E4E4;padding:0 4px}
+.nd table{width:100%;border-collapse:collapse;font-size:14px}
+.nd table.fill{height:100%}
+.nd th{background:var(--blue);color:#fff;font-weight:700;text-align:left;padding:7px 10px;border:1px solid #fff;font-size:13.5px}
+.nd td{border:1px solid var(--line);padding:7px 10px;vertical-align:middle;line-height:1.4}
+.nd tbody tr:nth-child(odd){background:var(--zebra)}
+.nd table.rh th{background:var(--red)}
+.nd table.sm{font-size:13.5px}
+.nd table.sm td{padding:5px 9px}
+.nd table.xs{font-size:12.5px}
+.nd table.xs td{padding:4px 8px}
+.nd table.xs th{font-size:12.5px;padding:5px 8px}
+.nd .scene{background:var(--red-tint);border-left:5px solid var(--red);padding:9px 13px;font-size:14.5px;line-height:1.45}
+.nd .scene b{color:var(--red-dk)}
+.nd .note{background:#F1F6FB;border-left:5px solid var(--blue);padding:9px 13px;font-size:14.5px;line-height:1.45}
+.nd .note.sm2,.nd .scene.sm2{font-size:13px;line-height:1.45;padding:8px 11px}
+.nd .cards{display:flex;gap:13px}
+.nd .card{flex:1;border:1px solid var(--line);border-top:5px solid var(--red);display:flex;flex-direction:column;
+  align-items:center;justify-content:flex-start;text-align:center;padding:30px 15px 16px}
+.nd .card .ic{margin-bottom:14px}
+.nd .card .t{font-size:18px;font-weight:700;line-height:1.25}
+.nd .card .d{font-size:14.5px;color:#555;line-height:1.5;margin-top:10px}
+.nd .card .tagline{margin-top:auto;padding-top:14px;font-size:13.5px;color:var(--red);font-weight:700;
+  border-top:1px solid #E8E8E8;padding-top:12px;width:100%}
+.nd .card.blue{border-top-color:var(--blue)}
+.nd .card.green{border-top-color:var(--green)}
+.nd .card .sp{margin-top:16px;width:100%;border-top:1px solid #ECEFF3;padding-top:12px;display:flex;
+  flex-direction:column;gap:7px}
+.nd .card .sp>div{font-size:13px;line-height:1.4;color:#444;text-align:left;display:flex;gap:7px}
+.nd .card .sp>div>b{flex:none;width:42px;color:var(--red);font-weight:700}
+.nd .card.blue .sp>div>b{color:var(--blue)}
+.nd .card.green .sp>div>b{color:var(--green)}
+.nd .bar{flex:none;background:var(--red);color:#fff;padding:11px 16px 12px;margin:0 -36px;
+  font-size:15px;line-height:1.45;font-weight:600}
+.nd .bar em{font-style:normal;background:rgba(255,255,255,.24);padding:0 4px}
+.nd .ft{flex:none;height:32px;display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--sub)}
+.nd .ft img{height:19px;display:block}
+.slide.nd.cover{padding:0;display:block;background:#0A1220}
+.slide.nd.cover .bg{position:absolute;inset:0}
+.slide.nd.cover .bg img{width:100%;height:100%;object-fit:cover;display:block}
+.slide.nd.cover .ct{position:absolute;left:64px;top:150px;width:660px}
+.slide.nd.cover .k{font-size:36px;font-weight:700;color:#E60012;line-height:1.1}
+.slide.nd.cover .t{margin-top:16px;font-size:25px;font-weight:700;color:#fff;line-height:1.35}
+.slide.nd.cover .m{margin-top:26px;font-size:15px;color:#B9C8DC;line-height:2}
+.slide.nd.cover .m b{color:#fff;font-weight:700}
+.slide.nd.cover .brand{position:absolute;left:64px;top:56px;height:48px;
+  filter:brightness(2.1) saturate(1.15) drop-shadow(0 0 1px rgba(255,255,255,.35))}
+.slide.nd.cover .sec{position:absolute;left:64px;bottom:44px;font-size:11px;color:#7B8CA4;letter-spacing:.3px}
+.slide.nd.cover .lg{position:absolute;right:56px;bottom:40px}
+.slide.nd.cover .lg img{height:34px;display:block}
+.nd .lay{display:flex;flex-direction:column;gap:6px;flex:1;min-height:0}
+.nd .lyr{display:flex;align-items:stretch;border:1px solid var(--line);flex:1;min-height:0}
+.nd .lyr .lb{flex:none;width:92px;background:var(--blue-dk);color:#fff;font-size:13px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;text-align:center;padding:4px;line-height:1.3}
+.nd .lyr.acc .lb{background:var(--red)}
+.nd .lyr .bx{flex:1;display:flex;gap:6px;padding:6px;min-width:0}
+.nd .lyr .bx>div{flex:1;border:1px solid #DADFE6;background:#F7F9FC;font-size:12px;line-height:1.35;
+  padding:5px 8px;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.nd .lyr .bx>div b{display:block;font-size:13px;margin-bottom:2px;color:#16324D}
+.nd .lyr.acc .bx>div{background:var(--red-tint);border-color:#EBC9CB}
+.nd .lyr.acc .bx>div b{color:var(--red-dk)}
+.nd .arw{flex:none;text-align:center;font-size:13px;color:var(--red);font-weight:700;line-height:1}
+.nd .flow{display:flex;align-items:stretch}
+.nd .flow .st{flex:1;border:1px solid var(--line);border-top:4px solid var(--blue);padding:8px 9px;min-width:0;
+  display:flex;flex-direction:column;gap:4px}
+.nd .flow .st .n{font-size:11px;font-weight:700;color:#fff;background:var(--blue);width:18px;height:18px;
+  line-height:18px;text-align:center;font-family:Arial,sans-serif}
+.nd .flow .st .h{font-size:13.5px;font-weight:700;line-height:1.25}
+.nd .flow .st .p{font-size:12px;color:#555;line-height:1.4}
+.nd .flow .ar{flex:none;width:16px;display:flex;align-items:center;justify-content:center;
+  color:var(--red);font-size:15px;font-weight:700}
+.nd .kpis{display:flex;gap:10px;flex:none}
+.nd .kpi{flex:1;border:1px solid var(--line);border-top:4px solid var(--red);padding:11px 8px;text-align:center}
+.nd .kpi .v{font-size:31px;font-weight:700;color:var(--red);line-height:1.05;font-family:Arial,Helvetica,sans-serif}
+.nd .kpi .v span{font-size:15px;font-weight:700}
+.nd .kpi .l{margin-top:6px;font-size:12.5px;color:#555;line-height:1.3}
+.nd .bars{display:flex;flex-direction:column;gap:6px}
+.nd .brow{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.nd .brow .nm{flex:none;width:82px;text-align:right;color:#333;font-weight:700}
+.nd .bars.w2 .nm{width:104px}
+.nd .brow .tr{flex:1;background:#EFF2F6;height:14px}
+.nd .brow .tr>i{display:block;height:100%;background:var(--blue)}
+.nd .brow .vl{flex:none;width:52px;font-size:12px;color:#555;text-align:right}
+.nd .g6{display:grid;grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr 1fr;gap:10px;flex:1;min-height:0}
+.nd .c4{display:flex;gap:11px;flex:1;min-height:0}
+.nd .c4>.mod{flex:1;min-width:0}
+.slide.nd.end{padding:0;display:block}
+.slide.nd.end .ct{height:100%;padding:120px 60px 36px}
+.slide.nd.end .ty{font-size:62px;font-weight:700;letter-spacing:-1px}
+.slide.nd.end .ms{margin-top:26px;font-size:17px;line-height:1.7;max-width:800px}
+.slide.nd.end .ms .en{display:block;color:var(--sub);font-size:14px;margin-top:7px}
+.slide.nd.end .cp{position:absolute;left:60px;right:60px;bottom:24px;font-size:8.5px;color:#8A8A8A;line-height:1.55}
+.slide.nd.end .lg{position:absolute;right:56px;bottom:64px}
+.slide.nd.end .lg img{height:44px;display:block}
+</style>
+<!-- deck-editor:css:begin -->
+<style>
+/* ==========================================================================
+   deck-editor — 让任意「一页一个 .slide」的 HTML 胶片变成可视化可编辑
+   纯原生，无依赖。打印时全部隐藏。
+   ========================================================================== */
+
+.dke-bar{
+  position:fixed; left:0; right:0; top:0; z-index:9999;
+  display:flex; flex-direction:column; gap:0;
+  font:12px/1.4 "Microsoft YaHei","PingFang SC",Arial,sans-serif;
+  background:#fff; border-bottom:1px solid #D8D8D8; box-shadow:0 2px 10px rgba(0,0,0,.14);
+  user-select:none;
+}
+.dke-row{display:flex; align-items:center; gap:5px; padding:6px 10px; flex-wrap:wrap}
+.dke-row + .dke-row{border-top:1px solid #EDEDED; background:#FAFAFA}
+.dke-row.hidden{display:none}
+.dke-sep{width:1px; height:20px; background:#DDD; margin:0 3px}
+.dke-lbl{font-size:11px; color:#777; margin-right:2px}
+
+.dke-btn{
+  font:600 12px/1 "Microsoft YaHei","PingFang SC",Arial,sans-serif;
+  padding:6px 10px; border:1px solid #CFCFCF; background:#fff; color:#333;
+  border-radius:2px; cursor:pointer; white-space:nowrap;
+}
+.dke-btn:hover{border-color:#C7000B; color:#C7000B}
+.dke-btn:active{background:#F6F6F6}
+.dke-btn.on{background:#C7000B; border-color:#C7000B; color:#fff}
+.dke-btn.primary{background:#C7000B; border-color:#C7000B; color:#fff}
+.dke-btn.primary:hover{background:#A80009}
+.dke-btn.icon{min-width:30px; text-align:center; padding:6px 8px}
+.dke-btn[disabled]{opacity:.4; cursor:default}
+.dke-sel,.dke-num{font:12px "Microsoft YaHei","PingFang SC",Arial,sans-serif;
+  padding:5px 6px; border:1px solid #CFCFCF; border-radius:2px; background:#fff}
+.dke-num{width:52px}
+
+.dke-swatches{display:flex; gap:3px; align-items:center}
+.dke-sw{width:18px; height:18px; border:1px solid rgba(0,0,0,.25); cursor:pointer; border-radius:2px}
+.dke-sw:hover{outline:2px solid #C7000B; outline-offset:1px}
+
+.dke-saved{font-size:11px; color:#2E6B33; font-weight:700; white-space:nowrap; margin-left:2px}
+.dke-saved.dirty{color:#B26A00}
+.dke-btn.need::after{content:"●"; color:#FFD34D; margin-left:5px; font-size:10px}
+
+.dke-hint{font-size:11px; color:#888; margin-left:auto; white-space:nowrap}
+.dke-hint b{color:#C7000B}
+
+/* 工具条是 fixed，任何时候都让出它的高度，避免盖住第一页 */
+body.dke-ready{padding-top:var(--dke-h,44px)}
+body.dke-on .slide{outline:1px dashed rgba(199,0,11,.35); outline-offset:-1px}
+body.dke-on .slide.dke-cur{outline:2px solid rgba(199,0,11,.55)}
+body.dke-on [contenteditable="true"]:focus{outline:2px solid #E60012; outline-offset:1px; background:rgba(255,248,248,.6)}
+
+/* 浮动元素（图片 / 文本框 / 标注） */
+.dke-el{position:absolute; z-index:20; box-sizing:border-box}
+.dke-el img{display:block; width:100%; height:100%; object-fit:fill; pointer-events:none}
+.dke-el.fitmode img{object-fit:contain}
+.dke-el.txt{padding:4px 6px; font-size:14px; line-height:1.5; color:#1F1F1F; min-width:40px}
+body.dke-on .dke-el{cursor:move}
+body.dke-on .dke-el:hover{outline:1px dashed #E60012; outline-offset:1px}
+.dke-el.sel{outline:2px solid #E60012 !important; outline-offset:1px}
+
+.dke-h{position:absolute; width:9px; height:9px; background:#fff; border:1.5px solid #E60012;
+  border-radius:1px; z-index:30}
+.dke-h.nw{left:-5px;top:-5px;cursor:nwse-resize}   .dke-h.n{left:50%;top:-5px;margin-left:-4.5px;cursor:ns-resize}
+.dke-h.ne{right:-5px;top:-5px;cursor:nesw-resize}  .dke-h.e{right:-5px;top:50%;margin-top:-4.5px;cursor:ew-resize}
+.dke-h.se{right:-5px;bottom:-5px;cursor:nwse-resize} .dke-h.s{left:50%;bottom:-5px;margin-left:-4.5px;cursor:ns-resize}
+.dke-h.sw{left:-5px;bottom:-5px;cursor:nesw-resize} .dke-h.w{left:-5px;top:50%;margin-top:-4.5px;cursor:ew-resize}
+
+/* 排版模式：点静态元素把它「脱离文档流」变成可拖动 */
+body.dke-layout .slide{cursor:crosshair}
+body.dke-layout .dke-hot{outline:2px solid #0A4A7A !important; outline-offset:1px;
+  background:rgba(10,74,122,.06)}
+body.dke-layout .dke-hot::after{content:attr(data-dke-tag); position:absolute; z-index:40;
+  transform:translateY(-100%); background:#0A4A7A; color:#fff; font:10px/1.6 Arial,sans-serif;
+  padding:1px 6px; white-space:nowrap; pointer-events:none}
+.dke-spacer{pointer-events:none}
+.dke-el.dke-freed{background:#fff}
+
+/* 拖放提示 */
+.slide.dke-drop{box-shadow:inset 0 0 0 3px #E60012}
+
+/* 浮层提示条 */
+.dke-toast{position:fixed; left:50%; bottom:26px; transform:translateX(-50%); z-index:10000;
+  background:rgba(30,30,30,.92); color:#fff; padding:9px 16px; border-radius:3px;
+  font:12px "Microsoft YaHei","PingFang SC",Arial,sans-serif; pointer-events:none; opacity:0;
+  transition:opacity .18s}
+.dke-toast.show{opacity:1}
+
+@media print{
+  .dke-bar,.dke-toast,.dke-h{display:none !important}
+  body.dke-ready,body.dke-on{padding-top:0 !important}
+  body.dke-on .slide,body.dke-on .slide.dke-cur{outline:none}
+  .dke-el.sel{outline:none !important}
+}
+</style>
+<!-- deck-editor:css:end -->
+</head>
+<body>
+<div class="deck">
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab on">总览</div><div class="tab">AI4News</div><div class="tab">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>CARI</b> · 平台建设总结</div></div>
+  <div class="h1" style="margin-top:24px;font-size:36px">两个自研平台的建设总结：AI4News 与 AI 社区</div>
+  <div class="sub" style="font-size:16px;margin-top:11px">一份汇报讲清两件事 —— 已经建成了什么，以及接下来怎么让它持续产生价值</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="row" style="flex:none;height:150px;gap:12px">
+      <div class="kpi" style="flex:1"><div class="v">19.9 万</div><div class="k">行自研代码<br>两个平台合计，不含依赖与文档</div></div>
+      <div class="kpi" style="flex:1"><div class="v">151</div><div class="k">张数据表<br>AI4News 79 + AI 社区 72</div></div>
+      <div class="kpi" style="flex:1"><div class="v">419</div><div class="k">条路由 / 接口<br>AI4News 268 + AI 社区 151</div></div>
+      <div class="kpi" style="flex:1"><div class="v">843</div><div class="k">个单元测试用例<br>AI4News 553 + AI 社区 290</div></div>
+      <div class="kpi" style="flex:1"><div class="v">476</div><div class="k">次提交<br>两个平台均为单一作者</div></div>
+    </div>
+    <div class="row" style="flex:1;margin-top:12px;gap:12px">
+      <div class="card"><div class="t">AI4News · 新闻情报与多模型工作台</div><div class="d">把「新闻情报」和「多模型工作台」做进同一个平台：RSS 抓回来的文章逐篇打分、双语改写、聚成事件簇，再从新闻中心、个性化看板、定时邮件三个口子送出去；同一个问题可并排问最多 7 个模型，并自建 OpenAI 兼容网关供同事直接调用内网模型。</div><div class="tagline">上线运行 · 301 天 · 372 次提交</div></div>
+      <div class="card blue"><div class="t">AI 社区 · 知识沉淀与协作平台</div><div class="d">六个板块：技能中心、知识库、讨论区、投票评选、极客视频、社区活动，共用一套账号、通知、评论与权限。目标是把个人的一次性产出，变成组织可复用、可检索、可被 AI 消费的资产。</div><div class="tagline" style="color:var(--blue)">上线运行 · 90 天 · 104 次提交</div></div>
+    </div>
+  </div>
+  <div class="bar">两个平台面向不同场景，但共用同一套内网模型与身份体系 —— <em>AI4News 解决"信息进得来"，AI 社区解决"经验留得下"</em>。</div>
+  <div class="ft"><div>汇报稿 · 2026-08 · 内部使用 · Security Level：内部公开</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab on">总览</div><div class="tab">AI4News</div><div class="tab">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>CARI</b> · 平台建设总结</div></div>
+  <div class="h1">汇报目录：先看总体，再看各平台，最后看下一步</div>
+  <div class="sub">自顶向下四章，每章的核心结论列在下表</div>
+  <div class="rule"></div>
+  <div class="body">
+    <table class="fill xs">
+      <thead><tr><th style="width:52px">章节</th><th style="width:150px">内容</th><th>核心结论</th><th style="width:70px">页码</th></tr></thead>
+      <tbody>
+        <tr><td><b>一</b></td><td>总体<br><span class="gy">规模与功能全景</span></td><td>两个平台合计 <b>19.9 万行自研代码、151 张表、419 条路由、843 个用例</b>，均由单一作者在内网环境从零搭建。AI4News 负责把外部信息处理成可用情报，AI 社区负责把内部经验沉淀为可复用资产，两者共用内网模型与实名身份体系。</td><td>3 – 5</td></tr>
+        <tr><td><b>二</b></td><td>AI4News<br><span class="gy">功能 · 工程 · 数据</span></td><td>三条产品线长在一个 Django 单体上：新闻情报中枢（采集→打分→双语改写→事件聚簇）、多模型工作台（7 模型并排 + 深度研究 + 舆论洞察 + 生图生视频）、平台底座（OpenAI 兼容网关 + 26 页运营后台）。</td><td>6 – 17</td></tr>
+        <tr><td><b>三</b></td><td>AI 社区<br><span class="gy">功能 · 工程</span></td><td>六大板块全部上线，账号、通知、评论、权限四套底座打通，新增板块无需重建。技术投入集中在并发一致性、权限单点收敛、内网条件下的能力自建、推理模型的工程容错四类问题上。</td><td>18 – 29</td></tr>
+        <tr><td><b>四</b></td><td>下一步<br><span class="gy">路径与投入</span></td><td>当前瓶颈不在功能供给而在参与转化。建议以「真人社区」为主线，专家专栏作栏目、AI 资源激励作放大器；第一批六项无外部依赖可立即启动，需决策的是额度授权、算力排期、运营配置与试点部门。</td><td>30 – 37</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="bar">两个平台都已建成并稳定运行。<em>本次汇报的重点是：把它们放在一起看清楚投入产出，并定下 AI 社区的下一步</em>。</div>
+  <div class="ft"><div>汇报目录</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab on">总览</div><div class="tab">AI4News</div><div class="tab">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>CARI</b> · 平台建设总结</div></div>
+  <div class="h1 s">【总体】工程规模：19.9 万行自研代码，两个平台，一位作者</div>
+  <div class="sub">全部为内网环境下从零搭建，不含第三方依赖与文档；数据取自 git 统计与测试实测</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="row" style="flex:none;height:196px;gap:12px">
+      <div class="mod" style="flex:1"><h3>AI4News <span>2025-10-17 起 · 301 天 · 372 次提交</span></h3><div class="in p0">
+        <table class="xs fill"><tbody>
+          <tr><td style="width:120px"><b>自研代码</b></td><td>114,436 行（Python + JS/JSX + 模板）</td></tr>
+          <tr><td><b>数据表</b></td><td>79 张（含 3 张跨库只读表）</td></tr>
+          <tr><td><b>URL 路由</b></td><td>268 条（其中 API 类 67 条）</td></tr>
+          <tr><td><b>测试</b></td><td>553 个用例 / 45 个测试文件</td></tr>
+          <tr><td><b>节奏</b></td><td>116 个有提交的活跃日，月均约 37 次提交</td></tr>
+        </tbody></table>
+      </div></div>
+      <div class="mod b" style="flex:1"><h3>AI 社区 <span>2026-05-22 起 · 90 天 · 104 次提交</span></h3><div class="in p0">
+        <table class="xs fill"><tbody>
+          <tr><td style="width:120px"><b>自研代码</b></td><td>85,190 行（TSX + TS + JS / CSS）</td></tr>
+          <tr><td><b>数据表</b></td><td>72 张（160 个索引与唯一约束）</td></tr>
+          <tr><td><b>服务接口</b></td><td>151 条（另有 72 个服务端渲染页面）</td></tr>
+          <tr><td><b>测试</b></td><td>290 个用例 / 26 个测试文件，1.17 秒跑完</td></tr>
+          <tr><td><b>节奏</b></td><td>28 个有提交的活跃日，月均约 35 次提交</td></tr>
+        </tbody></table>
+      </div></div>
+    </div>
+    <div class="row" style="flex:1;margin-top:12px;gap:12px">
+      <div class="mod" style="flex:1.3"><h3>两个平台的代码分布 <span>按自研代码行数</span></h3><div class="in">
+        <div class="bars">
+          <div class="brow"><div class="blb" style="width:150px">AI4News · 新闻中枢</div><div class="btr"><div class="bfl" style="width:100%"></div></div><div class="bvl" style="width:60px;text-align:right">21,139</div></div>
+          <div class="brow"><div class="blb" style="width:150px">AI4News · 多模型工作台</div><div class="btr"><div class="bfl" style="width:67%"></div></div><div class="bvl" style="width:60px;text-align:right">14,172</div></div>
+          <div class="brow"><div class="blb" style="width:150px">AI 社区 · 知识库</div><div class="btr"><div class="bfl b2" style="width:80%"></div></div><div class="bvl" style="width:60px;text-align:right">16,910</div></div>
+          <div class="brow"><div class="blb" style="width:150px">AI 社区 · 技能中心</div><div class="btr"><div class="bfl b2" style="width:48%"></div></div><div class="bvl" style="width:60px;text-align:right">10,062</div></div>
+          <div class="brow"><div class="blb" style="width:150px">AI 社区 · 视频与短视频</div><div class="btr"><div class="bfl b2" style="width:43%"></div></div><div class="bvl" style="width:60px;text-align:right">9,007</div></div>
+          <div class="brow"><div class="blb" style="width:150px">AI4News · API 网关</div><div class="btr"><div class="bfl" style="width:32%"></div></div><div class="bvl" style="width:60px;text-align:right">6,765</div></div>
+        </div>
+        <div class="cap" style="padding-top:8px">仅列两侧规模最大的六个模块；其余模块与共用框架层见各章工程规模页（第 14 页、第 29 页）。</div>
+      </div></div>
+      <div class="mod d" style="flex:1"><h3>共同的工程前提 <span>内网环境的三条硬约束</span></h3><div class="in"><ul class="b sm">
+        <li><b>拿不到外网资源。</b>依赖、字体、前端库全部本地化；AI4News 把 14 个前端运行时文件下到本地，AI 社区的命令行工具自带分发，均不依赖公共源。</li>
+        <li><b>没有现成的中间件。</b>对象存储、CDN、统一调度都不具备，因此媒体存储、任务调度、限流计量都要自建并留降级路径。</li>
+        <li><b>模型分内外两路。</b>外部模型统一走企业代理，内网模型直连，两套客户端策略完全不同 —— 这条线同时贯穿两个平台。</li>
+      </ul></div></div>
+    </div>
+  </div>
+  <div class="bar">两个平台合计约 <em>20 万行自研代码、843 个自动化用例</em>，全部在内网条件下从零建成，且均由单一作者持续维护。</div>
+  <div class="ft"><div>来源：git ls-files 逐目录统计 · git log · 测试实测 · 2026-08-19</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab on">总览</div><div class="tab">AI4News</div><div class="tab">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>CARI</b> · 平台建设总结</div></div>
+  <div class="h1 s">【总体】功能全景：外部信息进得来，内部经验留得下</div>
+  <div class="sub">两个平台在同一条价值链的两端，共用内网模型与实名身份</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="row" style="flex:1;gap:12px">
+      <div class="mod" style="flex:1"><h3>AI4News · 让外部信息进得来 <span>3 条产品线</span></h3><div class="in">
+        <div class="grid6" style="grid-template-columns:1fr 1fr;gap:9px">
+          <div class="gbox"><h4>新闻情报中枢</h4><div class="gd">订阅网站与关键词，抓回来的文章逐篇打分、中英双语改写、按事件聚簇。</div><div class="gt">89 条路由 · 35 张表</div></div>
+          <div class="gbox"><h4>四个出口</h4><div class="gd">新闻中心、个性化看板、定时邮件、详情页 AI 问答，同一份匹配结果四种消费方式。</div><div class="gt">13 个页面入口</div></div>
+          <div class="gbox"><h4>多模型工作台</h4><div class="gd">一个问题并排问最多 7 个模型，答完自动出速览 / 融合 / 对比 / 追问四种汇总。</div><div class="gt">24 个模型注册项</div></div>
+          <div class="gbox"><h4>长任务工具</h4><div class="gd">深度研究、X 舆论洞察、生图生视频，各自后台线程运行，前端轮询状态。</div><div class="gt">最长可跑 15 分钟</div></div>
+          <div class="gbox"><h4>API 网关</h4><div class="gd">改 base_url 即可用官方 SDK 调内网模型，带鉴权、限流与用量计量。</div><div class="gt">3 个兼容端点</div></div>
+          <div class="gbox"><h4>运营后台</h4><div class="gd">模型路由热改、用户与配额管理、抓取与投递监控。</div><div class="gt">26 个页面</div></div>
+        </div>
+      </div></div>
+      <div class="mod b" style="flex:1"><h3>AI 社区 · 让内部经验留得下 <span>6 个板块</span></h3><div class="in">
+        <div class="grid6" style="grid-template-columns:1fr 1fr;gap:9px">
+          <div class="gbox b"><h4>技能中心</h4><div class="gd">Skill 的发布、授权、免安装试用与一行命令安装；效果对比与 Remix。</div><div class="gt">从"各自留存"到"一次上传、多次安装"</div></div>
+          <div class="gbox b"><h4>知识库</h4><div class="gd">六种来源入库，AI 逐章导读，问答带原文引用，共享标注。</div><div class="gt">从"各读一遍"到"一人读完、全员可问"</div></div>
+          <div class="gbox b"><h4>讨论区</h4><div class="gd">动态流与论坛话题并存，附件、反应、两级评论与主题归档。</div><div class="gt">从"群聊即焚"到"可检索、可沉淀"</div></div>
+          <div class="gbox v"><h4>投票评选</h4><div class="gd">作品征集、审核、限票、匿名评选、明细导出的完整评选流程。</div><div class="gt">从"群里接龙"到"可审计的流程"</div></div>
+          <div class="gbox b"><h4>极客视频</h4><div class="gd">竖屏随刷短视频人人可发，自动中英双语字幕；长视频 AI 摘要与问答。</div><div class="gt">发布门槛降到一条手机视频</div></div>
+          <div class="gbox b"><h4>社区活动</h4><div class="gd">全员可见日历，按浏览者时区显示，一键报名与开场前提醒。</div><div class="gt">从"一个邮件列表"到"全员可达"</div></div>
+        </div>
+      </div></div>
+    </div>
+    <div class="note" style="flex:none;margin-top:11px;font-size:12.5px"><b>两者的连接点：</b>① 共用内网大模型 —— AI4News 的网关同时为社区的 AI 能力供能；② 共用实名身份与员工目录 —— 部门信息一处维护、两边生效；③ 信息链路互补 —— AI4News 把外部信息处理成可读情报，AI 社区把内部实践沉淀为可复用资产。</div>
+  </div>
+  <div class="bar">一句话概括两个平台的分工：<em>AI4News 解决"看什么"，AI 社区解决"怎么做、跟谁学"</em>。</div>
+  <div class="ft"><div>功能全景</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide nd">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab on">AI4News</div><div class="tab">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI4News</b> · 平台建设总结</div></div>
+  <div class="h1">【总览】一页看懂：三条产品线长在同一个平台上</div>
+  <div class="sub">新闻情报中枢负责「把有用的信息找出来送到人手里」，多模型工作台负责「把大模型变成随手能用的工具」，平台底座让前两件事可管、可控、可计量。</div>
+  <div class="rule"></div>
+
+  <div class="body"><div class="col" style="flex:1;gap:12px">
+    <div class="cards" style="flex:1">
+      <div class="card">
+        <div class="ic"><svg width="76" height="76" viewBox="0 0 58 58" fill="none" stroke="#C7000B" stroke-width="2.4">
+          <rect x="7" y="9" width="44" height="34" rx="3"/><path d="M13 17h18M13 24h18M13 31h12"/><circle cx="42" cy="22" r="6"/><path d="M46 26l5 5"/></svg></div>
+        <div class="t">新闻情报中枢</div>
+        <div class="d">订阅任意网站或关键词，文章抓回来后逐篇打分、双语改写、按事件聚簇，再从新闻中心、个性化看板、定时邮件三个口子送出去。</div>
+        <div class="sp">
+          <div><b>订阅</b>网站链接 / 关键词 / 关注同事，解析不出 RSS 自动兜底</div>
+          <div><b>加工</b>相关性打分 → 中英双语改写 → 向量去重与事件聚簇</div>
+          <div><b>出口</b>新闻中心 · 个性化看板 · 定时邮件 · 详情页 AI 问答</div>
+        </div>
+        <div class="tagline">89 条路由 · 35 张表 · 13 个页面入口</div>
+      </div>
+      <div class="card blue">
+        <div class="ic"><svg width="76" height="76" viewBox="0 0 58 58" fill="none" stroke="#0A4A7A" stroke-width="2.4">
+          <rect x="5" y="12" width="15" height="28" rx="2"/><rect x="22" y="12" width="15" height="28" rx="2"/><rect x="39" y="12" width="15" height="28" rx="2"/><path d="M9 20h7M26 20h7M43 20h7M9 27h7M26 27h7M43 27h7"/></svg></div>
+        <div class="t">多模型工作台</div>
+        <div class="d">同一个问题并排问最多 7 个模型，答完自动出速览、融合、对比三份汇总；深度研究、X 舆论洞察、图片与视频生成共用一个工作区。</div>
+        <div class="sp">
+          <div><b>对话</b>7 路并排流式 + 速览 / 融合 / 对比 / 追问四种汇总</div>
+          <div><b>研究</b>深度研究报告 · X 平台舆论洞察 · 可复用提示词技能库</div>
+          <div><b>生成</b>Sora 视频 · Imagen 与 gpt-image 生图 · 文档转图附件</div>
+        </div>
+        <div class="tagline" style="color:var(--blue)">14 个可选模型 · 50 条路由 · 19 张表</div>
+      </div>
+      <div class="card green">
+        <div class="ic"><svg width="76" height="76" viewBox="0 0 58 58" fill="none" stroke="#2E6B33" stroke-width="2.4">
+          <path d="M29 5l20 8v13c0 12-8 22-20 27C17 48 9 38 9 26V13z"/><path d="M21 28l6 6 11-12"/></svg></div>
+        <div class="t">网关与运营底座</div>
+        <div class="d">自建 OpenAI 兼容网关，同事拿一个 Key 就能调内网 vLLM；限流、配额、逐次计量、异常告警和 26 个后台页面把整个平台管起来。</div>
+        <div class="sp">
+          <div><b>网关</b>鉴权 · 限流 · 日配额 · 模型路由热改 · 五维 token 计量</div>
+          <div><b>后台</b>用户与权限 · 内容 · 用量明细 · 告警 · 员工名册</div>
+          <div><b>监控</b>vLLM 实时负载、四组延迟直方图、4 类异常自动检测</div>
+        </div>
+        <div class="tagline" style="color:var(--green)">五维 token 计量 · 69 条后台路由</div>
+      </div>
+    </div>
+    <div class="note" style="flex:none">
+      <b>规模：</b>2025-10-17 起 301 天、372 次提交，一个人写出 <b>114,436 行</b>自研代码 —— 8 个 Django 应用、79 张表、268 条路由、553 个单元测试用例、41 个第三方依赖。
+    </div>
+  </div></div>
+
+  <div class="bar">三条线不是三个项目：它们共用一套用户、一套模型注册表、一套用量账本，所以加一个模型、改一条权限，三处同时生效。</div>
+  <div class="ft"><div>来源：git 统计 + 各 app urls.py / models.py 实测</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide nd">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab on">AI4News</div><div class="tab">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI4News</b> · 平台建设总结</div></div>
+  <div class="h1">【总览】系统分层：一个 Django 单体，五层各管一段</div>
+  <div class="sub">示意图。模型层的分叉是这套架构最关键的一条线 —— 外部模型统一走企业代理，内网模型直连，两套 HTTP 客户端策略完全不同。</div>
+  <div class="rule"></div>
+
+  <div class="body"><div class="col" style="flex:1;gap:9px">
+    <div class="lay">
+      <div class="lyr acc">
+        <div class="lb">接入层</div>
+        <div class="bx">
+          <div><b>浏览器</b>React SPA + 多页应用，64 个模板</div>
+          <div><b>定时邮件</b>日 / 周 / 月摘要，按用户时区投递</div>
+          <div><b>OpenAI SDK</b>改 base_url 即可调 /model/v1/</div>
+          <div><b>MCP 客户端</b>10 个新闻与偏好类工具</div>
+        </div>
+      </div>
+      <div class="arw">▼</div>
+      <div class="lyr">
+        <div class="lb">应用层</div>
+        <div class="bx">
+          <div><b>news</b>新闻中枢：采集 / 匹配 / 看板 / 邮件 / 建议板</div>
+          <div><b>multillm</b>多模型对话 / 深度研究 / X 洞察 / 生图生视频</div>
+          <div><b>ai_hub</b>AI 洞察中心：视频与 GitHub 趋势</div>
+          <div><b>admin_panel</b>运营后台：26 个功能页</div>
+        </div>
+      </div>
+      <div class="arw">▼</div>
+      <div class="lyr">
+        <div class="lb">服务层</div>
+        <div class="bx">
+          <div><b>内容加工</b>抓取 · 关键词自动机 · 评分 · 双语改写 · 去重聚类</div>
+          <div><b>对话编排</b>多路 SSE · AI 汇总 4 模式 · 报告生成与导出</div>
+          <div><b>网关服务</b>鉴权 · 限流 · 配额 · 模型路由 · 逐次计量</div>
+          <div><b>运营服务</b>审计 · 员工目录 · 用量分析 · 异常告警</div>
+        </div>
+      </div>
+      <div class="arw">▼</div>
+      <div class="lyr">
+        <div class="lb">模型层<br>24 个注册项</div>
+        <div class="bx">
+          <div style="flex:1.1"><b>外部 12 项 · 经华为企业代理</b>ChatGPT / Gemini / Grok / Qwen / Claude · o3-deep-research · Grok x_search · Sora · Imagen · gpt-image</div>
+          <div style="flex:1.1"><b>内网 12 项 · 直连不走代理</b>GPT-OSS-120B / GLM-4.6V / Gemma-4 / MiniMax-M2.7 / GLM-5.2 / DeepSeek-V4 · Qwen3-Embedding-8B</div>
+        </div>
+      </div>
+      <div class="arw">▼</div>
+      <div class="lyr">
+        <div class="lb">数据层</div>
+        <div class="bx">
+          <div><b>PostgreSQL</b>79 张表，连接池每进程 10 常驻 + 15 溢出</div>
+          <div><b>Celery + RabbitMQ</b>5 个队列 / 4 组 worker / 12 子进程 / 8 条定时</div>
+          <div><b>DatabaseCache</b>兼作分布式任务锁与列表页计数缓存</div>
+          <div><b>文件与日志</b>9 路按功能分流，各 20MB × 5 备份</div>
+        </div>
+      </div>
+    </div>
+    <div class="scene sm2" style="flex:none">
+      <b>一个设计决定贯穿全图：</b>所有模型的 id、端点、密钥、走不走代理都收在 <span class="mono">ai4news/model_registry.py</span> 一个文件里。加一个内网模型只改这一处，前端下拉、后端 client、代理策略三处自动跟上；内部服务调模型还会回环走自家网关，顺带吃到限流、配额和计量。
+    </div>
+  </div></div>
+
+  <div class="bar">单体不等于耦合 —— 边界划在服务层，四个应用各自独立，共享的只有身份、模型注册表和用量账本这三样。</div>
+  <div class="ft"><div>来源：ai4news/settings.py · model_registry.py · restart.sh 实测（示意图）</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide nd">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab on">AI4News</div><div class="tab">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI4News</b> · 平台建设总结</div></div>
+  <div class="h1">【新闻智能】主链路：抓回来 → 打分 → 双语改写 → 聚成事件簇</div>
+  <div class="sub">六个环节全自动，每 30 分钟推一轮；RSS.app 的 webhook 还有一条实时旁路，来了新文章直接开线程处理，不排队。</div>
+  <div class="rule"></div>
+
+  <div class="body"><div class="col" style="flex:1;gap:11px">
+    <div class="flow" style="flex:none">
+      <div class="st"><div class="n">1</div><div class="h">抓取</div><div class="p">feed 3 秒、正文 5 秒超时，6 线程并发；代理失败自动直连重试一次</div></div>
+      <div class="ar">›</div>
+      <div class="st"><div class="n">2</div><div class="h">打标</div><div class="p">全站用户关键词编成一个 Aho–Corasick 自动机，一次扫描出全部命中</div></div>
+      <div class="ar">›</div>
+      <div class="st"><div class="n">3</div><div class="h">落库</div><div class="p">前三段全程零 DB，最后 50 条一个事务批量写；整批失败降级为逐条</div></div>
+      <div class="ar">›</div>
+      <div class="st"><div class="n">4</div><div class="h">评分</div><div class="p">每篇一次独立调用，内网 DeepSeek，temperature 0，返回严格 JSON</div></div>
+      <div class="ar">›</div>
+      <div class="st"><div class="n">5</div><div class="h">改写</div><div class="p">判为相关的当场做中英双语标题 / 正文 / 摘要，段落 1:1 对齐</div></div>
+      <div class="ar">›</div>
+      <div class="st"><div class="n">6</div><div class="h">聚簇</div><div class="p">Qwen3 向量先按 0.92 去重，再按 0.82 把同一事件聚成一簇</div></div>
+    </div>
+
+    <div class="mod b" style="flex:1">
+      <h3>关键参数与背后的取舍 <span>全部回代码核实</span></h3>
+      <div class="in p0"><table class="fill xs">
+        <thead><tr><th style="width:14%">环节</th><th style="width:32%">关键参数</th><th>为什么这么定</th></tr></thead>
+        <tbody>
+          <tr><td><b class="rd">调度</b></td><td>Beat 每 30 分钟一轮；每个用户再按自己的评估间隔节流（默认 20 分钟，下限 5 分钟）</td>
+              <td>抓取和评分分在不同队列，互不阻塞；打开看板会顺手投递一次匹配，但有双重节流，刷新页面打不爆队列</td></tr>
+          <tr><td><b class="rd">评分缓存</b></td><td><span class="mono">prompt_signature</span> = sha256(prompt + 阈值 + 分类 + 关键词)</td>
+              <td>用户改一个字，签名就变，历史文章自动重新进候选队列 —— 不需要手工触发全量重算</td></tr>
+          <tr><td><b class="rd">去重</b></td><td>余弦 ≥ 0.92 判为重复；判重的文章也写一行分数为 0 的记录</td>
+              <td>这行记录带着当前签名，下一轮候选查询直接把它排除，重复文章不会被反复捞回来重算</td></tr>
+          <tr><td><b class="rd">聚类</b></td><td>48 小时窗口、余弦 ≥ 0.82（用户可调），按分数降序贪心归簇</td>
+              <td>因为按分数降序，簇代表天然就是簇内最高分那篇；看板和邮件都只发代表，同一事件不会刷屏</td></tr>
+          <tr><td><b class="rd">容错</b></td><td>评分失败、落库失败、翻译失败、聚类失败各自隔离</td>
+              <td>一条脏数据只跳过它自己，不影响这个用户这一轮的其余文章；有专门的回归测试覆盖</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </div></div>
+
+  <div class="bar">去重和聚类共用同一份向量缓存，聚类那一步不再调模型 —— 存的是归一化向量，点积就是余弦。</div>
+  <div class="ft"><div>来源：rss_scraper.py · relevance.py · llm.py · embedding.py · clustering.py</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide nd">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab on">AI4News</div><div class="tab">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI4News</b> · 平台建设总结</div></div>
+  <div class="h1">【新闻智能】同一份匹配结果，四个口子送到人手里</div>
+  <div class="sub">底下都是 UserNewsMatch 这一张表，上面按「逛 / 查 / 收 / 订」四种使用习惯做了四套界面。</div>
+  <div class="rule"></div>
+
+  <div class="body"><div class="col" style="flex:1;gap:10px">
+    <div class="c4">
+      <div class="mod">
+        <h3>新闻中心 Hub</h3>
+        <div class="in"><ul class="b sm" style="margin:0">
+          <li>Forbes 式首页：滚动热门标题条 + 三栏首屏 + 自动轮播卡片行</li>
+          <li>一次查询取 24 小时内 120 条，在内存里切成头条 3 / 热门 6 / 突发 5 / 滚动 12 四段，跨板块不重复</li>
+          <li>突发的判定是 12 小时内且评分 ≥ 0.85</li>
+          <li>两级分类导航，子分类没配来源就继承父级</li>
+          <li>AI 简报每 6 小时一版，3 条要点</li>
+          <li>卡片点开是共享弹窗：收藏、复制链接、复制分享文案、下载分享图、关注来源用户</li>
+          <li>分类落地页带二级子分类横条，滚到底自动加载下一页 12 条</li>
+        </ul></div>
+      </div>
+      <div class="mod b">
+        <h3>个性化看板</h3>
+        <div class="in"><ul class="b sm" style="margin:0">
+          <li>三栏可拖拽：筛选 / 列表 / AI 对话</li>
+          <li>全文检索走 PostgreSQL 原生索引，标题 A 权重、摘要 B 权重，命中不足自动降级</li>
+          <li>可按来源、关键词、作者、我的分类、日期、关注的同事六个维度筛</li>
+          <li>只显示簇代表，相似的收在「+N 相似」里</li>
+          <li>右侧 AI 对话可带最多 5 篇文章当上下文</li>
+          <li>排序可选时间或分数，每页 20 / 50 / 100 条</li>
+          <li>打开页面时若距上次匹配超过间隔，自动补投一次匹配任务，带双重节流</li>
+        </ul></div>
+      </div>
+      <div class="mod g">
+        <h3>邮件摘要</h3>
+        <div class="in"><ul class="b sm" style="margin:0">
+          <li>取数三段式：本人匹配 → 关注同事的匹配 → 订阅源内最新兜底，兜底严格限定在自己人的源里</li>
+          <li>三重去重：ID、归一化 URL、标题字符集相似度 ≥ 0.45</li>
+          <li>日 / 周 / 月 / 单次四种频率，下次发送时间在用户时区里算</li>
+          <li>月历视图 + 编排面板 + 发送历史快照</li>
+          <li>可自定义主题、Logo、三个主题色，条数 1–200、时间窗 1–720 小时</li>
+          <li>两档权限：有完整权限才能发给收件人列表，其余降级为只发给自己</li>
+          <li>支持跳过下一次、用冻结快照发送，单次计划发完自动停用</li>
+        </ul></div>
+      </div>
+      <div class="mod v">
+        <h3>订阅与反馈</h3>
+        <div class="in"><ul class="b sm" style="margin:0">
+          <li>粘任意网站链接就能订：解析不出 RSS 就自动调 RSS.app 生成一个</li>
+          <li>也能按关键词订，或者直接关注同事的新闻流</li>
+          <li>最后一个订阅者退订时，本地和远端的 feed 一起删，省外部服务配额</li>
+          <li>订阅中心按管理员编排的分类批量点选</li>
+          <li>批量导入一次收网站链接、RSS 地址、关键词三类输入，带进度回显</li>
+          <li>关键词包和提示词模板可一键整包套用</li>
+          <li>建议板是看板形态：四列拖拽、楼中楼评论加点赞、进度条、管理员回复</li>
+        </ul></div>
+      </div>
+    </div>
+    <div class="note sm2" style="flex:none">
+      <b>另外三处：</b>新闻详情页做了双语逐段对照 + 嵌套评论 + 全站向量相似的相关新闻 + AI 问答；用户公开主页带关注按钮和热门 / 最新两个 tab；收藏、浏览历史（保留最近 100 条）和工作台构成个人沉淀区。
+    </div>
+  </div></div>
+
+  <div class="bar">四套界面共用一张匹配表，所以调一次个性化参数，新闻中心、看板和明早的邮件同时跟着变。</div>
+  <div class="ft"><div>来源：news/views_hub.py · services/hub.py · services/emailer.py · services/subscriptions.py</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide nd">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab on">AI4News</div><div class="tab">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI4News</b> · 平台建设总结</div></div>
+  <div class="h1">【多模型】一个问题问 7 个模型，答完自己出汇总</div>
+  <div class="sub">这是站点首页。前端对每个选中模型各开一条 SSE 流并排渲染，谁先答完谁先显示，不用等最慢的那个。</div>
+  <div class="rule"></div>
+
+  <div class="body">
+    <div class="col" style="width:560px;flex:none;gap:10px">
+      <div class="mod" style="flex:1">
+        <h3>做了什么</h3>
+        <div class="in"><ul class="b sm" style="margin:0">
+          <li><b>并排流式作答。</b>最多同时选 7 个模型，各走各的连接互不阻塞；栅格列数按选中数自动变。</li>
+          <li><b>AI 汇总四种模式。</b>速览、融合、对比、追问。速览是增量的：每有一个模型答完就用现有答案重跑一遍，不等最慢的；全部答完再并行发融合和对比。</li>
+          <li><b>汇总有硬约束。</b>融合禁止按模型分块罗列、必须标来源；对比固定「综合答案 / 共识 / 分歧 / 独特洞察 / 数据对照表」五段。</li>
+          <li><b>多模态附件双通道。</b>视觉模型走「文档栅格化成图」，纯文本模型走「抽正文塞进 system 消息」，同一个上传按钮自动分流。</li>
+          <li><b>用户可自带 Key。</b>用站点 Key 的走每日 token 配额，自带 Key 的不计配额、单独记账。</li>
+          <li><b>汇总结果也落库。</b>用三个保留标识单独存，切回旧会话时速览、融合、对比都还在；中途出错的半截结果不落库。</li>
+          <li><b>错误隔离到单个模型。</b>某一路流挂了只写坏它自己那一栏，其余模型照常输出，页面不会整块白掉。</li>
+        </ul></div>
+      </div>
+      <div class="scene sm2" style="flex:none">
+        <b>企业代理的 1MB 上传限制：</b>大文件按 900KB 分片上传，分片落盘而不是留在内存，这样多个 gunicorn 进程谁收到都能续上，最后一片到齐才拼接。
+      </div>
+    </div>
+    <div class="col" style="flex:1;gap:10px">
+      <div class="mod b" style="flex:1">
+        <h3>接入的模型 <span>24 个注册项 · 14 个可在对话里选</span></h3>
+        <div class="in p0"><table class="fill xs">
+          <thead><tr><th style="width:24%">位置</th><th style="width:40%">模型</th><th>用途</th></tr></thead>
+          <tbody>
+            <tr><td><b class="rd">外部 · 走代理</b></td><td>ChatGPT · Gemini · Grok · Qwen</td><td>4 家、14 个可选模型 id</td></tr>
+            <tr><td><b class="rd">内网 · 直连</b></td><td>GPT-OSS-120B · GLM-4.6V · Gemma-4 · MiniMax-M2.7 · GLM-5.2 · DeepSeek-V4</td><td>6 个本地对话模型，其中两个多模态</td></tr>
+            <tr><td><b class="rd">汇总与摘要</b></td><td>GLM-5.2 · MiniMax-M2.7</td><td>AI 汇总四模式 / 多源摘要合并</td></tr>
+            <tr><td><b class="rd">新闻加工</b></td><td>DeepSeek-V4-Flash</td><td>逐篇打分 + 中英双语改写</td></tr>
+            <tr><td><b class="rd">向量</b></td><td>Qwen3-Embedding-8B</td><td>去重、事件聚类、相关新闻</td></tr>
+            <tr><td><b class="rd">重活工具</b></td><td>o3-deep-research · Gemini Deep Research · Grok x_search · Sora-2 · Imagen · gpt-image-1</td><td>深度研究 / 舆论洞察 / 生图生视频</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+      <div class="note sm2" style="flex:none">
+        新增一个内网模型只需要在注册表里加一条，前端下拉自动出现 —— 不改前端、不改 provider 代码。
+      </div>
+    </div>
+  </div>
+
+  <div class="bar">并行问模型最怕被最慢的一个拖住，所以汇总做成增量的：先出一版速览，谁答完就补一版。</div>
+  <div class="ft"><div>来源：multillm/views.py · synthesis.py · providers/ · static/multillm/app/views/app_view.jsx</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide nd">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab on">AI4News</div><div class="tab">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI4News</b> · 平台建设总结</div></div>
+  <div class="h1">【多模型】三个跑得久的工具：深度研究、X 舆论洞察、生图生视频</div>
+  <div class="sub">这三样都不走 Celery，各自起后台线程跑、前端轮询状态 —— 不占队列，worker 重启也不影响正在跑的任务。</div>
+  <div class="rule"></div>
+
+  <div class="body"><div class="col" style="flex:1;gap:10px">
+    <div class="c4" style="gap:12px">
+      <div class="mod">
+        <h3>深度研究</h3>
+        <div class="in"><ul class="b sm" style="margin:0">
+          <li>一次可以同时勾 OpenAI 和 Gemini 两家，各起一条线程；每 10 秒轮询一次，最长跑 15 分钟</li>
+          <li>报告出来后自动生成 3–5 句摘要插到最前，再把 markdown 里的链接抽成引文表</li>
+          <li>提示词技能库可复用：系统技能 + 私有技能，8 个分类，带收藏和使用次数排行</li>
+          <li>报告页有引文悬浮预览、批注、讨论串和针对本报告的 AI 追问（历史存服务端）</li>
+          <li>可导 PDF / Word / 邮件，也可公开到报告广场</li>
+          <li>自动触发的通路完整保留但全局关闭；真跑起来时有三层去重：同用户同文章、同事件簇、向量相似</li>
+          <li>技能优先级：请求指定 &gt; 用户默认 &gt; 磁盘上的技能文件 &gt; 硬编码兜底</li>
+        </ul></div>
+      </div>
+      <div class="mod b">
+        <h3>X 舆论洞察</h3>
+        <div class="in"><ul class="b sm" style="margin:0">
+          <li>用 Grok 的 x_search 抓 X 平台实时讨论，产出一个仪表盘而不是一篇报告</li>
+          <li>模型被要求按命名 JSON 块返回 7 个模块：总览、热帖、观点分立场、关键账号、热门标签、高赞评论、时间线</li>
+          <li>解析失败会先清一遍尾逗号重试，再不行就把原始文本存下来，不丢数据</li>
+          <li>可挂 influencer 名单做定向分析，名单里的 handle 自动合并进搜索白名单</li>
+          <li>同样支持公开分享和 PDF / Word / 邮件导出</li>
+          <li>热帖最多 30 条，按浏览量、点赞、转发、账号影响力排序；高赞评论最多 10 条</li>
+          <li>前端用引用保存当前报告，避免定时器闭包过期导致跑完自动跳错页</li>
+        </ul></div>
+      </div>
+      <div class="mod v">
+        <h3>图片与视频生成</h3>
+        <div class="in"><ul class="b sm" style="margin:0">
+          <li>聊天里直接说「画一张…」，模型自己调生图工具，出图后按 markdown 语法拼进回答正文</li>
+          <li>也有独立入口：Imagen 三个模型五种比例，gpt-image-1 三种尺寸四档质量</li>
+          <li>OpenAI 不返图片成本，所以从 PNG 头解出真实尺寸，再查 3×3 的价目表自己算，存进库里</li>
+          <li>Sora-2 视频：两个模型、4/8/12 秒、两种 720p，每 4 秒轮询一次进度</li>
+          <li>成品不直连外部，走后端代流下载，按内容类型决定文件名</li>
+          <li>生成的图片直接以 base64 存库，一行 1–2MB，同时记下估算成本</li>
+          <li>参数不在白名单一律回落默认值，不把非法参数透传给上游</li>
+        </ul></div>
+      </div>
+      <div class="mod g">
+        <h3>AI 洞察中心</h3>
+        <div class="in"><ul class="b sm" style="margin:0">
+          <li>第六个 Django 应用，挂在 /ai-hub/，1,057 行、15 条路由、3 个模板</li>
+          <li>结构和新闻中心对称但独立存储：自己的来源配置、突发阈值、滚动条数</li>
+          <li>每日精选视频一天一条，视频文件 / 外链 / 嵌入代码三选一按优先级回退</li>
+          <li>GitHub 趋势榜带缓存表，不用每次现抓</li>
+          <li>自带一套管理界面，和主后台同一把权限锁</li>
+          <li>三个模板共 750 行，独立于新闻中心的前端代码</li>
+          <li>和新闻中心共用同一份用户匹配数据，不重复抓取</li>
+        </ul></div>
+      </div>
+    </div>
+    <div class="note sm2" style="flex:none">
+      <b>共同的工程模式：</b>后台线程首尾各做一次数据库连接回收，中间每一步单独 try/except —— 摘要生成挂了、引文抽取挂了、用量记账挂了，都不影响报告本体存下来。
+    </div>
+  </div></div>
+
+  <div class="bar">跑十几分钟的活儿放进 Celery 会挤占队列，也扛不住 worker 重启，所以这三样都用后台线程加前端轮询。</div>
+  <div class="ft"><div>来源：deep_research_service.py · x_insights_service.py · services.py · ai_hub/</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide nd">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab on">AI4News</div><div class="tab">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI4News</b> · 平台建设总结</div></div>
+  <div class="h1">【网关与运营】自建 OpenAI 兼容网关 + 26 个页面的运营后台</div>
+  <div class="sub">同事把 base_url 改成 /model/v1/、拿一个 ak- 开头的 Key，就能用官方 SDK 调内网 vLLM，代码一行不用改。</div>
+  <div class="rule"></div>
+
+  <div class="body">
+    <div class="col" style="width:558px;flex:none;gap:10px">
+      <div class="mod" style="flex:1">
+        <h3>API 网关 <span>3 个 OpenAI 兼容端点</span></h3>
+        <div class="in"><ul class="b sm" style="margin:0">
+          <li><b>鉴权。</b>Key 明文不入库，只存 SHA-256 哈希；校验走 60 秒缓存，无效 Key 也缓存，防止猜 Key 每次都打数据库。</li>
+          <li><b>限流与配额。</b>默认每分钟 60 次、每天 100 万 token，超了返回 429 带 Retry-After；配额用增量缓存累加，不是每次都做聚合查询。</li>
+          <li><b>模型路由后台热改。</b>「用户看到的名字」到「上游 vLLM 地址 + 真实模型名」的映射存在表里，管理员改完 30 秒缓存主动失效，不重启生效。</li>
+          <li><b>五维计量。</b>每次调用记一行：输入 / 输出 / 命中缓存 / 写缓存 / 合计五种 token 分开记，上游挂了也照样记一行。</li>
+          <li><b>异常检测。</b>4 类异常每 15 分钟扫一遍；自动封禁要同时过三道闸，专门防新 Key 基数小导致的误伤。</li>
+          <li><b>白名单按 Key 粒度。</b>每把 Key 能调哪些模型单独配，模型列表接口也按同一份白名单过滤，用户只看得到自己能用的。</li>
+          <li><b>类型隔离。</b>对话模型和向量模型分开登记，对话端点不可能被路由到向量模型上，报错时还会列出可用清单。</li>
+        </ul></div>
+      </div>
+      <div class="kpis" style="flex:none">
+        <div class="kpi" style="padding:8px 6px"><div class="v">60<span>/分</span></div><div class="l">默认限流</div></div>
+        <div class="kpi" style="padding:8px 6px"><div class="v">100<span>万/天</span></div><div class="l">默认 token 配额</div></div>
+        <div class="kpi" style="padding:8px 6px"><div class="v">18</div><div class="l">采集的 vLLM 指标</div></div>
+        <div class="kpi" style="padding:8px 6px"><div class="v">3<span>级</span></div><div class="l">用量聚合：请求 / 日 / 时</div></div>
+      </div>
+    </div>
+    <div class="col" style="flex:1;gap:10px">
+      <div class="mod b" style="flex:1">
+        <h3>运营后台 <span>19 条一级导航 · 69 条路由</span></h3>
+        <div class="in p0"><table class="fill xs">
+          <thead><tr><th style="width:26%">页面</th><th>管什么</th></tr></thead>
+          <tbody>
+            <tr><td><b class="rd">数据概览</b></td><td>一次 GET 算完用户 / 新闻 / 浏览 / 订阅 / 邮件 / 报告 / 对话七组指标，外加 30 天日序列和 12 周周序列</td></tr>
+            <tr><td><b class="rd">用户与权限</b></td><td>五字段搜索 + 部门筛选；10 个权限开关可单改，也可用全局策略一次刷全员，新用户自动继承</td></tr>
+            <tr><td><b class="rd">订阅源 / 新闻</b></td><td>源和文章的增删改查，支持手工入库一条新闻（抓正文 + 双语翻译 + 给全员建匹配）</td></tr>
+            <tr><td><b class="rd">员工名册</b></td><td>粘贴 / CSV / XLSX 三路批量导入，按工号把部门和研究所同步到用户</td></tr>
+            <tr><td><b class="rd">API 用量</b></td><td>四个时间窗 × 五种 token；使用明细支持用户 / 模型双维度、任意日期区间、Excel 导出和命名预设</td></tr>
+            <tr><td><b class="rd">负载监控</b></td><td>直接抓每台 vLLM 的 /metrics：运行数、排队数、KV cache 占用、吞吐、四组延迟直方图</td></tr>
+            <tr><td><b class="rd">告警与审计</b></td><td>异常告警处理 + 每个写操作都留一条带前后差异的审计日志 + 页面访问追踪</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bar">用量这件事只认一张原始日志表，日表和小时表都是从它算出来的，所以后台哪个页面看到的数字都对得上。</div>
+  <div class="ft"><div>来源：api_gateway/ · admin_panel/views.py · admin_usage_detail.py</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide nd">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab on">AI4News</div><div class="tab">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI4News</b> · 平台建设总结</div></div>
+  <div class="h1">【工程亮点】六个踩过坑才定下来的做法</div>
+  <div class="sub">都是线上出过问题、改完有明确收益的地方，不是设计文档里的理想方案。</div>
+  <div class="rule"></div>
+
+  <div class="body"><div class="col" style="flex:1"><div class="g6">
+    <div class="mod">
+      <h3>① 抓取热路径零数据库写</h3>
+      <div class="in"><ul class="b sm" style="margin:0">
+        <li>老实现是抓一篇写一篇，一条数据库连接被几十篇文章的慢网络占住</li>
+        <li>改成解析、抓正文、内存加工三段全程不碰库，最后 50 条一个事务落库</li>
+        <li>事务窗口从「整个源的抓取时长」压缩到「一次批写」；整批失败自动降级逐条</li>
+        <li>已经有正文的文章直接跳过抓取；源自报的构建时间没变就一个字节都不写</li>
+      </ul></div>
+    </div>
+    <div class="mod b">
+      <h3>② 长连接的连接与心跳</h3>
+      <div class="in"><ul class="b sm" style="margin:0">
+        <li>流式响应返回前先把数据库连接还回池子 —— 一条连接被十几分钟的 SSE 占住，池子扛不住</li>
+        <li>生产者线程 + 队列，10 秒拿不到事件就补一个心跳，防代理和 nginx 掐断</li>
+        <li>响应头关掉 nginx 缓冲，前端配两次自动重连</li>
+        <li>评分线程进出各做一次连接回收 —— LLM 调用是分钟级的，不主动关会把池子吃穿</li>
+      </ul></div>
+    </div>
+    <div class="mod g">
+      <h3>③ gevent + psycogreen</h3>
+      <div class="in"><ul class="b sm" style="margin:0">
+        <li>gunicorn 用 gevent，每进程 200 个协程扛 LLM 转发这种长 IO</li>
+        <li>但 psycopg2 默认是阻塞的，一条数据库查询就能把整个进程的协程池卡死</li>
+        <li>在 post_fork 钩子里打补丁，把等待交回调度器 —— 不打这个补丁等于白用协程</li>
+        <li>超时设到 1800 秒，因为深度研究那条流本来就要跑十几分钟</li>
+      </ul></div>
+    </div>
+    <div class="mod v">
+      <h3>④ 后台慢查询重写</h3>
+      <div class="in"><ul class="b sm" style="margin:0">
+        <li>订阅源列表原来每行挂两个 COUNT 子查询打在巨大的新闻表上，一页 60 行</li>
+        <li>改成两条 GROUP BY 一次算完 + 10 分钟缓存</li>
+        <li>新闻列表原来一条查询里两个 COUNT(DISTINCT)，PostgreSQL 要建笛卡尔积临时表，直接把磁盘写满；改成两个独立子查询避开 join</li>
+      </ul></div>
+    </div>
+    <div class="mod d">
+      <h3>⑤ 模型注册表单点收口</h3>
+      <div class="in"><ul class="b sm" style="margin:0">
+        <li>24 个模型注册项的 id、端点、密钥、走不走代理集中在一个文件</li>
+        <li>前端配置由它自动生成，加一个本地模型只改这一处</li>
+        <li>外部模型走代理、120 秒超时；内网模型直连、读超时不设上限 —— 两套客户端策略由注册项自动决定</li>
+        <li>内网客户端显式不读环境变量，免得被全局代理设置劫持</li>
+      </ul></div>
+    </div>
+    <div class="mod">
+      <h3>⑥ 先预检再动线上进程</h3>
+      <div class="in"><ul class="b sm" style="margin:0">
+        <li>热重载脚本五个阶段：wsgi 导不进来、有未应用的迁移、JSX 比构建产物新，任一不过就直接退出，老进程原封不动继续服务</li>
+        <li>重载信号必须打给主进程，打错目标只会杀掉一个 worker</li>
+        <li>Celery 重载完睡 5 秒再数一次进程，少了就报错而不是假装成功</li>
+        <li>全量重启时静态收集失败即中止，不带着半套静态资源起服务</li>
+      </ul></div>
+    </div>
+  </div></div></div>
+
+  <div class="bar">这六条的共同点：先让系统在出错时不塌，再谈快 —— 单篇失败只跳过单篇，整批失败降级逐条，预检不过就不动线上。</div>
+  <div class="ft"><div>来源：rss_scraper.py · multillm/views.py · gunicorn_conf · admin_panel/views.py · reload.sh</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide nd">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab on">AI4News</div><div class="tab">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI4News</b> · 平台建设总结</div></div>
+  <div class="h1">【工程规模】11.4 万行自研代码，301 天，372 次提交</div>
+  <div class="sub">2025-10-17 第一次提交，2026-08-14 最近一次，其间 116 个有提交的活跃日，单一作者。</div>
+  <div class="rule"></div>
+
+  <div class="body"><div class="col" style="flex:1;gap:11px">
+    <div class="kpis">
+      <div class="kpi"><div class="v">114,436</div><div class="l">自研代码行数<br>（Python + JS/JSX + 模板）</div></div>
+      <div class="kpi"><div class="v">79</div><div class="l">数据表<br>（含 3 张跨库只读表）</div></div>
+      <div class="kpi"><div class="v">268</div><div class="l">URL 路由<br>（其中 API 类 67 条）</div></div>
+      <div class="kpi"><div class="v">553</div><div class="l">单元测试用例<br>（45 个测试文件）</div></div>
+      <div class="kpi"><div class="v">372</div><div class="l">次提交 / 301 天<br>（月均约 37 次）</div></div>
+    </div>
+
+    <div class="body" style="flex:1;padding:0;gap:14px">
+      <div class="col" style="flex:1.15">
+        <div class="mod b" style="flex:1">
+          <h3>各应用后端代码行数 <span>不含数据库迁移</span></h3>
+          <div class="in"><div class="bars">
+            <div class="brow"><div class="nm">news</div><div class="tr"><i style="width:100%"></i></div><div class="vl">21,139</div></div>
+            <div class="brow"><div class="nm">multillm</div><div class="tr"><i style="width:67%"></i></div><div class="vl">14,172</div></div>
+            <div class="brow"><div class="nm">api_gateway</div><div class="tr"><i style="width:32%"></i></div><div class="vl">6,765</div></div>
+            <div class="brow"><div class="nm">admin_panel</div><div class="tr"><i style="width:20.5%"></i></div><div class="vl">4,327</div></div>
+            <div class="brow"><div class="nm">core</div><div class="tr"><i style="width:12.4%"></i></div><div class="vl">2,625</div></div>
+            <div class="brow"><div class="nm">ai4news</div><div class="tr"><i style="width:7.3%"></i></div><div class="vl">1,536</div></div>
+            <div class="brow"><div class="nm">ai_hub</div><div class="tr"><i style="width:5%"></i></div><div class="vl">1,057</div></div>
+            <div class="brow"><div class="nm">MCP server</div><div class="tr"><i style="width:2.9%"></i></div><div class="vl">607</div></div>
+          </div>
+          <div style="margin:11px 0 8px;font-size:13px;font-weight:700;color:var(--blue);border-top:1px solid #E4E8ED;padding-top:10px">前端自研文件 top 5 <span style="font-weight:400;color:#888">（共 34,100 行 / 31 个文件）</span></div>
+          <div class="bars w2">
+            <div class="brow"><div class="nm">app_view.jsx</div><div class="tr"><i style="width:100%;background:var(--red)"></i></div><div class="vl">5,886</div></div>
+            <div class="brow"><div class="nm">personalization</div><div class="tr"><i style="width:97%;background:var(--red)"></i></div><div class="vl">5,712</div></div>
+            <div class="brow"><div class="nm">dashboard.js</div><div class="tr"><i style="width:47%;background:var(--red)"></i></div><div class="vl">2,790</div></div>
+            <div class="brow"><div class="nm">news_hub.js</div><div class="tr"><i style="width:30%;background:var(--red)"></i></div><div class="vl">1,771</div></div>
+            <div class="brow"><div class="nm">i18n.js</div><div class="tr"><i style="width:25%;background:var(--red)"></i></div><div class="vl">1,486</div></div>
+          </div></div>
+        </div>
+      </div>
+      <div class="col" style="flex:1">
+        <div class="mod" style="flex:1">
+          <h3>代码构成</h3>
+          <div class="in p0"><table class="fill xs">
+            <tbody>
+              <tr><td style="width:44%"><b class="rd">后端 Python</b></td><td>52,228 行 / 161 个文件</td></tr>
+              <tr><td><b class="rd">数据库迁移</b></td><td>7,192 行 / 114 个文件</td></tr>
+              <tr><td><b class="rd">前端 JS + JSX</b></td><td>34,100 行 / 31 个文件</td></tr>
+              <tr><td><b class="rd">Django 模板</b></td><td>20,916 行 / 64 个文件</td></tr>
+              <tr><td><b class="rd">测试代码</b></td><td>9,312 行，占业务 Python 约 18%</td></tr>
+              <tr><td><b class="rd">第三方依赖</b></td><td>41 个</td></tr>
+              <tr><td><b class="rd">最大单文件</b></td><td>news/views.py 4,930 行<br>app_view.jsx 5,886 行</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+
+  <div class="bar">测试是 553 个用例、9,312 行，全部不连数据库不连网络，所以在开发机上秒级就能跑完一轮回归。</div>
+  <div class="ft"><div>来源：git ls-files 逐目录统计 · git log · 2026-08-19 实测</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide nd">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab on">AI4News</div><div class="tab">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI4News</b> · 平台建设总结</div></div>
+  <div class="h1">【工程规模】前端不依赖外网，部署一条命令</div>
+  <div class="sub">内网环境的两个硬约束：外网 CDN 拿不到，浏览器不能现场编译。前端工程链就是围着这两条搭的。</div>
+  <div class="rule"></div>
+
+  <div class="body">
+    <div class="col" style="width:560px;flex:none;gap:10px">
+      <div class="mod" style="flex:1">
+        <h3>前端工程</h3>
+        <div class="in"><ul class="b sm" style="margin:0">
+          <li><b>JSX 预编译。</b>esbuild 6 个入口编译成 dist 产物随仓库走，浏览器不再跑 Babel；不做打包，因为各文件本身自包含，模板改动不用动构建。</li>
+          <li><b>零 CDN。</b>React、marked、DOMPurify、KaTeX、Chart.js、Cropper、Tailwind 运行时和 Inter 字体共 14 个文件全下到本地，内网断外网照常打开。</li>
+          <li><b>三语。</b>1,269 条文案配齐中 / 英 / 法，共 3,807 条译文；用 data-i18n 属性驱动，切换时派事件让 React 组件重渲染。</li>
+          <li><b>可视化。</b>9 个页面用 Chart.js 画看板，全部带缩放插件；分享图是前端手写 Canvas 排版，先离屏测量换行再按算出的尺寸绘制。</li>
+          <li><b>静态资源版本号</b>从构建清单的修改时间派生，保证所有进程给出同一个 URL，浏览器缓存才生效。</li>
+          <li><b>组件复用。</b>AI 对话 widget 一份代码同时服务新闻详情页和深度报告页，两边只换取数回调。</li>
+          <li><b>混合渲染。</b>9 个页面用 React，其余是原生 JS 加属性绑定，没有全站统一框架的包袱。</li>
+          <li><b>只有一个手写 CSS 文件</b>（邮件编排页 344 行），其余页面全部走 Tailwind 运行时。</li>
+        </ul></div>
+      </div>
+    </div>
+    <div class="col" style="flex:1;gap:10px">
+      <div class="mod b" style="flex:1">
+        <h3>部署形态 <span>单机 · 一条命令起停</span></h3>
+        <div class="in p0"><table class="fill xs">
+          <thead><tr><th style="width:24%">组件</th><th>配置</th></tr></thead>
+          <tbody>
+            <tr><td><b class="rd">Web</b></td><td>gunicorn 5 进程 × gevent 200 协程；超时 1800 秒（给长流式留的）；每 1000 个请求回收一次进程</td></tr>
+            <tr><td><b class="rd">后台任务</b></td><td>5 个队列 / 4 组 worker / 12 个子进程 + beat；8 条定时任务，最密的每 5 分钟一次</td></tr>
+            <tr><td><b class="rd">数据库</b></td><td>PostgreSQL；连接池每进程常驻 10 + 溢出 15，600 秒回收，取连接前先探活</td></tr>
+            <tr><td><b class="rd">缓存</b></td><td>DatabaseCache，同时兼任分布式任务锁和后台列表页的计数缓存</td></tr>
+            <tr><td><b class="rd">日志</b></td><td>9 路按功能分流（错误 / 新闻 / 多模型 / 深度研究 / 洞察 / 网关 / 鉴权 / 任务），各 20MB × 5 备份</td></tr>
+            <tr><td><b class="rd">运维脚本</b></td><td>restart.sh 全量重启（88 行）· reload.sh 五阶段热重载（225 行，先预检）· envcheck.py 环境自检 · recover.sh 一键恢复</td></tr>
+            <tr><td><b class="rd">配置</b></td><td>所有环境变量收在一个入口文件，生产改配置 = 改一个文件、提交、拉取、重启</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+      <div class="scene sm2" style="flex:none">
+        <b>可选组件全部优雅降级：</b>少了哪个第三方库就把它从已安装应用里摘掉、只打一条警告，不会让整站 URL 配置崩掉返回 500。
+      </div>
+    </div>
+  </div>
+
+  <div class="bar">内网机器拉一次代码就能跑起来，不需要联外网装包，也不需要在服务器上执行任何构建。</div>
+  <div class="ft"><div>来源：scripts/build_frontend.mjs · static/vendor/ · static/js/i18n.js · restart.sh · reload.sh</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide nd">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab on">AI4News</div><div class="tab">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI4News</b> · 平台建设总结</div></div>
+  <div class="h1">【数据结构】79 张表按七个业务域组织</div>
+  <div class="sub">整张 schema 围着 News 这一张内容主表展开，往上叠订阅与个性化、多模型与研究、网关计量三层。</div>
+  <div class="rule"></div>
+
+  <div class="body"><div class="col" style="flex:1;gap:10px">
+    <div class="mod b" style="flex:1">
+      <div class="in p0"><table class="fill xs">
+        <thead><tr><th style="width:16%">业务域</th><th style="width:7%">表数</th><th style="width:34%">代表表</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td><b class="rd">内容</b></td><td class="r">5</td><td>News · RssFeeds · RssItems · Webhook 配置与投递</td>
+              <td>文章主表把原文、双语四份文本、关键词命中和向量放在同一行，加一个布尔位标记「已评分且已翻译」</td></tr>
+          <tr><td><b class="rd">用户与订阅</b></td><td class="r">14</td><td>User · SsoProfile · EmployeeDirectory · 订阅源关系 · 关注同事 · 分类 · 关键词包</td>
+              <td>个性化 prompt、相关性阈值、聚类阈值、每日 token 配额全长在 User 上，共 33 个自定义字段</td></tr>
+          <tr><td><b class="rd">匹配与行为</b></td><td class="r">7</td><td>UserNewsMatch · 匹配分类 · 浏览 · 收藏 · 历史 · 评论</td>
+              <td>UserNewsMatch 是行数最大的表（用户 × 文章量级），既是打分缓存也承载事件聚簇的三个字段</td></tr>
+          <tr><td><b class="rd">新闻中心与邮件</b></td><td class="r">10</td><td>Hub 配置 · Hub 分类树 · 卡位 · AI 简报 · 收件人 / 草稿 / 计划 / 投递日志</td>
+              <td>编排数据和投递审计分开存；投递日志记下发过哪些文章 ID，用来防重复推送</td></tr>
+          <tr><td><b class="rd">多模型与研究</b></td><td class="r">19</td><td>会话与消息 · 深度报告及 5 张附属表 · X 洞察 · 生成图片 · 模型活配置与用量</td>
+              <td>报告、洞察都带公开分享位；模型的真相源在代码注册表，数据库这几张只做运行时覆盖</td></tr>
+          <tr><td><b class="rd">网关计量</b></td><td class="r">10</td><td>APIKey · 用量日志 / 日表 / 小时表 · vLLM 指标及降采样 · 模型路由 · 异常</td>
+              <td>逐请求日志是唯一真相源，日表和小时表都从它算出来；五种 token 在三张表里字段名完全一致</td></tr>
+          <tr><td><b class="rd">运营与其它</b></td><td class="r">14</td><td>审计日志 · 页面访问 · 更新公告 · 建议板三表 · AI 洞察中心四表 · 微信跨库三表</td>
+              <td>其中 3 张是只读映射到第二个数据库的表，Django 不管理它们的结构，靠路由分流</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div class="note sm2" style="flex:none">
+      <b>索引与半结构化字段：</b>61 个显式复合索引 · 23 个单列索引 · 20 组唯一约束 + 5 个唯一约束对象 + 1 个检查约束（数据库层禁止自己关注自己）· 38 个 JSONField · 15 个数组字段 · 6 条手写 PostgreSQL 索引（2 个全文检索 + 2 个模糊匹配 + 2 个 B-tree）。
+    </div>
+  </div></div>
+
+  <div class="bar">表多不等于乱：七个域各有自己的入口表，跨域引用只走 User 和 News 这两张，别的地方不互相穿。</div>
+  <div class="ft"><div>来源：news / core / multillm / api_gateway / admin_panel / ai_hub / wechat 各 models.py</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide nd">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab on">AI4News</div><div class="tab">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI4News</b> · 平台建设总结</div></div>
+  <div class="h1">【数据结构】六个撑住整个系统的设计决定</div>
+  <div class="sub">这几处定错了，后面每一层都要绕着走 —— 所以单独拿出来讲。</div>
+  <div class="rule"></div>
+
+  <div class="body"><div class="col" style="flex:1;gap:10px">
+    <div class="mod" style="flex:1">
+      <div class="in p0"><table class="fill xs">
+        <thead class="rh"><tr><th style="width:20%">对象</th><th style="width:33%">关键设计</th><th>为什么这么做</th></tr></thead>
+        <tbody>
+          <tr><td><b class="rd">News · 主键</b></td>
+              <td>不是自增也不是 UUID，是 <span class="mono">sha256(源ID:条目ID)</span> 取前 68 位</td>
+              <td>确定性主键，同一篇文章重复抓多少次都是同一行 —— webhook 重投、定时轮询和手工入库三条路天然幂等</td></tr>
+          <tr><td><b class="rd">News · 一行装四份文本</b></td>
+              <td>原标题 / 英文 / 中文，正文和摘要各一套，再加向量、关键词命中和一个「已加工」布尔位</td>
+              <td>下游看板、邮件、相关新闻都只认这个布尔位，避免把只抓回来还没翻译的半成品发出去</td></tr>
+          <tr><td><b class="rd">UserNewsMatch · 签名</b></td>
+              <td>存一个 <span class="mono">prompt_signature</span>：prompt、阈值、分类、关键词拼起来的哈希</td>
+              <td>用户改配置签名就变，候选查询把旧签名的记录排除掉，历史文章自动重新排队 —— 不需要另写一套失效逻辑</td></tr>
+          <tr><td><b class="rd">User · 三合一</b></td>
+              <td>身份、个性化参数、配额长在同一张表，33 个自定义字段</td>
+              <td>代价是保存时带副作用（改个性化参数会重置评估状态），所以员工名册同步刻意绕开保存方法，直接批量更新两列</td></tr>
+          <tr><td><b class="rd">用量 · 三级聚合</b></td>
+              <td>逐请求日志 → 按天汇总 → 按小时汇总；五种 token 三张表字段名一致</td>
+              <td>原始表不删，聚合表只是加速；口径统一到一处，后台任何页面的数字都能对上，也方便按官方计费口径拆开看成本</td></tr>
+          <tr><td><b class="rd">检索 · 不外挂引擎</b></td>
+              <td>News 上手写 2 个全文检索索引 + 2 个模糊匹配索引，标题 A 权重、摘要 B 权重</td>
+              <td>省掉一个搜索引擎组件；中文用兼容配置，命中不足时代码自动降级到普通包含匹配，不会搜不出东西</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div class="kpis" style="flex:none">
+      <div class="kpi" style="padding:9px 6px;border-top-color:var(--blue)"><div class="v" style="color:var(--blue)">0.92</div><div class="l">向量去重阈值</div></div>
+      <div class="kpi" style="padding:9px 6px;border-top-color:var(--blue)"><div class="v" style="color:var(--blue)">0.82</div><div class="l">事件聚类阈值（可按用户调）</div></div>
+      <div class="kpi" style="padding:9px 6px;border-top-color:var(--blue)"><div class="v" style="color:var(--blue)">0.60</div><div class="l">默认相关性阈值</div></div>
+      <div class="kpi" style="padding:9px 6px;border-top-color:var(--blue)"><div class="v" style="color:var(--blue)">48<span>小时</span></div><div class="l">聚类时间窗</div></div>
+      <div class="kpi" style="padding:9px 6px;border-top-color:var(--blue)"><div class="v" style="color:var(--blue)">5<span>维</span></div><div class="l">token 计量口径</div></div>
+    </div>
+  </div></div>
+
+  <div class="bar">这六条里有四条都是同一个思路：把「什么时候该重算」编进数据本身，而不是另写一套缓存失效逻辑。</div>
+  <div class="ft"><div>来源：news/models.py · core/models.py · api_gateway/models.py · 迁移里的手写索引</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab on">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI Community</b> · 平台建设总结</div></div>
+  <div class="h1 s">【能力现状】平台全景：六大板块 + 四套共享底座</div>
+  <div class="sub">下列能力均已在内网上线运行，不含规划项</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="grid6" style="flex:1">
+      <div class="gbox"><h4>技能中心<em>含合集包</em></h4><div class="gd">Skill 的上传、评分、版本与订阅；公开 / 受限 / 私有三档可见性与逐人审批；命令行一行安装；免安装试用；带与不带 Skill 的同题实测对比；Remix 二次创作并保留署名。</div><div class="gt">从"各自留存"到"一次上传、多次安装"</div></div>
+      <div class="gbox"><h4>知识库</h4><div class="gd">网页链接与 PDF / EPUB / PPT / Word 入库；AI 逐章导读；<b>问答附带原文引用并可跳转</b>；划线批注与共享笔记；选中即译；阅读进度跨设备保持。</div><div class="gt">从"各读一遍"到"一人读完、全员可问"</div></div>
+      <div class="gbox"><h4>讨论区</h4><div class="gd">动态流与论坛话题两种形态；图片 / 视频 / 文档附件；六种表情反应；两级评论与通知深链定位；多主题归档与浏览量按人按天去重。</div><div class="gt">从"群聊即焚"到"可检索、可沉淀"</div></div>
+      <div class="gbox v"><h4>投票评选<em>最新上线</em></h4><div class="gd">作品征集与审核；每人限票、按天配额、撤票改投；匿名评选与随机排序；实名一人一票；实时榜单、投票明细导出存档。</div><div class="gt">从"群里接龙"到"可审计的评选流程"</div></div>
+      <div class="gbox b"><h4>极客视频<em>含随刷短视频</em></h4><div class="gd">竖屏随刷短视频，成员均可发布；<b>发布后自动生成中英双语字幕</b>；长视频 AI 看点摘要与就视频问答；点赞、收藏、评论与全站互通。</div><div class="gt">从"看完即沉"到"可检索的技术影像资产"</div></div>
+      <div class="gbox b"><h4>社区活动</h4><div class="gd">全员可见的活动日历；按类型 / 主题 / 城市 / 形式筛选；<b>按浏览者所在时区自动换算</b>；一键报名与开场前自动提醒；导出至 Google / Outlook 日历。</div><div class="gt">从"一个邮件列表"到"全员可达"</div></div>
+    </div>
+    <div class="row" style="flex:none;margin-top:11px;gap:10px">
+      <div class="note" style="flex:1.6;font-size:12.5px"><b>四套共享底座（第 12–13 页展开）：</b>① <b>统一账号</b> —— W3 单点登录与邮箱密码双通道，部门信息按工号自动同步；② <b>统一通知</b> —— 全站消息汇入一个入口，按类型分渠道可控；③ <b>统一互动</b> —— 评论、反应、深链定位一套实现；④ <b>统一权限</b> —— 三档可见性 + 服务端裁剪，网页与命令行同一判定。</div>
+      <div class="scene" style="flex:1;font-size:12.5px"><b>工程含义：</b>新增第七个板块时，账号、通知、评论、权限四项不需要重建，只需接入。这是平台化与"多个小站拼装"的本质区别。</div>
+    </div></div>
+  <div class="bar">启示：功能建设阶段已经收敛，<em>后续投入应从"扩展板块"转向"提升参与"</em>。</div>
+  <div class="ft"><div>AI Community · 平台全景</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab on">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI Community</b> · 平台建设总结</div></div>
+  <div class="h1 s">【能力现状】系统架构：四层结构，一套代码两种部署</div>
+  <div class="sub">公网根路径与内网 /ai-community 子路径共用同一份工程，无分支维护</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="tier"><div class="lb">接入层<em>浏览器 / 命令行 / nginx</em></div><div class="ct"><span class="chip r2">nginx 反向代理</span><span class="chip r2">内部路径 /_video/ 由内核直发字节</span><span class="chip r2">流式响应关闭缓冲</span><span class="chip r2">单请求体上限 5 GB</span><span class="chip r2">skills 命令行（个人令牌）</span><span class="chip r2">systemd 托管</span></div></div>
+    <div class="tier t2"><div class="lb">应用层<em>Next.js 单进程</em></div><div class="ct"><span class="chip">72 个服务端渲染页面</span><span class="chip">151 个服务接口</span><span class="chip">双通道登录（W3 + 密码）</span><span class="chip">统一权限闸门</span><span class="chip">配额与限流</span><span class="chip">出网网关（按主机分流）</span><span class="chip">三语言资源</span></div></div>
+    <div class="tier t3"><div class="lb">数据与存储<em>PostgreSQL + 本地磁盘</em></div><div class="ct"><span class="chip b3">72 个数据模型 · 147 个索引</span><span class="chip b3">34 次结构演进（可回滚）</span><span class="chip b3">串行化事务 + 冲突重试</span><span class="chip b3">媒体文件本地存储 + 一次性不可猜访问键</span></div></div>
+    <div class="tier t4"><div class="lb">外部依赖<em>均具备降级路径</em></div><div class="ct"><span class="chip">内网大模型（直连，不经代理）</span><span class="chip">W3 UniPortal 单点登录</span><span class="chip">内网 SMTP 中继</span><span class="chip">企业代理（仅知识库抓取公网时使用）</span><span class="chip">本机语音转写</span><span class="chip">ffmpeg</span></div></div>
+    <div class="row" style="flex:none;margin-top:11px;gap:10px">
+      <div class="note" style="flex:1.4;font-size:12.5px"><b>三项关键工程决策：</b>① <b>出网按目标主机分流</b>，而非全局开关 —— 内网地址直连、公网地址走代理。若采用单一开关，必然出现"启用代理则 W3 登录不可用、关闭代理则知识库无法抓取"的两难。② <b>鉴权由应用承担、字节由 nginx 承担</b> —— 视频数据不经过应用进程，避免并发拖拽进度条时单线程被占满。③ <b>配置分级失败</b> —— 安全类配置校验不通过即终止启动，非关键参数回落默认值。</div>
+      <div class="scene" style="flex:1;font-size:12.5px"><b>可自查：</b>管理后台内置网络出口、邮件、模型连通性三项诊断，直接输出真实错误码与实际路由选择，不以"网络异常"笼统提示。<br><b>可回归：</b>26 个测试文件、290 条用例，全量执行不足 1 秒且不依赖数据库。</div>
+    </div></div>
+  <div class="bar">启示：内网环境不具备对象存储、CDN 与公网直连，<em>能力必须自建且每一项都要有降级路径</em> —— 这是本系统全部架构取舍的共同前提。</div>
+  <div class="ft"><div>AI Community · 系统架构</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab on">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI Community</b> · 平台建设总结</div></div>
+  <div class="h1 s">【能力现状】技能中心：Skill 的发布、试用、安装与更新</div>
+  <div class="sub">一个 Skill 从上传到进入他人项目，全流程无需线下沟通</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="pipe r" style="flex:none;height:86px">
+      <div class="seg"><div class="pt">① 发布</div><div class="pd">上传 Skill 包，AI 辅助生成名称、摘要、标签与触发词；设定公开 / 受限 / 私有。</div></div>
+      <div class="ar">▶</div>
+      <div class="seg"><div class="pt">② 详情页评估</div><div class="pd">八个标签页看清楚再决定装不装（见下表）。</div></div>
+      <div class="ar">▶</div>
+      <div class="seg"><div class="pt">③ 授权</div><div class="pd">受限 Skill 逐人审批，可批准、拒绝、随时收回，每步均有通知。</div></div>
+      <div class="ar">▶</div>
+      <div class="seg"><div class="pt">④ 安装与更新</div><div class="pd">命令行一行安装；有新版本时面板与命令行同时提示。</div></div>
+    </div>
+    <div class="row" style="flex:1;margin-top:12px">
+      <div class="mod" style="flex:1.25"><h3>详情页的八个标签页 <span>装之前就能判断值不值得装</span></h3><div class="in p0">
+        <table class="xs fill"><tbody>
+          <tr><td style="width:88px"><b>概览</b></td><td>用途、适用场景、作者、安装量、评分、可见性</td></tr>
+          <tr><td><b>说明文档</b></td><td>作者撰写的完整 Readme</td></tr>
+          <tr><td><b>文件浏览</b></td><td><span class="r">安装前逐个文件查看内容</span> —— 装进项目前先看清楚里面是什么</td></tr>
+          <tr><td><b>版本历史</b></td><td>历次更新说明，可安装指定版本</td></tr>
+          <tr><td><b>评价</b></td><td>用过的人的评分与评论</td></tr>
+          <tr><td><b>组合推荐</b></td><td>大家通常还会同时安装哪些 Skill</td></tr>
+          <tr><td><b>效果对比</b></td><td><span class="r">同一任务、同一模型跑两遍</span>（带与不带该 Skill），并列展示真实输出与差异分析</td></tr>
+          <tr><td><b>在线试用</b></td><td>不安装即可与"已加载该 Skill 的模型"对话；切走页面不中断生成</td></tr>
+        </tbody></table>
+      </div></div>
+      <div class="col" style="flex:1">
+        <div class="mod d" style="flex:none"><h3>命令行 <span>内网无 npm 源，工具自带分发</span></h3><div class="in" style="padding:9px 11px">
+          <div style="font-family:Consolas,Menlo,monospace;font-size:12px;line-height:1.85;color:#222">
+            skills install &lt;名称&gt;<span style="color:#888">　装到当前项目</span><br>
+            skills install a b c<span style="color:#888">　一次装多个</span><br>
+            skills install pack:&lt;合集&gt;<span style="color:#888">　整套装齐</span><br>
+            skills list / update / upgrade / search
+          </div>
+          <div class="cap" style="padding-top:6px">默认装进当前项目并记录版本与来源；加 -g 装到全局。更新失败自动回滚。</div>
+        </div></div>
+        <div class="ph"><div class="big">此处放：Skill 详情页截图</div><div class="sm2">建议截「效果对比」或「在线试用」标签页<br>在编辑器中点「进入编辑」后 Ctrl+V 粘贴</div></div>
+      </div>
+    </div>
+    <div class="note" style="flex:none;margin-top:10px;font-size:12.5px"><b>此外：</b>Remix 二次创作（改后发布为自己的，保留来源署名）· 合集包按场景整套安装 · 订阅更新提示 · 按分类 / 评分 / 来源筛选排序。网页与命令行共用同一套访问判定，不会出现"网页拦住、命令行没拦住"的情况。</div></div>
+  <div class="bar">启示：Skill 是社区中<em>唯一直接进入他人生产流程的资产</em>，因此"装之前能看清、装之后能更新、撤权后即断更"三件事必须齐备。</div>
+  <div class="ft"><div>AI Community · 技能中心</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab on">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI Community</b> · 平台建设总结</div></div>
+  <div class="h1 s">【能力现状】知识库：一人读完，全员可问</div>
+  <div class="sub">六种来源入库、AI 逐章导读、带引用问答、共享标注，构成一套完整的团队阅读流程</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="pipe" style="flex:none;height:92px">
+      <div class="seg"><div class="pt">① 入库</div><div class="pd">贴网页链接，或上传 PDF / EPUB / PPT / Word / HTML；自动提取正文、封面、作者与阅读时长，重复提交自动识别。</div></div>
+      <div class="ar">▶</div>
+      <div class="seg"><div class="pt">② AI 通读</div><div class="pd">生成整体导读与逐章摘要，中英双语；结果全站共享，第二位读者无需重复调用模型。</div></div>
+      <div class="ar">▶</div>
+      <div class="seg"><div class="pt">③ 阅读与标注</div><div class="pd">四色划线、写批注、选中即译；支持连续滚动与分章两种模式，字号行距可调。</div></div>
+      <div class="ar">▶</div>
+      <div class="seg"><div class="pt">④ 提问与讨论</div><div class="pd">就本文提问，答案附可跳转引用；文档下可评论、可评分、可加入书架。</div></div>
+    </div>
+    <div class="row" style="flex:1;margin-top:12px">
+      <div class="mod" style="flex:1.1"><h3>阅读与标注 <span>把个人阅读变成团队资产</span></h3><div class="in"><ul class="b sm">
+        <li><b>共享标注：</b>开启"公开我的笔记"后，同事读同一篇时能在原文位置<span class="r">看到你的划线</span>，并可针对某一条划线开讨论 —— 相当于在文档上做异步共读。</li>
+        <li><b>个人笔记面板：</b>本篇的全部划线与批注集中查看、可跳回原文位置。</li>
+        <li><b>选中即译：</b>读英文论文时选中一段就地给出中文，反之亦然，不必把内网内容贴到外部工具。</li>
+        <li><b>阅读进度：</b>记录读到第几章、百分之多少，换台机器继续读；可加入书架。</li>
+        <li><b>PDF 双视图：</b>原版按原貌阅读，精读视图支持划线、批注与 AI 引用跳转。</li>
+      </ul></div></div>
+      <div class="mod b" style="flex:1.1"><h3>提问与协作 <span></span></h3><div class="in"><ul class="b bl sm">
+        <li><b>带出处的问答：</b>每句结论后跟一个可点角标，点击跳回原文并高亮，可当场核实 AI 是否如实转述。</li>
+        <li><b>整体导读结构化：</b>概述、内容脉络、核心要点、值得追问的问题四段，30 秒判断这篇值不值得精读。</li>
+        <li><b>文档评论与评分：</b>读后感与推荐度沉淀在文档下方，供后来者参考。</li>
+        <li><b>相似文档推荐：</b>读完一篇给出相关的其他文档。</li>
+        <li><b>可见性三档：</b>公开、受限（可申请）、私有；按类型与主题分类筛选。</li>
+      </ul></div></div>
+      <div class="col" style="flex:0.82">
+        <div class="ph" style="flex:1"><div class="big">此处放：阅读器截图</div><div class="sm2">建议截「划线 + 共享标注」<br>或「提问后引用跳回原文」的画面</div></div>
+        <div class="shot" style="flex:none"><img src="img/shot-library.jpg" alt="知识库列表"></div>
+        <div class="cap">知识库列表（演示数据）</div>
+      </div>
+    </div>
+    <div class="note" style="flex:none;margin-top:10px;font-size:12.5px">AI 给出的引用与用户手工划线落在同一套文本坐标上，因此二者可以互相跳转 —— 这是"答案能当场核实"的前提，也是本模块与普通文档库的根本区别。</div></div>
+  <div class="bar">启示：知识库的价值不在存了多少文档，而在<em>同一份材料只被深读一次，其余人以问答方式复用</em>。</div>
+  <div class="ft"><div>AI Community · 知识库</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab on">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI Community</b> · 平台建设总结</div></div>
+  <div class="h1 s">【能力现状】讨论区：随手发的动态与要沉淀的话题</div>
+  <div class="sub">同一入口两种形态，共用附件、评论、通知与检索能力</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="row" style="flex:none;height:224px;gap:12px">
+      <div class="mod" style="flex:1"><h3>动态流 <span>轻量 · 随手记录</span></h3><div class="in"><ul class="b sm">
+        <li><b>一条动态可带 9 张图 + 1 个视频 + 4 个文档</b>：视频卡内直接播放并可拖进度；PPT / Word 点击下载且保留中文原文件名。</li>
+        <li><b>六种表情反应</b>（赞 / 精彩 / 支持 / 喜爱 / 有启发 / 有趣），悬停展开选择，点击数字可查看<b>谁点了哪一种</b>。</li>
+        <li><b>两级评论</b>：回复的回复仍归在同一楼，不无限缩进；他人回复你时，通知点击直达该条并自动展开所在楼层。</li>
+        <li><b>可插入投票与表情包</b>，管理员可置顶。</li>
+      </ul></div></div>
+      <div class="mod b" style="flex:1"><h3>论坛话题 <span>沉淀 · 可检索</span></h3><div class="in"><ul class="b bl sm">
+        <li><b>一个话题最多挂 3 个主题</b>（模型与算法 / Agent 与工具 / Skill 开发 / 前沿研究 / 技术交流 / 问答求助 / 经验分享 / 成果展示），在每个主题下都能被找到。</li>
+        <li><b>左侧主题导航</b>显示各主题的话题数量，一键分流。</li>
+        <li><b>列表可见"谁在聊、多少人看过"</b>：最近参与者头像、回复数、浏览量（<span class="r">按人按天去重</span>，同一人反复刷新只算一次）。</li>
+        <li><b>支持顶帖</b>；管理员可置顶、加锁；话题可带附件。</li>
+        <li>半年后仍可通过全站检索找回。</li>
+      </ul></div></div>
+    </div>
+    <div class="row" style="flex:1;margin-top:12px">
+      <div class="col" style="flex:1">
+        <div class="shot"><img src="img/shot-discussion.jpg" alt="讨论区"></div>
+        <div class="cap"><b>讨论区界面</b> —— 顶部为「动态 / 讨论帖」两个标签，右栏常驻热门讨论（演示数据）。</div>
+      </div>
+      <div class="col" style="flex:1">
+        <div class="ph" style="flex:1"><div class="big">此处放：论坛话题详情截图</div><div class="sm2">建议截带主题标签、参与者头像与两级回复的画面</div></div>
+        <div class="note" style="flex:none;font-size:12.5px">单视频 1 GB、单文档 100 MB，每人每日 5 GB 上传额度；匿名访客可看正文与图片，视频与文档需登录。删除带回复的评论时保留楼层结构，计数不会因并发操作而错乱。</div>
+      </div>
+    </div></div>
+  <div class="bar">启示：轻量与沉淀分流之后，<em>群聊里"刷过即失"的内容第一次有了可检索的落点</em>。</div>
+  <div class="ft"><div>AI Community · 讨论区</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab on">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI Community</b> · 平台建设总结</div></div>
+  <div class="h1 s">【能力现状 · 最新上线】投票评选：从作品征集到结果公示</div>
+  <div class="sub">组织者不需要再用群接龙与表格统计，全流程在平台内完成并留痕</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="states" style="flex:none;height:60px">
+      <div class="st-node gray">草稿</div>
+      <div class="st-arrow"><em>发布</em></div>
+      <div class="st-node">作品征集</div>
+      <div class="st-arrow"><em>逐件审核</em></div>
+      <div class="st-node">投票进行</div>
+      <div class="st-arrow"><em>到期 / 提前结束</em></div>
+      <div class="st-node">结果公示</div>
+      <div class="st-arrow"><em>导出存档</em></div>
+      <div class="st-node gray">归档</div>
+    </div>
+    <div class="row" style="flex:none;height:272px;margin-top:13px">
+      <div class="mod v" style="flex:1"><h3>组织者 <span>建活动与管过程</span></h3><div class="in"><ul class="b sm">
+        <li><b>两种作品来源：</b>批量上传（<span class="r">按文件名规则自动解析作品名 / 作者 / 工号</span>，人工改过的条目不被覆盖）；或开放成员自主投稿。</li>
+        <li><b>投稿表单可定制：</b>作品名、作者、工号、作品描述之外，可自定义字段；可写投稿须知、限制单人投稿数与文件大小；驳回时填写理由（仅投稿者可见）。</li>
+        <li><b>规则可配：</b>每人票数、按总量或按天发放、单件作品投票上限、是否允许撤票改投、截止时间、结果公开时点。</li>
+        <li><b>过程可管：</b>滚动公告条随时改、封面自定义、作品可临时下架（票数保留）、可提前结束。</li>
+        <li><b>数据看板：</b>实时排名、参与人数、每件作品的去重投票人数与投票人名单，一键导出 CSV 存档。</li>
+      </ul></div></div>
+      <div class="mod" style="flex:1"><h3>参与者 <span>看作品与投票</span></h3><div class="in"><ul class="b sm">
+        <li><b>作品墙 + 大图灯箱：</b>点开看大图或播放视频，右侧是作品详情（描述、表单信息）与<b>评论区</b>。</li>
+        <li><b>匿名评选：</b>投票期只显示编号不显示作者，结束后公示 —— 评的是作品本身。</li>
+        <li><b>顺序对每个人都不同</b>（随机但对同一人稳定），避免排在前面的天然占便宜。</li>
+        <li><b>按编号搜索</b>，方便"投 42 号"这类口口相传的场景。</li>
+        <li><b>票数余额实时可见</b>，支持改投与撤票；倒计时提示剩余时间。</li>
+        <li>未开始 / 已结束状态清晰，结束后仍可浏览作品与结果。</li>
+      </ul></div></div>
+    </div>
+    <div class="ph" style="flex:1;margin-top:11px"><div class="big">此处放：投票活动页截图</div><div class="sm2">建议截作品墙（含倒计时、我的剩余票数），或大图灯箱 + 右侧作品详情与评论区</div></div>
+    <div class="note" style="flex:none;margin-top:10px;font-size:12.5px"><b>结果为什么可信：</b>票数不做累加，每次投票都从选票明细重新统计，改票、撤票、并发投票都不会对不上；内网部署下投票<b>强制要求 W3 实名身份</b>，邮箱注册的账号不予放行，一人一件作品一天仅一条记录。</div></div>
+  <div class="bar">启示：该模块的通用性高于单次活动 —— <em>作品征集、限票、匿名评选、明细导出可直接支撑各部门的评优与征集</em>，无需二次开发。</div>
+  <div class="ft"><div>AI Community · 投票评选</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab on">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI Community</b> · 平台建设总结</div></div>
+  <div class="h1 s">【能力现状】统一编辑器：写字的地方都具备同一套能力</div>
+  <div class="sub">19 处输入框、36 个展示页面共用一套编辑与渲染，新增板块自动继承</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="row" style="flex:none;height:66px;gap:10px">
+      <div class="kpi" style="flex:1;padding:7px 10px"><div class="v" style="font-size:22px">19 处</div><div class="k" style="margin-top:2px">输入框自动具备该能力</div></div>
+      <div class="kpi" style="flex:1;padding:7px 10px"><div class="v" style="font-size:22px">36 个</div><div class="k" style="margin-top:2px">页面复用同一渲染，投票卡片全站可见</div></div>
+      <div class="kpi" style="flex:1;padding:7px 10px"><div class="v" style="font-size:22px">0 张</div><div class="k" style="margin-top:2px">业务表被改动，正文中只存一行文本标记</div></div>
+      <div class="kpi" style="flex:1;padding:7px 10px"><div class="v" style="font-size:22px">74 条</div><div class="k" style="margin-top:2px">三语文案，键路径完全对齐</div></div>
+    </div>
+    <div class="row" style="flex:1;margin-top:11px">
+      <div class="mod" style="flex:1"><h3>帖内投票 <span>随手发起，不必新建活动</span></h3><div class="in"><ul class="b sm">
+        <li><b>配置项：</b>单选或多选（可限定最多选 N 项）、匿名投票、投票后才可见结果、截止时间。</li>
+        <li><b>结果呈现：</b>进度条 + 票数 + 百分比；非匿名投票在选项下显示投票人头像。</li>
+        <li><b>可改票、可撤票、可提前结束</b>；创建者与管理员在无人投票前可整体修改题目与选项。</li>
+        <li><b>未登录也能看到题目与公开结果</b>，点击投票时引导登录并返回原页面。</li>
+        <li>一条内容最多可放 10 个投票，适合"多个议题一次收集"。</li>
+      </ul></div></div>
+      <div class="mod b" style="flex:1"><h3>个人表情包 <span>让技术讨论不必一直板着脸</span></h3><div class="in"><ul class="b bl sm">
+        <li><b>个人表情库：</b>底部分「最近 / 全部 / 收藏」三档，支持上传图片与 GIF 动图，动图原样保存不转静态。</li>
+        <li><b>一键收藏他人的表情：</b>看到别人发的表情，点开大图即可「添加到表情包」；鼠标右键也可在光标处直接添加。</li>
+        <li><b>悬停预览</b>可直接收藏或删除；触屏长按同样可用。</li>
+        <li>每人最多 500 张，单张 10 MB。</li>
+      </ul></div></div>
+    </div>
+    <div class="row" style="flex:none;height:104px;margin-top:11px;gap:12px">
+      <div class="ph" style="flex:1"><div class="big">此处放：编辑器工具栏截图</div><div class="sm2">建议截含 📊 投票与 😊 表情包按钮的工具栏</div></div>
+      <div class="ph" style="flex:1"><div class="big">此处放：投票卡片截图</div><div class="sm2">建议截正文中已渲染的投票（含进度条与投票人头像）</div></div>
+    </div></div>
+  <div class="bar">启示：把能力做在编辑器层而非单个页面，收益是非线性的 —— <em>一次投入，19 处输入同时可用，后续新增板块自动继承</em>。</div>
+  <div class="ft"><div>AI Community · 统一编辑器</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab on">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI Community</b> · 平台建设总结</div></div>
+  <div class="h1 s">【能力现状】极客视频与随刷短视频：看得进去，也发得出来</div>
+  <div class="sub">长视频承担系统性分享，短视频承担高频传播，两者共用一套互动数据</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="row" style="flex:none;height:222px;gap:12px">
+      <div class="mod" style="flex:1"><h3>随刷短视频 <span>人人可发</span></h3><div class="in"><ul class="b sm">
+        <li><b>竖屏随刷：</b>一屏一条、快速滑动不跳条；双击点赞、拖动进度、键盘切换、空格暂停。</li>
+        <li><b>发布流程：</b>拖入文件即自动读取时长与分辨率、抓取首帧作封面；文案可用 <b>AI 润色</b>后发布。</li>
+        <li><b>自动中英双语字幕：</b>发布后服务器在后台完成语音转写与翻译，播放时按钮在「中 / EN / 关」间切换并记住选择。</li>
+        <li><b>互动：</b>点赞、评论（抽屉式）、收藏进「稍后看」、分享链接。</li>
+      </ul></div></div>
+      <div class="mod b" style="flex:1"><h3>极客视频 <span>系统性分享</span></h3><div class="in"><ul class="b bl sm">
+        <li><b>AI 看点摘要：</b>一句话钩子加数条关键看点，30 秒判断这一小时值不值得看。</li>
+        <li><b>就视频提问：</b>针对这条视频提问，回答只依据本视频的文字稿，没讲到会明确说明。</li>
+        <li><b>悬停预览：</b>鼠标停在卡片上播放专门的预览片段。</li>
+        <li><b>分类与标签</b>筛选，收藏进「稍后看」，评论与回复通知可深链回原处。</li>
+        <li><b>搬运必须署名：</b>上传时区分自创与搬运，搬运须填原始链接与原作者，播放页展示可点来源。</li>
+      </ul></div></div>
+    </div>
+    <div class="row" style="flex:1;margin-top:12px">
+      <div class="mod d" style="flex:1"><h3>字幕生成流程 <span>全程在内网完成，不依赖任何云服务</span></h3><div class="in">
+        <div class="pipe" style="height:78px">
+          <div class="seg"><div class="pt">① 抽音轨</div><div class="pd">16 kHz 单声道</div></div>
+          <div class="ar">▶</div>
+          <div class="seg"><div class="pt">② 本机转写</div><div class="pd">服务器本地语音识别</div></div>
+          <div class="ar">▶</div>
+          <div class="seg"><div class="pt">③ 分批翻译</div><div class="pd">内网模型逐批翻译</div></div>
+          <div class="ar">▶</div>
+          <div class="seg"><div class="pt">④ 播放切换</div><div class="pd">中 / EN / 关</div></div>
+        </div>
+        <div class="cap" style="padding-top:8px">翻译时若编号与原文对不上则整批放弃 —— <b>宁可只出原文字幕，也不出错轴字幕</b>。</div>
+        <div class="ph" style="margin-top:9px"><div class="big">此处放：短视频随刷截图</div><div class="sm2">建议截带字幕开关与右侧互动按钮的竖屏画面</div></div>
+      </div></div>
+      <div class="mod" style="flex:1"><h3>其他 <span></span></h3><div class="in"><ul class="b sm">
+        <li><b>长短视频互通：</b>点赞、收藏、评论是同一套数据，短视频收藏后同样进入「稍后看」。</li>
+        <li><b>精选进首页：</b>管理员可将优质短视频设为精选，出现在首页与视频页的推荐位。</li>
+        <li><b>观看计数按人按天去重</b>，累计播放满 2 秒才计一次，热度排序更接近真实。</li>
+        <li><b>为什么滑得动：</b>信息流中只在当前条前后各两条挂载真实播放器 —— 每个播放器占用一个硬件解码器，移动端数量有限，全量挂载会直接黑屏。</li>
+      </ul></div></div>
+    </div></div>
+  <div class="bar">启示：短视频把"技术分享"的发布门槛降到一条手机视频，<em>这是目前唯一一个成员可以自主发布的媒体形态</em>。</div>
+  <div class="ft"><div>AI Community · 视频与短视频</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab on">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI Community</b> · 平台建设总结</div></div>
+  <div class="h1 s">【能力现状】社区活动：从发布到提醒的完整链路</div>
+  <div class="sub">任何成员都可以发布活动，不必经过组织方</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="row" style="flex:none;height:246px;gap:12px">
+      <div class="mod" style="flex:1"><h3>发布方 <span>任何成员均可发起</span></h3><div class="in"><ul class="b sm">
+        <li><b>基本信息：</b>标题、简介、正文、封面（可拖动取景，竖图不被裁切）。</li>
+        <li><b>分类：</b>四个大类（外部活动 / 内部活动 / 专家分享 / 研讨会）+ 十个主题标签（每场最多 3 个）。</li>
+        <li><b>形式与地点：</b>线上 / 线下 / 两者兼有；七个城市可选；会议链接<span class="r">仅登录成员可见</span>。</li>
+        <li><b>讲师阵容：</b>可添加多位讲师，含姓名、职务、单位、头像、简介与链接，详情页以名片形式展示。</li>
+        <li><b>状态管理：</b>可取消（保留展示并加【已取消】标记）、可修改；管理员可置顶推荐。</li>
+      </ul></div></div>
+      <div class="mod b" style="flex:1"><h3>参与方 <span>找得到、记得住、不错过</span></h3><div class="in"><ul class="b bl sm">
+        <li><b>时间按本地显示：</b>组织者按自己时区填一次，其他人看到自己所在地的时刻，并列显示原时区。</li>
+        <li><b>筛选与日历联动：</b>按时间、大类、主题、形式、城市筛选；右侧月历上有活动的日子带圆点，点某天列表即只留当天。</li>
+        <li><b>一键报名 = 订阅提醒：</b>开场前约 30 分钟自动发站内通知与邮件；取消报名即停止提醒。</li>
+        <li><b>加入个人日历：</b>Google 日历链接或下载 .ics 给 Outlook / Apple。</li>
+        <li><b>「我参加的」视图</b>，卡片带高亮边框与已参加标记；往期活动仍可回看，含讲师与内容。</li>
+        <li><b>相关活动推荐：</b>详情页底部推荐同类型或主题重叠的其他活动。</li>
+      </ul></div></div>
+    </div>
+    <div class="row" style="flex:1;margin-top:12px">
+      <div class="mod" style="flex:1.2"><h3>同一场活动在不同地区的显示 <span>组织者只填一次</span></h3><div class="in p0">
+        <table class="xs fill"><thead><tr><th style="width:130px">浏览者所在地</th><th style="width:140px">页面显示</th><th>说明</th></tr></thead><tbody>
+          <tr><td>多伦多（组织者）</td><td><b>8 月 20 日 14:00</b></td><td>组织者按本地时间填写</td></tr>
+          <tr><td>北京</td><td><b>8 月 21 日 02:00</b></td><td>自动跨日，列表按浏览者本地日期分组</td></tr>
+          <tr><td>温哥华</td><td><b>8 月 20 日 11:00</b></td><td>并列显示"多伦多 14:00"，免去心算</td></tr>
+          <tr><td>全天活动</td><td><b>8 月 20 日 全天</b></td><td>不做换算，避免在别的时区变成前一天</td></tr>
+        </tbody></table>
+      </div></div>
+      <div class="col" style="flex:1">
+        <div class="ph" style="flex:1"><div class="big">此处放：活动日历截图</div><div class="sm2">建议截左侧筛选 + 右侧月历圆点联动的画面</div></div>
+        <div class="note" style="flex:none;font-size:12.5px">提醒由"网页轮询"与"服务器定时任务"两条路径共同触发，内网缺少统一调度设施，这是刻意的双保险；两条路径同时开启也<b>不会重复发送同一条提醒</b>。</div>
+      </div>
+    </div></div>
+  <div class="bar">启示：一场讲座的价值取决于有多少该来的人知道 —— <em>全员可见的日历 + 自动提醒，把"通知"从组织者的负担变成系统能力</em>。</div>
+  <div class="ft"><div>AI Community · 社区活动</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab on">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI Community</b> · 平台建设总结</div></div>
+  <div class="h1 s">【能力现状】平台底座：一个铃铛、一个搜索框、一块需求板</div>
+  <div class="sub">这些能力被所有板块共用，也是新增板块的接入基础</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="row" style="flex:none;height:200px;gap:12px">
+      <div class="mod" style="flex:1"><h3>通知中心 <span>全站消息汇入一处</span></h3><div class="in"><ul class="b sm">
+        <li><b>覆盖范围：</b>视频与动态的评论回复、论坛回帖、知识库批注与笔记回复、Skill 下载申请与审批结果、活动开场提醒、全员公告。</li>
+        <li><b>点击直达：</b>不是跳到页面顶部，而是<span class="r">滚动到那条具体回复并高亮</span>；若目标嵌在某个楼层里，该楼层会自动展开 —— 即使它原本在第三页尚未加载。</li>
+        <li><b>自己定开关：</b>四类事件 × 站内信 / 邮件两个渠道，共八个开关，互不影响。</li>
+        <li>未读数红点显示，可一键全部已读。</li>
+      </ul></div></div>
+      <div class="mod b" style="flex:1"><h3>全站检索 <span>⌘K 唤起</span></h3><div class="in"><ul class="b bl sm">
+        <li><b>任何页面按 ⌘K / Ctrl+K</b> 唤起搜索面板，同时搜 11 类内容：Skill、合集包、知识库文档、讨论动态、论坛话题、视频、活动、投票、意见反馈、用户、分类与标签。</li>
+        <li><b>分组展示</b>，上下键选择、回车进入全量结果页。</li>
+        <li>每类内容自带可见性过滤：未发布、已删除、私有内容不会出现在结果里。</li>
+      </ul></div></div>
+    </div>
+    <div class="row" style="flex:1;margin-top:12px">
+      <div class="mod g" style="flex:1"><h3>意见反馈板 <span>需求登记与进展公开</span></h3><div class="in"><ul class="b sm">
+        <li>任何人都可以提功能建议或问题反馈，给别人的条目投票 +1，并在下面二级讨论。</li>
+        <li>条目带状态标签：<b>待处理 / 已计划 / 处理中 / 已完成 / 不采纳</b>，可按票数排序看什么最被需要。</li>
+        <li>让"下一步做什么"有公开依据，而不是少数人拍板。</li>
+      </ul></div></div>
+      <div class="mod" style="flex:1"><h3>公告与个人空间 <span></span></h3><div class="in"><ul class="b sm">
+        <li><b>公告：</b>管理员发布后所有成员通知中心即刻可见，首页常驻最新一条入口。</li>
+        <li><b>个人主页：</b>公开展示自己的 Skill、文档、动态、话题、书架与参与的活动。</li>
+        <li><b>私人工作台：</b>草稿、订阅更新提示、待处理的下载申请集中管理。</li>
+        <li><b>三语界面：</b>中 / 英 / 法即时切换，首次访问按浏览器语言自动选择。</li>
+      </ul></div></div>
+      <div class="col" style="flex:0.78">
+        <div class="shot" style="flex:none"><img src="img/shot-home.jpg" alt="首页"></div>
+        <div class="cap"><b>首页</b> —— 未登录时直接给出安装命令；登录后为今日新增、热门讨论、即将举行的活动与新上架文档（演示数据）。</div>
+      </div>
+    </div></div>
+  <div class="bar">启示：这一层决定新增板块的接入成本 —— <em>加第七个板块时，账号、通知、评论、检索、权限均无需重建</em>。</div>
+  <div class="ft"><div>AI Community · 平台底座</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab on">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI Community</b> · 平台建设总结</div></div>
+  <div class="h1 s">【能力现状】账号、权限与隐私：实名之上的分寸感</div>
+  <div class="sub">实名让协作更高效，也要求平台对"谁能看到什么"给出明确边界</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="row" style="flex:none;height:198px;gap:12px">
+      <div class="mod" style="flex:1"><h3>登录与身份 <span>成员侧</span></h3><div class="in"><ul class="b sm">
+        <li><b>W3 一键登录：</b>跳转 UniPortal 后即为注册用户，无需填表；此前用邮箱注册过的人会<b>自动合并为同一账号</b>，不会变成两个人。</li>
+        <li><b>部门自动挂载：</b>登录时按工号匹配员工名单，名字旁自动出现「XX 部 · XX 所」标签，本人无需填写也无法自行修改。</li>
+        <li><b>两种登录方式并存：</b>公网部署为邮箱密码，内网增加 W3 通道。</li>
+      </ul></div></div>
+      <div class="mod b" style="flex:1"><h3>隐私控制 <span>成员自己决定</span></h3><div class="in"><ul class="b bl sm">
+        <li><b>隐私账号开关：</b>开启后，其他成员看到的只有昵称与头像，部门、研究所与工号均不显示。</li>
+        <li><b>个人主页分板块开关：</b>Skill、知识库、动态、评论、书架、活动六个板块各自可隐藏，隐藏后他人<b>连数据都取不到</b>；本人仍可见，标注"仅自己可见"。</li>
+        <li><b>内容三档可见性：</b>公开、受限（可被搜到、下载需批准）、私有（对他人不可见）。</li>
+      </ul></div></div>
+    </div>
+    <div class="row" style="flex:1;margin-top:12px">
+      <div class="mod" style="flex:1.15"><h3>管理后台 <span>13 个板块 / 17 个页面</span></h3><div class="in"><ul class="b sm">
+        <li><b>用户管理：</b>管理员、允许发布、允许 Remix、允许使用命令行、每日下载上限，逐项开关即时生效。</li>
+        <li><b>员工名单：</b>支持粘贴文本 / CSV / XLSX 三种导入，逐行显示失败原因，单次上限 2 万行；可一键同步部门信息到账号。</li>
+        <li><b>内容管理：</b>Skill、视频、短视频、知识库、讨论、投票、活动、公告、分类各有管理入口。</li>
+        <li><b>操作日志：</b>37 种管理动作全部留痕，可按动作、对象、管理员检索。</li>
+        <li><b>自助诊断：</b>网络出口、邮件、模型连通性三项即时检测。</li>
+      </ul></div></div>
+      <div class="col" style="flex:1">
+        <div class="ph" style="flex:1"><div class="big">此处放：管理后台截图</div><div class="sm2">建议截「用户管理」或「员工名单导入」页面</div></div>
+        <div class="note" style="flex:none;font-size:12.5px">隐私不是前端隐藏，而是<b>服务端裁剪</b>：隐私账号的部门信息在服务端就被移除，数据不会发送到浏览器。员工名单<b>只按工号匹配</b>，不按用户名 —— 公网为开放注册，按用户名匹配等同于开放身份冒领。</div>
+      </div>
+    </div></div>
+  <div class="bar">启示：实名社区的信任来自边界清晰 —— <em>该露的自动露（部门、产出），不想露的能彻底关掉（隐私开关）</em>。</div>
+  <div class="ft"><div>AI Community · 账号与权限</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab on">AI 社区</div><div class="tab">下一步</div></div><div class="corner"><b>AI Community</b> · 平台建设总结</div></div>
+  <div class="h1">【工程规模】8.5 万行自研代码，90 天，104 次提交</div>
+  <div class="sub">2026-05-22 第一次提交，2026-08-19 最近一次，其间 28 个有提交的活跃日，单一作者；累计新增 15.2 万行、删除 1.3 万行。</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="row" style="flex:none;height:104px;gap:10px">
+      <div class="kpi" style="flex:1"><div class="v">85,190</div><div class="k">自研代码行数<br>（TSX + TS + JS / CSS，不含依赖与文档）</div></div>
+      <div class="kpi" style="flex:1"><div class="v">72</div><div class="k">数据表<br>（160 个索引与唯一约束 · 40 个枚举）</div></div>
+      <div class="kpi" style="flex:1"><div class="v">151</div><div class="k">服务接口<br>（另有 72 个服务端渲染页面）</div></div>
+      <div class="kpi" style="flex:1"><div class="v">290</div><div class="k">单元测试用例<br>（26 个测试文件，1.17 秒跑完）</div></div>
+      <div class="kpi" style="flex:1"><div class="v">104</div><div class="k">次提交 / 90 天<br>（月均约 35 次）</div></div>
+    </div>
+    <div class="row" style="flex:1;margin-top:12px">
+      <div class="mod b" style="flex:1.25"><h3>各板块代码行数 <span>不含数据库迁移与三语文案</span></h3><div class="in">
+        <div class="bars"><div class="brow"><div class="blb">知识库</div><div class="btr"><div class="bfl b2" style="width:100%"></div></div><div class="bvl" style="width:64px;text-align:right">16,910</div></div><div class="brow"><div class="blb">技能中心 · 合集包 · 命令行</div><div class="btr"><div class="bfl b2" style="width:60%"></div></div><div class="bvl" style="width:64px;text-align:right">10,062</div></div><div class="brow"><div class="blb">视频与短视频</div><div class="btr"><div class="bfl b2" style="width:53%"></div></div><div class="bvl" style="width:64px;text-align:right">9,007</div></div><div class="brow"><div class="blb">投票评选</div><div class="btr"><div class="bfl b2" style="width:45%"></div></div><div class="bvl" style="width:64px;text-align:right">7,598</div></div><div class="brow"><div class="blb">管理后台</div><div class="btr"><div class="bfl b2" style="width:45%"></div></div><div class="bvl" style="width:64px;text-align:right">7,537</div></div><div class="brow"><div class="blb">讨论区</div><div class="btr"><div class="bfl b2" style="width:40%"></div></div><div class="bvl" style="width:64px;text-align:right">6,741</div></div><div class="brow"><div class="blb">账号 · 权限 · 通知 · 检索</div><div class="btr"><div class="bfl b2" style="width:29%"></div></div><div class="bvl" style="width:64px;text-align:right">4,834</div></div><div class="brow"><div class="blb">社区活动</div><div class="btr"><div class="bfl b2" style="width:27%"></div></div><div class="bvl" style="width:64px;text-align:right">4,539</div></div><div class="brow"><div class="blb">编辑器 · 投票 · 表情包</div><div class="btr"><div class="bfl b2" style="width:15%"></div></div><div class="bvl" style="width:64px;text-align:right">2,455</div></div></div>
+        <div style="border-top:1px solid #E8E8E8;margin-top:9px;padding-top:8px">
+          <div style="font-size:13px;font-weight:700;color:var(--blue)">最大源文件 top 5 <span style="font-weight:400;color:var(--sub);font-size:12px">（共 605 个源文件）</span></div>
+          <div class="bars" style="margin-top:7px"><div class="brow"><div class="blb">ReaderShell.tsx</div><div class="btr"><div class="bfl " style="width:100%"></div></div><div class="bvl" style="width:64px;text-align:right">1,604</div></div><div class="brow"><div class="blb">VoteEditor.tsx</div><div class="btr"><div class="bfl " style="width:86%"></div></div><div class="bvl" style="width:64px;text-align:right">1,372</div></div><div class="brow"><div class="blb">VoteGallery.tsx</div><div class="btr"><div class="bfl " style="width:64%"></div></div><div class="bvl" style="width:64px;text-align:right">1,033</div></div><div class="brow"><div class="blb">NotesPanel.tsx</div><div class="btr"><div class="bfl " style="width:47%"></div></div><div class="bvl" style="width:64px;text-align:right">757</div></div><div class="brow"><div class="blb">library-queries.ts</div><div class="btr"><div class="bfl " style="width:46%"></div></div><div class="bvl" style="width:64px;text-align:right">730</div></div></div>
+        </div>
+        <div class="cap" style="padding-top:7px">另有「首页 · 文档页 · 公共组件等」15,507 行，为各板块共用的框架与展示层。</div>
+      </div></div>
+      <div class="mod" style="flex:1"><h3>代码构成 <span>git ls-files 逐类统计</span></h3><div class="in p0">
+        <table class="xs fill"><tbody>
+          <tr><td style="width:132px"><b>页面与组件</b><br><span class="gy">TSX</span></td><td>47,539 行 / 283 个文件</td></tr>
+          <tr><td><b>服务端与库</b><br><span class="gy">TS</span></td><td>36,818 行 / 322 个文件</td></tr>
+          <tr><td><b>数据模型</b><br><span class="gy">Prisma</span></td><td>1,989 行 / 72 个模型 · 40 个枚举</td></tr>
+          <tr><td><b>数据库迁移</b><br><span class="gy">SQL</span></td><td>2,300 行 / 34 次结构演进，可按序重放</td></tr>
+          <tr><td><b>测试代码</b></td><td>2,927 行 / 26 个文件，占业务代码约 3.4%</td></tr>
+          <tr><td><b>三语文案</b></td><td>2,556 个键 × 3 种语言，键路径差异为 0</td></tr>
+          <tr><td><b>第三方依赖</b></td><td>45 个运行时 + 19 个开发依赖</td></tr>
+          <tr><td><b>提交作者</b></td><td><b>1 人</b> —— 104 次提交全部来自同一作者</td></tr>
+          <tr><td><b>最大单文件</b></td><td>ReaderShell.tsx 1,604 行（阅读器主控）</td></tr>
+        </tbody></table>
+      </div></div>
+    </div>
+  </div>
+  <div class="bar">测试是 <em>290 个用例、2,927 行</em>，全部不连数据库、不连网络，一条命令 1.17 秒跑完一轮回归 —— 因此每次改动都跑得起。</div>
+  <div class="ft"><div>来源：git ls-files 逐目录统计 · git log · pnpm test · 2026-08-19 实测</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab">AI 社区</div><div class="tab on">下一步</div></div><div class="corner"><b>CARI</b> · 平台建设总结</div></div>
+  <div class="h1 s">【发展路径】当前瓶颈不在功能供给，而在参与转化</div>
+  <div class="sub">按参与漏斗逐层拆解，两处断点决定了社区能否形成规模</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="row" style="flex:1">
+      <div class="mod" style="flex:1.15"><h3>参与漏斗 <span>宽度为示意，实际数值随第一批上线一并出基线</span></h3><div class="in">
+        <div class="funnel">
+          <div class="fstep" style="width:96%"><b>目标人群</b> —— 研发与技术相关岗位全员</div>
+          <div class="fdrop">▼</div>
+          <div class="fstep" style="width:78%"><b>登录过</b> —— 已有账号，进过站点</div>
+          <div class="fdrop">▼</div>
+          <div class="fstep" style="width:58%"><b>近期访问过</b> —— 30 天内有浏览行为</div>
+          <div class="fdrop" style="color:var(--red)">▼　<b>断点一：从"看"到"发"</b></div>
+          <div class="fstep" style="width:26%;border-color:var(--red);background:var(--red-tint)"><b>发布过内容</b> —— 发过至少一条</div>
+          <div class="fdrop" style="color:var(--red)">▼　<b>断点二：从"发一次"到"持续发"</b></div>
+          <div class="fstep" style="width:12%;border-color:var(--red);background:var(--red-tint)"><b>持续贡献</b> —— 连续四周有产出</div>
+        </div>
+      </div></div>
+      <div class="col" style="flex:1">
+        <div class="mod" style="flex:1"><h3>断点一：从"看"到"发" <span>三个原因</span></h3><div class="in sp"><ul class="b sm">
+          <li><b>看到的是内容列表，不是人。</b>不知道谁在做什么，缺少互动起点。</li>
+          <li><b>第一条门槛高。</b>担心写得不好、不确定发在哪、排版耗时。</li>
+          <li><b>缺少发布场景。</b>只有"正式内容"的位置，没有"日常记录"的位置。</li>
+        </ul></div></div>
+        <div class="mod d" style="flex:1"><h3>断点二：从"一次"到"持续" <span>两个原因</span></h3><div class="in sp"><ul class="b sm">
+          <li><b>发布后无回响。</b>零回复即等同于"第一次就是最后一次"。</li>
+          <li><b>贡献无出口。</b>点赞与下载量只是流水，既不进入个人履历，也不带来实际权益。</li>
+        </ul></div></div>
+      </div>
+    </div>
+    <div class="note" style="flex:none;margin-top:11px;font-size:12.5px"><b>由此得出的判断：</b>继续扩展功能无法改善上述五项原因中的任何一项。<b>本轮建设应集中于机制</b> —— 让人可见、让发布容易、让留存有理由。三条发展路线由此展开。</div></div>
+  <div class="bar">判断：功能供给已经充分，<em>参与转化是唯一瓶颈</em>。本轮不再新增板块，全部投入用于打通两处断点。</div>
+  <div class="ft"><div>AI Community · 现状诊断</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab">AI 社区</div><div class="tab on">下一步</div></div><div class="corner"><b>CARI</b> · 平台建设总结</div></div>
+  <div class="h1 s">【发展路径】三条路线的定位与比较</div>
+  <div class="sub">横轴为见效速度，纵轴为可持续性；圈选位置代表各路线的典型表现</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="row" style="flex:none;height:250px;gap:12px">
+      <div class="mod" style="flex:1.05"><h3>路线定位 <span>见效速度 × 可持续性</span></h3><div class="in p0">
+        <div class="quad" style="position:relative;height:100%">
+          <div style="position:absolute;left:0;right:0;top:50%;border-top:1px dashed #CFCFCF"></div>
+          <div style="position:absolute;top:0;bottom:0;left:50%;border-left:1px dashed #CFCFCF"></div>
+          <div class="ax-y" style="left:8px;top:8px">可持续性 高</div>
+          
+          <div class="ax-x" style="right:8px;bottom:6px">见效速度 快 ▶</div>
+          <div class="cell" style="left:46%;top:8%;border-color:var(--red)"><b>A 真人社区</b>中速见效，可持续性最高；人与关系一旦形成即为长期资产</div>
+          <div class="cell" style="left:3%;top:40%;border-color:var(--blue)"><b>B 专家专栏</b>见效最慢，可持续性取决于稿源；断更即失效</div>
+          <div class="cell" style="left:47%;top:60%;border-color:var(--green)"><b>C 资源挂钩</b>见效最快，可持续性最低；停止发放即流失</div>
+        </div>
+      </div></div>
+      <div class="mod d" style="flex:1"><h3>选择依据 <span>为什么是 A</span></h3><div class="in sp"><ul class="b sm">
+        <li><b>吸收关系不可逆。</b>B 与 C 都可以作为 A 的组成部分存在，<span class="r">而 A 无法被 B 或 C 承载</span> —— 只有专栏或只有额度，都不产生人与人的连接。</li>
+        <li><b>资产属性不同。</b>专栏的资产是文章，额度的资产是一次性消耗，<b>A 的资产是关系网络</b>，随时间增值且不可复制。</li>
+        <li><b>独有优势只在 A 生效。</b>实名与部门信息使"认识同事"成立，这是外部社区无法获得的条件；同事关系本身即是分发网络。</li>
+        <li><b>风险可控。</b>A 的主要风险是内容参差与首发顾虑，可通过分区、正向激励与管理员示范缓解；C 的灌水风险则会直接损害内容资产。</li>
+      </ul></div></div>
+    </div>
+    <table class="xs" style="flex:1;margin-top:12px">
+      <thead><tr><th style="width:96px">对比维度</th><th style="width:300px">A · 真人社区（建议主线）</th><th style="width:250px">B · 专家专栏</th><th>C · 资源挂钩</th></tr></thead>
+      <tbody>
+        <tr><td><b>内容供给方</b></td><td><span class="r">全员</span>，日常记录亦为内容，供给面最宽</td><td>少数专家，约稿制，供给面最窄</td><td>被动产生，为获取额度而发布</td></tr>
+        <tr><td><b>运营投入</b></td><td>中：3–5 名种子活跃者 + 每周一次精选</td><td><span class="r">高</span>：需编辑、约稿与排期，断更即失效</td><td>低：规则自动执行，但需额度池授权</td></tr>
+        <tr><td><b>主要风险</b></td><td>内容参差；实名环境下首发顾虑</td><td>与既有严肃社区<b>同质化</b>，且缺少作者储备</td><td><span class="r">为获取额度而灌水</span>，并将分享行为交易化</td></tr>
+        <tr><td><b>建议定位</b></td><td><span class="r">★ 作为主线</span></td><td>作为 A 内的一个栏目</td><td>作为 A 的放大器</td></tr>
+      </tbody>
+    </table></div>
+  <div class="bar">结论：<em>以 A 为主线，B 降级为栏目，C 定位为放大器</em>。三线并行将导致资源分散且互相稀释。</div>
+  <div class="ft"><div>AI Community · 路线比较</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab">AI 社区</div><div class="tab on">下一步</div></div><div class="corner"><b>CARI</b> · 平台建设总结</div></div>
+  <div class="h1 s">【发展路径】主线落地：三阶段推进，顺序不可调换</div>
+  <div class="sub">每一阶段均包含建设内容、运营动作与验收指标三部分</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="row" style="flex:1;gap:12px">
+      
+      <div style="flex:1;display:flex;flex-direction:column;gap:8px;min-width:0">
+        <div style="border-top:4px solid var(--red);border-left:1px solid var(--line);border-right:1px solid var(--line);padding:8px 11px">
+          <div style="font-size:15px;font-weight:700;color:var(--red)"><span class="n" style="background:var(--red)">1</span>让人可见</div>
+          <div style="font-size:11.5px;color:var(--sub);margin-top:4px">约 4 周 · 见第 19 – 21 页</div>
+        </div>
+        <div class="mod" style="flex:1"><h3 style="background:#5A5A5A;font-size:13px;padding:5px 10px">建设内容</h3><div class="in sp" style="padding:10px"><ul class="b sm" style="font-size:12.5px"><li>关注与动态流、@ 提及</li><li>个人名片与本周红人</li><li>统一话题（跨板块）</li><li style="border-top:1px solid #E8E8E8;padding-top:7px"><b>不能省的原因：</b>后续的红人评定、话题聚合、精选分发都以关注关系为承载，缺此层则各功能各建一套。</li></ul></div></div>
+        <div class="mod" style="flex:none"><h3 style="background:var(--blue);font-size:13px;padding:5px 10px">运营动作</h3><div class="in" style="padding:8px 10px;font-size:12.5px;line-height:1.45">管理员与种子活跃者先行入驻，完善个人名片，形成"看得见人"的初始密度。</div></div>
+        <div class="scene" style="flex:none;font-size:12px;padding:7px 10px"><b>验收：</b>关注关系数 · 名片完善率</div>
+      </div>
+      
+      <div style="flex:1;display:flex;flex-direction:column;gap:8px;min-width:0">
+        <div style="border-top:4px solid var(--blue);border-left:1px solid var(--line);border-right:1px solid var(--line);padding:8px 11px">
+          <div style="font-size:15px;font-weight:700;color:var(--blue)"><span class="n" style="background:var(--blue)">2</span>让发布容易</div>
+          <div style="font-size:11.5px;color:var(--sub);margin-top:4px">约 8 周 · 见第 22 – 23 页</div>
+        </div>
+        <div class="mod" style="flex:1"><h3 style="background:#5A5A5A;font-size:13px;padding:5px 10px">建设内容</h3><div class="in sp" style="padding:10px"><ul class="b sm" style="font-size:12.5px"><li>一键发日常 + AI 顺稿</li><li>新人首帖引导与欢迎</li><li>一页速递与每周精选</li><li style="border-top:1px solid #E8E8E8;padding-top:7px"><b>不能提前的原因：</b>无人可见时降低发布门槛，只会得到无人回应的内容，反而加速流失。</li></ul></div></div>
+        <div class="mod" style="flex:none"><h3 style="background:var(--blue);font-size:13px;padding:5px 10px">运营动作</h3><div class="in" style="padding:8px 10px;font-size:12.5px;line-height:1.45">新人首帖 24 小时内必有回应；每两周组织一个话题；每周一次精选与红人评定。</div></div>
+        <div class="scene" style="flex:none;font-size:12px;padding:7px 10px"><b>验收：</b>首次发帖转化率 · 零回复率</div>
+      </div>
+      
+      <div style="flex:1;display:flex;flex-direction:column;gap:8px;min-width:0">
+        <div style="border-top:4px solid var(--blue-dk);border-left:1px solid var(--line);border-right:1px solid var(--line);padding:8px 11px">
+          <div style="font-size:15px;font-weight:700;color:var(--blue-dk)"><span class="n" style="background:var(--blue-dk)">3</span>让留存有理由</div>
+          <div style="font-size:11.5px;color:var(--sub);margin-top:4px">按季度 · 见第 24 – 27 页</div>
+        </div>
+        <div class="mod" style="flex:1"><h3 style="background:#5A5A5A;font-size:13px;padding:5px 10px">建设内容</h3><div class="in sp" style="padding:10px"><ul class="b sm" style="font-size:12.5px"><li>问答终态与 AI 值班员</li><li>贡献激励与 AI 额度挂钩</li><li>专家专栏、语义检索地基</li><li style="border-top:1px solid #E8E8E8;padding-top:7px"><b>不能提前的原因：</b>计分阈值需以第一阶段的真实行为数据校准，否则等级与称号的授予标准无从确定。</li></ul></div></div>
+        <div class="mod" style="flex:none"><h3 style="background:var(--blue);font-size:13px;padding:5px 10px">运营动作</h3><div class="in" style="padding:8px 10px;font-size:12.5px;line-height:1.45">季度评优与荣誉授予；专栏约稿排期；额度发放规则公示与自查页。</div></div>
+        <div class="scene" style="flex:none;font-size:12px;padding:7px 10px"><b>验收：</b>周活跃发布人数 · 跨部门互动比例</div>
+      </div>
+    </div></div>
+  <div class="bar">启示：<em>在"人尚不可见"的阶段投入激励，等同于向空场发放奖品</em>；三阶段的先后关系不可调换。</div>
+  <div class="ft"><div>AI Community · 主线落地</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab">AI 社区</div><div class="tab on">下一步</div></div><div class="corner"><b>CARI</b> · 平台建设总结</div></div>
+  <div class="h1 s">【发展路径】一主两辅的组合方式</div>
+  <div class="sub">专栏与资源激励均不独立立项，而是挂接在主线之上</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div style="flex:none;border:2px solid var(--red);background:var(--red-tint);padding:12px 16px;display:flex;align-items:center;gap:16px">
+      <div style="flex:none;font-size:17px;font-weight:700;color:var(--red-dk)">主线 A · 真人社区</div>
+      <div style="flex:1;font-size:13.5px;line-height:1.5;color:#333">关注与动态流 · 个人名片与红人 · 统一话题 · 一键发日常 · 新人引导 · 一页速递与每周精选　—— <b>目标：让每个人愿意发出第一条，并因此认识同事</b></div>
+    </div>
+    <div style="flex:none;display:flex;justify-content:space-around;color:var(--red);font:700 16px Arial;padding:6px 0">▲　　　　　　　　　　　　　　　　　　　　　　　　　　　▲</div>
+    <div class="row" style="flex:1;gap:12px">
+      <div class="mod b" style="flex:1"><h3>辅线 B · 专家专栏 <span>作为栏目挂接</span></h3><div class="in sp"><ul class="b bl sm">
+        <li><b>形态：</b>社区内的一个「专栏」标签与首页固定位置，不建独立站点。</li>
+        <li><b>供给：</b>约稿与自荐并行，管理员择优挂精选；<b>有稿即发，无稿不塌</b> —— 这是与独立立项的本质差别。</li>
+        <li><b>沉淀：</b>专栏文章自动进入知识库，可被检索、可被 AI 引用，不止是一篇帖子。</li>
+        <li><b>作者回报：</b>作者认领与署名、被引用计数、荣誉称号 —— 对研发人群优于稿酬。</li>
+        <li><b>差异化：</b>不与既有严肃社区比权威性，而比<b>与当前工作的贴近度</b>：内网模型如何使用、我们自己的问题如何解决。</li>
+      </ul></div></div>
+      <div class="mod g" style="flex:1"><h3>辅线 C · AI 资源激励 <span>作为放大器挂接</span></h3><div class="in sp"><ul class="b sm">
+        <li><b>只奖励被他人使用的贡献</b> —— 回答被采纳、Skill 被安装、文档被收藏、收到致谢；<span class="r">发布条数不计分</span>。此条决定了它不会演变为灌水机制。</li>
+        <li><b>额度为增量而非门槛</b> —— 基础额度对全员一致，贡献换取的是更高上限，新成员不会遭遇限制。</li>
+        <li><b>发放全自动</b>，按等级与成就即时生效，无需人工审批，运营成本接近于零。</li>
+        <li><b>需要一次授权：</b>额度池归属与季度总量，这是本轮唯一需要外部批准的资源事项。</li>
+        <li><b>止损机制：</b>一旦出现为获取额度而灌水的迹象，先降权后停发，规则全程公开可查。</li>
+      </ul></div></div>
+    </div></div>
+  <div class="bar">结论：<em>A 是人，B 是内容，C 是燃料</em>。燃料投向尚无人气的场地，只会消耗预算而不产生资产。</div>
+  <div class="ft"><div>AI Community · 组合方式</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab">AI 社区</div><div class="tab on">下一步</div></div><div class="corner"><b>CARI</b> · 平台建设总结</div></div>
+  <div class="h1 s">【建设规划】十二项功能的定位矩阵</div>
+  <div class="sub">纵向为服务阶段，横向为工作量；标红为第一批，均无外部依赖</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="matrix" style="flex:none">
+      <div></div><div class="mh">小（1 – 2 周）</div><div class="mh">中（3 – 6 周）</div><div class="mh">大（需外部支撑）</div>
+      <div class="mrl">让人可见<br><span class="gy">第一阶段</span></div>
+      <div class="mc on"><b>① 关注与动态流 + @提及</b><br>把"内容列表"变成"人的现场"</div><div class="mc on"><b>③ 统一话题</b><br>合并三套割裂的分类体系</div><div class="mc">—</div>
+      <div class="mrl">让发布容易<br><span class="gy">第二阶段</span></div>
+      <div class="mc on"><b>② 个人名片与本周红人</b><br>让发得好的人被看见<br><b>④ 一键发日常 + AI 顺稿</b><br>把首发成本压到一分钟<br><b>⑤ 新人首帖引导</b><br>承诺 24 小时内有人回应</div><div class="mc on"><b>⑥ 一页速递与每周精选</b><br>固定分发位，解决"发了就沉"</div><div class="mc">—</div>
+      <div class="mrl">让留存有理由<br><span class="gy">第三阶段</span></div>
+      <div class="mc"><b>⑦ 问答终态（采纳）</b><br>让讨论有终点<br><b>⑩ 专家专栏</b><br>高质量长文的固定位置</div><div class="mc"><b>⑧ AI 值班员</b><br>24 小时内必有首答<br><b>⑨ 贡献激励 + AI 额度</b><br>贡献转化为实际权益<br><b>⑫ 双周挑战赛</b><br>激活长期潜水人群</div><div class="mc"><b>⑪ 语义检索地基</b><br>需内网加载向量模型<br><b>⑪ MCP 知识出口</b><br>需前两批内容沉淀</div>
+    </div>
+    <div class="row" style="flex:1;margin-top:12px;gap:10px">
+      <div class="mod" style="flex:1"><h3>第一批（六项） <span>3 – 5 周，可立即启动</span></h3><div class="in sp"><ul class="b sm">
+        <li>关注与动态流 + @ 提及 · 个人名片与本周红人 · 统一话题</li>
+        <li>一键发日常 + AI 顺稿 · 新人首帖引导 · 一页速递与每周精选</li>
+        <li><b>共同目标：</b>形成"发布即有回应"的最小闭环，六项互为前提。</li>
+      </ul></div></div>
+      <div class="mod b" style="flex:1"><h3>第二批（五项） <span>1 – 2 个月</span></h3><div class="in sp"><ul class="b bl sm">
+        <li>问答终态 · AI 值班员 · 贡献激励与 AI 额度 · 专家专栏 · 语义检索地基</li>
+        <li><b>前置条件：</b>需第一批积累的真实行为数据作为计分依据；其中两项受向量模型排期约束。</li>
+      </ul></div></div>
+      <div class="mod d" style="flex:1"><h3>第三批（两项） <span>后续季度</span></h3><div class="in sp"><ul class="b sm">
+        <li>MCP 知识出口 · 双周挑战赛</li>
+        <li><b>前置条件：</b>依赖前两批沉淀的已验证内容与运营节奏；社区尚无内容时出口无价值。</li>
+      </ul></div></div>
+    </div></div>
+  <div class="bar">启示：第一批六项是一个整体 —— <em>拆开交付会让"发布即有回应"的闭环不成立</em>，收益并非线性叠加。</div>
+  <div class="ft"><div>AI Community · 规划总览</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab">AI 社区</div><div class="tab on">下一步</div></div><div class="corner"><b>CARI</b> · 平台建设总结</div></div>
+  <div class="h1 s">【投入与效果】交付节奏：三批推进，关键路径为算力排期</div>
+  <div class="sub">横轴为周次；第一批与算力申请并行启动，互不阻塞</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <div class="gantt" style="flex:none">
+      <div class="grow"><div class="glb">第一批<em>让人可见 + 让发布容易</em></div><div class="track"><div class="barr" style="left:0;width:31%">关注流 · 名片红人 · 话题 · 一键发日常 · 新人引导 · 速递（3 – 5 周）</div></div></div>
+      <div class="grow"><div class="glb">算力申请<em>并行推进</em></div><div class="track"><div class="barr b3" style="left:0;width:22%;background:#8A8A8A">向量模型排期申请（等待时长不可控）</div></div></div>
+      <div class="grow"><div class="glb">第二批<em>让留存有理由</em></div><div class="track"><div class="barr b2" style="left:33%;width:42%">问答终态 · AI 值班员 · 贡献激励与额度 · 专家专栏 · 语义地基</div></div></div>
+      <div class="grow"><div class="glb">第三批<em>差异化与运营</em></div><div class="track"><div class="barr b3" style="left:77%;width:23%">MCP 出口 · 双周挑战赛</div></div></div>
+      <div class="grow"><div class="glb">运营配套<em>贯穿全程</em></div><div class="track"><div class="barr" style="left:0;width:100%;background:repeating-linear-gradient(45deg,#C7000B,#C7000B 10px,#A80009 10px,#A80009 20px)">种子活跃者 · 每周精选与红人评定 · 新人首帖回应 · 每两周一个话题</div></div></div>
+      <div class="scale"><span>第 1 – 5 周</span><span>第 6 – 10 周</span><span>第 11 – 15 周</span><span>第 16 周起</span></div>
+    </div>
+    <div class="row" style="flex:1;margin-top:14px;gap:10px">
+      <div class="mod" style="flex:1"><h3>第一批验收 <span>上线四周后回答三个问题</span></h3><div class="in sp"><ul class="b sm">
+        <li>有多少人发出了第一条内容</li>
+        <li>有多少条内容获得三个以上的互动</li>
+        <li>速递带来多少次回站点击</li>
+        <li style="border-top:1px solid #E8E8E8;padding-top:7px"><b>数据不达标即调整机制，不追加功能。</b></li>
+      </ul></div></div>
+      <div class="mod b" style="flex:1"><h3>关键路径 <span>决定第二批开工时间</span></h3><div class="in sp"><ul class="b bl sm">
+        <li>向量模型的排期是唯一不可控项，因此<b>与第一批同时启动申请</b>。</li>
+        <li>若排期滞后：AI 值班员按单板块降级版本先行，语义检索顺延。</li>
+        <li>贡献激励需第一批积累四周以上的真实行为数据方可校准阈值。</li>
+      </ul></div></div>
+      <div class="scene" style="flex:1;font-size:12.5px"><b>本轮不做的事：</b>不新增板块、不做私信、不设全站总分排行榜、不做等级降级。功能供给已经充分，本轮全部投入用于机制建设。</div>
+    </div></div>
+  <div class="bar">结论：三批的先后关系由依赖决定，不可调换；<em>其中唯一的外部关键路径是算力排期</em>，建议本周启动。</div>
+  <div class="ft"><div>AI Community · 交付节奏</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab">AI 社区</div><div class="tab on">下一步</div></div><div class="corner"><b>CARI</b> · 平台建设总结</div></div>
+  <div class="h1 s">【投入与效果】度量口径：以"周活跃发布人数"为北极星</div>
+  <div class="sub">访问量波动快且不可持续，只有持续产出才构成社区资产</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <table class="xs" style="flex:1">
+      <thead><tr><th style="width:146px">指标</th><th style="width:296px">口径</th><th style="width:96px">1 个月</th><th style="width:96px">3 个月</th><th>6 个月</th></tr></thead>
+      <tbody>
+        <tr><td><span class="r">★ 周活跃发布人数</span></td><td>本周发布过动态 / 话题 / 回复 / 短视频任一项的人数</td><td>出基线</td><td>基线的 3 倍</td><td>基线的 6 倍</td></tr>
+        <tr><td>首次发布转化率</td><td>登录过的人员中，发布过至少一条内容的比例</td><td>出基线</td><td>≥ 25%</td><td>≥ 40%</td></tr>
+        <tr><td>内容平均互动人数</td><td>单条内容平均获得反应或评论的不同人数<span class="gy">（衡量"发布后是否有人回应"）</span></td><td>出基线</td><td>≥ 3</td><td>≥ 5</td></tr>
+        <tr><td>跨部门互动比例</td><td>互动双方不属于同一部门的比例<span class="gy">（衡量"是否真正认识了其他团队"）</span></td><td>出基线</td><td>≥ 30%</td><td>≥ 40%</td></tr>
+        <tr><td><span class="r">零回复率</span></td><td>发布 24 小时内无任何回应的内容占比<span class="gy">（越低越好，直接对应"首次即末次"）</span></td><td>出基线</td><td>≤ 20%</td><td>≤ 10%</td></tr>
+        <tr><td>速递回站率</td><td>由速递进入站内的点击人数 / 发送人数<span class="gy">（内网邮件无可信打开率，只统计点击）</span></td><td>—</td><td>≥ 20%</td><td>≥ 25%</td></tr>
+      </tbody>
+    </table>
+    <div class="row" style="flex:none;margin-top:11px;gap:10px">
+      <div class="note" style="flex:1.2;font-size:12.5px"><b>基线获取方式：</b>上述指标可用管理后台现有数据<span class="rd">回溯最近 30 天</span>直接计算，会前出数并写入纪要冻结；种子活跃者带来的增量单独标注，不计入分子分母，否则目标失去意义。</div>
+      <div class="scene" style="flex:1;font-size:12.5px"><b>难以量化但更为关键的三项：</b>新成员第一天即可判断"该方向应找谁"；同事之间能够互相识别；有人因在社区中被看见而持续产出。三者出现后，量化指标才会随之改善。</div>
+    </div></div>
+  <div class="bar">原则：<em>度量口径先于功能确定</em>。无基线则三个月后无法判断本轮投入的实际效果。</div>
+  <div class="ft"><div>AI Community · 度量口径</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide">
+  <div class="hdr"><div class="tabs"><div class="tab">总览</div><div class="tab">AI4News</div><div class="tab">AI 社区</div><div class="tab on">下一步</div></div><div class="corner"><b>CARI</b> · 平台建设总结</div></div>
+  <div class="h1 s">【投入与效果】需要决策的四项事宜</div>
+  <div class="sub">为什么是现在：平台建设成本已经投入，机制层若不补齐，该部分投入将随参与度下滑而沉没</div>
+  <div class="rule"></div>
+  <div class="body col">
+    <table class="xs" style="flex:1">
+      <thead><tr><th style="width:40px">序</th><th style="width:198px">事项</th><th style="width:312px">用途</th><th>不予落实的影响</th></tr></thead>
+      <tbody>
+        <tr><td><b>1</b></td><td><b>AI 额度池的授权</b><br><span class="gy">额度归属与季度总量</span></td><td>将贡献与 AI 资源挂钩：被采纳、被安装、被致谢者自动加发额度，全流程自动执行、无需审批</td><td>激励仅余荣誉一层。<span class="r">该项是我方独有且见效最快的手段</span>，闲置即为浪费</td></tr>
+        <tr><td><b>2</b></td><td><b>向量模型的算力排期</b><br><span class="gy">约 0.5–1B，单卡 8–16 GB 显存</span></td><td>语义检索地基：全站检索、发帖查重、跨类型推荐、AI 值班员的全站检索</td><td>第二批半数功能降级实现；<span class="r">等待时长不由我方决定，建议本周启动申请</span></td></tr>
+        <tr><td><b>3</b></td><td><b>运营配置</b><br><span class="gy">0.3 – 0.5 人力 + 3 – 5 名种子活跃者</span></td><td>每周一次精选与红人评定（约 10 分钟）· 每两周组织一个话题 · 新人首帖 24 小时内回应 · 种子活跃者首月每人每周两条</td><td>机制设计已尽量降低运营强度，但冷启动阶段无法完全自动化。<span class="r">这是最大的单点风险，也是成本最低的一项</span></td></tr>
+        <tr><td><b>4</b></td><td><b>一至两个试点部门</b><br><span class="gy">主管带头发布</span></td><td>首月在两个部门内跑通"发布即有回应"，形成可复制的示范后再向外推广</td><td>社区类产品的成败取决于前 30 天，冷启动期缺少示范，后续补救成本显著更高</td></tr>
+      </tbody>
+    </table>
+    <div class="row" style="flex:none;margin-top:11px;gap:10px">
+      <div class="note" style="flex:1;font-size:12.5px"><b>总投入：</b>开发由现有 1 人承担 —— 第一批 3–5 周、第二批 6–8 周，<b>不新增编制</b>，代价为同期其他任务顺延。除额度池外无新增预算。</div>
+      <div class="note g" style="flex:1;font-size:12.5px"><b>预计收益：</b>重复建设的 Skill 转为一次上传多次安装；长文档由一人读完、全员可问；找人方式由"群内询问"转为"检索定位"。按首年 60 个跨部门 Skill、200 条沉淀问答估算，量级在千人时。</div>
+      <div class="scene" style="flex:1;font-size:12.5px"><b>止损线：</b>第一批上线四周后，若发布过首条内容的人数低于 <b>__</b>、零回复率仍高于 <b>__</b>%，则停留在第一批不再追加投入，已上线功能维持运行。</div>
+    </div></div>
+  <div class="bar">四项之中最紧迫的是第 2 项：<em>算力排期的等待时长不由我方决定</em>，越早启动，第二批越不易被阻塞。</div>
+  <div class="ft"><div>AI Community · 决策事项</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+</section>
+
+<section class="slide end">
+  <div class="ct">
+    <div class="ty">Thank you.</div>
+    <div class="ms">
+      六大板块已建成并在内网稳定运行。本轮不再扩展功能，全部投入用于一件事 —— 让每一位同事都愿意在这里发出第一条内容。
+      <span class="en">欢迎现场提问；会后可获取第一批的详细实施方案。</span>
+    </div>
+    <div class="lg"><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+    <div class="cp">Copyright©2018 HUAWEI TECHNOLOGIES CO., LTD. All Rights Reserved.<br>
+      本文档包含前瞻性陈述，包括但不限于未来的产品规划、技术方向与运营目标。实际结果可能与前瞻性陈述存在实质差异，相关信息仅供参考，不构成任何要约或承诺。华为可能随时变更上述信息，恕不另行通知。</div>
+  </div>
+</section>
+
+</div>
+<!-- deck-editor:js:begin -->
+<script>
+/* ==========================================================================
+ * deck-editor — 把任意「一页一个 .slide」的静态 HTML 胶片变成可视化编辑器
+ *
+ * 无任何依赖。引入本文件 + deck-editor.css 即可，不需要改胶片的结构。
+ *
+ * 实现要点（回答「这是怎么实现的」）：
+ *  1) 文字        —— 给容器加 contenteditable，用 document.execCommand 做加粗/颜色/字体；
+ *                    字号用「execCommand('fontSize',7) 再把 <font size=7> 换成 span 内联样式」
+ *                    这个通用技巧，绕开 execCommand 只支持 1~7 档的限制。
+ *  2) 浮动元素     —— 图片 / 文本框 / 标注都是 position:absolute 的 .dke-el，
+ *                    坐标与尺寸一律存成**百分比**，因此换分辨率、缩放、打印都不跑位。
+ *  3) 拖动/缩放    —— mousedown 记录起点 → mousemove 改 style → mouseup 落盘。
+ *                    八个手柄各自决定改 left/top/width/height 的哪几项；角手柄按住 Shift 锁比例。
+ *  4) 粘贴图片     —— 监听 paste，从 e.clipboardData.items 里取出 image/* 的 File，
+ *                    FileReader.readAsDataURL 转成 data URI 塞进 <img>，所以保存出来的
+ *                    单个 HTML 文件自带图片，不依赖任何外部路径。
+ *  5) 撤销         —— 每次结构性改动前把 .deck 的 innerHTML 压入快照栈（最多 60 步）。
+ *  6) 保存         —— 克隆整份文档 → 去掉编辑期的临时类和手柄 → Blob + <a download>。
+ *                    因为编辑器本身也在这份 HTML 里，导出的文件再打开仍然可编辑。
+ *
+ * 约定：胶片里每一页是一个 .slide；所有页装在 .deck 里。仅此而已。
+ * ========================================================================== */
+(function () {
+  'use strict';
+
+  var CFG = window.DECK_EDITOR_CONFIG || {};
+  var DECK_SEL = CFG.deck || '.deck';
+  var SLIDE_SEL = CFG.slide || '.slide';
+  var FILENAME = CFG.filename || (document.title || 'deck').replace(/\s+/g, '-') + '.html';
+  var FONTS = CFG.fonts || ['微软雅黑', '苹方 PingFang SC', '思源黑体 Source Han Sans SC', 'Arial', 'Consolas'];
+  var COLORS = CFG.colors || ['#C7000B', '#E60012', '#8C0008', '#1F1F1F', '#6B6B6B',
+                              '#0A4A7A', '#2E6B33', '#B26A00', '#6A3D8F', '#FFFFFF'];
+
+  var deck = document.querySelector(DECK_SEL);
+  if (!deck) { console.warn('[deck-editor] 找不到 ' + DECK_SEL); return; }
+
+  var editing = false;
+  var layout = false;          // 排版模式：点静态元素可解锁
+  var hot = null;             // 排版模式下当前悬停的块
+  var sel = null;            // 当前选中的浮动元素
+  var curSlide = null;       // 当前页
+  var undoStack = [], redoStack = [];
+  var bar, row2;
+  var fileHandle = null;      // File System Access 的文件句柄，保存过一次后一直复用
+  var dirty = false;          // 有没有未保存的改动
+  var savedTag;               // 工具条上的「已保存 …」提示
+
+  /* ---------------------------------------------------------------- 工具 */
+
+  function $(t, cls, txt) { var e = document.createElement(t); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
+  function slides() { return Array.prototype.slice.call(deck.querySelectorAll(SLIDE_SEL)); }
+
+  var toastEl;
+  function toast(msg) {
+    if (!toastEl) { toastEl = $('div', 'dke-toast'); document.body.appendChild(toastEl); }
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastEl._t);
+    toastEl._t = setTimeout(function () { toastEl.classList.remove('show'); }, 1600);
+  }
+
+  function snapshot() {
+    undoStack.push(deck.innerHTML);
+    if (undoStack.length > 60) undoStack.shift();
+    redoStack.length = 0;
+    autosave();
+  }
+  function restore(html) {
+    deselect();
+    deck.innerHTML = html;
+    if (editing) markEditable(true);
+    bindAll();
+  }
+  function undo() { if (!undoStack.length) return; redoStack.push(deck.innerHTML); restore(undoStack.pop()); }
+  function redo() { if (!redoStack.length) return; undoStack.push(deck.innerHTML); restore(redoStack.pop()); }
+
+  function markDirty() {
+    dirty = true;
+    if (savedTag) { savedTag.textContent = '未保存'; savedTag.className = 'dke-saved dirty'; }
+    if (bar && bar._bSave) bar._bSave.classList.add('need');
+  }
+  function markSaved() {
+    dirty = false;
+    var t = new Date();
+    var hh = ('0' + t.getHours()).slice(-2), mm = ('0' + t.getMinutes()).slice(-2), ss = ('0' + t.getSeconds()).slice(-2);
+    if (savedTag) { savedTag.textContent = '已保存 ' + hh + ':' + mm + ':' + ss; savedTag.className = 'dke-saved'; }
+    if (bar && bar._bSave) bar._bSave.classList.remove('need');
+  }
+
+  var saveTimer;
+  function autosave() {
+    markDirty();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      try { localStorage.setItem('dke:' + location.pathname, deck.innerHTML); } catch (e) {}
+    }, 800);
+  }
+
+  /* ------------------------------------------------- 文字：内联样式工具 */
+
+  // execCommand('fontSize') 只认 1~7 档，这里用 7 档占位再替换成真实 px / 字体族
+  function applyInline(styleObj) {
+    document.execCommand('styleWithCSS', false, true);
+    document.execCommand('fontSize', false, '7');
+    var fonts = deck.querySelectorAll('font[size="7"]');
+    for (var i = 0; i < fonts.length; i++) {
+      var f = fonts[i], s = document.createElement('span');
+      for (var k in styleObj) s.style[k] = styleObj[k];
+      while (f.firstChild) s.appendChild(f.firstChild);
+      f.parentNode.replaceChild(s, f);
+    }
+  }
+
+  function currentFontPx() {
+    var s = window.getSelection();
+    if (!s || !s.rangeCount) return 12;
+    var n = s.getRangeAt(0).startContainer;
+    if (n.nodeType === 3) n = n.parentNode;
+    return Math.round(parseFloat(window.getComputedStyle(n).fontSize)) || 12;
+  }
+
+  function bumpFont(delta) {
+    var px = Math.max(6, Math.min(96, currentFontPx() + delta));
+    applyInline({ fontSize: px + 'px' });
+    numSize.value = px;
+  }
+
+  function cmd(name, val) { document.execCommand('styleWithCSS', false, true); document.execCommand(name, false, val || null); }
+
+  /* ------------------------------------------------- 浮动元素：创建 */
+
+  function slideOf(node) { while (node && node !== document.body) { if (node.matches && node.matches(SLIDE_SEL)) return node; node = node.parentNode; } return null; }
+
+  function targetSlide() {
+    if (curSlide && document.contains(curSlide)) return curSlide;
+    // 取视口中央那一页
+    var mid = window.innerHeight / 2, best = null, bd = 1e9;
+    slides().forEach(function (s) {
+      var r = s.getBoundingClientRect(), d = Math.abs((r.top + r.bottom) / 2 - mid);
+      if (d < bd) { bd = d; best = s; }
+    });
+    return best || slides()[0];
+  }
+
+  function addFloat(slide, node, opts) {
+    opts = opts || {};
+    var el = $('div', 'dke-el' + (opts.cls ? ' ' + opts.cls : ''));
+    el.setAttribute('contenteditable', 'false');
+    el.style.left = (opts.left != null ? opts.left : 30) + '%';
+    el.style.top = (opts.top != null ? opts.top : 30) + '%';
+    if (opts.width != null) el.style.width = opts.width + '%';
+    if (opts.height != null) el.style.height = opts.height + '%';
+    if (node) el.appendChild(node);
+    slide.appendChild(el);
+    bindFloat(el);
+    return el;
+  }
+
+  function insertImage(src, slide, atPct) {
+    var img = new Image();
+    img.onload = function () {
+      var s = slide || targetSlide();
+      var sw = s.clientWidth, sh = s.clientHeight;
+      var w = Math.min(img.naturalWidth, sw * 0.45);
+      var h = w * img.naturalHeight / img.naturalWidth;
+      if (h > sh * 0.7) { h = sh * 0.7; w = h * img.naturalWidth / img.naturalHeight; }
+      snapshot();
+      var el = addFloat(s, img, {
+        left: atPct ? atPct.x : (50 - w / sw * 50),
+        top: atPct ? atPct.y : (50 - h / sh * 50),
+        width: w / sw * 100, height: h / sh * 100
+      });
+      select(el);
+      toast('图片已插入 —— 拖动移动，拖角缩放（按住 Shift 锁定比例），Delete 删除');
+    };
+    img.src = src;
+  }
+
+  function insertTextBox() {
+    var s = targetSlide();
+    snapshot();
+    var inner = $('div');
+    inner.textContent = '双击编辑文字';
+    var el = addFloat(s, inner, { cls: 'txt', left: 35, top: 40, width: 26 });
+    el.style.background = 'rgba(255,255,255,.92)';
+    el.style.border = '1px solid #C7000B';
+    select(el);
+  }
+
+  function insertPin() {
+    var s = targetSlide();
+    snapshot();
+    var n = s.querySelectorAll('.pin').length + 1;
+    var p = $('div', 'pin dke-el dke-pin', String(n));
+    p.setAttribute('contenteditable', 'false');
+    p.style.left = '50%'; p.style.top = '50%';
+    s.appendChild(p);
+    bindFloat(p);
+    select(p);
+    toast('标注已添加 —— 拖到截图上要指的位置');
+  }
+
+  /* --------------------------------- 把静态排版元素变成可拖动的浮动元素 */
+
+  // 点排版元素时向上找到「有意义的块」，避免选中一个孤零零的 <b>
+  var BLOCK_SEL = '.mod, .card, .proj, .shot, .scene, .note, .cards, .kpis, .tl, .ag, .agi, ' +
+                  '.pipe, .bar, .ft, .hdr, .h1, .sub, .fill-box, .cap, table, svg, img, section > div';
+
+  function blockOf(node) {
+    var s = slideOf(node);
+    if (!s) return null;
+    var n = node;
+    while (n && n !== s) {
+      if (n.classList && (n.classList.contains('dke-el') || n.classList.contains('dke-bar'))) return n;
+      if (n.matches && n.matches(BLOCK_SEL)) return n;
+      n = n.parentNode;
+    }
+    return null;
+  }
+
+  function tagOf(el) {
+    if (el.classList.contains('mod')) return 'module';
+    if (el.classList.contains('shot')) return 'screenshot';
+    if (el.classList.contains('card')) return 'card';
+    if (el.classList.contains('proj')) return 'row';
+    if (el.tagName === 'TABLE') return 'table';
+    if (el.tagName === 'IMG') return 'image';
+    if (el.tagName === 'svg' || el.tagName === 'SVG') return 'diagram';
+    return el.tagName.toLowerCase();
+  }
+
+  /** 脱离文档流：原位留一个等尺寸占位块，元素本身改成绝对定位的 .dke-el */
+  function freeElement(el) {
+    if (!el) return;
+    if (el.classList.contains('dke-el')) { select(el); return; }
+    var s = slideOf(el);
+    if (!s || el === s) return;
+    snapshot();
+
+    var r = el.getBoundingClientRect(), sr = s.getBoundingClientRect();
+    var spacer = document.createElement('div');
+    spacer.className = 'dke-spacer';
+    spacer.style.cssText = 'width:' + r.width + 'px;height:' + r.height + 'px;flex:0 0 auto;visibility:hidden';
+    el.parentNode.insertBefore(spacer, el);
+
+    s.appendChild(el);
+    el.classList.add('dke-el', 'dke-freed');
+    el.classList.remove('dke-hot');
+    el.removeAttribute('data-dke-tag');
+    el.setAttribute('contenteditable', 'false');
+    el.style.position = 'absolute';
+    el.style.margin = '0';
+    el.style.left = ((r.left - sr.left) / sr.width * 100).toFixed(2) + '%';
+    el.style.top = ((r.top - sr.top) / sr.height * 100).toFixed(2) + '%';
+    el.style.width = (r.width / sr.width * 100).toFixed(2) + '%';
+    el.style.height = (r.height / sr.height * 100).toFixed(2) + '%';
+    bindFloat(el);
+    select(el);
+    toast('已解锁：拖动移动，拖角缩放，Delete 删除。Ctrl+Z 可还原');
+  }
+
+  /* ------------------------------------------------- 选中 / 手柄 */
+
+  function deselect() {
+    if (sel) { sel.classList.remove('sel'); clearHandles(sel); }
+    sel = null;
+    syncElBar();
+  }
+  function clearHandles(el) {
+    var hs = el.querySelectorAll(':scope > .dke-h');
+    for (var i = 0; i < hs.length; i++) hs[i].remove();
+  }
+  function select(el) {
+    if (sel === el) return;
+    deselect();
+    sel = el;
+    el.classList.add('sel');
+    // .pin 是圆点，只移动不缩放
+    if (!el.classList.contains('dke-pin')) {
+      ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach(function (d) {
+        var h = $('div', 'dke-h ' + d); h.dataset.dir = d; el.appendChild(h);
+      });
+    }
+    curSlide = slideOf(el);
+    syncElBar();
+  }
+
+  /* ------------------------------------------------- 拖动 / 缩放 */
+
+  function pct(v, total) { return (v / total) * 100; }
+
+  function bindFloat(el) {
+    if (el._dkeBound) return;
+    el._dkeBound = true;
+
+    el.addEventListener('mousedown', function (e) {
+      if (!editing) return;
+      if (el.isContentEditable && e.target.isContentEditable && el.classList.contains('dke-editing')) return;
+      var handle = e.target.classList && e.target.classList.contains('dke-h') ? e.target.dataset.dir : null;
+      e.preventDefault();
+      e.stopPropagation();
+      select(el);
+
+      var s = slideOf(el), sr = s.getBoundingClientRect();
+      var r = el.getBoundingClientRect();
+      var isPin = el.classList.contains('dke-pin');
+      var start = {
+        mx: e.clientX, my: e.clientY,
+        l: r.left - sr.left, t: r.top - sr.top, w: r.width, h: r.height,
+        ratio: r.width / (r.height || 1), sw: sr.width, sh: sr.height
+      };
+      var moved = false;
+
+      function onMove(ev) {
+        if (!moved) { snapshot(); moved = true; }
+        var dx = ev.clientX - start.mx, dy = ev.clientY - start.my;
+        if (!handle) {
+          var l = start.l + dx, t = start.t + dy;
+          if (isPin) { l += start.w / 2; t += start.h / 2; }   // pin 用中心定位
+          el.style.left = pct(l, start.sw).toFixed(2) + '%';
+          el.style.top = pct(t, start.sh).toFixed(2) + '%';
+          return;
+        }
+        var l2 = start.l, t2 = start.t, w2 = start.w, h2 = start.h;
+        if (handle.indexOf('e') > -1) w2 = start.w + dx;
+        if (handle.indexOf('s') > -1) h2 = start.h + dy;
+        if (handle.indexOf('w') > -1) { w2 = start.w - dx; l2 = start.l + dx; }
+        if (handle.indexOf('n') > -1) { h2 = start.h - dy; t2 = start.t + dy; }
+        if (ev.shiftKey && handle.length === 2) {          // 角手柄 + Shift = 锁比例
+          if (Math.abs(dx) > Math.abs(dy)) h2 = w2 / start.ratio; else w2 = h2 * start.ratio;
+          if (handle.indexOf('n') > -1) t2 = start.t + (start.h - h2);
+          if (handle.indexOf('w') > -1) l2 = start.l + (start.w - w2);
+        }
+        w2 = Math.max(16, w2); h2 = Math.max(12, h2);
+        el.style.left = pct(l2, start.sw).toFixed(2) + '%';
+        el.style.top = pct(t2, start.sh).toFixed(2) + '%';
+        el.style.width = pct(w2, start.sw).toFixed(2) + '%';
+        el.style.height = pct(h2, start.sh).toFixed(2) + '%';
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        if (moved) autosave();
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
+    // 双击进入文字编辑（文本框 / 标注）
+    el.addEventListener('dblclick', function (e) {
+      if (!editing || el.querySelector('img')) return;
+      e.stopPropagation();
+      el.classList.add('dke-editing');
+      el.setAttribute('contenteditable', 'true');
+      el.focus();
+      var r = document.createRange(); r.selectNodeContents(el);
+      var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    });
+    el.addEventListener('blur', function () {
+      el.classList.remove('dke-editing');
+      el.setAttribute('contenteditable', 'false');
+    }, true);
+  }
+
+  function bindAll() {
+    var els = deck.querySelectorAll('.dke-el, .pin');
+    for (var i = 0; i < els.length; i++) {
+      var e = els[i];
+      if (e.classList.contains('pin') && !e.classList.contains('dke-el')) {
+        e.classList.add('dke-el', 'dke-pin');
+        e.setAttribute('contenteditable', 'false');
+      }
+      bindFloat(e);
+    }
+  }
+
+  /* --------------------------------- 图片：拉伸 / 适应 / 还原比例 */
+
+  function selImg() { return sel ? sel.querySelector('img') : null; }
+
+  function toggleFit() {
+    if (!sel || !selImg()) { toast('先选中一张图片'); return; }
+    snapshot();
+    var on = sel.classList.toggle('fitmode');
+    toast(on ? '适应：保持比例，框内可能留白' : '拉伸：图片跟着框变形，无留白');
+  }
+
+  function resetRatio() {
+    var img = selImg();
+    if (!img) { toast('先选中一张图片'); return; }
+    if (!img.naturalWidth) { toast('图片还没加载完'); return; }
+    snapshot();
+    var s = slideOf(sel), sr = s.getBoundingClientRect();
+    var w = sel.getBoundingClientRect().width;
+    var h = w * img.naturalHeight / img.naturalWidth;
+    sel.style.height = (h / sr.height * 100).toFixed(2) + '%';
+    sel.classList.remove('fitmode');
+    toast('已按图片原始比例调整高度');
+  }
+
+  /* ------------------------------------------------- 表格操作 */
+
+  function cellAtCaret() {
+    var s = window.getSelection();
+    if (!s || !s.rangeCount) return null;
+    var n = s.getRangeAt(0).startContainer;
+    while (n && n !== deck) { if (n.nodeName === 'TD' || n.nodeName === 'TH') return n; n = n.parentNode; }
+    return null;
+  }
+  function tableOp(op) {
+    var td = cellAtCaret();
+    if (!td) { toast('请先把光标放进表格的某个单元格'); return; }
+    snapshot();
+    var tr = td.parentNode, tbl = tr.closest('table'), idx = Array.prototype.indexOf.call(tr.children, td);
+    if (op === 'rowAfter' || op === 'rowBefore') {
+      var nr = tr.cloneNode(true);
+      for (var i = 0; i < nr.children.length; i++) nr.children[i].innerHTML = '&nbsp;';
+      tr.parentNode.insertBefore(nr, op === 'rowAfter' ? tr.nextSibling : tr);
+    } else if (op === 'rowDel') {
+      if (tr.parentNode.children.length > 1) tr.remove(); else toast('至少保留一行');
+    } else if (op === 'colAfter' || op === 'colBefore') {
+      Array.prototype.forEach.call(tbl.rows, function (r) {
+        var c = r.children[idx]; if (!c) return;
+        var n2 = document.createElement(c.nodeName); n2.innerHTML = '&nbsp;';
+        r.insertBefore(n2, op === 'colAfter' ? c.nextSibling : c);
+      });
+    } else if (op === 'colDel') {
+      Array.prototype.forEach.call(tbl.rows, function (r) { if (r.children.length > 1 && r.children[idx]) r.children[idx].remove(); });
+    }
+    autosave();
+  }
+
+  /* ------------------------------------------------- 幻灯片操作 */
+
+  function slideOp(op) {
+    var s = targetSlide();
+    if (!s) return;
+    snapshot();
+    if (op === 'dup') {
+      var c = s.cloneNode(true);
+      c.classList.remove('dke-cur');
+      s.parentNode.insertBefore(c, s.nextSibling);
+      bindAll(); curSlide = c; c.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if (op === 'del') {
+      if (slides().length <= 1) { toast('至少保留一页'); return; }
+      var nx = s.nextElementSibling || s.previousElementSibling;
+      s.remove(); curSlide = nx;
+    } else if (op === 'blank') {
+      var b = document.createElement('section');
+      b.className = s.className;
+      b.style.cssText = 'position:relative';
+      b.innerHTML = '<div style="padding:60px;font:700 24px \'Microsoft YaHei\';color:#C7000B">新建页面 —— 双击编辑</div>';
+      s.parentNode.insertBefore(b, s.nextSibling);
+      curSlide = b; b.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    autosave();
+  }
+
+  /* ------------------------------------------------- 保存 / 导出 */
+
+  /** 产出一份干净的整页 HTML —— 保存和导出共用 */
+  function serialize() {
+    var wasEditing = editing;
+    if (wasEditing) setEditing(false);
+    var clone = document.documentElement.cloneNode(true);
+    // 清掉编辑期的痕迹
+    clone.querySelectorAll('.dke-bar,.dke-toast,.dke-h').forEach(function (n) { n.remove(); });
+    clone.querySelectorAll('.sel,.dke-cur,.dke-editing,.dke-hot').forEach(function (n) {
+      n.classList.remove('sel', 'dke-cur', 'dke-editing', 'dke-hot');
+      n.removeAttribute('data-dke-tag');
+    });
+    clone.querySelectorAll('[contenteditable]').forEach(function (n) {
+      if (n.classList.contains('dke-el')) n.setAttribute('contenteditable', 'false');
+      else n.removeAttribute('contenteditable');
+    });
+    var body = clone.querySelector('body');
+    if (body) body.classList.remove('dke-on', 'dke-layout', 'dke-ready');
+    if (wasEditing) setEditing(true);
+    return '<!DOCTYPE html>\n' + clone.outerHTML;
+  }
+
+  /* --------------------------------- 保存：写回同一个文件 */
+
+  // 句柄存进 IndexedDB，重开文件后还能接着用（file:// 下可能被禁，静默降级）
+  function idb(fn) {
+    return new Promise(function (res) {
+      try {
+        var rq = indexedDB.open('dke-handles', 1);
+        rq.onupgradeneeded = function () { rq.result.createObjectStore('h'); };
+        rq.onsuccess = function () { fn(rq.result, res); };
+        rq.onerror = function () { res(null); };
+      } catch (e) { res(null); }
+    });
+  }
+  var HKEY = 'handle:' + location.pathname;
+  function saveHandle(h) {
+    return idb(function (db, res) {
+      var tx = db.transaction('h', 'readwrite');
+      tx.objectStore('h').put(h, HKEY);
+      tx.oncomplete = function () { res(true); };
+      tx.onerror = function () { res(null); };
+    });
+  }
+  function loadHandle() {
+    return idb(function (db, res) {
+      var rq = db.transaction('h', 'readonly').objectStore('h').get(HKEY);
+      rq.onsuccess = function () { res(rq.result || null); };
+      rq.onerror = function () { res(null); };
+    });
+  }
+
+  async function saveToDisk(saveAs) {
+    if (!window.showSaveFilePicker) {          // Firefox / Safari：退回下载
+      exportHtml();
+      return;
+    }
+    try {
+      if (saveAs || !fileHandle) {
+        fileHandle = await window.showSaveFilePicker({
+          suggestedName: FILENAME,
+          types: [{ description: 'HTML', accept: { 'text/html': ['.html'] } }]
+        });
+        saveHandle(fileHandle);
+      } else {
+        var perm = await fileHandle.queryPermission({ mode: 'readwrite' });
+        if (perm !== 'granted') {
+          perm = await fileHandle.requestPermission({ mode: 'readwrite' });
+          if (perm !== 'granted') { toast('没有写入权限，改用「另存为」'); return; }
+        }
+      }
+      var w = await fileHandle.createWritable();
+      await w.write(serialize());
+      await w.close();
+      markSaved();
+      toast('已保存到 ' + (fileHandle.name || FILENAME) + ' —— 之后按 Ctrl+S 直接覆盖，不再弹窗');
+    } catch (e) {
+      if (e.name === 'AbortError') return;     // 用户取消
+      toast('保存失败：' + e.message);
+    }
+  }
+
+  function exportHtml() {
+    var html = serialize();
+    var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = FILENAME; a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+    markSaved();
+    toast('已下载 ' + FILENAME + '（' + (blob.size / 1024 / 1024).toFixed(2) + ' MB）');
+  }
+
+  /* ------------------------------------------------- 工具条 */
+
+  function btn(label, title, fn, cls) {
+    var b = $('button', 'dke-btn' + (cls ? ' ' + cls : ''), label);
+    b.type = 'button'; b.title = title || label;
+    b.addEventListener('mousedown', function (e) { e.preventDefault(); });  // 别丢选区
+    b.addEventListener('click', fn);
+    return b;
+  }
+
+  var numSize, elBarItems = [];
+  function syncElBar() {
+    elBarItems.forEach(function (n) { n.disabled = !sel; });
+  }
+
+  function buildBar() {
+    bar = $('div', 'dke-bar');
+
+    /* --- 第一行：模式 / 插入 / 页面 / 保存 --- */
+    var r1 = $('div', 'dke-row');
+    var bEdit = btn('✎ 进入编辑', '在预览与编辑之间切换', function () { setEditing(!editing); }, 'primary');
+    r1.appendChild(bEdit);
+    r1.appendChild($('div', 'dke-sep'));
+
+    r1.appendChild($('span', 'dke-lbl', '插入'));
+    r1.appendChild(btn('🖼 图片', '从文件选择图片（也可直接 Ctrl+V 粘贴 / 拖文件进来）', pickImage));
+    r1.appendChild(btn('T 文本框', '插入一个可拖动的浮动文本框', insertTextBox));
+    r1.appendChild(btn('① 标注', '插入红色编号圆点，拖到截图上', insertPin));
+    r1.appendChild($('div', 'dke-sep'));
+
+    var bLayout = btn('🔓 移动排版元素', '点开后，页面里的方框 / 表格 / 图都可以点选、拖动、拉伸',
+                      function () { setLayout(!layout); });
+    r1.appendChild(bLayout);
+    r1.appendChild($('div', 'dke-sep'));
+
+    r1.appendChild($('span', 'dke-lbl', '页面'));
+    r1.appendChild(btn('复制本页', '在当前页后面插入一份副本', function () { slideOp('dup'); }));
+    r1.appendChild(btn('新建空白页', '', function () { slideOp('blank'); }));
+    r1.appendChild(btn('删除本页', '', function () { if (confirm('确定删除当前这一页？')) slideOp('del'); }));
+    r1.appendChild($('div', 'dke-sep'));
+
+    r1.appendChild(btn('↶', '撤销 Ctrl+Z', undo, 'icon'));
+    r1.appendChild(btn('↷', '重做 Ctrl+Shift+Z', redo, 'icon'));
+    r1.appendChild($('div', 'dke-sep'));
+    var bSave = btn('💾 保存', '保存回同一个文件（Ctrl+S）。第一次会让你选文件，之后直接覆盖',
+                    function () { saveToDisk(false); }, 'primary');
+    r1.appendChild(bSave);
+    r1.appendChild(btn('另存为…', '存成新文件（Ctrl+Shift+S）', function () { saveToDisk(true); }));
+    savedTag = $('span', 'dke-saved', '未保存');
+    r1.appendChild(savedTag);
+    r1.appendChild($('div', 'dke-sep'));
+    r1.appendChild(btn('⎙ 打印 / PDF', '', function () { window.print(); }));
+
+    var hint = $('div', 'dke-hint');
+    hint.innerHTML = '拖角缩放会<b>拉伸</b>图片（按 <b>Shift</b> 才锁比例）· <b>Delete</b> 删除 · 方向键微调';
+    r1.appendChild(hint);
+    bar.appendChild(r1);
+
+    /* --- 第二行：文字格式 / 表格 / 层级（仅编辑态显示） --- */
+    row2 = $('div', 'dke-row hidden');
+
+    var selFont = $('select', 'dke-sel');
+    selFont.title = '字体';
+    selFont.appendChild(new Option('字体', ''));
+    FONTS.forEach(function (f) { selFont.appendChild(new Option(f.split(' ')[0], f.replace(/^\S+\s/, '') || f)); });
+    selFont.addEventListener('change', function () { if (selFont.value) { applyInline({ fontFamily: selFont.value }); } });
+    row2.appendChild(selFont);
+
+    row2.appendChild(btn('A−', '缩小字号', function () { bumpFont(-1); }, 'icon'));
+    numSize = $('input', 'dke-num'); numSize.type = 'number'; numSize.min = 6; numSize.max = 96; numSize.value = 12;
+    numSize.title = '字号 px（回车应用）';
+    numSize.addEventListener('keydown', function (e) { if (e.key === 'Enter') { applyInline({ fontSize: numSize.value + 'px' }); } });
+    numSize.addEventListener('change', function () { applyInline({ fontSize: numSize.value + 'px' }); });
+    row2.appendChild(numSize);
+    row2.appendChild(btn('A+', '放大字号', function () { bumpFont(1); }, 'icon'));
+    row2.appendChild($('div', 'dke-sep'));
+
+    row2.appendChild(btn('B', '加粗', function () { cmd('bold'); }, 'icon'));
+    var bi = btn('I', '斜体', function () { cmd('italic'); }, 'icon'); bi.style.fontStyle = 'italic'; row2.appendChild(bi);
+    var bu = btn('U', '下划线', function () { cmd('underline'); }, 'icon'); bu.style.textDecoration = 'underline'; row2.appendChild(bu);
+    row2.appendChild(btn('S', '删除线', function () { cmd('strikeThrough'); }, 'icon'));
+    row2.appendChild($('div', 'dke-sep'));
+
+    row2.appendChild($('span', 'dke-lbl', '字色'));
+    var sw1 = $('div', 'dke-swatches');
+    COLORS.forEach(function (c) {
+      var s = $('div', 'dke-sw'); s.style.background = c; s.title = c;
+      s.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      s.addEventListener('click', function () { cmd('foreColor', c); });
+      sw1.appendChild(s);
+    });
+    row2.appendChild(sw1);
+
+    row2.appendChild($('span', 'dke-lbl', '底色'));
+    var sw2 = $('div', 'dke-swatches');
+    ['#FBEDED', '#FFF3CD', '#E8F1F8', '#EAF5EA', '#F2F2F2', 'transparent'].forEach(function (c) {
+      var s = $('div', 'dke-sw');
+      s.style.background = c === 'transparent' ? 'repeating-linear-gradient(45deg,#fff,#fff 4px,#ddd 4px,#ddd 8px)' : c;
+      s.title = c === 'transparent' ? '清除底色' : c;
+      s.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      s.addEventListener('click', function () { cmd('hiliteColor', c === 'transparent' ? 'inherit' : c); });
+      sw2.appendChild(s);
+    });
+    row2.appendChild(sw2);
+    row2.appendChild($('div', 'dke-sep'));
+
+    row2.appendChild(btn('⯇', '左对齐', function () { cmd('justifyLeft'); }, 'icon'));
+    row2.appendChild(btn('≡', '居中', function () { cmd('justifyCenter'); }, 'icon'));
+    row2.appendChild(btn('⯈', '右对齐', function () { cmd('justifyRight'); }, 'icon'));
+    row2.appendChild(btn('⌫格式', '清除所选文字的格式', function () { cmd('removeFormat'); }));
+    row2.appendChild($('div', 'dke-sep'));
+
+    row2.appendChild($('span', 'dke-lbl', '表格'));
+    row2.appendChild(btn('+行', '在光标所在行下方插入一行', function () { tableOp('rowAfter'); }));
+    row2.appendChild(btn('−行', '删除光标所在行', function () { tableOp('rowDel'); }));
+    row2.appendChild(btn('+列', '在光标所在列右侧插入一列', function () { tableOp('colAfter'); }));
+    row2.appendChild(btn('−列', '删除光标所在列', function () { tableOp('colDel'); }));
+    row2.appendChild($('div', 'dke-sep'));
+
+    row2.appendChild($('span', 'dke-lbl', '图片'));
+    var bi1 = btn('拉伸 / 适应', '拉伸=图片跟着框变形不留白（默认）；适应=保持比例，框内可能留白', toggleFit);
+    var bi2 = btn('还原比例', '把框的高度调回图片的原始宽高比', resetRatio);
+    row2.appendChild(bi1); row2.appendChild(bi2);
+    row2.appendChild($('div', 'dke-sep'));
+
+    row2.appendChild($('span', 'dke-lbl', '选中元素'));
+    var b1 = btn('置顶层', '把选中的图片/文本框移到最上层', function () { if (sel) { snapshot(); sel.style.zIndex = 60; } });
+    var b2 = btn('置底层', '', function () { if (sel) { snapshot(); sel.style.zIndex = 5; } });
+    var b3 = btn('删除', '删除选中的元素（Delete）', function () { if (sel) { snapshot(); sel.remove(); deselect(); } });
+    elBarItems = [b1, b2, b3, bi1, bi2];
+    row2.appendChild(b1); row2.appendChild(b2); row2.appendChild(b3);
+    syncElBar();
+
+    bar.appendChild(row2);
+    document.body.appendChild(bar);
+
+    bar._bEdit = bEdit;
+    bar._bLayout = bLayout;
+    bar._bSave = bSave;
+    document.body.classList.add('dke-ready');
+    requestAnimationFrame(function () {
+      document.body.style.setProperty('--dke-h', bar.getBoundingClientRect().height + 'px');
+    });
+  }
+
+  function pickImage() {
+    var inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true;
+    inp.addEventListener('change', function () {
+      Array.prototype.forEach.call(inp.files, function (f) {
+        var fr = new FileReader();
+        fr.onload = function () { insertImage(fr.result); };
+        fr.readAsDataURL(f);
+      });
+    });
+    inp.click();
+  }
+
+  /* ------------------------------------------------- 模式切换 */
+
+  function markEditable(on) {
+    slides().forEach(function (s) {
+      if (on) s.setAttribute('contenteditable', 'true');
+      else s.removeAttribute('contenteditable');
+    });
+    // 浮动元素本身不参与文字流编辑
+    deck.querySelectorAll('.dke-el').forEach(function (e) { e.setAttribute('contenteditable', 'false'); });
+  }
+
+  function setLayout(on) {
+    layout = on;
+    document.body.classList.toggle('dke-layout', on);
+    if (!on && hot) { hot.classList.remove('dke-hot'); hot.removeAttribute('data-dke-tag'); hot = null; }
+    // 排版模式下关掉文字编辑，否则点一下就落光标
+    slides().forEach(function (x) {
+      if (on) x.removeAttribute('contenteditable');
+      else if (editing) x.setAttribute('contenteditable', 'true');
+    });
+    if (bar._bLayout) {
+      bar._bLayout.classList.toggle('on', on);
+      bar._bLayout.textContent = on ? '🔓 排版中（点此退出）' : '🔓 移动排版元素';
+    }
+    if (on) toast('点任意方框 / 表格 / 图 —— 它会脱离排版，之后可以随意拖动和拉伸');
+  }
+
+  function setEditing(on) {
+    editing = on;
+    if (!on && layout) setLayout(false);
+    document.body.classList.toggle('dke-on', on);
+    row2.classList.toggle('hidden', !on);
+    markEditable(on);
+    if (!on) deselect();
+    bar._bEdit.textContent = on ? '✓ 编辑中（点此退出）' : '✎ 进入编辑';
+    bar._bEdit.classList.toggle('on', on);
+    requestAnimationFrame(function () {
+      document.body.style.setProperty('--dke-h', bar.getBoundingClientRect().height + 'px');
+    });
+    if (on) toast('编辑模式：直接改字；Ctrl+V 粘贴图片；拖图片文件进页面也可以');
+  }
+
+  /* ------------------------------------------------- 全局事件 */
+
+  function bindGlobal() {
+    // 排版模式：悬停高亮候选块
+    document.addEventListener('mousemove', function (e) {
+      if (!editing || !layout) return;
+      var b = blockOf(e.target);
+      if (b === hot) return;
+      if (hot) { hot.classList.remove('dke-hot'); hot.removeAttribute('data-dke-tag'); }
+      hot = b;
+      if (hot && !hot.classList.contains('dke-el')) {
+        hot.classList.add('dke-hot');
+        hot.setAttribute('data-dke-tag', tagOf(hot) + ' — click to unlock');
+      } else { hot = null; }
+    });
+
+    // 排版模式：点一下就解锁
+    document.addEventListener('click', function (e) {
+      if (!editing || !layout) return;
+      if (e.target.closest('.dke-bar')) return;
+      var b = blockOf(e.target);
+      if (!b) return;
+      e.preventDefault(); e.stopPropagation();
+      freeElement(b);
+    }, true);
+
+    // 记录当前页 + 点空白处取消选中
+    document.addEventListener('mousedown', function (e) {
+      var s = slideOf(e.target);
+      if (s) { slides().forEach(function (x) { x.classList.remove('dke-cur'); }); s.classList.add('dke-cur'); curSlide = s; }
+      if (!editing) return;
+      if (!e.target.closest('.dke-el') && !e.target.closest('.dke-bar')) deselect();
+    }, true);
+
+    // 粘贴图片
+    document.addEventListener('paste', function (e) {
+      if (!editing) return;
+      var items = (e.clipboardData || {}).items || [];
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].type && items[i].type.indexOf('image') === 0) {
+          e.preventDefault();
+          var f = items[i].getAsFile();
+          var fr = new FileReader();
+          fr.onload = function () { insertImage(fr.result); };
+          fr.readAsDataURL(f);
+          return;
+        }
+      }
+    });
+
+    // 拖文件进来
+    document.addEventListener('dragover', function (e) {
+      if (!editing) return;
+      var s = slideOf(e.target); if (!s) return;
+      e.preventDefault();
+      slides().forEach(function (x) { x.classList.remove('dke-drop'); });
+      s.classList.add('dke-drop');
+    });
+    document.addEventListener('dragleave', function (e) {
+      var s = slideOf(e.target); if (s) s.classList.remove('dke-drop');
+    });
+    document.addEventListener('drop', function (e) {
+      if (!editing) return;
+      var s = slideOf(e.target); if (!s) return;
+      e.preventDefault();
+      s.classList.remove('dke-drop');
+      var r = s.getBoundingClientRect();
+      var at = { x: (e.clientX - r.left) / r.width * 100, y: (e.clientY - r.top) / r.height * 100 };
+      Array.prototype.forEach.call(e.dataTransfer.files || [], function (f) {
+        if (f.type.indexOf('image') !== 0) return;
+        var fr = new FileReader();
+        fr.onload = function () { insertImage(fr.result, s, at); };
+        fr.readAsDataURL(f);
+      });
+    });
+
+    // 键盘
+    document.addEventListener('keydown', function (e) {
+      if (!editing) return;
+      var mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+      if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); saveToDisk(e.shiftKey); return; }
+      if (!sel) return;
+      var inText = sel.classList.contains('dke-editing');
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !inText) {
+        e.preventDefault(); snapshot(); sel.remove(); deselect(); return;
+      }
+      var step = e.shiftKey ? 2 : 0.4, dx = 0, dy = 0;
+      if (e.key === 'ArrowLeft') dx = -step; else if (e.key === 'ArrowRight') dx = step;
+      else if (e.key === 'ArrowUp') dy = -step; else if (e.key === 'ArrowDown') dy = step;
+      if ((dx || dy) && !inText) {
+        e.preventDefault();
+        sel.style.left = (parseFloat(sel.style.left || 0) + dx).toFixed(2) + '%';
+        sel.style.top = (parseFloat(sel.style.top || 0) + dy).toFixed(2) + '%';
+        autosave();
+      }
+    });
+
+    // 输入时记快照（按段落节流）
+    var typeTimer;
+    deck.addEventListener('input', function () {
+      clearTimeout(typeTimer);
+      typeTimer = setTimeout(function () { undoStack.push(deck.innerHTML); if (undoStack.length > 60) undoStack.shift(); autosave(); }, 900);
+    });
+
+    // 选区变化时同步字号显示
+    document.addEventListener('selectionchange', function () {
+      if (!editing) return;
+      var px = currentFontPx();
+      if (px && document.activeElement !== numSize) numSize.value = px;
+    });
+
+    window.addEventListener('beforeunload', function (e) {
+      if (dirty) { e.preventDefault(); e.returnValue = ''; }
+    });
+  }
+
+  /* ------------------------------------------------- 本地草稿恢复 */
+
+  function offerRestore() {
+    var key = 'dke:' + location.pathname, saved;
+    try { saved = localStorage.getItem(key); } catch (e) { return; }
+    if (!saved || saved === deck.innerHTML) return;
+    setTimeout(function () {
+      if (confirm('检测到上次未导出的本地修改，是否恢复？\n（选「取消」则使用文件里的原始内容，草稿保留不删）')) {
+        deck.innerHTML = saved;
+        if (editing) markEditable(true);
+        bindAll();
+        toast('已恢复本地草稿');
+      }
+    }, 400);
+  }
+
+  /* ------------------------------------------------- 启动 */
+
+  buildBar();
+  if (window.showSaveFilePicker) {
+    loadHandle().then(function (h) {
+      if (h) { fileHandle = h; if (savedTag) savedTag.textContent = '已连到 ' + (h.name || '文件'); }
+    });
+  } else if (savedTag) {
+    savedTag.textContent = '此浏览器只能下载';
+  }
+  bindAll();
+  bindGlobal();
+  offerRestore();
+  window.DeckEditor = { setEditing: setEditing, setLayout: setLayout, freeElement: freeElement,
+    save: saveToDisk, serialize: serialize, isDirty: function () { return dirty; },
+    toggleFit: toggleFit, resetRatio: resetRatio, export: exportHtml, undo: undo, redo: redo, insertImage: insertImage };
+})();
+</script>
+<!-- deck-editor:js:end -->
+</body>
+</html>

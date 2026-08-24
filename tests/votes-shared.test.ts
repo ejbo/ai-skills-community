@@ -209,3 +209,200 @@ describe('competitionRanks', () => {
     expect(competitionRanks([5])).toEqual([1]);
   });
 });
+
+// ─── 批量投票 helpers ────────────────────────────────────────────────────────
+import { planBallotChanges, stepDraftCount, MAX_BALLOT_CHANGES } from '@/lib/votes/shared';
+
+describe('planBallotChanges', () => {
+  const rules = { votesPerUser: 5, maxPerEntry: 2, allowRevoke: false };
+
+  it('diffs desired counts against current ballots and drops no-op changes', () => {
+    const current = new Map([
+      ['a', 1],
+      ['b', 2],
+    ]);
+    const res = planBallotChanges(rules, current, [
+      { entryId: 'a', count: 1 }, // unchanged → dropped
+      { entryId: 'c', count: 2 },
+    ]);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.plan.steps).toEqual([{ entryId: 'c', from: 0, to: 2 }]);
+    expect(res.plan.used).toBe(5);
+  });
+
+  it('counts the budget across ALL current ballots, including entries not mentioned', () => {
+    const current = new Map([
+      ['hidden-entry', 3], // voted on an entry the client no longer sees
+      ['a', 1],
+    ]);
+    const res = planBallotChanges(rules, current, [{ entryId: 'b', count: 2 }]);
+    expect(res).toEqual({ ok: false, error: 'budget_exhausted' });
+  });
+
+  it('rejects going above maxPerEntry', () => {
+    const res = planBallotChanges(rules, new Map(), [{ entryId: 'a', count: 3 }]);
+    expect(res).toEqual({ ok: false, error: 'entry_cap', entryId: 'a' });
+  });
+
+  it('rejects lowering a committed count unless allowRevoke', () => {
+    const current = new Map([['a', 2]]);
+    expect(planBallotChanges(rules, current, [{ entryId: 'a', count: 1 }])).toEqual({
+      ok: false,
+      error: 'revoke_forbidden',
+      entryId: 'a',
+    });
+    const res = planBallotChanges({ ...rules, allowRevoke: true }, current, [{ entryId: 'a', count: 0 }]);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.plan.steps).toEqual([{ entryId: 'a', from: 2, to: 0 }]);
+    expect(res.plan.used).toBe(0);
+  });
+
+  it('lets a revoke free budget for an add in the same submission', () => {
+    const current = new Map([
+      ['a', 2],
+      ['b', 2],
+      ['c', 1],
+    ]); // used 5/5
+    const res = planBallotChanges({ ...rules, allowRevoke: true }, current, [
+      { entryId: 'a', count: 0 },
+      { entryId: 'd', count: 2 },
+    ]);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.plan.used).toBe(5);
+    expect(res.plan.steps.map((s) => s.entryId)).toEqual(['a', 'd']);
+  });
+
+  it('rejects malformed input: negatives, non-integers, duplicate ids, oversized batches', () => {
+    expect(planBallotChanges(rules, new Map(), [{ entryId: 'a', count: -1 }]).ok).toBe(false);
+    expect(planBallotChanges(rules, new Map(), [{ entryId: 'a', count: 1.5 }]).ok).toBe(false);
+    expect(
+      planBallotChanges(rules, new Map(), [
+        { entryId: 'a', count: 1 },
+        { entryId: 'a', count: 2 },
+      ]),
+    ).toEqual({ ok: false, error: 'invalid_input', entryId: 'a' });
+    const huge = Array.from({ length: MAX_BALLOT_CHANGES + 1 }, (_, i) => ({ entryId: `e${i}`, count: 1 }));
+    expect(planBallotChanges(rules, new Map(), huge)).toEqual({ ok: false, error: 'invalid_input' });
+  });
+
+  it('is a no-op plan when nothing moves', () => {
+    const res = planBallotChanges(rules, new Map([['a', 1]]), [{ entryId: 'a', count: 1 }]);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.plan.steps).toEqual([]);
+    expect(res.plan.used).toBe(1);
+  });
+});
+
+describe('stepDraftCount', () => {
+  const rules = { votesPerUser: 3, maxPerEntry: 2, allowRevoke: false };
+
+  it('adds while budget and cap allow', () => {
+    expect(stepDraftCount(rules, 0, 0, 1, 3)).toEqual({ ok: true, next: 1 });
+    expect(stepDraftCount(rules, 0, 1, 1, 2)).toEqual({ ok: true, next: 2 });
+    expect(stepDraftCount(rules, 0, 2, 1, 1)).toEqual({ ok: false, error: 'entry_cap' });
+    expect(stepDraftCount(rules, 0, 0, 1, 0)).toEqual({ ok: false, error: 'budget_exhausted' });
+  });
+
+  it('always lets an unsubmitted vote be taken back, even when 撤票 is off', () => {
+    expect(stepDraftCount(rules, 0, 1, -1, 2)).toEqual({ ok: true, next: 0 });
+    expect(stepDraftCount(rules, 1, 2, -1, 1)).toEqual({ ok: true, next: 1 });
+  });
+
+  it('refuses to go below the committed count without allowRevoke', () => {
+    expect(stepDraftCount(rules, 1, 1, -1, 2)).toEqual({ ok: false, error: 'revoke_forbidden' });
+    expect(stepDraftCount({ ...rules, allowRevoke: true }, 1, 1, -1, 2)).toEqual({ ok: true, next: 0 });
+    expect(stepDraftCount(rules, 0, 0, -1, 3)).toEqual({ ok: false, error: 'nothing_to_remove' });
+  });
+});
+
+// ─── 规则收紧后的方向性 + 草稿重校验 ─────────────────────────────────────────
+import { reconcileDraft } from '@/lib/votes/shared';
+
+describe('planBallotChanges: cap/budget gate increases only', () => {
+  const rules = { votesPerUser: 5, maxPerEntry: 2, allowRevoke: true };
+
+  it('lets a voter over a LOWERED votesPerUser make a pure 撤回', () => {
+    const current = new Map([
+      ['a', 5],
+      ['b', 5],
+    ]); // 10 used, cap now 5
+    const res = planBallotChanges(rules, current, [{ entryId: 'a', count: 3 }]);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.plan.used).toBe(8);
+  });
+
+  it('still refuses to ADD while over budget', () => {
+    const current = new Map([
+      ['a', 5],
+      ['b', 5],
+    ]);
+    expect(
+      planBallotChanges(rules, current, [
+        { entryId: 'a', count: 0 },
+        { entryId: 'c', count: 1 },
+      ]),
+    ).toEqual({ ok: false, error: 'budget_exhausted' });
+  });
+
+  it('lets a partial 撤回 above a LOWERED maxPerEntry through, but not an add above it', () => {
+    const current = new Map([['a', 5]]);
+    expect(planBallotChanges(rules, current, [{ entryId: 'a', count: 4 }]).ok).toBe(true);
+    expect(planBallotChanges(rules, current, [{ entryId: 'a', count: 6 }])).toEqual({
+      ok: false,
+      error: 'entry_cap',
+      entryId: 'a',
+    });
+  });
+});
+
+describe('reconcileDraft', () => {
+  const rules = { votesPerUser: 3, maxPerEntry: 2, allowRevoke: true };
+  const committed = new Map([
+    ['a', 1],
+    ['b', 0],
+    ['c', 0],
+  ]);
+
+  it('drops redundant / vanished overrides without calling it a trim', () => {
+    const r = reconcileDraft(rules, true, 1, committed, { a: 1, zzz: 2, b: 1 });
+    expect(r).toEqual({ next: { b: 1 }, trimmed: false, changed: true });
+  });
+
+  it('clears everything once voting is closed', () => {
+    const r = reconcileDraft(rules, false, 1, committed, { b: 1 });
+    expect(r.next).toEqual({});
+    expect(r.changed).toBe(true);
+  });
+
+  it('clamps pending adds to maxPerEntry and sheds newest adds over budget', () => {
+    // used 1 + b:2 + c:2 = 5 > 3 → shed from c first (newest), then b.
+    const r = reconcileDraft(rules, true, 1, committed, { b: 3, c: 2 });
+    expect(r.trimmed).toBe(true);
+    expect(r.next).toEqual({ b: 2 });
+  });
+
+  it('never touches revokes, even when the committed total is over a lowered cap', () => {
+    const over = new Map([
+      ['a', 3],
+      ['b', 3],
+      ['c', 0],
+    ]); // 6 committed, cap 3
+    const r = reconcileDraft(rules, true, 6, over, { a: 1, c: 1 });
+    // c:1 is an add while over budget → shed; a:1 (revoke) stays.
+    expect(r.next).toEqual({ a: 1 });
+    expect(r.trimmed).toBe(true);
+  });
+
+  it('reports no change for a clean draft', () => {
+    expect(reconcileDraft(rules, true, 1, committed, { b: 1 })).toEqual({
+      next: { b: 1 },
+      trimmed: false,
+      changed: false,
+    });
+  });
+});

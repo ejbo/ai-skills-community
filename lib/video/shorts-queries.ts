@@ -81,7 +81,7 @@ export async function annotateShortsViewer(
  * components consume (ISO dates, toPublicAuthor identity trim, no uploaderId).
  * Every RSC that mounts ShortsCell/ShortsShowcase must go through this.
  */
-export function toShortView(s: ShortFeedRow, viewerIsAdmin: boolean) {
+export function toShortView(s: ShortFeedRow, viewerCanSeeIdentity: boolean) {
   return {
     id: s.id,
     slug: s.slug,
@@ -105,7 +105,7 @@ export function toShortView(s: ShortFeedRow, viewerIsAdmin: boolean) {
     originType: s.originType,
     sourceUrl: s.sourceUrl,
     sourceAuthor: s.sourceAuthor,
-    uploader: toPublicAuthor(s.uploader, viewerIsAdmin),
+    uploader: toPublicAuthor(s.uploader, viewerCanSeeIdentity),
     likedByMe: s.likedByMe,
     favoritedByMe: s.favoritedByMe,
   };

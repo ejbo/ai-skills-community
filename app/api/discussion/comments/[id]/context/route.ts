@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { getPostCommentThread } from '@/lib/discussion-queries';
 import { toPublicAuthor } from '@/lib/user-identity';
 
@@ -23,7 +24,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
   const rootId = target.parentId ?? target.id;
   const root = await getPostCommentThread(rootId, session.user.id);
-  const adm = session.user.isAdmin;
+  const canSeeIdentity = can(session.user, 'identity');
   return NextResponse.json({
     exists: true,
     postId: target.postId,
@@ -32,8 +33,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     root: root
       ? {
           ...root,
-          author: toPublicAuthor(root.author, adm),
-          replies: root.replies.map((r) => ({ ...r, author: toPublicAuthor(r.author, adm) })),
+          author: toPublicAuthor(root.author, canSeeIdentity),
+          replies: root.replies.map((r) => ({ ...r, author: toPublicAuthor(r.author, canSeeIdentity) })),
         }
       : null,
   });

@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { can } from '@/lib/permissions';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { BackButton } from '@/components/BackButton';
 
@@ -16,8 +17,8 @@ export default async function AnnouncementPage({ params }: { params: { id: strin
     where: { id: params.id },
     include: { createdBy: { select: { displayName: true } } },
   });
-  // Drafts are visible to admins only; everyone else (and missing ids) 404.
-  if (!a || (a.publishedAt === null && !session?.user?.isAdmin)) notFound();
+  // Drafts are visible to 公告 managers (`announcements` permission) only; everyone else (and missing ids) 404.
+  if (!a || (a.publishedAt === null && !can(session?.user, 'announcements'))) notFound();
 
   return (
     <div className="container max-w-3xl py-8">

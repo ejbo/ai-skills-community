@@ -2,14 +2,23 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { prisma } from '@/lib/db';
+import { requirePermission } from '@/lib/admin';
+import { effectiveRole, listRoles } from '@/lib/roles';
+import { MEMBER_ROLE_KEY, PERMISSIONS, hasPermission } from '@/lib/permissions';
+import { displayVisitPath } from '@/lib/page-visit';
 import { ToggleRow, NumberRow } from './ToggleRow';
+import { RoleSelect } from './RoleSelect';
+import { RoleBadge } from '../RoleBadge';
 
 export const dynamic = 'force-dynamic';
 
 export default async function UserDetailPage({ params }: { params: { id: string } }) {
+  const actor = await requirePermission('users');
+
   const user = await prisma.user.findUnique({
     where: { id: params.id },
     include: {
+      role: true,
       _count: {
         select: {
           skills: true,
@@ -24,7 +33,8 @@ export default async function UserDetailPage({ params }: { params: { id: string 
   });
   if (!user) notFound();
 
-  const [logins, visits, skills, adminActions] = await Promise.all([
+  const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const [logins, visits, visitSummary, visitTotal30, skills, adminActions, roles] = await Promise.all([
     prisma.loginEvent.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: 'desc' },
@@ -35,6 +45,15 @@ export default async function UserDetailPage({ params }: { params: { id: string 
       orderBy: { visitedAt: 'desc' },
       take: 50,
     }),
+    prisma.pageVisit.groupBy({
+      by: ['pageName'],
+      where: { userId: user.id, visitedAt: { gte: since30 } },
+      _count: { _all: true },
+      // COUNT(pageName) is 0 for the unnamed bucket — order by a non-null column.
+      orderBy: { _count: { id: 'desc' } },
+      take: 12,
+    }),
+    prisma.pageVisit.count({ where: { userId: user.id, visitedAt: { gte: since30 } } }),
     prisma.skill.findMany({
       where: { authorId: user.id, deletedAt: null },
       orderBy: { updatedAt: 'desc' },
@@ -47,13 +66,26 @@ export default async function UserDetailPage({ params }: { params: { id: string 
       take: 10,
       include: { adminUser: { select: { displayName: true, handle: true } } },
     }),
+    listRoles(),
   ]);
+
+  const role = effectiveRole(user.role);
+  const memberRoleId = roles.find((r) => r.key === MEMBER_ROLE_KEY)?.id ?? '';
+  const isSelf = user.id === actor.session.user.id;
+  const viewerIsSuper = actor.role.isSuperAdmin;
+  // Staff accounts are a super admin's business; 用户管理 alone only touches members.
+  const switchesDisabled = user.isAdmin && !viewerIsSuper ? '管理员账号仅超级管理员可修改' : null;
+  const roleDisabled = !viewerIsSuper ? '仅超级管理员可指派角色' : isSelf ? '不能修改自己的角色' : null;
+  const grantedPermissions = role.isSuperAdmin ? PERMISSIONS : PERMISSIONS.filter((p) => hasPermission(role, p.key));
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight">{user.displayName}</h2>
+          <h2 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
+            {user.displayName}
+            <RoleBadge roleKey={role.roleKey} name={role.roleName} staff={user.isAdmin} />
+          </h2>
           <p className="text-sm text-muted">
             {user.email} · @{user.handle}
           </p>
@@ -118,15 +150,50 @@ export default async function UserDetailPage({ params }: { params: { id: string 
             </dl>
           </Section>
 
-          <Section title="权限切换（即时保存）">
+          <Section title="角色与权限">
             <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-              <ToggleRow userId={user.id} field="isAdmin" label="管理员" current={user.isAdmin} />
-              <ToggleRow userId={user.id} field="isActive" label="账号启用" current={user.isActive} />
-              <ToggleRow userId={user.id} field="canPublishSkills" label="允许发布 Skill" current={user.canPublishSkills} />
-              <ToggleRow userId={user.id} field="canRemix" label="允许 Remix" current={user.canRemix} />
-              <ToggleRow userId={user.id} field="canUseCli" label="允许使用 CLI（关闭后其 CLI Token 立即失效）" current={user.canUseCli} />
-              <NumberRow userId={user.id} field="dailyDownloadLimit" label="每日下载上限（滚动 24 小时，留空不限）" current={user.dailyDownloadLimit} />
-              <NumberRow userId={user.id} field="dailyPublishLimit" label="每日发布上限" current={user.dailyPublishLimit} />
+              <RoleSelect
+                userId={user.id}
+                roles={roles.map((r) => ({ id: r.id, key: r.key, name: r.name }))}
+                currentRoleId={user.roleId ?? memberRoleId}
+                disabledReason={roleDisabled}
+              />
+              <div className="py-2.5">
+                <div className="mb-1.5 text-[11px] uppercase tracking-wider text-muted">
+                  该角色拥有的权限{role.isSuperAdmin ? '（超级管理员：全部）' : `（${grantedPermissions.length}）`}
+                </div>
+                {grantedPermissions.length === 0 ? (
+                  <p className="text-xs text-muted">无后台或治理权限。</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {grantedPermissions.map((p) => (
+                      <span key={p.key} className="badge" style={{ background: '#f4f4f5', color: '#3f3f46' }}>
+                        {p.label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {viewerIsSuper && (
+                  <p className="mt-2 text-[11px] text-muted">
+                    角色的权限在{' '}
+                    <Link href="/manage/roles" className="underline">
+                      角色与权限
+                    </Link>{' '}
+                    页配置。
+                  </p>
+                )}
+              </div>
+            </div>
+          </Section>
+
+          <Section title="账号开关（即时保存）">
+            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              <ToggleRow userId={user.id} field="isActive" label="账号启用" current={user.isActive} disabledReason={switchesDisabled ?? (isSelf ? '不能停用自己的账号' : null)} />
+              <ToggleRow userId={user.id} field="canPublishSkills" label="允许发布 Skill" current={user.canPublishSkills} disabledReason={switchesDisabled} />
+              <ToggleRow userId={user.id} field="canRemix" label="允许 Remix" current={user.canRemix} disabledReason={switchesDisabled} />
+              <ToggleRow userId={user.id} field="canUseCli" label="允许使用 CLI（关闭后其 CLI Token 立即失效）" current={user.canUseCli} disabledReason={switchesDisabled} />
+              <NumberRow userId={user.id} field="dailyDownloadLimit" label="每日下载上限（滚动 24 小时，留空不限）" current={user.dailyDownloadLimit} disabledReason={switchesDisabled} />
+              <NumberRow userId={user.id} field="dailyPublishLimit" label="每日发布上限" current={user.dailyPublishLimit} disabledReason={switchesDisabled} />
             </div>
           </Section>
 
@@ -157,22 +224,54 @@ export default async function UserDetailPage({ params }: { params: { id: string 
             </ScrollList>
           </Section>
 
+          <Section title={`访问分布（近 30 天 · ${visitTotal30} 次）`}>
+            {visitSummary.length === 0 ? (
+              <p className="py-2 text-xs text-muted">近 30 天没有访问记录</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {visitSummary.map((r) => {
+                  const pct = visitTotal30 ? Math.round((r._count._all / visitTotal30) * 100) : 0;
+                  return (
+                    <li key={r.pageName ?? '__none'} className="flex items-center gap-3 text-xs">
+                      <span className="w-40 shrink-0 truncate font-medium">{r.pageName ?? '（未命名页面）'}</span>
+                      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                        <span className="block h-full rounded-full bg-zinc-400 dark:bg-zinc-500" style={{ width: `${pct}%` }} />
+                      </span>
+                      <span className="w-16 shrink-0 text-right font-mono text-[11px] text-muted tabular-nums">
+                        {r._count._all} · {pct}%
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Section>
+
           <Section title={`页面访问 (${visits.length})`}>
+            {user.isAdmin && (
+              <p className="mb-2 text-[11px] text-muted">
+                管理员访问具体用户页面（用户详情 / 用户主页）的记录已脱敏：只记录页面类型，不记录是哪个用户。
+              </p>
+            )}
             <ScrollList>
               {visits.length === 0 && <Empty>暂无访问记录</Empty>}
-              {visits.map((v) => (
-                <li key={v.id} className="flex items-center justify-between gap-3 py-1.5 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-medium dark:bg-zinc-800">
-                      {v.pageName ?? v.path}
+              {visits.map((v) => {
+                const shown = displayVisitPath(v.path, user.isAdmin);
+                return (
+                  <li key={v.id} className="flex items-center justify-between gap-3 py-1.5 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-medium dark:bg-zinc-800">
+                        {v.pageName ?? shown.path}
+                      </span>
+                      <span className="font-mono text-[10px] text-muted">{shown.path}</span>
+                      {shown.redacted && <span className="text-[10px] text-muted">（已脱敏）</span>}
+                    </div>
+                    <span className="font-mono text-[11px] text-muted tabular-nums">
+                      {format(v.visitedAt, 'MM-dd HH:mm')}
                     </span>
-                    <span className="text-muted font-mono text-[10px]">{v.path}</span>
-                  </div>
-                  <span className="font-mono text-[11px] text-muted tabular-nums">
-                    {format(v.visitedAt, 'MM-dd HH:mm')}
-                  </span>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ScrollList>
           </Section>
 

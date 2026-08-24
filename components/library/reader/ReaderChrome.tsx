@@ -23,6 +23,7 @@ interface Props {
   prefs: ReaderPrefs;
   onPrefsChange: (patch: Partial<ReaderPrefs>) => void;
   flow: { mode: 'paged' | 'flow'; available: boolean; onChange: (mode: 'paged' | 'flow') => void } | null;
+  translation: React.ComponentProps<typeof TypographyPopover>['translation'];
   pdfMode: {
     view: 'original' | 'text';
     canAnnotate: boolean;
@@ -47,6 +48,7 @@ export function ReaderChrome({
   prefs,
   onPrefsChange,
   flow,
+  translation,
   pdfMode,
 }: Props) {
   const t = useTranslations('reader');
@@ -143,6 +145,7 @@ export function ReaderChrome({
               prefs={prefs}
               onChange={onPrefsChange}
               flow={flow}
+              translation={translation}
             />
           </div>
           <ChromeButton label={t('side_panel')} active={panelOpen} onClick={onTogglePanel}>

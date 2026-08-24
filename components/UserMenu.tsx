@@ -14,6 +14,7 @@ interface MenuUser {
   email: string;
   displayName?: string;
   handle?: string;
+  /** Staff flag (any permission at all) — gates the 管理后台 entry link only, never a domain decision. */
   isAdmin?: boolean;
   avatarUrl?: string | null;
   image?: string | null;

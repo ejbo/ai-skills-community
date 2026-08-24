@@ -321,3 +321,55 @@ export function htmlToPlainText(html: string): string {
     .filter(Boolean)
     .join('\n\n');
 }
+
+// ── 译文 block mapping ──────────────────────────────────────────────────────
+// The whole-chapter 译文 keeps the ORIGINAL structure and swaps only the text
+// of each leaf block. Nothing is re-parsed from model output, so no tag can be
+// corrupted and no markup can be injected — the translation only ever reaches
+// the DOM through `textContent`.
+
+/** Leaf blocks — block elements that contain no other block element. */
+const TRANSLATABLE_BLOCKS = [
+  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'li', 'blockquote', 'td', 'th', 'figcaption',
+];
+
+function leafBlocks(body: HTMLElement): Element[] {
+  const sel = TRANSLATABLE_BLOCKS.join(',');
+  return Array.from(body.querySelectorAll(sel)).filter((el) => {
+    // Only the innermost block carries text we should replace.
+    if (el.querySelector(sel)) return false;
+    // `pre`/`code` is source code — translating it corrupts it.
+    if (el.closest('pre, code')) return false;
+    // A block whose text sits beside an image would lose the image to
+    // textContent, so it stays in the source language.
+    if (el.querySelector('img')) return false;
+    return Boolean((el.textContent ?? '').trim());
+  });
+}
+
+/** Source text of every translatable block, in document order. */
+export function htmlBlockTexts(html: string): string[] {
+  if (!html) return [];
+  const { parser } = getDom();
+  const doc = parser.parseFromString(`<!doctype html><html><body>${html}</body></html>`, 'text/html');
+  return leafBlocks(doc.body).map((el) => (el.textContent ?? '').replace(/\s+/g, ' ').trim());
+}
+
+/**
+ * Rebuild the chapter with each block's text replaced by its translation.
+ * `bySource` is keyed by whitespace-normalized source text (see
+ * lib/library/translation.ts). Blocks with no translation keep the original,
+ * so a partial pass still renders a coherent page.
+ */
+export function applyBlockTranslations(html: string, bySource: Map<string, string>): string {
+  if (!html) return html;
+  const { parser } = getDom();
+  const doc = parser.parseFromString(`<!doctype html><html><body>${html}</body></html>`, 'text/html');
+  for (const el of leafBlocks(doc.body)) {
+    const source = (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+    const translated = bySource.get(source);
+    if (translated) el.textContent = translated;
+  }
+  return doc.body.innerHTML.trim();
+}

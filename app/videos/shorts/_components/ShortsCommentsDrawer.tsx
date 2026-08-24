@@ -69,7 +69,7 @@ export function ShortsCommentsBody({
       focusCommentId={focusCommentId}
       currentUser={
         currentUser
-          ? { id: currentUser.id, isAdmin: currentUser.isAdmin, handle: currentUser.handle }
+          ? { id: currentUser.id, canModerate: currentUser.canModerate, handle: currentUser.handle }
           : null
       }
     />

@@ -30,6 +30,12 @@ export function AuthProvider({
       session={session}
       basePath={AUTH_BASE_PATH}
       refetchOnWindowFocus={false}
+      // Role/permission claims live in the JWT and are refreshed in lib/auth.ts'
+      // jwt callback — but only /api/auth/session re-signs and SETS the cookie
+      // (a bare auth() cannot). Polling it every 60 s (< ROLE_CLAIMS_TTL_MS) is
+      // what lets a role change land without re-login while keeping bare auth()
+      // free of DB reads. Same cadence as the notification bell.
+      refetchInterval={60}
     >
       {children}
     </SessionProvider>

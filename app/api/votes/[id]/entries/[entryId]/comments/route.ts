@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
 import { VOTE_COMMENT_MAX } from '@/lib/votes/shared';
@@ -46,7 +47,7 @@ export async function GET(
 
   const ctx = await findContext(params.id, params.entryId);
   if (!ctx) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  const isManager = session.user.isAdmin || ctx.activity.creatorId === session.user.id;
+  const isManager = can(session.user, 'votes') || ctx.activity.creatorId === session.user.id;
   // 隐藏/未过审作品的评论仅管理侧可见（画廊本来就看不到这些作品）。
   if ((ctx.entry.hidden || ctx.entry.status !== 'approved') && !isManager) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
@@ -62,14 +63,14 @@ export async function GET(
       include: { author: AUTHOR_IDENTITY_SELECT },
     })
   ).reverse();
-  const viewerIsAdmin = Boolean(session.user.isAdmin);
+  const canSeeIdentity = can(session.user, 'identity');
   return NextResponse.json({
     ok: true,
     comments: rows.map((c) => ({
       id: c.id,
       body: c.body,
       createdAt: c.createdAt.toISOString(),
-      author: toPublicAuthor(c.author, viewerIsAdmin),
+      author: toPublicAuthor(c.author, canSeeIdentity),
       isMine: c.authorId === session.user.id,
       canDelete: c.authorId === session.user.id || isManager,
     })),
@@ -133,7 +134,7 @@ export async function POST(
       id: created.id,
       body: created.body,
       createdAt: created.createdAt.toISOString(),
-      author: toPublicAuthor(created.author, Boolean(session.user.isAdmin)),
+      author: toPublicAuthor(created.author, can(session.user, 'identity')),
       isMine: true,
       canDelete: true,
     },

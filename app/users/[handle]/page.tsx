@@ -18,6 +18,7 @@ import {
 import { getLocale, getTranslations } from 'next-intl/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
 import {
   PROFILE_VISIBILITY_SELECT,
@@ -44,7 +45,8 @@ export default async function UserProfilePage({ params }: { params: { handle: st
   const t = await getTranslations('profile');
   const tl = await getTranslations('labels');
 
-  const viewerIsAdmin = session?.user?.isAdmin ?? false;
+  // `identity` = may see a 隐私账号's department/lab/handle AND the profile sections the user hid.
+  const canSeeIdentity = can(session?.user, 'identity');
   const user = await prisma.user.findUnique({
     where: { handle: params.handle },
     include: {
@@ -56,11 +58,11 @@ export default async function UserProfilePage({ params }: { params: { handle: st
   if (!user || !user.isActive) notFound();
 
   const isOwner = session?.user?.id === user.id;
-  const canSeeHidden = isOwner || viewerIsAdmin;
+  const canSeeHidden = isOwner || canSeeIdentity;
 
   // 隐私账号: trim department/lab server-side; the @handle text is hidden below.
-  const identity = toPublicAuthor(user, viewerIsAdmin);
-  const hideHandle = user.isPrivate && !viewerIsAdmin;
+  const identity = toPublicAuthor(user, canSeeIdentity);
+  const hideHandle = user.isPrivate && !canSeeIdentity;
 
   // Section gate — hidden sections are not even queried for regular viewers.
   const visible = profileSectionVisibility(user);
@@ -108,7 +110,7 @@ export default async function UserProfilePage({ params }: { params: { handle: st
 
   // Non-owners never see empty sections (nor hidden ones — those weren't fetched).
   const sectionVisible = (key: keyof typeof visible, count: number) =>
-    isOwner || (count > 0 && (visible[key] || viewerIsAdmin));
+    isOwner || (count > 0 && (visible[key] || canSeeIdentity));
 
   return (
     <div className="container py-8">
@@ -130,7 +132,7 @@ export default async function UserProfilePage({ params }: { params: { handle: st
                   Admin
                 </span>
               )}
-              {viewerIsAdmin && user.isPrivate && (
+              {canSeeIdentity && user.isPrivate && (
                 <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
                   {t('private_badge')}
                 </span>
@@ -179,7 +181,7 @@ export default async function UserProfilePage({ params }: { params: { handle: st
                   summary={s.summary}
                   sourceType={s.sourceType}
                   visibility={s.visibility}
-                  author={toPublicAuthor(s.author, viewerIsAdmin)}
+                  author={toPublicAuthor(s.author, canSeeIdentity)}
                   updatedAt={s.updatedAt}
                   stats={{
                     downloads: s.downloadCount,

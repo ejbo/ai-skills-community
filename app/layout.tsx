@@ -1,7 +1,11 @@
 import type { Metadata } from 'next';
 import localFont from 'next/font/local';
+import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { NextIntlClientProvider } from 'next-intl';
 import { withBasePath } from '@/lib/base-path';
+import { canonicalRedirectTarget } from '@/lib/auth/cookies';
+import { env } from '@/lib/env';
 
 // Self-hosted variable fonts (committed woff2, latin subset — CJK falls back to
 // system fonts as before). next/font/google fetches from Google AT BUILD TIME,
@@ -40,6 +44,21 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Canonical-host backstop (SSO deploys only): the shared server block still
+  // answers on its pre-2026-07 hostname alias, but auth cookies are HOST-scoped
+  // while AUTH_URL pins the OAuth callback to the canonical host — a login
+  // started on the alias dies at the callback ("InvalidCheck: state value could
+  // not be parsed"). Bounce alias-served documents to the canonical origin
+  // BEFORE a login can start. nginx does this too (with full-path fidelity);
+  // this survives nginx drift. Loopback/IP hosts are exempt (smoke tests).
+  const canonicalTarget = canonicalRedirectTarget({
+    enableSso: env.ENABLE_SSO,
+    authUrl: env.AUTH_URL,
+    requestHost: headers().get('host'),
+    basePath: process.env.NEXT_PUBLIC_BASE_PATH ?? '',
+  });
+  if (canonicalTarget) redirect(canonicalTarget);
+
   const [locale, messages, session] = await Promise.all([
     getLocale(),
     getMessages(),

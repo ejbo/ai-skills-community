@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { logAdmin } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -31,7 +32,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   }
 
   const isAuthor = comment.authorId === session.user.id;
-  if (!isAuthor && !session.user.isAdmin) {
+  if (!isAuthor && !can(session.user, 'discussion')) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 

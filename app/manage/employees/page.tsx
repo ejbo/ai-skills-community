@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { requirePermission } from '@/lib/admin';
 import { prisma } from '@/lib/db';
 import { distinctDirectoryValues } from '@/lib/employee-directory';
 import { EmployeeManager, type EmployeeRow } from './EmployeeManager';
@@ -12,6 +13,7 @@ export default async function AdminEmployeesPage({
 }: {
   searchParams: { q?: string; department?: string; lab?: string; page?: string };
 }) {
+  await requirePermission('employees');
   const page = Math.max(1, Math.floor(Number(searchParams.page)) || 1);
   const q = (searchParams.q ?? '').trim();
   const department = (searchParams.department ?? '').trim();

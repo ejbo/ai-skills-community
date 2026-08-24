@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import { parseCommentSort } from '@/lib/video/types';
 import { listReplies, listTopComments, type VideoCommentView } from '@/lib/video/queries';
@@ -9,8 +10,8 @@ import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
 import { notifyCommentReply } from '@/lib/notifications';
 
 /** 隐私账号: strip department/lab of comment authors before the JSON leaves the server. */
-function trimComments(rows: VideoCommentView[], viewerIsAdmin: boolean): VideoCommentView[] {
-  return rows.map((c) => ({ ...c, author: toPublicAuthor(c.author, viewerIsAdmin) }));
+function trimComments(rows: VideoCommentView[], viewerCanSeeIdentity: boolean): VideoCommentView[] {
+  return rows.map((c) => ({ ...c, author: toPublicAuthor(c.author, viewerCanSeeIdentity) }));
 }
 
 // GET /api/videos/[slug]/comments?sort=&cursor=&parentId= (login)
@@ -24,17 +25,17 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
   const url = new URL(req.url);
   const parentId = url.searchParams.get('parentId');
   const actorId = session.user.id;
-  const viewerIsAdmin = session.user.isAdmin ?? false;
+  const canSeeIdentity = can(session.user, 'identity');
 
   if (parentId) {
     const comments = await listReplies(parentId, actorId);
-    return NextResponse.json({ comments: trimComments(comments, viewerIsAdmin), nextCursor: null });
+    return NextResponse.json({ comments: trimComments(comments, canSeeIdentity), nextCursor: null });
   }
 
   const sort = parseCommentSort(url.searchParams.get('sort'));
   const cursor = url.searchParams.get('cursor');
   const result = await listTopComments({ videoId: video.id, sort, cursor, actorId });
-  return NextResponse.json({ ...result, comments: trimComments(result.comments, viewerIsAdmin) });
+  return NextResponse.json({ ...result, comments: trimComments(result.comments, canSeeIdentity) });
 }
 
 const createSchema = z.object({
@@ -134,7 +135,7 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
 
   const comment: VideoCommentView = {
     ...created,
-    author: toPublicAuthor(created.author, session.user.isAdmin ?? false),
+    author: toPublicAuthor(created.author, can(session.user, 'identity')),
     likedByMe: false,
   };
   return NextResponse.json({ ok: true, comment });

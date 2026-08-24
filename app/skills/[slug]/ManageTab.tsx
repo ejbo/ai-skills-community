@@ -1,6 +1,7 @@
 import { getLocale, getTranslations } from 'next-intl/server';
 import { Clock, Users, Download, BarChart3 } from 'lucide-react';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { relativeTime } from '@/lib/i18n-date';
 import {
   getSkillAccessOverview,
@@ -23,12 +24,12 @@ type Identity = {
   isPrivate: boolean;
 };
 
-async function Who({ user, viewerIsAdmin }: { user: Identity | null; viewerIsAdmin: boolean }) {
+async function Who({ user, viewerCanSeeIdentity }: { user: Identity | null; viewerCanSeeIdentity: boolean }) {
   const t = await getTranslations('skill_manage');
   if (!user) return <span className="text-muted">{t('anonymous')}</span>;
-  // 隐私账号：对非管理员（技能作者也是普通成员）只显示昵称——@handle 对 SSO 用户
-  // 就是工号，email/W3 更是名单级信息。
-  if (user.isPrivate && !viewerIsAdmin) {
+  // 隐私账号：没有「查看完整身份」权限的查看者（技能作者也是普通成员）只显示昵称——
+  // @handle 对 SSO 用户就是工号，email/W3 更是名单级信息。
+  if (user.isPrivate && !viewerCanSeeIdentity) {
     const tp = await getTranslations('profile');
     return (
       <div className="min-w-0">
@@ -88,11 +89,11 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 export async function AccessSection({
   overview,
   slug,
-  viewerIsAdmin,
+  viewerCanSeeIdentity,
 }: {
   overview: AccessOverview;
   slug: string;
-  viewerIsAdmin: boolean;
+  viewerCanSeeIdentity: boolean;
 }) {
   const t = await getTranslations('skill_manage');
   const tdash = await getTranslations('dashboard');
@@ -110,7 +111,7 @@ export async function AccessSection({
                 className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800"
               >
                 <div className="min-w-0 flex-1">
-                  <Who user={r.user} viewerIsAdmin={viewerIsAdmin} />
+                  <Who user={r.user} viewerCanSeeIdentity={viewerCanSeeIdentity} />
                   {r.message && <p className="mt-1 text-xs text-muted">「{r.message}」</p>}
                   <p className="mt-1 text-[11px] text-muted">{relativeTime(r.createdAt, locale)}</p>
                 </div>
@@ -138,7 +139,7 @@ export async function AccessSection({
                 {overview.approved.map((g) => (
                   <tr key={g.id} className="border-b border-zinc-100 dark:border-zinc-800/60">
                     <td className="py-2 pr-3">
-                      <Who user={g.user} viewerIsAdmin={viewerIsAdmin} />
+                      <Who user={g.user} viewerCanSeeIdentity={viewerCanSeeIdentity} />
                     </td>
                     <td className="py-2 pr-3 text-xs text-muted">
                       {g.decidedAt ? relativeTime(g.decidedAt, locale) : '—'}
@@ -161,11 +162,11 @@ export async function AccessSection({
 export async function AnalyticsSection({
   analytics,
   downloaders,
-  viewerIsAdmin,
+  viewerCanSeeIdentity,
 }: {
   analytics: Analytics;
   downloaders: Downloaders;
-  viewerIsAdmin: boolean;
+  viewerCanSeeIdentity: boolean;
 }) {
   const t = await getTranslations('skill_manage');
   const td = await getTranslations('detail');
@@ -190,7 +191,7 @@ export async function AnalyticsSection({
                 {downloaders.map((d) => (
                   <tr key={d.id} className="border-b border-zinc-100 dark:border-zinc-800/60">
                     <td className="py-2 pr-3">
-                      <Who user={d.user} viewerIsAdmin={viewerIsAdmin} />
+                      <Who user={d.user} viewerCanSeeIdentity={viewerCanSeeIdentity} />
                     </td>
                     <td className="py-2 pr-3 font-mono text-xs">{d.version ? `v${d.version}` : '—'}</td>
                     <td className="py-2 pr-3">
@@ -261,11 +262,11 @@ export async function ManageTab({ skillId, slug }: { skillId: string; slug: stri
     getSkillAnalytics(skillId),
     getSkillDownloaders(skillId, 100),
   ]);
-  const viewerIsAdmin = session?.user?.isAdmin ?? false;
+  const viewerCanSeeIdentity = can(session?.user, 'identity');
   return (
     <div className="space-y-5">
-      <AccessSection overview={overview} slug={slug} viewerIsAdmin={viewerIsAdmin} />
-      <AnalyticsSection analytics={analytics} downloaders={downloaders} viewerIsAdmin={viewerIsAdmin} />
+      <AccessSection overview={overview} slug={slug} viewerCanSeeIdentity={viewerCanSeeIdentity} />
+      <AnalyticsSection analytics={analytics} downloaders={downloaders} viewerCanSeeIdentity={viewerCanSeeIdentity} />
     </div>
   );
 }

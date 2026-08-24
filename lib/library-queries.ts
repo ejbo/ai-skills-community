@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { hasPermission, type PermissionHolder } from '@/lib/permissions';
 import { prisma } from '@/lib/db';
 import { AUTHOR_IDENTITY_SELECT } from '@/lib/user-identity';
 import { isDocType, isLibraryCategory, type AiOverview } from '@/lib/library/types';
@@ -19,16 +20,34 @@ export const BROWSABLE_DOC_WHERE = {
 } satisfies Prisma.LibraryDocWhereInput;
 
 /**
+ * Library viewer: `canManage` = the `library` permission — the admin bypass for
+ * private/restricted/unready/soft-deleted docs and for editing others' docs.
+ * Identity trimming is NOT decided here (routes pass `can(user, 'identity')` to
+ * toPublicAuthor themselves).
+ */
+export interface LibraryViewer {
+  id: string;
+  canManage: boolean;
+}
+
+export function libraryViewerFromSession(
+  session: { user?: { id: string } & PermissionHolder } | null,
+): LibraryViewer | null {
+  if (!session?.user) return null;
+  return { id: session.user.id, canManage: hasPermission(session.user, 'library') };
+}
+
+/**
  * Whether the viewer may READ (reader/chat/file) this doc. Detail-page
  * discoverability is looser — restricted docs show their metadata to everyone.
  */
 export async function canReadDoc(
   doc: { id: string; uploaderId: string; visibility: string },
-  viewer: { id: string; isAdmin: boolean } | null,
+  viewer: LibraryViewer | null,
 ): Promise<boolean> {
   if (doc.visibility === 'public') return !!viewer;
   if (!viewer) return false;
-  if (viewer.isAdmin || viewer.id === doc.uploaderId) return true;
+  if (viewer.canManage || viewer.id === doc.uploaderId) return true;
   if (doc.visibility === 'private') return false;
   const granted = await prisma.libraryAccessRequest.findUnique({
     where: { docId_userId: { docId: doc.id, userId: viewer.id } },
@@ -273,12 +292,12 @@ const DOC_DETAIL_SELECT = {
  * (ready && not deleted && not private) OR the viewer is the uploader / admin.
  * `canRead` gates the reading affordances for restricted docs.
  */
-export async function getDocBySlug(slug: string, viewer: { id: string; isAdmin: boolean } | null) {
+export async function getDocBySlug(slug: string, viewer: LibraryViewer | null) {
   const doc = await prisma.libraryDoc.findUnique({ where: { slug }, select: DOC_DETAIL_SELECT });
   if (!doc) return null;
 
   const discoverable = doc.status === 'ready' && !doc.deletedAt && doc.visibility !== 'private';
-  const privileged = !!viewer && (viewer.isAdmin || viewer.id === doc.uploaderId);
+  const privileged = !!viewer && (viewer.canManage || viewer.id === doc.uploaderId);
   if (!discoverable && !privileged) return null;
 
   let shelvedByMe = false;
@@ -349,6 +368,8 @@ export interface ReaderChapterPayload {
   chapterIndex: number;
   title: string | null;
   html: string;
+  /** Whole-chapter 译文, or null when the doc has not been translated. */
+  translatedHtml: string | null;
 }
 
 export interface ReaderData {
@@ -368,6 +389,8 @@ export interface ReaderData {
     aiIndexState: string;
     language: string | null;
     commentCount: number;
+    translationState: string;
+    translationLang: string | null;
   };
   /** 'flow' = whole doc stacked for continuous scrolling; 'paged' = one chapter. */
   mode: 'paged' | 'flow';
@@ -401,7 +424,7 @@ const FLOW_MAX_CHARS = 400_000;
  */
 export async function getDocReaderData(
   slug: string,
-  viewer: { id: string; isAdmin: boolean },
+  viewer: LibraryViewer,
   chapterIndex: number,
   view?: 'flow' | 'paged',
   /** Viewer's UI locale — picks the stored language of 导读 / 章节摘要 (both
@@ -428,6 +451,8 @@ export async function getDocReaderData(
       aiIndexState: true,
       language: true,
       commentCount: true,
+      translationState: true,
+      translationLang: true,
       status: true,
       visibility: true,
       uploaderId: true,
@@ -482,12 +507,12 @@ export async function getDocReaderData(
       ? prisma.libraryChapter.findMany({
           where: { docId: doc.id },
           orderBy: { chapterIndex: 'asc' },
-          select: { chapterIndex: true, title: true, html: true },
+          select: { chapterIndex: true, title: true, html: true, translatedHtml: true },
         })
       : prisma.libraryChapter
           .findUnique({
             where: { docId_chapterIndex: { docId: doc.id, chapterIndex: resolved } },
-            select: { chapterIndex: true, title: true, html: true },
+            select: { chapterIndex: true, title: true, html: true, translatedHtml: true },
           })
           .then((c) => (c ? [c] : [])),
     prisma.libraryHighlight.findMany({
@@ -529,6 +554,8 @@ export async function getDocReaderData(
       aiIndexState: doc.aiIndexState,
       language: doc.language,
       commentCount: doc.commentCount,
+      translationState: doc.translationState,
+      translationLang: doc.translationLang,
     },
     mode,
     flowAvailable,

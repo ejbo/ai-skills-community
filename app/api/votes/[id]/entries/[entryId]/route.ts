@@ -3,11 +3,13 @@ import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { can } from '@/lib/permissions';
 import { findManagedActivity, recountVisibleEntries, voteViewerFromSession } from '@/lib/vote-queries';
 import {
   VOTE_ENTRY_AUTHOR_MAX,
   VOTE_ENTRY_AUTHOR_NO_MAX,
   VOTE_ENTRY_TITLE_MAX,
+  parsePosterPos,
   voteOver,
 } from '@/lib/votes/shared';
 import { deleteVoteMediaFile } from '@/lib/votes/storage';
@@ -23,6 +25,9 @@ const patchSchema = z.object({
   // 审核：通过 / 驳回（可回到 pending 重新排队）。驳回时 reviewNote 给投稿者看。
   status: z.enum(['approved', 'pending', 'rejected']).optional(),
   reviewNote: z.string().trim().max(500).optional(),
+  // 封面裁切（发起人在作品表的封面编辑器里调整）。
+  posterAspect: z.enum(['landscape', 'portrait']).optional(),
+  posterPos: z.string().max(12).optional(),
 });
 
 async function findEntry(activityId: string, entryId: string) {
@@ -63,6 +68,12 @@ export async function PATCH(
     (input.authorNo !== undefined && input.authorNo.toLowerCase() !== entry.authorNo);
   if (namingChanged) data.titleEdited = true;
   if (input.hidden !== undefined) data.hidden = input.hidden;
+  if (input.posterAspect !== undefined) data.posterAspect = input.posterAspect;
+  if (input.posterPos !== undefined) {
+    const pos = parsePosterPos(input.posterPos);
+    if (pos === null) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
+    data.posterPos = pos;
+  }
   if (input.status !== undefined) {
     data.status = input.status;
     // 驳回理由随驳回落下；通过/回到待审核时清空旧理由。
@@ -103,6 +114,8 @@ export async function PATCH(
       hidden: updated.hidden,
       status: updated.status,
       reviewNote: updated.reviewNote,
+      posterAspect: updated.posterAspect,
+      posterPos: updated.posterPos,
     },
   });
 }
@@ -125,7 +138,7 @@ export async function DELETE(
   const entry = await findEntry(activity.id, params.entryId);
   if (!entry) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
-  const isManager = session.user.isAdmin || activity.creatorId === session.user.id;
+  const isManager = can(session.user, 'votes') || activity.creatorId === session.user.id;
   const isOwnSubmission = entry.submitterId !== null && entry.submitterId === session.user.id;
   if (!isManager && !(isOwnSubmission && !voteOver(activity))) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });

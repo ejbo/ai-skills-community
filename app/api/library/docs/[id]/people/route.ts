@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
 
 export const dynamic = 'force-dynamic';
@@ -21,7 +22,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
-  const isAdmin = session.user.isAdmin;
+  const canSeeIdentity = can(session.user, 'identity');
   const [shelfUsers, sharedNotes] = await Promise.all([
     prisma.libraryShelfItem.findMany({
       where: { docId: doc.id, user: { showLibraryActivity: true, isActive: true } },
@@ -38,11 +39,11 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     }),
   ]);
 
-  const readers = shelfUsers.map((r) => toPublicAuthor(r.user, isAdmin));
+  const readers = shelfUsers.map((r) => toPublicAuthor(r.user, canSeeIdentity));
 
   const annotatorMap = new Map<string, { author: ReturnType<typeof toPublicAuthor>; count: number }>();
   for (const note of sharedNotes) {
-    const author = toPublicAuthor(note.user, isAdmin);
+    const author = toPublicAuthor(note.user, canSeeIdentity);
     const cur = annotatorMap.get(author.handle) ?? { author, count: 0 };
     cur.count += 1;
     annotatorMap.set(author.handle, cur);

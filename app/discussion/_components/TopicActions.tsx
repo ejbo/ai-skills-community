@@ -15,13 +15,13 @@ export function TopicActions({
   topicId,
   pinned,
   locked,
-  isAdmin,
+  canModerate,
   isAuthor,
 }: {
   topicId: string;
   pinned: boolean;
   locked: boolean;
-  isAdmin: boolean;
+  canModerate: boolean;
   isAuthor: boolean;
 }) {
   const t = useTranslations('discussion_ui');
@@ -67,7 +67,7 @@ export function TopicActions({
     }
   }
 
-  if (!isAdmin && !isAuthor) return null;
+  if (!canModerate && !isAuthor) return null;
 
   const btn =
     'flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-xs font-medium text-zinc-700 transition hover:border-accent-500 hover:text-accent-700 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200';
@@ -80,7 +80,7 @@ export function TopicActions({
           {tc('edit')}
         </Link>
       )}
-      {isAdmin && (
+      {canModerate && (
         <>
           <button
             onClick={() => patch({ pinned: !pinned }, pinned ? t('unpinned') : t('pinned_done'))}

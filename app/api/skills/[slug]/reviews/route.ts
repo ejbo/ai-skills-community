@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
 
 const reviewSchema = z.object({
@@ -11,7 +12,7 @@ const reviewSchema = z.object({
 
 export async function GET(_req: Request, { params }: { params: { slug: string } }) {
   const session = await auth();
-  const viewerIsAdmin = session?.user?.isAdmin ?? false;
+  const canSeeIdentity = can(session?.user, 'identity');
   const skill = await prisma.skill.findUnique({ where: { slug: params.slug }, select: { id: true } });
   if (!skill) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   const reviews = await prisma.review.findMany({
@@ -23,7 +24,7 @@ export async function GET(_req: Request, { params }: { params: { slug: string } 
   });
   return NextResponse.json({
     // 隐私账号：trim department/lab server-side before the JSON boundary.
-    reviews: reviews.map((r) => ({ ...r, author: toPublicAuthor(r.author, viewerIsAdmin) })),
+    reviews: reviews.map((r) => ({ ...r, author: toPublicAuthor(r.author, canSeeIdentity) })),
   });
 }
 

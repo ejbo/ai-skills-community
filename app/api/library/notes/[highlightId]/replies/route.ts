@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import { notifyLibraryNoteReply } from '@/lib/notifications';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
-import { canReadDoc } from '@/lib/library-queries';
+import { canReadDoc, libraryViewerFromSession } from '@/lib/library-queries';
 
 const MINUTE_MS = 60 * 1000;
 
@@ -51,8 +52,7 @@ export async function POST(req: Request, { params }: { params: { highlightId: st
   if (!highlight || highlight.doc.deletedAt || highlight.doc.status !== 'ready') {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
-  const viewer = { id: session.user.id, isAdmin: session.user.isAdmin };
-  if (!(await canReadDoc(highlight.doc, viewer))) {
+  if (!(await canReadDoc(highlight.doc, libraryViewerFromSession(session)))) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
   // Only notes their owner shares accept replies (own notes always do).
@@ -96,6 +96,6 @@ export async function POST(req: Request, { params }: { params: { highlightId: st
 
   return NextResponse.json({
     ok: true,
-    reply: { ...reply, author: toPublicAuthor(reply.author, session.user.isAdmin) },
+    reply: { ...reply, author: toPublicAuthor(reply.author, can(session.user, 'identity')) },
   });
 }

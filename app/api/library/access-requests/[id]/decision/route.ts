@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { logAdmin } from '@/lib/audit';
 import { notifyLibraryAccessDecision } from '@/lib/notifications';
 
@@ -32,7 +33,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
   const isUploader = request.doc.uploaderId === session.user.id;
-  if (!isUploader && !session.user.isAdmin) {
+  if (!isUploader && !can(session.user, 'library')) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 

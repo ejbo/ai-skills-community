@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { apiReason } from '@/lib/api-errors';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import { notifyPostReply } from '@/lib/notifications';
 import { listPostComments } from '@/lib/discussion-queries';
@@ -30,12 +31,12 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     take: Number(sp.get('take') ?? 3),
     viewerId: session?.user?.id ?? null,
   });
-  const adm = Boolean(session?.user?.isAdmin);
+  const canSeeIdentity = can(session?.user, 'identity');
   return NextResponse.json({
     items: items.map((c) => ({
       ...c,
-      author: toPublicAuthor(c.author, adm),
-      replies: c.replies.map((r) => ({ ...r, author: toPublicAuthor(r.author, adm) })),
+      author: toPublicAuthor(c.author, canSeeIdentity),
+      replies: c.replies.map((r) => ({ ...r, author: toPublicAuthor(r.author, canSeeIdentity) })),
     })),
     totalRoots,
     hasMore,
@@ -167,7 +168,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     ok: true,
     comment: {
       ...comment,
-      author: toPublicAuthor(comment.author, session.user.isAdmin),
+      author: toPublicAuthor(comment.author, can(session.user, 'identity')),
       likedByMe: false,
     },
   });

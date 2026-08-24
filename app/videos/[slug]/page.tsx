@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireUser } from '@/lib/admin';
+import { can } from '@/lib/permissions';
 import { prisma } from '@/lib/db';
 import { RelatedVideos } from '@/components/video/RelatedVideos';
 import { getVideoActor, canViewVideo, canPlayVideo, isVideoPrivileged } from '@/lib/video/access';
@@ -52,11 +53,13 @@ export default async function VideoDetailPage({ params, searchParams }: PageProp
   const t = await getTranslations('video');
 
   // 隐私账号: strip department/lab server-side before authors reach the client.
-  const viewerIsAdmin = session.user.isAdmin ?? false;
-  const publicComments = comments.map((c) => ({ ...c, author: toPublicAuthor(c.author, viewerIsAdmin) }));
+  const canSeeIdentity = can(session.user, 'identity');
+  const publicComments = comments.map((c) => ({ ...c, author: toPublicAuthor(c.author, canSeeIdentity) }));
 
+  // Long-video detail: comment moderation rides the `videos` permission
+  // (shorts were redirected to their own feed above).
   const currentUser = actor
-    ? { id: actor.id, isAdmin: actor.isAdmin, handle: session.user.handle }
+    ? { id: actor.id, canModerate: actor.canManageVideos, handle: session.user.handle }
     : null;
 
   const aiPanel = <AiPanel slug={video.slug} />;
@@ -77,7 +80,7 @@ export default async function VideoDetailPage({ params, searchParams }: PageProp
           />
 
           <VideoMeta
-            video={{ ...video, uploader: toPublicAuthor(video.uploader, viewerIsAdmin) }}
+            video={{ ...video, uploader: toPublicAuthor(video.uploader, canSeeIdentity) }}
             privileged={privileged}
             initialLiked={Boolean(likeRow)}
             initialFavorited={Boolean(favRow)}

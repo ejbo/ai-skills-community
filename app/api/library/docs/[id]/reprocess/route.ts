@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import { reprocessDoc } from '@/lib/library/ingest';
 
@@ -19,10 +20,11 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     where: { id: params.id },
     select: { id: true, uploaderId: true, deletedAt: true },
   });
-  if (!doc || (doc.deletedAt && !session.user.isAdmin)) {
+  const canManage = can(session.user, 'library');
+  if (!doc || (doc.deletedAt && !canManage)) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
-  if (doc.uploaderId !== session.user.id && !session.user.isAdmin) {
+  if (doc.uploaderId !== session.user.id && !canManage) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 

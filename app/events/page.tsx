@@ -26,6 +26,7 @@ import {
 import {
   countEventsByCity,
   countEventsByKind,
+  eventViewerFromSession,
   getCalendarMonth,
   listEvents,
   listPinnedUpcoming,
@@ -130,7 +131,7 @@ function presetRange(preset: string): { from: Date; to: Date } | null {
 
 export default async function EventsPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await auth();
-  const viewer = { id: session?.user?.id ?? null, isAdmin: Boolean(session?.user?.isAdmin) };
+  const viewer = eventViewerFromSession(session);
   const t = await getTranslations('events');
   const tl = await getTranslations('labels');
   const tb = await getTranslations('browse');

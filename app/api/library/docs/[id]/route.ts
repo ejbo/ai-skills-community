@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { logAdmin } from '@/lib/audit';
 import { cleanCategories, isDocType } from '@/lib/library/types';
 
@@ -59,7 +60,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   });
   if (!doc || doc.deletedAt) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   const isUploader = doc.uploaderId === session.user.id;
-  if (!isUploader && !session.user.isAdmin) {
+  if (!isUploader && !can(session.user, 'library')) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -141,7 +142,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   });
   if (!doc || doc.deletedAt) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   const isUploader = doc.uploaderId === session.user.id;
-  if (!isUploader && !session.user.isAdmin) {
+  if (!isUploader && !can(session.user, 'library')) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 

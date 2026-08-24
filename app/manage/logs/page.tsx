@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { requirePermission } from '@/lib/admin';
 import { format } from 'date-fns';
 import { LogDetailsModal } from './LogDetailsModal';
 
@@ -11,6 +12,7 @@ export default async function LogsPage({
 }: {
   searchParams: { q?: string; action?: string; page?: string };
 }) {
+  await requirePermission('logs');
   const page = Math.max(1, Number(searchParams.page ?? 1));
   const q = (searchParams.q ?? '').trim();
   const action = (searchParams.action ?? '').trim();

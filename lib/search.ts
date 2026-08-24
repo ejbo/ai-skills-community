@@ -48,7 +48,7 @@ export const EMPTY_SEARCH_RESULTS: SiteSearchResults = {
 
 export async function searchSite(
   rawQ: string,
-  opts: { viewerIsAdmin: boolean; perType?: number },
+  opts: { viewerCanSeeIdentity: boolean; perType?: number },
 ): Promise<SiteSearchResults> {
   // Cap the term: it feeds 10 parallel ILIKE scans (three over full bodyMd
   // columns) — an unbounded pasted blob would make every scan pathological.
@@ -211,7 +211,7 @@ export async function searchSite(
     users: users.map((u) => ({
       handle: u.handle,
       displayName: u.displayName,
-      meta: u.isPrivate && !opts.viewerIsAdmin ? '' : `@${u.handle}`,
+      meta: u.isPrivate && !opts.viewerCanSeeIdentity ? '' : `@${u.handle}`,
     })),
     categories,
     tags,

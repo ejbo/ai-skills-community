@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import { generateShortSubtitles, subtitlesAvailable } from '@/lib/video/subtitles';
 
@@ -26,7 +27,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     select: { id: true, uploaderId: true, subtitleStatus: true },
   });
   if (!short) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  if (short.uploaderId !== session.user.id && !session.user.isAdmin) {
+  if (short.uploaderId !== session.user.id && !can(session.user, 'shorts')) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
   if (short.subtitleStatus === 'processing') {

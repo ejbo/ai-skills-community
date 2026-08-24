@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { LLMConfigError } from '@/lib/llm';
 import { generateVideoSummary } from '@/lib/video/summary';
 
@@ -29,13 +30,14 @@ export async function GET(_req: Request, { params }: { params: { slug: string } 
 export async function POST(_req: Request, { params }: { params: { slug: string } }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
-  if (!session.user.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  if (!can(session.user, 'videos')) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const video = await prisma.video.findUnique({
     where: { slug: params.slug },
-    select: { id: true, deletedAt: true },
+    select: { id: true, deletedAt: true, isShort: true },
   });
-  if (!video || video.deletedAt) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  // AI 摘要 is a long-video concept; shorts are moderated under `shorts`, not here.
+  if (!video || video.deletedAt || video.isShort) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   const locale = cookies().get('locale')?.value;
   try {

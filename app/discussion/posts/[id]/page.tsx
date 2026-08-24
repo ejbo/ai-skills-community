@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { getPostDetail } from '@/lib/discussion-queries';
 import { BackButton } from '@/components/BackButton';
 import { toPublicAuthor } from '@/lib/user-identity';
@@ -26,12 +27,12 @@ export default async function PostDetailPage({
         handle: session.user.handle,
         displayName: session.user.displayName,
         avatarUrl: session.user.avatarUrl,
-        isAdmin: session.user.isAdmin,
+        canModerate: can(session.user, 'discussion'),
       }
     : null;
 
   const { authorId: _authorId, ...rest } = post;
-  const view = { ...rest, author: toPublicAuthor(post.author, Boolean(session?.user?.isAdmin)) };
+  const view = { ...rest, author: toPublicAuthor(post.author, can(session?.user, 'identity')) };
 
   return (
     <div className="container max-w-2xl py-8">

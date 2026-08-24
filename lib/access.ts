@@ -1,5 +1,6 @@
 import type { AccessRequestStatus, SkillStatus, SkillVisibility } from '@prisma/client';
 import { resolveActor, type ResolvedUser } from '@/lib/auth/either';
+import { hasPermission } from '@/lib/permissions';
 import { prisma } from '@/lib/db';
 
 /**
@@ -11,10 +12,11 @@ import { prisma } from '@/lib/db';
  *  - Login is required for ALL downloads. Anonymous content access is never allowed.
  *  - public     → any logged-in user may download.
  *  - restricted → discoverable, but content needs an `approved` SkillAccessRequest.
- *  - private    → only the owner (and admins) may see/download; everyone else gets 404.
+ *  - private    → only the owner (and holders of the `skills` permission) may see/download;
+ *                 everyone else gets 404.
  */
 
-export type AccessActor = Pick<ResolvedUser, 'id' | 'isAdmin'> & {
+export type AccessActor = Pick<ResolvedUser, 'id' | 'roleKey' | 'permissions'> & {
   via?: ResolvedUser['via'];
   scopes?: string[] | null;
 };
@@ -46,16 +48,18 @@ export function canAccessSkillContent(
 ): AccessDecision {
   if (skill.deletedAt) return { kind: 'denied', canContent: false };
 
-  // Owner & admin escape hatches: they reach content regardless of status/visibility.
+  // Owner escape hatch: the author reaches their own content regardless of status/visibility.
   if (actor && actor.id === skill.authorId) return { kind: 'owner', canContent: true };
-  if (actor?.isAdmin) return { kind: 'admin', canContent: true };
 
   if (!actor) return { kind: 'auth_required', canContent: false };
 
-  // CLI tokens must carry the 'read' scope to fetch content.
+  // CLI tokens must carry the 'read' scope to fetch content — a Skill-管理 PAT included.
   if (actor.via === 'cli' && Array.isArray(actor.scopes) && !actor.scopes.includes('read')) {
     return { kind: 'denied', canContent: false };
   }
+
+  // Skill-管理 escape hatch: reaches any skill regardless of status/visibility.
+  if (hasPermission(actor, 'skills')) return { kind: 'admin', canContent: true };
 
   // Beyond owner/admin, only published skills serve content.
   if (skill.status !== 'published') return { kind: 'denied', canContent: false };
@@ -136,7 +140,7 @@ export async function loadAccessContext(slug: string, req: Request): Promise<Acc
     return { skill: null, actor, grant: null, decision: { kind: 'denied', canContent: false } };
   }
   let grant: { id: string; status: AccessRequestStatus } | null = null;
-  if (actor && skill.visibility === 'restricted' && actor.id !== skill.authorId && !actor.isAdmin) {
+  if (actor && skill.visibility === 'restricted' && actor.id !== skill.authorId && !hasPermission(actor, 'skills')) {
     grant = await prisma.skillAccessRequest.findUnique({
       where: { skillId_userId: { skillId: skill.id, userId: actor.id } },
       select: { id: true, status: true },

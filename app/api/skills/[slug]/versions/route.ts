@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { storage, skillBundleKey } from '@/lib/storage';
 import { parseSkillBundle } from '@/lib/skill-parser';
 import { parseSemver, compareSemver, formatSemver, type Semver } from '@/lib/version';
@@ -12,13 +13,13 @@ function str(form: FormData, key: string): string | undefined {
   return typeof v === 'string' && v.trim() ? v.trim() : undefined;
 }
 
-async function loadOwned(slug: string, userId: string, isAdmin: boolean) {
+async function loadOwned(slug: string, userId: string, canManage: boolean) {
   const skill = await prisma.skill.findUnique({
     where: { slug },
     include: { versions: { select: { major: true, minor: true, patch: true, version: true } } },
   });
   if (!skill || skill.deletedAt) return null;
-  if (skill.authorId !== userId && !isAdmin) return 'forbidden' as const;
+  if (skill.authorId !== userId && !canManage) return 'forbidden' as const;
   return skill;
 }
 
@@ -29,7 +30,7 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
-  const owned = await loadOwned(params.slug, session.user.id, Boolean(session.user.isAdmin));
+  const owned = await loadOwned(params.slug, session.user.id, can(session.user, 'skills'));
   if (owned === null) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   if (owned === 'forbidden') return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 

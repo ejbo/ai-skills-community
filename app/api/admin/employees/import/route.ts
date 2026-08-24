@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { gateApi } from '@/lib/admin';
 import { logAdmin } from '@/lib/audit';
 import { importEmployeeRows } from '@/lib/employee-admin';
 import { parsePastedText, parseUpload, type ParsedEmployeeRow } from '@/lib/employee-import';
@@ -10,8 +10,9 @@ const MAX_ROWS = 20_000;
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user?.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const gate = await gateApi('employees');
+  if (!gate.ok) return gate.response;
+  const { session } = gate;
 
   const form = await req.formData().catch(() => null);
   if (!form) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });

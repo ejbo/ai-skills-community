@@ -16,13 +16,13 @@ export function EventActions({
   pinned,
   cancelled,
   isAuthor,
-  isAdmin,
+  canModerate,
 }: {
   id: string;
   pinned: boolean;
   cancelled: boolean;
   isAuthor: boolean;
-  isAdmin: boolean;
+  canModerate: boolean;
 }) {
   const t = useTranslations('event_form');
   const tc = useTranslations('common');
@@ -93,7 +93,7 @@ export function EventActions({
         {cancelled ? <RotateCcw className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
         {cancelled ? t('restore_event') : t('cancel_event')}
       </button>
-      {isAdmin && (
+      {canModerate && (
         <button
           type="button"
           disabled={busy}

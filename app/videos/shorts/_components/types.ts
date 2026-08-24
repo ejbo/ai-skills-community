@@ -35,7 +35,8 @@ export interface ShortView {
 
 export interface ShortsCurrentUser {
   id: string;
-  isAdmin: boolean;
+  /** `shorts` permission — may moderate (delete) other members' comments. */
+  canModerate: boolean;
   handle?: string;
 }
 

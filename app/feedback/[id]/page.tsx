@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getLocale } from 'next-intl/server';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { relativeTime } from '@/lib/i18n-date';
 import { getFeedbackDetail } from '@/lib/feedback-queries';
 import { toPublicAuthor } from '@/lib/user-identity';
@@ -28,11 +29,11 @@ export default async function FeedbackDetailPage({
   if (!feedback) notFound();
 
   const viewer = session?.user
-    ? { handle: session.user.handle, isAdmin: session.user.isAdmin }
+    ? { handle: session.user.handle, canModerate: can(session.user, 'feedback') }
     : null;
-  const viewerIsAdmin = viewer?.isAdmin ?? false;
+  const canSeeIdentity = can(session?.user, 'identity');
   const isAuthor = viewer?.handle === feedback.author.handle;
-  const author = toPublicAuthor(feedback.author, viewerIsAdmin);
+  const author = toPublicAuthor(feedback.author, canSeeIdentity);
 
   const threads: ThreadView[] = feedback.comments.map((c) => ({
     id: c.id,
@@ -40,14 +41,14 @@ export default async function FeedbackDetailPage({
     status: c.status,
     replyCount: c.replyCount,
     createdAt: c.createdAt,
-    author: toPublicAuthor(c.author, viewerIsAdmin),
+    author: toPublicAuthor(c.author, canSeeIdentity),
     replies: c.replies.map((r) => ({
       id: r.id,
       bodyMd: r.bodyMd,
       status: r.status,
       replyCount: r.replyCount,
       createdAt: r.createdAt,
-      author: toPublicAuthor(r.author, viewerIsAdmin),
+      author: toPublicAuthor(r.author, canSeeIdentity),
     })),
   }));
 
@@ -84,8 +85,8 @@ export default async function FeedbackDetailPage({
           <FeedbackActions
             feedbackId={feedback.id}
             status={feedback.status}
-            isAdmin={Boolean(viewer?.isAdmin)}
-            canDelete={isAuthor || Boolean(viewer?.isAdmin)}
+            canModerate={Boolean(viewer?.canModerate)}
+            canDelete={isAuthor || Boolean(viewer?.canModerate)}
           />
         </div>
 

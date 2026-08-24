@@ -4,20 +4,27 @@ import { Sparkles } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { SignupForm } from './SignupForm';
 import { auth, isSsoEnabled } from '@/lib/auth';
+import { sanitizeCallbackPath } from '@/lib/auth/callback-path';
+
+// House rule: page searchParams may be string[] — always read via firstParam.
+function firstParam(v: string | string[] | undefined): string {
+  return Array.isArray(v) ? v[0] ?? '' : v ?? '';
+}
 
 export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: { callbackUrl?: string };
+  searchParams: { callbackUrl?: string | string[] };
 }) {
+  const callbackUrl = firstParam(searchParams.callbackUrl) || undefined;
   const session = await auth();
-  if (session?.user) redirect(searchParams.callbackUrl ?? '/');
+  if (session?.user) {
+    redirect(sanitizeCallbackPath(callbackUrl, process.env.NEXT_PUBLIC_BASE_PATH ?? ''));
+  }
   // SSO deploys close self-service signup — regular users go through W3, so a
   // direct /auth/signup visit bounces to the login page (API is closed too).
   if (isSsoEnabled) {
-    redirect(
-      `/auth/login${searchParams.callbackUrl ? `?callbackUrl=${encodeURIComponent(searchParams.callbackUrl)}` : ''}`,
-    );
+    redirect(`/auth/login${callbackUrl ? `?callbackUrl=${encodeURIComponent(callbackUrl)}` : ''}`);
   }
   const t = await getTranslations('auth');
 
@@ -31,10 +38,10 @@ export default async function SignupPage({
           <h1 className="text-2xl font-semibold tracking-tight">{t('signup')}</h1>
         </div>
         <div className="surface rounded-2xl p-5">
-          <SignupForm callbackUrl={searchParams.callbackUrl} />
+          <SignupForm callbackUrl={callbackUrl} />
           <p className="mt-4 text-center text-sm text-muted">
             <Link
-              href={`/auth/login${searchParams.callbackUrl ? `?callbackUrl=${encodeURIComponent(searchParams.callbackUrl)}` : ''}`}
+              href={`/auth/login${callbackUrl ? `?callbackUrl=${encodeURIComponent(callbackUrl)}` : ''}`}
               className="font-medium text-accent-600 hover:text-accent-700"
             >
               {t('or_login')}

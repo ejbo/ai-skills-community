@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { toPublicAuthor } from '@/lib/user-identity';
-import { canReadDoc, getSharedNotes } from '@/lib/library-queries';
+import { canReadDoc, getSharedNotes, libraryViewerFromSession } from '@/lib/library-queries';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,8 +22,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   if (!doc || doc.deletedAt || doc.status !== 'ready') {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
-  const viewer = { id: session.user.id, isAdmin: session.user.isAdmin };
-  if (!(await canReadDoc(doc, viewer))) {
+  if (!(await canReadDoc(doc, libraryViewerFromSession(session)))) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -33,7 +33,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     doc.id,
     chapter !== undefined && Number.isFinite(chapter) ? chapter : undefined,
   );
-  const isAdmin = session.user.isAdmin;
+  const canSeeIdentity = can(session.user, 'identity');
   const notes = rows.map((n) => ({
     id: n.id,
     isMine: n.userId === session.user.id,
@@ -45,12 +45,12 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     noteText: n.noteText,
     replyCount: n.replyCount,
     createdAt: n.createdAt,
-    author: toPublicAuthor(n.user, isAdmin),
+    author: toPublicAuthor(n.user, canSeeIdentity),
     replies: n.replies.map((r) => ({
       id: r.id,
       bodyMd: r.bodyMd,
       createdAt: r.createdAt,
-      author: toPublicAuthor(r.author, isAdmin),
+      author: toPublicAuthor(r.author, canSeeIdentity),
     })),
   }));
   return NextResponse.json({ notes });

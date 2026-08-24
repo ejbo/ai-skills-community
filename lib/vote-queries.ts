@@ -8,6 +8,7 @@ import type { Session } from 'next-auth';
 import { env } from '@/lib/env';
 import { prisma } from '@/lib/db';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor, type PublicAuthor } from '@/lib/user-identity';
+import { domainViewer, type DomainViewer } from '@/lib/permissions';
 import {
   competitionRanks,
   parseCustomFields,
@@ -22,13 +23,11 @@ import {
 export const VOTE_PAGE_SIZE = 24;
 export const MAX_FEATURED_VOTES = 6;
 
-export interface VoteViewer {
-  id: string | null;
-  isAdmin: boolean;
-}
+/** `canManage` = `votes` permission (creator-level power over ANY activity); `canSeeIdentity` = `identity`. */
+export type VoteViewer = DomainViewer;
 
 export function voteViewerFromSession(session: Session | null): VoteViewer {
-  return { id: session?.user?.id ?? null, isAdmin: Boolean(session?.user?.isAdmin) };
+  return domainViewer(session?.user, 'votes');
 }
 
 const BASE_WHERE: Prisma.VoteActivityWhereInput = { deletedAt: null };
@@ -75,7 +74,7 @@ function resultsVisibleFor(
   startAt: Date | null,
   viewer: VoteViewer,
 ): boolean {
-  const isOwner = viewer.isAdmin || viewer.id === row.creatorId;
+  const isOwner = viewer.canManage || viewer.id === row.creatorId;
   if (isOwner) return true;
   if (row.resultsMode === 'realtime') return true;
   const over = voteOver({ startAt, endAt: row.endAt, closedAt: row.closedAt });
@@ -103,7 +102,7 @@ function toVoteCard(row: ActivityRow, viewer: VoteViewer, winnerThumbUrl: string
     voteCount: resultsVisible ? row.voteCount : null,
     featured: row.featured,
     isMine: Boolean(viewer.id) && viewer.id === row.creatorId,
-    creator: toPublicAuthor(row.creator, viewer.isAdmin),
+    creator: toPublicAuthor(row.creator, viewer.canSeeIdentity),
     createdAt: row.createdAt.toISOString(),
     winnerThumbUrl: resultsVisible && over ? winnerThumbUrl : null,
   };
@@ -226,6 +225,8 @@ export interface VoteEntryView {
   kind: 'image' | 'video';
   fileUrl: string;
   posterUrl: string | null;
+  posterAspect: 'landscape' | 'portrait'; // 卡片版式（横版 4:3 / 竖版 3:4）
+  posterPos: string; // '' 居中 | 'contain' 完整显示 | '50% 30%' 选区
   mimeType: string;
   durationSec: number;
   title: string | null; // null = hidden by showTitles for this viewer
@@ -305,6 +306,7 @@ export interface VoteActivityView {
   submissionsOpen: boolean;
   mySubmissions: VoteMySubmission[];
   viewer: {
+    id: string | null; // the viewer's own id (draft-ballot storage key; never another user's)
     loggedIn: boolean;
     // 投票要求华为 W3 身份（SSO 部署下）；密码账号只能围观。
     canVote: boolean;
@@ -331,7 +333,7 @@ export async function getVoteActivityView(
   });
   if (!row || row.deletedAt) return null;
   const isCreator = Boolean(viewer.id) && viewer.id === row.creatorId;
-  const isOwner = isCreator || viewer.isAdmin;
+  const isOwner = isCreator || viewer.canManage;
   if (row.status === 'draft' && !isOwner) return null;
 
   const over = voteOver(row);
@@ -350,6 +352,8 @@ export async function getVoteActivityView(
       kind: true,
       fileUrl: true,
       posterUrl: true,
+      posterAspect: true,
+      posterPos: true,
       mimeType: true,
       durationSec: true,
       title: true,
@@ -458,6 +462,8 @@ export async function getVoteActivityView(
     kind: e.kind,
     fileUrl: e.fileUrl,
     posterUrl: e.posterUrl,
+    posterAspect: e.posterAspect,
+    posterPos: e.posterPos,
     mimeType: e.mimeType,
     durationSec: e.durationSec,
     title: titlesVisible ? e.title : null,
@@ -500,7 +506,7 @@ export async function getVoteActivityView(
     entryCount: row.entryCount,
     voterCount: row.voterCount,
     voteCount: resultsVisible ? row.voteCount : null,
-    creator: toPublicAuthor(row.creator, viewer.isAdmin),
+    creator: toPublicAuthor(row.creator, viewer.canSeeIdentity),
     isOwner,
     isCreator,
     entries,
@@ -519,6 +525,7 @@ export async function getVoteActivityView(
     submissionsOpen: row.allowSubmissions && row.status === 'published' && !over,
     mySubmissions,
     viewer: {
+      id: viewer.id,
       loggedIn: Boolean(viewer.id),
       canVote: Boolean(viewer.id) && (!env.ENABLE_SSO || profileNo !== ''),
       budgetUsed,
@@ -539,6 +546,8 @@ export interface VoteEntryEditRow {
   kind: 'image' | 'video';
   fileUrl: string;
   posterUrl: string | null;
+  posterAspect: 'landscape' | 'portrait';
+  posterPos: string;
   originalName: string;
   title: string;
   authorName: string;
@@ -610,6 +619,8 @@ export async function getVoteActivityForEdit(
           kind: true,
           fileUrl: true,
           posterUrl: true,
+          posterAspect: true,
+          posterPos: true,
           originalName: true,
           title: true,
           authorName: true,
@@ -628,7 +639,7 @@ export async function getVoteActivityForEdit(
     },
   });
   if (!row || row.deletedAt) return null;
-  if (row.creatorId !== viewer.id && !viewer.isAdmin) return null;
+  if (row.creatorId !== viewer.id && !viewer.canManage) return null;
 
   return {
     id: row.id,
@@ -678,7 +689,7 @@ export async function findManagedActivity(id: string, viewer: VoteViewer) {
   if (!viewer.id) return null;
   const row = await prisma.voteActivity.findUnique({ where: { id } });
   if (!row || row.deletedAt) return null;
-  if (row.creatorId !== viewer.id && !viewer.isAdmin) return null;
+  if (row.creatorId !== viewer.id && !viewer.canManage) return null;
   return row;
 }
 

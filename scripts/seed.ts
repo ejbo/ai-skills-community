@@ -79,16 +79,38 @@ const SAMPLE_SKILLS = [
   },
 ];
 
+// System roles (super_admin / admin / member). Mirrors lib/roles.ts#SYSTEM_ROLES —
+// kept inline so the seed stays self-contained; tests/roles.test.ts pins the admin
+// permission list here to the catalog, so a new permission key fails the suite
+// until both are updated.
+const SYSTEM_ROLES = [
+  { id: 'role_super_admin', key: 'super_admin', name: '超级管理员', description: '拥有全部权限；唯一可以配置角色与权限、指派角色的角色。', permissions: ['*'], sortOrder: 0 },
+  { id: 'role_admin', key: 'admin', name: '管理员', description: '默认管理员：拥有全部后台与站内治理权限，但不能配置角色。', permissions: ['dashboard','users','employees','skills','packs','videos','shorts','discussion','votes','library','categories','announcements','logs','feedback','events','polls','identity'], sortOrder: 10 },
+  { id: 'role_member', key: 'member', name: '普通成员', description: '默认角色：没有任何后台或治理权限。', permissions: [] as string[], sortOrder: 1000 },
+];
+
+async function ensureSystemRoles() {
+  for (const r of SYSTEM_ROLES) {
+    await prisma.role.upsert({
+      where: { key: r.key },
+      create: { ...r, isSystem: true },
+      update: r.key === 'super_admin' ? { isSystem: true, permissions: ['*'] } : { isSystem: true },
+    });
+  }
+  console.log(`✓ Ensured ${SYSTEM_ROLES.length} system roles`);
+}
+
 async function ensureAdmin() {
   const email = (process.env.INITIAL_ADMIN_EMAIL ?? 'admin@example.com').toLowerCase();
   const password = process.env.INITIAL_ADMIN_PASSWORD ?? 'changeme';
+  const superRole = await prisma.role.findUniqueOrThrow({ where: { key: 'super_admin' } });
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
-    if (!existing.isAdmin) {
-      await prisma.user.update({ where: { id: existing.id }, data: { isAdmin: true } });
-      console.log(`✓ Promoted existing user ${email} to admin`);
+    if (existing.roleId !== superRole.id || !existing.isAdmin) {
+      await prisma.user.update({ where: { id: existing.id }, data: { roleId: superRole.id, isAdmin: true } });
+      console.log(`✓ Promoted existing user ${email} to 超级管理员`);
     } else {
-      console.log(`✓ Admin ${email} already exists`);
+      console.log(`✓ Super admin ${email} already exists`);
     }
     return existing;
   }
@@ -100,10 +122,11 @@ async function ensureAdmin() {
       displayName: 'Admin',
       passwordHash,
       authMethod: 'password',
+      roleId: superRole.id,
       isAdmin: true,
     },
   });
-  console.log(`✓ Created admin user ${email} / ${password}`);
+  console.log(`✓ Created super admin user ${email} / ${password}`);
   return created;
 }
 
@@ -120,6 +143,7 @@ async function ensureCurator() {
       passwordHash: await bcrypt.hash('seed-only-no-login-' + Date.now(), 12),
       bio: 'Bot account that imports curated skills from anthropics/skills.',
       isActive: false,
+      role: { connect: { key: 'member' } },
     },
   });
 }
@@ -203,6 +227,7 @@ async function seedSkills(adminId: string, curatorId: string) {
 
 async function main() {
   console.log('▶ Seeding Skills Community…');
+  await ensureSystemRoles();
   const admin = await ensureAdmin();
   const curator = await ensureCurator();
   await seedCategories();

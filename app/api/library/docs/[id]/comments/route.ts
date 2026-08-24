@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import { notifyLibraryReply } from '@/lib/notifications';
 import { toPublicAuthor } from '@/lib/user-identity';
@@ -36,11 +37,11 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const doc = await loadDoc(params.id);
   if (!doc) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
-  const isAdmin = session.user.isAdmin;
+  const canSeeIdentity = can(session.user, 'identity');
   const threads = (await getDocComments(doc.id)).map((c) => ({
     ...c,
-    author: toPublicAuthor(c.author, isAdmin),
-    replies: c.replies.map((r) => ({ ...r, author: toPublicAuthor(r.author, isAdmin) })),
+    author: toPublicAuthor(c.author, canSeeIdentity),
+    replies: c.replies.map((r) => ({ ...r, author: toPublicAuthor(r.author, canSeeIdentity) })),
   }));
   return NextResponse.json({ comments: threads });
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import { detectLibraryFormat, deleteLibraryFile, newLibraryKey, saveLibraryStream } from '@/lib/library/storage';
 import { replaceDocFile } from '@/lib/library/ingest';
@@ -24,7 +25,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     select: { id: true, slug: true, uploaderId: true, deletedAt: true },
   });
   if (!doc || doc.deletedAt) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  if (doc.uploaderId !== session.user.id && !session.user.isAdmin) {
+  if (doc.uploaderId !== session.user.id && !can(session.user, 'library')) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import { notifyLibraryAccessRequest } from '@/lib/notifications';
 
@@ -20,7 +21,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     select: { id: true, uploaderId: true, deletedAt: true },
   });
   if (!doc || doc.deletedAt) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  if (doc.uploaderId !== session.user.id && !session.user.isAdmin) {
+  if (doc.uploaderId !== session.user.id && !can(session.user, 'library')) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 

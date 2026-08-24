@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { auth } from '@/lib/auth';
+import { gateApi } from '@/lib/admin';
 import { logAdmin } from '@/lib/audit';
 import { employeeCreateSchema, normalizeAccountNumber } from '@/lib/employee-admin';
 import { syncEntryToUsers } from '@/lib/employee-directory';
@@ -9,8 +9,9 @@ import { syncEntryToUsers } from '@/lib/employee-directory';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user?.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const gate = await gateApi('employees');
+  if (!gate.ok) return gate.response;
+  const { session } = gate;
 
   const parsed = employeeCreateSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });

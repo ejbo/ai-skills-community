@@ -5,6 +5,7 @@ import { Upload } from 'lucide-react';
 import { relativeTime } from '@/lib/i18n-date';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { isLLMConfigured } from '@/lib/llm';
 import { parseComparisonExample } from '@/lib/comparison';
 import {
@@ -307,7 +308,7 @@ async function ComparisonSectionLoader({
 async function AccessSectionLoader({ skillId, slug }: { skillId: string; slug: string }) {
   const [session, overview] = await Promise.all([auth(), getSkillAccessOverview(skillId)]);
   return (
-    <AccessSection overview={overview} slug={slug} viewerIsAdmin={session?.user?.isAdmin ?? false} />
+    <AccessSection overview={overview} slug={slug} viewerCanSeeIdentity={can(session?.user, 'identity')} />
   );
 }
 
@@ -321,7 +322,7 @@ async function AnalyticsSectionLoader({ skillId }: { skillId: string }) {
     <AnalyticsSection
       analytics={analytics}
       downloaders={downloaders}
-      viewerIsAdmin={session?.user?.isAdmin ?? false}
+      viewerCanSeeIdentity={can(session?.user, 'identity')}
     />
   );
 }

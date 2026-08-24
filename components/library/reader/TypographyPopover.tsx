@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { Minus, Plus } from 'lucide-react';
+import { Languages, Loader2, Minus, Plus } from 'lucide-react';
 import {
   MAX_FONT_SIZE,
   MIN_FONT_SIZE,
@@ -39,6 +39,7 @@ export function TypographyPopover({
   prefs,
   onChange,
   flow,
+  translation,
 }: {
   open: boolean;
   onClose: () => void;
@@ -46,6 +47,14 @@ export function TypographyPopover({
   onChange: (patch: Partial<ReaderPrefs>) => void;
   /** 连续/分章 reading mode (null = single-chapter doc, no choice to make). */
   flow: { mode: 'paged' | 'flow'; available: boolean; onChange: (mode: 'paged' | 'flow') => void } | null;
+  /** 原文/译文. `state` mirrors LibraryDoc.translationState. */
+  translation: {
+    state: string;
+    view: 'original' | 'translated';
+    busy: boolean;
+    onChangeView: (view: 'original' | 'translated') => void;
+    onTranslateAll: () => void;
+  } | null;
 }) {
   const t = useTranslations('reader');
   const ref = useRef<HTMLDivElement>(null);
@@ -75,6 +84,58 @@ export function TypographyPopover({
       aria-label={t('typography_settings')}
       className="reader-panel rborder absolute right-0 top-11 z-50 w-64 space-y-4 rounded-xl border p-4 shadow-xl"
     >
+      {translation && (
+        <section className="space-y-1.5">
+          <Label>{t('text_language')}</Label>
+          {translation.state === 'ready' || translation.state === 'partial' ? (
+            <>
+              <div className="grid grid-cols-2 gap-1.5">
+                <Segment
+                  active={translation.view === 'original'}
+                  onClick={() => translation.onChangeView('original')}
+                >
+                  {t('text_original')}
+                </Segment>
+                <Segment
+                  active={translation.view === 'translated'}
+                  onClick={() => translation.onChangeView('translated')}
+                >
+                  {t('text_translated')}
+                </Segment>
+              </div>
+              {translation.state === 'partial' && (
+                <p className="r-muted text-[11px]">{t('translate_partial')}</p>
+              )}
+              {translation.view === 'translated' && (
+                <p className="r-muted text-[11px]">{t('translate_marks_hidden')}</p>
+              )}
+            </>
+          ) : translation.state === 'running' ? (
+            <p className="r-muted flex items-center gap-1.5 text-[11px]">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {t('translating_doc')}
+            </p>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={translation.onTranslateAll}
+                disabled={translation.busy}
+                className="rborder flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border text-xs font-medium transition hover:border-accent-500 hover:text-[var(--reader-accent)] disabled:opacity-60"
+              >
+                {translation.busy ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Languages className="h-3.5 w-3.5" />
+                )}
+                {t('translate_whole_doc')}
+              </button>
+              <p className="r-muted text-[11px]">{t('translate_whole_doc_hint')}</p>
+            </>
+          )}
+        </section>
+      )}
+
       {flow && (
         <section className="space-y-1.5">
           <Label>{t('reading_mode')}</Label>

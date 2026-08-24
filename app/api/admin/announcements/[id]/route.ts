@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { auth } from '@/lib/auth';
+import { gateApi } from '@/lib/admin';
 import { logAdmin } from '@/lib/audit';
 import { fanoutAnnouncement } from '@/lib/notifications';
 import { plainSummary } from '@/lib/announcement';
@@ -16,8 +16,9 @@ const schema = z.object({
 
 // PUT /api/admin/announcements/[id] — edit and/or (un)publish.
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
-  const session = await auth();
-  if (!session?.user?.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const gate = await gateApi('announcements');
+  if (!gate.ok) return gate.response;
+  const { session } = gate;
 
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
@@ -65,8 +66,9 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 
 // DELETE /api/admin/announcements/[id]
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  const session = await auth();
-  if (!session?.user?.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const gate = await gateApi('announcements');
+  if (!gate.ok) return gate.response;
+  const { session } = gate;
 
   const existing = await prisma.announcement.findUnique({ where: { id: params.id } });
   if (!existing) return NextResponse.json({ error: 'not_found' }, { status: 404 });

@@ -420,7 +420,7 @@ function CommentBlock({
 
   const isTombstone = comment.status === 'deleted';
   const isOwn = currentUser?.handle === comment.author.handle;
-  const canDelete = !isTombstone && (isOwn || Boolean(currentUser?.isAdmin));
+  const canDelete = !isTombstone && (isOwn || Boolean(currentUser?.canModerate));
 
   // Notification deep link: ?focus=<commentId> — scroll + flash.
   useEffect(() => {

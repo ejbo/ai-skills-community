@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { auth } from '@/lib/auth';
+import { gateApi } from '@/lib/admin';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/admin/library (admin) — every doc including pending/failed/deleted,
 // newest first, optional `?q=` filter, hard cap 200 rows.
 export async function GET(req: Request) {
-  const session = await auth();
-  if (!session?.user?.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const gate = await gateApi('library');
+  if (!gate.ok) return gate.response;
 
   const q = new URL(req.url).searchParams.get('q')?.trim() ?? '';
   const where: Prisma.LibraryDocWhereInput = {};

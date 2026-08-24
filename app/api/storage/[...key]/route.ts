@@ -3,6 +3,7 @@ import { storage } from '@/lib/storage';
 import { prisma } from '@/lib/db';
 import { resolveActor } from '@/lib/auth/either';
 import { canAccessSkillContent } from '@/lib/access';
+import { can } from '@/lib/permissions';
 import { exceededDownloadLimit, downloadLimitBody } from '@/lib/download-limit';
 
 /**
@@ -24,7 +25,7 @@ export async function GET(req: Request, { params }: { params: { key: string[] } 
 
     const actor = await resolveActor(req);
     let grantStatus = null;
-    if (actor && skill.visibility === 'restricted' && actor.id !== skill.authorId && !actor.isAdmin) {
+    if (actor && skill.visibility === 'restricted' && actor.id !== skill.authorId && !can(actor, 'skills')) {
       const grant = await prisma.skillAccessRequest.findUnique({
         where: { skillId_userId: { skillId: skill.id, userId: actor.id } },
         select: { status: true },

@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { requirePermission } from '@/lib/admin';
 import { ShortsManager } from './ShortsManager';
 
 export const dynamic = 'force-dynamic';
@@ -6,6 +7,7 @@ export const dynamic = 'force-dynamic';
 // 短视频管理 — /manage layout 已经 requireAdmin()。moderation 走会员路由
 // (PATCH/DELETE /api/shorts/[id])，按字段分权 + logAdmin，与讨论管理同款。
 export default async function ManageShortsPage() {
+  await requirePermission('shorts');
   const rows = await prisma.video.findMany({
     where: { isShort: true, deletedAt: null },
     orderBy: { createdAt: 'desc' },

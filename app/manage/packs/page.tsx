@@ -1,10 +1,12 @@
 import { prisma } from '@/lib/db';
+import { requirePermission } from '@/lib/admin';
 import { isLLMConfigured } from '@/lib/llm';
 import { PackManager } from './PackManager';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminPacksPage() {
+  await requirePermission('packs');
   const packs = await prisma.skillPack.findMany({
     orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
     include: {

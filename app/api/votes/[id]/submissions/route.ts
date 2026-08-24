@@ -10,6 +10,7 @@ import {
   VOTE_ENTRY_DESCRIPTION_MAX,
   VOTE_ENTRY_TITLE_MAX,
   parseCustomFields,
+  parsePosterPos,
   resolveCustomAnswers,
   voteOver,
 } from '@/lib/votes/shared';
@@ -38,6 +39,9 @@ const submitSchema = z.object({
   // the 'optional' config (required 工号 always stamps).
   includeAuthorNo: z.boolean().optional().default(true),
   formData: z.record(z.string(), z.unknown()).optional(),
+  // 封面裁切（视频）：卡片版式 + 取景框位置（parsePosterPos 再校验）。
+  posterAspect: z.enum(['landscape', 'portrait']).optional().default('landscape'),
+  posterPos: z.string().max(12).optional().default(''),
   durationSec: z.number().int().min(0).max(24 * 60 * 60).optional().default(0),
 });
 
@@ -138,6 +142,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: 'file_too_large' }, { status: 413 });
   }
 
+  const posterPos = parsePosterPos(input.posterPos);
+  if (posterPos === null) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
+
   let posterKey: string | null = null;
   if (input.posterKey) {
     if (input.kind !== 'video' || !isValidVoteMediaKey(input.posterKey, 'poster')) {
@@ -185,6 +192,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
               fileUrl: voteMediaPublicUrl(input.fileKey),
               posterKey,
               posterUrl: posterKey ? voteMediaPublicUrl(posterKey) : null,
+              posterAspect: input.posterAspect,
+              posterPos,
               originalName: '',
               title,
               description,

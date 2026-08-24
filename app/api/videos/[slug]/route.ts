@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { logAdmin } from '@/lib/audit';
 import { deleteVideoFile } from '@/lib/video/storage';
 
@@ -38,7 +39,7 @@ const updateSchema = z.object({
 export async function PATCH(req: Request, { params }: { params: { slug: string } }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
-  if (!session.user.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  if (!can(session.user, 'videos')) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const body = await req.json().catch(() => null);
   const parsed = updateSchema.safeParse(body);
@@ -127,7 +128,7 @@ export async function PATCH(req: Request, { params }: { params: { slug: string }
 export async function DELETE(req: Request, { params }: { params: { slug: string } }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
-  if (!session.user.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  if (!can(session.user, 'videos')) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const video = await prisma.video.findUnique({ where: { slug: params.slug } });
   if (!video || video.deletedAt) return NextResponse.json({ error: 'not_found' }, { status: 404 });

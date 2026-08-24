@@ -15,12 +15,12 @@ import { STATUS_META } from './badges';
 export function FeedbackActions({
   feedbackId,
   status,
-  isAdmin,
+  canModerate,
   canDelete,
 }: {
   feedbackId: string;
   status: FeedbackStatus;
-  isAdmin: boolean;
+  canModerate: boolean;
   canDelete: boolean;
 }) {
   const router = useRouter();
@@ -66,12 +66,12 @@ export function FeedbackActions({
     }
   }
 
-  if (!isAdmin && !canDelete) return null;
+  if (!canModerate && !canDelete) return null;
 
   return (
     <div className="flex items-center gap-2">
       {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted" />}
-      {isAdmin && (
+      {canModerate && (
         <select
           value={status}
           disabled={busy}

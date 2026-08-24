@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { gateApi } from '@/lib/admin';
 import { getLibraryProvider } from '@/lib/library/llm';
 import { describeLlmRoute } from '@/lib/llm/egress';
 
@@ -13,8 +13,8 @@ export const dynamic = 'force-dynamic';
  * blank "解析失败" on the doc row.
  */
 export async function POST() {
-  const session = await auth();
-  if (!session?.user?.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const gate = await gateApi('library');
+  if (!gate.ok) return gate.response;
 
   const started = Date.now();
   let route: ReturnType<typeof describeLlmRoute> | null = null;

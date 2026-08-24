@@ -8,6 +8,9 @@ import { applyBasePathToHtml } from './anchoring';
 
 interface Props {
   html: string;
+  /** Whole-chapter 译文; rendered instead of `html` when view is 'translated'. */
+  translatedHtml?: string | null;
+  view?: 'original' | 'translated';
   docTitle: string;
   author: string | null;
   siteName: string | null;
@@ -23,6 +26,8 @@ interface Props {
 /** One chapter's reading block: header + sanitized HTML article. */
 export function ReaderContent({
   html,
+  translatedHtml,
+  view = 'original',
   docTitle,
   author,
   siteName,
@@ -53,7 +58,8 @@ export function ReaderContent({
    * With a stable object identity React skips the prop entirely and the article
    * DOM is never touched after mount.
    */
-  const inner = useMemo(() => ({ __html: applyBasePathToHtml(html) }), [html]);
+  const source = view === 'translated' && translatedHtml ? translatedHtml : html;
+  const inner = useMemo(() => ({ __html: applyBasePathToHtml(source) }), [source]);
   const byline = [author, siteName].filter(Boolean).join(' · ');
 
   return (

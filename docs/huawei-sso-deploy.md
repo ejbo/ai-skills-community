@@ -240,6 +240,35 @@ NEXT_BASE_PATH=/<SUBPATH> pnpm exec next start -p 3100 -H 127.0.0.1   # NOT `pnp
 4. In Postgres, a `User` row exists with `huaweiW3Id` set and `authMethod = huawei_sso`
    (or `both` if the email already had a password account), plus a `LoginEvent`.
 
+## Domain separation: `/ai-community` lives ONLY on cari.rnd.huawei.com
+
+Owner decision (2026-08): the two hostnames are **separate sites**. news keeps
+`ai4news.rnd.huawei.com` exactly as-is — **no news-side change of any kind** — and ai-community
+answers only on `cari.rnd.huawei.com`. The 2026-08 `InvalidCheck: state value could not be
+parsed` incident happened because `/ai-community` ALSO answered on the news hostname: a W3 login
+started there wrote its host-scoped state cookie into the ai4news jar while `AUTH_URL` pinned
+the OAuth callback to cari. The separation is enforced entirely on the ai-community side, three
+layers deep:
+
+1. **nginx**: the `/ai-community` locations must exist only under the cari `server_name`
+   (audit with `sudo nginx -T | grep -n 'server_name\|location.*ai-community'`). If one
+   `server { }` answers both names, the `if ($host != "cari.rnd.huawei.com") return 301`
+   guards inside both `/ai-community` locations (deploy/ai-community.nginx.conf) enforce the
+   split without touching anything news serves. 301 — not 404 — so old `/ai-community` links
+   circulating inside news bounce to cari and keep working.
+2. **App backstop**: the root layout redirects any page served on a non-canonical host to
+   `AUTH_URL`'s origin (SSO deploys only; loopback/IP exempt) — survives nginx config drift.
+3. **Cookies**: app-scoped `aic.*` names path-limited to the basePath, so foreign/stale
+   residue in either jar can never be misread.
+
+Verify after reloading nginx (`nginx -t` then `kill -HUP <master>` — pitfall 3):
+
+```bash
+curl -sI https://ai4news.rnd.huawei.com/ai-community/ | grep -i location  # 301 → cari, path intact
+curl -sI https://ai4news.rnd.huawei.com/              | head -1           # news unaffected (200/30x as before)
+curl -sI https://cari.rnd.huawei.com/ai-community/    | head -1           # app serves normally
+```
+
 ## Troubleshooting
 
 | Symptom | Cause / fix |
@@ -258,6 +287,8 @@ NEXT_BASE_PATH=/<SUBPATH> pnpm exec next start -p 3100 -H 127.0.0.1   # NOT `pnp
 | W3 login succeeds but lands on the host root (the neighbour app), not `…/<SUBPATH>/` | The W3 flow ends in a server redirect that Next does NOT auto-prefix. `HuaweiLoginButton` must pass a `withBasePath()`-prefixed `callbackUrl`. |
 | `redirected you too many times` on `…/<SUBPATH>` after login | nginx `location = /<SUBPATH> { return 301 /<SUBPATH>/; }` fights Next's 308 (`/<SUBPATH>/` → `/<SUBPATH>`, trailingSlash=false). **Proxy** the bare path instead of 301-ing it — see `deploy/ai-community.nginx.conf`. |
 | `AuthCode has been used` (`E_20003`) | A browser/proxy prefetched the callback and consumed the one-time code. The dedicated `/api/auth/callback/huawei` path avoids this; check no prefetcher hits it. |
+| `[auth][error] InvalidCheck: state value could not be parsed` — always for SOME users (news users / newcomers), never for others; user sees "登录遇到问题 (Configuration)" | **Hostname-alias cookie split.** The server block also answers on its pre-2026-07 name (`ai4news.rnd.huawei.com`), which news users still enter through (the news app's `SITE_URL`/`SSO_REDIRECT_URI` pin them there). Auth cookies are host-scoped, so a login started on the alias writes its state cookie into the alias' jar — while `AUTH_URL` sends the IdP callback to `cari`, whose jar has no (or stale) state cookie. In 0.37.2 a *missing* cookie surfaces with this same message. Fixes (all shipped): nginx 301s any non-`cari` host to `cari` inside both `/ai-community` locations (re-paste `deploy/ai-community.nginx.conf` + `kill -HUP` the master); the root layout bounces alias-served pages to `AUTH_URL`'s origin as an app-level backstop; and cookies are now app-scoped (`aic.*`, path-limited) so no other epoch/app accidentally shadows them. Verify: `curl -sI https://ai4news.rnd.huawei.com/ai-community/ \| grep -i location` → 301 to cari. |
+| Everyone is logged out after deploying the cookie rename | Expected, one-time: cookie **names are the JWT salt** in @auth/core, so `authjs.*` → `aic.*` invalidates existing sessions (and any W3 round trip mid-flight during the restart). Users just sign in again. |
 | userinfo only returns `uuid` | The registration's 用户信息申请 lacks the extra fields. D2 reuse of ai4news inherits them; for D1 tick `uid`/`displayNameCn`/`email`. |
 
 ## What the code already does (no edits needed)

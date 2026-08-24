@@ -101,11 +101,21 @@ const FALLBACK_TYPE_BY_FORMAT: Record<LibraryUploadFormat, LibraryDocTypeValue> 
   docx: 'article',
 };
 
-/** Kick the one-time AI reading without blocking or creating an import cycle. */
+/**
+ * Kick the one-time AI reading without blocking or creating an import cycle,
+ * then the 译文 pass. The translation runs AFTER indexing (they share one
+ * model) and only auto-translates documents under
+ * AUTO_TRANSLATE_MAX_CHARS — a web article is ready before anyone opens it,
+ * while a book waits for a reader to click 翻译全文. Either way the result is
+ * cached and shared, so nobody pays for the same passage twice.
+ */
 function triggerIndexing(docId: string): void {
   void import('./indexer')
     .then((m) => m.runDocIndexing(docId))
-    .catch((e) => console.error('[library] failed to start indexing', e));
+    .catch((e) => console.error('[library] failed to start indexing', e))
+    .then(() => import('./translate-doc'))
+    .then((m) => m.runDocTranslation(docId))
+    .catch((e) => console.error('[library] failed to start translation', e));
 }
 
 /** Provisional title before extraction: last meaningful URL path segment, else host. */

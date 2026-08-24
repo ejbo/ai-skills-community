@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 // GET /api/votes/[id]/entries/[entryId]/ballots (creator/admin) — who voted
 // for this entry. 隐私账号 contract: handle (= W3 工号) and department are
-// trimmed for non-admin creators; displayName stays as the visible identity.
+// trimmed unless the viewer holds `identity`; displayName stays as the visible identity.
 export async function GET(
   _req: Request,
   { params }: { params: { id: string; entryId: string } },
@@ -42,8 +42,8 @@ export async function GET(
     ok: true,
     ballots: ballots.map((b) => ({
       displayName: b.user.displayName,
-      handle: b.user.isPrivate && !viewer.isAdmin ? '' : b.user.handle,
-      department: b.user.isPrivate && !viewer.isAdmin ? '' : (b.user.department ?? ''),
+      handle: b.user.isPrivate && !viewer.canSeeIdentity ? '' : b.user.handle,
+      department: b.user.isPrivate && !viewer.canSeeIdentity ? '' : (b.user.department ?? ''),
       count: b.count,
       day: b.day,
       at: b.updatedAt.toISOString(),

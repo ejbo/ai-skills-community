@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { apiReason } from '@/lib/api-errors';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import { notifyTopicReply } from '@/lib/notifications';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
@@ -39,7 +40,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     select: { id: true, title: true, locked: true, author: { select: { id: true, email: true } } },
   });
   if (!topic) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  if (topic.locked && !session.user.isAdmin) {
+  if (topic.locked && !can(session.user, 'discussion')) {
     return NextResponse.json(
       { error: 'locked', reason: await apiReason('topic_locked') },
       { status: 403 },
@@ -135,6 +136,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   return NextResponse.json({
     ok: true,
-    reply: { ...reply, author: toPublicAuthor(reply.author, session.user.isAdmin) },
+    reply: { ...reply, author: toPublicAuthor(reply.author, can(session.user, 'identity')) },
   });
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { resolveActor } from '@/lib/auth/either';
+import { can } from '@/lib/permissions';
 import { logAdmin } from '@/lib/audit';
 import { notifyAccessDecision } from '@/lib/notifications';
 
@@ -33,8 +34,8 @@ export async function POST(req: Request, { params }: { params: { slug: string; i
   }
 
   const isOwner = reqRow.skill.authorId === actor.id;
-  const isAdmin = Boolean(actor.isAdmin);
-  if (!isOwner && !isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const canManage = can(actor, 'skills');
+  if (!isOwner && !canManage) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const newStatus = STATUS[parsed.data.action];
   await prisma.skillAccessRequest.update({
@@ -47,7 +48,7 @@ export async function POST(req: Request, { params }: { params: { slug: string; i
     },
   });
 
-  if (isAdmin && !isOwner) {
+  if (canManage && !isOwner) {
     await logAdmin({
       adminUserId: actor.id,
       action: 'decide_access_request',

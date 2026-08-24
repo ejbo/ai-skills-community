@@ -35,7 +35,7 @@ export interface ThreadView extends CommentView {
 
 interface CurrentUser {
   handle: string;
-  isAdmin: boolean;
+  canModerate: boolean;
 }
 
 /**
@@ -235,7 +235,7 @@ function CommentBlock({
 
   const isTombstone = comment.status === 'deleted';
   const isOwn = currentUser?.handle === comment.author.handle;
-  const canDelete = !isTombstone && (isOwn || Boolean(currentUser?.isAdmin));
+  const canDelete = !isTombstone && (isOwn || Boolean(currentUser?.canModerate));
 
   // Notification deep link: /feedback/<id>?focus=<commentId> — scroll + flash.
   useEffect(() => {

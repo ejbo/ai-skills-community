@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import {
   extFor,
   faststartRemux,
@@ -26,7 +27,7 @@ const MAX_PREVIEW_BYTES = 200 * 1024 * 1024; // 200 MB — hover clips should be
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
-  if (!session.user.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  if (!can(session.user, 'videos')) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const kindHeader = req.headers.get('x-upload-kind');
   const kind = kindHeader === 'poster' ? 'poster' : kindHeader === 'preview' ? 'preview' : 'source';

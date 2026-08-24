@@ -337,7 +337,7 @@ export function PollWidget({ id }: { id: string }) {
             {t('cancel')}
           </button>
         )}
-        {!poll.ended && poll.isCreator && (
+        {!poll.ended && (poll.isCreator || poll.canManage) && (
           <button
             type="button"
             className="transition hover:text-danger hover:underline"

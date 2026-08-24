@@ -224,6 +224,11 @@ table.xs{font-size:13px} table.xs td{padding:4px 8px} table.xs th{font-size:12.5
 .quad .cell b{color:var(--red);display:block;margin-bottom:3px;font-size:13px}
 .ladder{display:flex;align-items:flex-end;gap:9px}
 .ladder .stepb{flex:1;border:1px solid var(--line);border-bottom:4px solid var(--red);background:#fff;display:flex;flex-direction:column;justify-content:flex-start;padding:9px 10px;min-width:0}
+.ph{flex:1;min-height:0;border:2px dashed #C9A6A8;background:#FDF7F7;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;text-align:center;padding:12px;gap:5px}
+.ph .big{font-size:14px;font-weight:700;color:var(--red)}
+.ph .sm2{font-size:12px;color:#8A6E70;line-height:1.45}
+
 
 </style>
 <!-- deck-editor:css:begin -->
@@ -415,325 +420,354 @@ body.dke-layout .dke-hot::after{content:attr(data-dke-tag); position:absolute; z
 
 <section class="slide">
   <div class="hdr"><div class="tabs"><div class="tab on">能力现状</div><div class="tab">发展路径</div><div class="tab">建设规划</div><div class="tab">投入与效果</div></div><div class="corner"><b>CARI</b> · AI Community</div></div>
-  <div class="h1 s">【能力现状】技能中心：Skill 的发布、授权、安装与更新闭环</div>
-  <div class="sub">这是唯一直接进入他人生产流程的板块，因此权限与一致性要求最高</div>
+  <div class="h1 s">【能力现状】技能中心：Skill 的发布、试用、安装与更新</div>
+  <div class="sub">一个 Skill 从上传到进入他人项目，全流程无需线下沟通</div>
   <div class="rule"></div>
   <div class="body col">
-    <div class="pipe r" style="flex:none;height:112px">
-      <div class="seg"><div class="pt">① 发布</div><div class="pd">上传 Skill 包，设定公开 / 受限 / 私有；AI 辅助生成名称、摘要、标签与触发词。</div><div class="pn">单包上限 512 MB</div></div>
+    <div class="pipe r" style="flex:none;height:86px">
+      <div class="seg"><div class="pt">① 发布</div><div class="pd">上传 Skill 包，AI 辅助生成名称、摘要、标签与触发词；设定公开 / 受限 / 私有。</div></div>
       <div class="ar">▶</div>
-      <div class="seg"><div class="pt">② 授权</div><div class="pd">受限 Skill 逐人审批，可批准、拒绝、随时收回；每一步均产生通知。</div><div class="pn">4 态审批流</div></div>
+      <div class="seg"><div class="pt">② 详情页评估</div><div class="pd">八个标签页看清楚再决定装不装（见下表）。</div></div>
       <div class="ar">▶</div>
-      <div class="seg"><div class="pt">③ 试用与安装</div><div class="pd">免安装试用；查看带与不带该 Skill 的同题实测对比；命令行一行安装，支持整包合集。</div><div class="pn">试用上下文 150 KB</div></div>
+      <div class="seg"><div class="pt">③ 授权</div><div class="pd">受限 Skill 逐人审批，可批准、拒绝、随时收回，每步均有通知。</div></div>
       <div class="ar">▶</div>
-      <div class="seg"><div class="pt">④ 版本与更新</div><div class="pd">版本严格递增，订阅者在面板与命令行看到更新提示；本地更新失败自动回滚。</div><div class="pn">合集单包 ≤ 200 个</div></div>
+      <div class="seg"><div class="pt">④ 安装与更新</div><div class="pd">命令行一行安装；有新版本时面板与命令行同时提示。</div></div>
     </div>
     <div class="row" style="flex:1;margin-top:12px">
-      <div class="col" style="flex:1.08">
-        <div class="shot"><img src="img/shot-skills.jpg" alt="技能中心"></div>
-        <div class="cap"><b>技能中心界面</b> —— 按分类、评分、来源筛选；每个 Skill 标注可见性、安装量与版本（演示数据）。</div><div class="note" style="flex:none;margin-top:9px;font-size:12px"><b>规模：</b>23 个相关接口约 1900 行 · 8 个 AI 辅助动作 · 试用限流 60 次/小时（匿名 10 次/小时/IP）· 下载配额按人按滚动 24 小时计量 · 个人令牌 32 字节随机并仅存哈希，管理员关闭"允许使用命令行"即刻全部失效</div>
+      <div class="mod" style="flex:1.25"><h3>详情页的八个标签页 <span>装之前就能判断值不值得装</span></h3><div class="in p0">
+        <table class="xs fill"><tbody>
+          <tr><td style="width:88px"><b>概览</b></td><td>用途、适用场景、作者、安装量、评分、可见性</td></tr>
+          <tr><td><b>说明文档</b></td><td>作者撰写的完整 Readme</td></tr>
+          <tr><td><b>文件浏览</b></td><td><span class="r">安装前逐个文件查看内容</span> —— 装进项目前先看清楚里面是什么</td></tr>
+          <tr><td><b>版本历史</b></td><td>历次更新说明，可安装指定版本</td></tr>
+          <tr><td><b>评价</b></td><td>用过的人的评分与评论</td></tr>
+          <tr><td><b>组合推荐</b></td><td>大家通常还会同时安装哪些 Skill</td></tr>
+          <tr><td><b>效果对比</b></td><td><span class="r">同一任务、同一模型跑两遍</span>（带与不带该 Skill），并列展示真实输出与差异分析</td></tr>
+          <tr><td><b>在线试用</b></td><td>不安装即可与"已加载该 Skill 的模型"对话；切走页面不中断生成</td></tr>
+        </tbody></table>
+      </div></div>
+      <div class="col" style="flex:1">
+        <div class="mod d" style="flex:none"><h3>命令行 <span>内网无 npm 源，工具自带分发</span></h3><div class="in" style="padding:9px 11px">
+          <div style="font-family:Consolas,Menlo,monospace;font-size:12px;line-height:1.85;color:#222">
+            skills install &lt;名称&gt;<span style="color:#888">　装到当前项目</span><br>
+            skills install a b c<span style="color:#888">　一次装多个</span><br>
+            skills install pack:&lt;合集&gt;<span style="color:#888">　整套装齐</span><br>
+            skills list / update / upgrade / search
+          </div>
+          <div class="cap" style="padding-top:6px">默认装进当前项目并记录版本与来源；加 -g 装到全局。更新失败自动回滚。</div>
+        </div></div>
+        <div class="ph"><div class="big">此处放：Skill 详情页截图</div><div class="sm2">建议截「效果对比」或「在线试用」标签页<br>在编辑器中点「进入编辑」后 Ctrl+V 粘贴</div></div>
       </div>
-      <div class="mod d" style="flex:1"><h3>三项工程要点 <span>决定这个板块能不能被信任</span></h3><div class="in sp"><ul class="b sm">
-        <li><b>一处判定，六处复用。</b>访问判定收敛为单一纯函数，网页会话与命令行令牌先归一为同一身份再进入判定；下载、元信息、存储代理、文件浏览、更新检查、试用对话共用同一结果。<span class="r">"网页已拦截、命令行未拦截"是此类平台最典型的越权来源</span>。拒绝一律以 404 返回，不暴露资源存在性。</li>
-        <li><b>配额不可通过参数绕过。</b>按滚动 24 小时窗口计量下载；来源参数只接受 install / update 两个取值，其余按客户端标识回落，杜绝手工构造参数规避配额；旁路取包的路径同样计量。</li>
-        <li><b>撤权即断更。</b>批量更新检查复用同一判定，授权被收回后该 Skill 视为不存在，既不提示更新也不暴露其仍在；客户端更新前先备份目录，失败自动回滚，不留半装状态。</li>
-      </ul></div></div>
-    </div></div>
-  <div class="bar">启示：内网无 npm 源，命令行工具自带分发与自举升级，同一安装包可分别指向内网与公网 —— <em>该模式可直接复用于其他内网工具的分发</em>。</div>
+    </div>
+    <div class="note" style="flex:none;margin-top:10px;font-size:12.5px"><b>此外：</b>Remix 二次创作（改后发布为自己的，保留来源署名）· 合集包按场景整套安装 · 订阅更新提示 · 按分类 / 评分 / 来源筛选排序。网页与命令行共用同一套访问判定，不会出现"网页拦住、命令行没拦住"的情况。</div></div>
+  <div class="bar">启示：Skill 是社区中<em>唯一直接进入他人生产流程的资产</em>，因此"装之前能看清、装之后能更新、撤权后即断更"三件事必须齐备。</div>
   <div class="ft"><div>AI Community · 技能中心</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
 </section>
-
 <section class="slide">
   <div class="hdr"><div class="tabs"><div class="tab on">能力现状</div><div class="tab">发展路径</div><div class="tab">建设规划</div><div class="tab">投入与效果</div></div><div class="corner"><b>CARI</b> · AI Community</div></div>
-  <div class="h1 s">【能力现状】知识库：一次入库，四段处理，全员复用</div>
-  <div class="sub">目标是把"同一份长文档多人重复阅读"变成"一人读完、全员可问"</div>
+  <div class="h1 s">【能力现状】知识库：一人读完，全员可问</div>
+  <div class="sub">六种来源入库、AI 逐章导读、带引用问答、共享标注，构成一套完整的团队阅读流程</div>
   <div class="rule"></div>
   <div class="body col">
-    <div class="pipe" style="flex:none;height:118px">
-      <div class="seg"><div class="pt">① 入库</div><div class="pd">网页链接、PDF / EPUB / PPT / Word 六种来源；抽取正文、封面、作者与阅读时长；链接与内容双重去重。</div><div class="pn">抓取预算 90 秒</div></div>
+    <div class="pipe" style="flex:none;height:92px">
+      <div class="seg"><div class="pt">① 入库</div><div class="pd">贴网页链接，或上传 PDF / EPUB / PPT / Word / HTML；自动提取正文、封面、作者与阅读时长，重复提交自动识别。</div></div>
       <div class="ar">▶</div>
-      <div class="seg"><div class="pt">② 切章与切片</div><div class="pd">统一产出章节正文 + 检索片段，并强制"片段文本等于章节文本的对应片段"这一不变式。</div><div class="pn">片段目标 500 token</div></div>
+      <div class="seg"><div class="pt">② AI 通读</div><div class="pd">生成整体导读与逐章摘要，中英双语；结果全站共享，第二位读者无需重复调用模型。</div></div>
       <div class="ar">▶</div>
-      <div class="seg"><div class="pt">③ AI 逐章通读</div><div class="pd">生成整体导读与逐章摘要，中英双语；结果写在章节行上作为断点，全站共享。</div><div class="pn">单篇上限 120 章</div></div>
+      <div class="seg"><div class="pt">③ 阅读与标注</div><div class="pd">四色划线、写批注、选中即译；支持连续滚动与分章两种模式，字号行距可调。</div></div>
       <div class="ar">▶</div>
-      <div class="seg"><div class="pt">④ 检索问答</div><div class="pd">两阶段检索：先由模型在索引上选章，再按其给出的检索词在原文匹配；答案附可跳转引用。</div><div class="pn">单次上下文 10,000 token</div></div>
+      <div class="seg"><div class="pt">④ 提问与讨论</div><div class="pd">就本文提问，答案附可跳转引用；文档下可评论、可评分、可加入书架。</div></div>
     </div>
     <div class="row" style="flex:1;margin-top:12px">
-      <div class="mod d" style="flex:1.05"><h3>三项工程要点 <span>决定 AI 的输出能否被核实</span></h3><div class="in sp"><ul class="b sm">
-        <li><b>统一坐标系是引用可核实的前提。</b>五种格式各有抽取器，但都收敛到同一结构与同一偏移空间；<span class="r">正因如此，AI 给出的引用与用户手工划线可以互相跳转</span>，答案中的角标才能点回原文并高亮。</li>
-        <li><b>长任务按章断点、可重入。</b>AI 通读拆成逐章调用，结果即检查点；进程重启只补未完成章节，并以一次原子更新抢占执行权、配 10 分钟过期锁防止死锁；单篇封顶 120 章控制成本。</li>
-        <li><b>抓取公网的安全边界。</b>链接抓取实施 SSRF 防护，并对<b>每一跳重定向单独校验</b>；压缩包解压按条目限额防止解压炸弹；外部图片在入库时重新托管，规避防盗链导致的内容失效。</li>
+      <div class="mod" style="flex:1.1"><h3>阅读与标注 <span>把个人阅读变成团队资产</span></h3><div class="in"><ul class="b sm">
+        <li><b>共享标注：</b>开启"公开我的笔记"后，同事读同一篇时能在原文位置<span class="r">看到你的划线</span>，并可针对某一条划线开讨论 —— 相当于在文档上做异步共读。</li>
+        <li><b>个人笔记面板：</b>本篇的全部划线与批注集中查看、可跳回原文位置。</li>
+        <li><b>选中即译：</b>读英文论文时选中一段就地给出中文，反之亦然，不必把内网内容贴到外部工具。</li>
+        <li><b>阅读进度：</b>记录读到第几章、百分之多少，换台机器继续读；可加入书架。</li>
+        <li><b>PDF 双视图：</b>原版按原貌阅读，精读视图支持划线、批注与 AI 引用跳转。</li>
       </ul></div></div>
-      <div class="col" style="flex:1">
-        <div class="shot"><img src="img/shot-library.jpg" alt="知识库"></div>
-        <div class="cap"><b>知识库界面</b> —— 按类型与主题筛选，卡片显示阅读时长、收藏数与来源（演示数据）。</div><div class="note" style="flex:none;margin-top:9px;font-size:12px"><b>规模：</b>27 个前台接口 · 每人每篇最多 500 条划线 · 英文摘要按 25 章一批翻译（120 章的书约 5 次调用而非 120 次）· 阅读器与主界面共 252 条三语文案</div>
+      <div class="mod b" style="flex:1.1"><h3>提问与协作 <span></span></h3><div class="in"><ul class="b bl sm">
+        <li><b>带出处的问答：</b>每句结论后跟一个可点角标，点击跳回原文并高亮，可当场核实 AI 是否如实转述。</li>
+        <li><b>整体导读结构化：</b>概述、内容脉络、核心要点、值得追问的问题四段，30 秒判断这篇值不值得精读。</li>
+        <li><b>文档评论与评分：</b>读后感与推荐度沉淀在文档下方，供后来者参考。</li>
+        <li><b>相似文档推荐：</b>读完一篇给出相关的其他文档。</li>
+        <li><b>可见性三档：</b>公开、受限（可申请）、私有；按类型与主题分类筛选。</li>
+      </ul></div></div>
+      <div class="col" style="flex:0.82">
+        <div class="ph" style="flex:1"><div class="big">此处放：阅读器截图</div><div class="sm2">建议截「划线 + 共享标注」<br>或「提问后引用跳回原文」的画面</div></div>
+        <div class="shot" style="flex:none"><img src="img/shot-library.jpg" alt="知识库列表"></div>
+        <div class="cap">知识库列表（演示数据）</div>
       </div>
-    </div></div>
-  <div class="bar">启示：内网无向量检索能力，本模块以"模型选章 + 原文匹配"的两阶段方案实现可用检索；<em>建议在第二批引入向量模型，将该方案升级为全站语义检索的地基</em>。</div>
+    </div>
+    <div class="note" style="flex:none;margin-top:10px;font-size:12.5px">AI 给出的引用与用户手工划线落在同一套文本坐标上，因此二者可以互相跳转 —— 这是"答案能当场核实"的前提，也是本模块与普通文档库的根本区别。</div></div>
+  <div class="bar">启示：知识库的价值不在存了多少文档，而在<em>同一份材料只被深读一次，其余人以问答方式复用</em>。</div>
   <div class="ft"><div>AI Community · 知识库</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
 </section>
-
 <section class="slide">
   <div class="hdr"><div class="tabs"><div class="tab on">能力现状</div><div class="tab">发展路径</div><div class="tab">建设规划</div><div class="tab">投入与效果</div></div><div class="corner"><b>CARI</b> · AI Community</div></div>
-  <div class="h1 s">【能力现状】讨论区：轻量动态与沉淀话题并存于同一入口</div>
-  <div class="sub">两种讨论形态共用一套评论、通知与附件能力，无需维护两个系统</div>
+  <div class="h1 s">【能力现状】讨论区：随手发的动态与要沉淀的话题</div>
+  <div class="sub">同一入口两种形态，共用附件、评论、通知与检索能力</div>
   <div class="rule"></div>
   <div class="body col">
-    <div class="ba" style="flex:none;height:126px">
-      <div class="side bf"><h5>此前的状态</h5><ul class="b sm" style="--x:0"><li>技术讨论分散在若干个群，<b>刷过即失</b>，无法检索。</li><li>同一问题反复出现，答案沉在聊天记录中间。</li><li>文件靠转发，版本与出处不可追溯。</li></ul></div>
-      <div class="mid">▶</div>
-      <div class="side af"><h5>现在的状态</h5><ul class="b sm"><li><b>动态流</b>承接随手记录，<b>论坛话题</b>承接需要沉淀的讨论。</li><li>按主题归档，可被全站检索；浏览量按人按天去重。</li><li>图片 / 视频 / 文档随帖留存，附带原文件名。</li></ul></div>
+    <div class="row" style="flex:none;height:224px;gap:12px">
+      <div class="mod" style="flex:1"><h3>动态流 <span>轻量 · 随手记录</span></h3><div class="in"><ul class="b sm">
+        <li><b>一条动态可带 9 张图 + 1 个视频 + 4 个文档</b>：视频卡内直接播放并可拖进度；PPT / Word 点击下载且保留中文原文件名。</li>
+        <li><b>六种表情反应</b>（赞 / 精彩 / 支持 / 喜爱 / 有启发 / 有趣），悬停展开选择，点击数字可查看<b>谁点了哪一种</b>。</li>
+        <li><b>两级评论</b>：回复的回复仍归在同一楼，不无限缩进；他人回复你时，通知点击直达该条并自动展开所在楼层。</li>
+        <li><b>可插入投票与表情包</b>，管理员可置顶。</li>
+      </ul></div></div>
+      <div class="mod b" style="flex:1"><h3>论坛话题 <span>沉淀 · 可检索</span></h3><div class="in"><ul class="b bl sm">
+        <li><b>一个话题最多挂 3 个主题</b>（模型与算法 / Agent 与工具 / Skill 开发 / 前沿研究 / 技术交流 / 问答求助 / 经验分享 / 成果展示），在每个主题下都能被找到。</li>
+        <li><b>左侧主题导航</b>显示各主题的话题数量，一键分流。</li>
+        <li><b>列表可见"谁在聊、多少人看过"</b>：最近参与者头像、回复数、浏览量（<span class="r">按人按天去重</span>，同一人反复刷新只算一次）。</li>
+        <li><b>支持顶帖</b>；管理员可置顶、加锁；话题可带附件。</li>
+        <li>半年后仍可通过全站检索找回。</li>
+      </ul></div></div>
     </div>
     <div class="row" style="flex:1;margin-top:12px">
       <div class="col" style="flex:1">
         <div class="shot"><img src="img/shot-discussion.jpg" alt="讨论区"></div>
-        <div class="cap"><b>讨论区界面</b> —— 左侧为动态流与论坛帖两个标签，右侧常驻热门讨论（演示数据）。</div><div class="note" style="flex:none;margin-top:9px;font-size:12px"><b>规模：</b>10 张数据表 · 16 个接口 · 3 次结构演进 · 单条内容至多 9 图 + 1 视频 + 4 文档 · 单视频 1 GB / 单文档 100 MB · 每人每日 5 GB 上传预算</div>
+        <div class="cap"><b>讨论区界面</b> —— 顶部为「动态 / 讨论帖」两个标签，右栏常驻热门讨论（演示数据）。</div>
       </div>
-      <div class="mod d" style="flex:1.05"><h3>四项工程要点 <span>共同特征：出错时不报错，只是数据悄悄不对</span></h3><div class="in sp"><ul class="b sm">
-        <li><b>两套翻页游标按排序方式分流。</b>"最新"采用显式键集游标；<span class="r">框架自带游标在锚点帖被删除或置顶后会静默翻错页</span>。"热门"排序随互动实时漂移、无稳定锚点，退化为偏移游标，以简单换正确。</li>
-        <li><b>反应计数的语义边界。</b>一人一帖仅一条记录，总数为各类反应之和，因此切换反应类型不触碰计数器；仅新增与取消进入事务，冲突时整体回滚并返回权威值。</li>
-        <li><b>墓碑删除与守卫式写入。</b>判断条件直接写入更新语句的过滤条件，命中 0 行即整体放弃 —— 覆盖"同时删除"与"删除瞬间产生新回复"两类竞态；并封堵"回复后自删将话题永久置顶"的滥用路径。</li>
-        <li><b>附件归属校验。</b>只接受存储键、地址由服务端推导，并拒绝已被其他内容引用的键；删除时按引用计数回收磁盘。中文文件名按 RFC 双写，规避响应头编码导致的接口异常。</li>
-      </ul></div></div>
+      <div class="col" style="flex:1">
+        <div class="ph" style="flex:1"><div class="big">此处放：论坛话题详情截图</div><div class="sm2">建议截带主题标签、参与者头像与两级回复的画面</div></div>
+        <div class="note" style="flex:none;font-size:12.5px">单视频 1 GB、单文档 100 MB，每人每日 5 GB 上传额度；匿名访客可看正文与图片，视频与文档需登录。删除带回复的评论时保留楼层结构，计数不会因并发操作而错乱。</div>
+      </div>
     </div></div>
-  <div class="bar">启示：社区类功能的风险不在崩溃，而在<em>数据静默失真</em> —— 翻页丢帖、计数漂移、浏览量可伪造，三者都已在设计层面消除。</div>
+  <div class="bar">启示：轻量与沉淀分流之后，<em>群聊里"刷过即失"的内容第一次有了可检索的落点</em>。</div>
   <div class="ft"><div>AI Community · 讨论区</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
 </section>
-
 <section class="slide">
   <div class="hdr"><div class="tabs"><div class="tab on">能力现状</div><div class="tab">发展路径</div><div class="tab">建设规划</div><div class="tab">投入与效果</div></div><div class="corner"><b>CARI</b> · AI Community</div></div>
-  <div class="h1 s">【能力现状 · 最新上线】投票评选：可审计的作品评选流程</div>
-  <div class="sub">将"群内接龙 + 表格统计"升级为具备权限、配额与留痕的正式流程</div>
+  <div class="h1 s">【能力现状 · 最新上线】投票评选：从作品征集到结果公示</div>
+  <div class="sub">组织者不需要再用群接龙与表格统计，全流程在平台内完成并留痕</div>
   <div class="rule"></div>
   <div class="body col">
-    <div class="states" style="flex:none;height:74px">
+    <div class="states" style="flex:none;height:60px">
       <div class="st-node gray">草稿</div>
       <div class="st-arrow"><em>发布</em></div>
       <div class="st-node">作品征集</div>
-      <div class="st-arrow"><em>发起人审核</em></div>
+      <div class="st-arrow"><em>逐件审核</em></div>
       <div class="st-node">投票进行</div>
       <div class="st-arrow"><em>到期 / 提前结束</em></div>
       <div class="st-node">结果公示</div>
       <div class="st-arrow"><em>导出存档</em></div>
       <div class="st-node gray">归档</div>
     </div>
-    <div class="row" style="flex:1;margin-top:14px">
-      <div class="mod v" style="flex:1"><h3>组织者能力 <span>覆盖评选全过程</span></h3><div class="in sp"><ul class="b sm">
-        <li><b>两种作品来源：</b>批量上传（按文件名规则自动解析作品名、作者、工号，人工修改过的条目不被覆盖），或开放成员自主投稿并逐件审核。</li>
-        <li><b>规则可配置：</b>每人票数、按总量或按天发放、单作品投票上限、是否允许撤票改投、截止时间、结果公开时点。</li>
-        <li><b>匿名评选：</b>投票期仅显示编号，结束后公示作者，确保评价对象是作品本身。</li>
-        <li><b>过程可审计：</b>实时榜单与参与人数、每件作品的投票人明细、一键导出 CSV 存档公示。</li>
+    <div class="row" style="flex:none;height:272px;margin-top:13px">
+      <div class="mod v" style="flex:1"><h3>组织者 <span>建活动与管过程</span></h3><div class="in"><ul class="b sm">
+        <li><b>两种作品来源：</b>批量上传（<span class="r">按文件名规则自动解析作品名 / 作者 / 工号</span>，人工改过的条目不被覆盖）；或开放成员自主投稿。</li>
+        <li><b>投稿表单可定制：</b>作品名、作者、工号、作品描述之外，可自定义字段；可写投稿须知、限制单人投稿数与文件大小；驳回时填写理由（仅投稿者可见）。</li>
+        <li><b>规则可配：</b>每人票数、按总量或按天发放、单件作品投票上限、是否允许撤票改投、截止时间、结果公开时点。</li>
+        <li><b>过程可管：</b>滚动公告条随时改、封面自定义、作品可临时下架（票数保留）、可提前结束。</li>
+        <li><b>数据看板：</b>实时排名、参与人数、每件作品的去重投票人数与投票人名单，一键导出 CSV 存档。</li>
       </ul></div></div>
-      <div class="mod d" style="flex:1.05"><h3>三项工程要点 <span>票数为什么不会错</span></h3><div class="in sp"><ul class="b sm">
-        <li><b>计数不做累加，每次从选票明细重算。</b>一次投票在串行化事务内完成：写入选票 → 重算该作品票数 → 重算活动总票数与参与人数。<span class="r">改票、撤票、并发投票均不会产生计数漂移</span>。所有投票写入同一行活动记录，高并发下必然冲突，因此采用带抖动的退避重试而非立即重试。</li>
-        <li><b>配额与上限在事务内判定。</b>"每人 N 票""单作品至多 M 票"若在事务外校验，双标签页同时提交即可超发；按天发放的配额桶以北京时间为基准，跨时区不串日。</li>
-        <li><b>三重防刷票：</b>内网部署下投票<span class="r">强制要求 W3 实名身份</span>，邮箱注册账号不予放行；一人一作品一日仅一条记录，数据库层面无法重复；作品下架后不再接受新票，但撤票始终可用，避免票数被永久占用。</li>
+      <div class="mod" style="flex:1"><h3>参与者 <span>看作品与投票</span></h3><div class="in"><ul class="b sm">
+        <li><b>作品墙 + 大图灯箱：</b>点开看大图或播放视频，右侧是作品详情（描述、表单信息）与<b>评论区</b>。</li>
+        <li><b>匿名评选：</b>投票期只显示编号不显示作者，结束后公示 —— 评的是作品本身。</li>
+        <li><b>顺序对每个人都不同</b>（随机但对同一人稳定），避免排在前面的天然占便宜。</li>
+        <li><b>按编号搜索</b>，方便"投 42 号"这类口口相传的场景。</li>
+        <li><b>票数余额实时可见</b>，支持改投与撤票；倒计时提示剩余时间。</li>
+        <li>未开始 / 已结束状态清晰，结束后仍可浏览作品与结果。</li>
       </ul></div></div>
     </div>
-    <div class="row" style="flex:none;margin-top:10px;gap:10px">
-      <div class="note" style="flex:1;font-size:12.5px"><b>展示公平性：</b>作品顺序对每位浏览者随机但稳定（同一人多次刷新顺序不变，不同人顺序不同），消除排序靠前带来的天然优势。</div>
-      <div class="scene" style="flex:1;font-size:12.5px"><b>导出安全：</b>CSV 带字节序标记保证表格软件正确识别中文；对以等号、加号开头的用户文本加引号前缀，<b>防止表格公式注入</b>；名次采用并列名次算法，与页面展示完全一致。</div>
-    </div></div>
-  <div class="bar">启示：该模块的通用性高于单次活动，<em>作品征集、限票、匿名评选、明细导出可直接支撑各部门的评优与征集类活动</em>，无需二次开发。</div>
+    <div class="ph" style="flex:1;margin-top:11px"><div class="big">此处放：投票活动页截图</div><div class="sm2">建议截作品墙（含倒计时、我的剩余票数），或大图灯箱 + 右侧作品详情与评论区</div></div>
+    <div class="note" style="flex:none;margin-top:10px;font-size:12.5px"><b>结果为什么可信：</b>票数不做累加，每次投票都从选票明细重新统计，改票、撤票、并发投票都不会对不上；内网部署下投票<b>强制要求 W3 实名身份</b>，邮箱注册的账号不予放行，一人一件作品一天仅一条记录。</div></div>
+  <div class="bar">启示：该模块的通用性高于单次活动 —— <em>作品征集、限票、匿名评选、明细导出可直接支撑各部门的评优与征集</em>，无需二次开发。</div>
   <div class="ft"><div>AI Community · 投票评选</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
 </section>
-
-
 <section class="slide">
   <div class="hdr"><div class="tabs"><div class="tab on">能力现状</div><div class="tab">发展路径</div><div class="tab">建设规划</div><div class="tab">投入与效果</div></div><div class="corner"><b>CARI</b> · AI Community</div></div>
-  <div class="h1 s">【能力现状】统一编辑器：一次建设，全站 19 处输入同时具备</div>
-  <div class="sub">帖内投票与表情包不是单点功能，而是编辑器层的能力下沉</div>
+  <div class="h1 s">【能力现状】统一编辑器：写字的地方都具备同一套能力</div>
+  <div class="sub">19 处输入框、36 个展示页面共用一套编辑与渲染，新增板块自动继承</div>
   <div class="rule"></div>
   <div class="body col">
-    <div class="radial" style="flex:none;height:206px">
-      <div class="spokes">
-        <div class="spoke"><b>动态与评论</b> —— 随手发起投票收集意见</div>
-        <div class="spoke"><b>论坛话题</b> —— 技术选型的投票表决</div>
-        <div class="spoke"><b>活动介绍</b> —— 报名前的意向摸底</div>
-        <div class="spoke"><b>视频简介 / Skill 说明</b> —— 使用反馈收集</div>
-        <div class="spoke"><b>知识库讨论</b> —— 读者观点分布</div>
-      </div>
-      <div class="hub">统一富文本编辑器<em>投票 · 表情包 · 图片 · 附件 · 代码块</em></div>
-      <div class="spokes">
-        <div class="spoke"><b>19 处</b> 输入框自动获得该能力，无需各自开发</div>
-        <div class="spoke"><b>36 个</b> 页面复用同一渲染器，投票卡片全站可见</div>
-        <div class="spoke"><b>0 张</b> 业务表被改动 —— 正文中只存一行文本标记</div>
-        <div class="spoke"><b>20 条</b> 自动化用例锁定切分与节点行为</div>
-        <div class="spoke"><b>74 条</b> 三语文案，键路径完全对齐</div>
-      </div>
+    <div class="row" style="flex:none;height:66px;gap:10px">
+      <div class="kpi" style="flex:1;padding:7px 10px"><div class="v" style="font-size:22px">19 处</div><div class="k" style="margin-top:2px">输入框自动具备该能力</div></div>
+      <div class="kpi" style="flex:1;padding:7px 10px"><div class="v" style="font-size:22px">36 个</div><div class="k" style="margin-top:2px">页面复用同一渲染，投票卡片全站可见</div></div>
+      <div class="kpi" style="flex:1;padding:7px 10px"><div class="v" style="font-size:22px">0 张</div><div class="k" style="margin-top:2px">业务表被改动，正文中只存一行文本标记</div></div>
+      <div class="kpi" style="flex:1;padding:7px 10px"><div class="v" style="font-size:22px">74 条</div><div class="k" style="margin-top:2px">三语文案，键路径完全对齐</div></div>
     </div>
-    <div class="row" style="flex:1;margin-top:12px">
-      <div class="mod" style="flex:1"><h3>能力清单 <span>成员可见</span></h3><div class="in sp"><ul class="b sm">
-        <li><b>帖内投票：</b>单选 / 多选（可限选 N 项）、匿名、投票后可见结果、截止时间；支持改票、撤票与提前结束。</li>
-        <li><b>未登录可见：</b>访客可查看题目与公开结果，点击投票时引导登录并返回原页面。</li>
-        <li><b>个人表情包：</b>最近 / 全部 / 收藏三档，支持动图原样保存；可将他人使用的表情一键收藏。</li>
+    <div class="row" style="flex:1;margin-top:11px">
+      <div class="mod" style="flex:1"><h3>帖内投票 <span>随手发起，不必新建活动</span></h3><div class="in"><ul class="b sm">
+        <li><b>配置项：</b>单选或多选（可限定最多选 N 项）、匿名投票、投票后才可见结果、截止时间。</li>
+        <li><b>结果呈现：</b>进度条 + 票数 + 百分比；非匿名投票在选项下显示投票人头像。</li>
+        <li><b>可改票、可撤票、可提前结束</b>；创建者与管理员在无人投票前可整体修改题目与选项。</li>
+        <li><b>未登录也能看到题目与公开结果</b>，点击投票时引导登录并返回原页面。</li>
+        <li>一条内容最多可放 10 个投票，适合"多个议题一次收集"。</li>
       </ul></div></div>
-      <div class="mod d" style="flex:1.1"><h3>两项工程要点 <span>低侵入与防偷看</span></h3><div class="in sp"><ul class="b sm">
-        <li><b>以文本标记承载结构化组件。</b>正文只存一行标记，渲染期切分为"文本段 + 组件段"；难点在边界处理 —— 代码块内的示例须保持惰性、行内出现不触发、缩进代码块需放行。<span class="r">一条契约三处复用</span>（渲染器 / 编辑器 / 摘要抽取），数据库、接口与 AI 处理链路均无需改动。</li>
-        <li><b>"投票后可见"为服务端裁剪。</b>未投票者获得的数据中票数字段为空值，而非前端隐藏；同时禁止清空式撤票，封堵"投票—查看—撤回"的免费查看路径，改票仍然允许。</li>
+      <div class="mod b" style="flex:1"><h3>个人表情包 <span>让技术讨论不必一直板着脸</span></h3><div class="in"><ul class="b bl sm">
+        <li><b>个人表情库：</b>底部分「最近 / 全部 / 收藏」三档，支持上传图片与 GIF 动图，动图原样保存不转静态。</li>
+        <li><b>一键收藏他人的表情：</b>看到别人发的表情，点开大图即可「添加到表情包」；鼠标右键也可在光标处直接添加。</li>
+        <li><b>悬停预览</b>可直接收藏或删除；触屏长按同样可用。</li>
+        <li>每人最多 500 张，单张 10 MB。</li>
       </ul></div></div>
+    </div>
+    <div class="row" style="flex:none;height:104px;margin-top:11px;gap:12px">
+      <div class="ph" style="flex:1"><div class="big">此处放：编辑器工具栏截图</div><div class="sm2">建议截含 📊 投票与 😊 表情包按钮的工具栏</div></div>
+      <div class="ph" style="flex:1"><div class="big">此处放：投票卡片截图</div><div class="sm2">建议截正文中已渲染的投票（含进度条与投票人头像）</div></div>
     </div></div>
-  <div class="bar">启示：能力下沉到编辑器层的收益是非线性的 —— <em>一次投入换来 19 处输入、36 个页面同时可用</em>，后续新增板块自动继承。</div>
+  <div class="bar">启示：把能力做在编辑器层而非单个页面，收益是非线性的 —— <em>一次投入，19 处输入同时可用，后续新增板块自动继承</em>。</div>
   <div class="ft"><div>AI Community · 统一编辑器</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
 </section>
-
 <section class="slide">
   <div class="hdr"><div class="tabs"><div class="tab on">能力现状</div><div class="tab">发展路径</div><div class="tab">建设规划</div><div class="tab">投入与效果</div></div><div class="corner"><b>CARI</b> · AI Community</div></div>
-  <div class="h1 s">【能力现状】极客视频与随刷短视频：自托管视频底座</div>
-  <div class="sub">内网无 CDN 与转码服务，播放、上传、字幕三条链路均需自建并可降级</div>
+  <div class="h1 s">【能力现状】极客视频与随刷短视频：看得进去，也发得出来</div>
+  <div class="sub">长视频承担系统性分享，短视频承担高频传播，两者共用一套互动数据</div>
   <div class="rule"></div>
   <div class="body col">
-    <div class="pipe" style="flex:none;height:100px">
-      <div class="seg"><div class="pt">① 抽取音频</div><div class="pd">发布后自动抽取 16 kHz 单声道音轨，超时 10 分钟。</div></div>
-      <div class="ar">▶</div>
-      <div class="seg"><div class="pt">② 本机语音转写</div><div class="pd">调用服务器本地转写引擎，自动选用可用模型，超时 90 分钟。</div></div>
-      <div class="ar">▶</div>
-      <div class="seg"><div class="pt">③ 分批翻译</div><div class="pd">内网模型按 30 条一批翻译，编号不匹配则整批放弃。</div></div>
-      <div class="ar">▶</div>
-      <div class="seg"><div class="pt">④ 播放时切换</div><div class="pd">中 / EN / 关三态切换并记住选择；字幕自绘，避免竖屏画到黑边外。</div></div>
+    <div class="row" style="flex:none;height:222px;gap:12px">
+      <div class="mod" style="flex:1"><h3>随刷短视频 <span>人人可发</span></h3><div class="in"><ul class="b sm">
+        <li><b>竖屏随刷：</b>一屏一条、快速滑动不跳条；双击点赞、拖动进度、键盘切换、空格暂停。</li>
+        <li><b>发布流程：</b>拖入文件即自动读取时长与分辨率、抓取首帧作封面；文案可用 <b>AI 润色</b>后发布。</li>
+        <li><b>自动中英双语字幕：</b>发布后服务器在后台完成语音转写与翻译，播放时按钮在「中 / EN / 关」间切换并记住选择。</li>
+        <li><b>互动：</b>点赞、评论（抽屉式）、收藏进「稍后看」、分享链接。</li>
+      </ul></div></div>
+      <div class="mod b" style="flex:1"><h3>极客视频 <span>系统性分享</span></h3><div class="in"><ul class="b bl sm">
+        <li><b>AI 看点摘要：</b>一句话钩子加数条关键看点，30 秒判断这一小时值不值得看。</li>
+        <li><b>就视频提问：</b>针对这条视频提问，回答只依据本视频的文字稿，没讲到会明确说明。</li>
+        <li><b>悬停预览：</b>鼠标停在卡片上播放专门的预览片段。</li>
+        <li><b>分类与标签</b>筛选，收藏进「稍后看」，评论与回复通知可深链回原处。</li>
+        <li><b>搬运必须署名：</b>上传时区分自创与搬运，搬运须填原始链接与原作者，播放页展示可点来源。</li>
+      </ul></div></div>
     </div>
     <div class="row" style="flex:1;margin-top:12px">
-      <div class="col" style="flex:1">
-        <div class="mod d" style="flex:none"><h3>播放器解码窗口 <span>仅当前条 ±2 挂载真实播放器</span></h3><div class="in">
-          <div style="display:flex;gap:4px"><div style="flex:1;border:1px solid #DDD;background:#F5F5F5;text-align:center;font-size:11.5px;padding:7px 2px;color:#888">占位</div><div style="flex:1;border:1px solid #DDD;background:#F5F5F5;text-align:center;font-size:11.5px;padding:7px 2px;color:#888">占位</div><div style="flex:1;border:1px solid #C7000B;background:#FBEDED;text-align:center;font-size:11.5px;padding:7px 2px;color:#8C0008">±2</div><div style="flex:1;border:1px solid #C7000B;background:#FBEDED;text-align:center;font-size:11.5px;padding:7px 2px;color:#8C0008">±1</div><div style="flex:1;border:1px solid #C7000B;background:#FBEDED;text-align:center;font-size:11.5px;padding:7px 2px;color:#8C0008">当前</div><div style="flex:1;border:1px solid #C7000B;background:#FBEDED;text-align:center;font-size:11.5px;padding:7px 2px;color:#8C0008">±1</div><div style="flex:1;border:1px solid #C7000B;background:#FBEDED;text-align:center;font-size:11.5px;padding:7px 2px;color:#8C0008">±2</div><div style="flex:1;border:1px solid #DDD;background:#F5F5F5;text-align:center;font-size:11.5px;padding:7px 2px;color:#888">占位</div><div style="flex:1;border:1px solid #DDD;background:#F5F5F5;text-align:center;font-size:11.5px;padding:7px 2px;color:#888">占位</div></div>
-          <div class="cap" style="padding-top:8px">每个可播放元素占用一个硬件解码器，移动端解码器池仅个位数。无限流若全量挂载真实元素<b>会直接黑屏</b> —— 这是常被误判为性能问题的正确性问题。窗口外渲染等高占位以保持滚动吸附几何，离开视口主动释放解码器。</div>
-        </div></div>
-        <div class="mod" style="flex:1"><h3>字节通路 <span>鉴权与传输分离</span></h3><div class="in sp"><ul class="b sm">
-          <li>应用进程只执行登录校验与路径穿越检查，随即返回内部重定向，由 <b>nginx 以内核方式直发文件</b>；未启用该配置时回落为应用自行实现的分段传输。</li>
-          <li>上传采用原始请求体协议边收边落盘，回显的存储键在服务端经<b>三重复验</b>：格式校验、磁盘存在性、是否已被他人占用。</li>
-        </ul></div></div>
-      </div>
-      <div class="mod" style="flex:1"><h3>成员可见能力 <span>长短视频共用一套互动</span></h3><div class="in sp"><ul class="b sm">
-        <li><b>竖屏随刷：</b>一屏一条，快速滑动不跳条；双击点赞、拖拽进度、键盘切换。</li>
-        <li><b>成员可自主发布短视频：</b>浏览器自动读取时长与分辨率并抓取封面帧，文案支持 AI 润色。</li>
-        <li><b>自动中英双语字幕：</b>发布后由服务器后台生成，播放时一键切换。</li>
-        <li><b>长视频 AI 看点摘要与就视频问答：</b>回答仅依据本视频文字稿，无依据时明确说明。</li>
-        <li><b>搬运内容强制署名：</b>须填写原始链接与原作者，播放页显示可点来源。</li>
-        <li><b>互动数据长短打通：</b>短视频收藏进入"稍后看"，评论通知可深链回原条目。</li>
+      <div class="mod d" style="flex:1"><h3>字幕生成流程 <span>全程在内网完成，不依赖任何云服务</span></h3><div class="in">
+        <div class="pipe" style="height:78px">
+          <div class="seg"><div class="pt">① 抽音轨</div><div class="pd">16 kHz 单声道</div></div>
+          <div class="ar">▶</div>
+          <div class="seg"><div class="pt">② 本机转写</div><div class="pd">服务器本地语音识别</div></div>
+          <div class="ar">▶</div>
+          <div class="seg"><div class="pt">③ 分批翻译</div><div class="pd">内网模型逐批翻译</div></div>
+          <div class="ar">▶</div>
+          <div class="seg"><div class="pt">④ 播放切换</div><div class="pd">中 / EN / 关</div></div>
+        </div>
+        <div class="cap" style="padding-top:8px">翻译时若编号与原文对不上则整批放弃 —— <b>宁可只出原文字幕，也不出错轴字幕</b>。</div>
+        <div class="ph" style="margin-top:9px"><div class="big">此处放：短视频随刷截图</div><div class="sm2">建议截带字幕开关与右侧互动按钮的竖屏画面</div></div>
+      </div></div>
+      <div class="mod" style="flex:1"><h3>其他 <span></span></h3><div class="in"><ul class="b sm">
+        <li><b>长短视频互通：</b>点赞、收藏、评论是同一套数据，短视频收藏后同样进入「稍后看」。</li>
+        <li><b>精选进首页：</b>管理员可将优质短视频设为精选，出现在首页与视频页的推荐位。</li>
+        <li><b>观看计数按人按天去重</b>，累计播放满 2 秒才计一次，热度排序更接近真实。</li>
+        <li><b>为什么滑得动：</b>信息流中只在当前条前后各两条挂载真实播放器 —— 每个播放器占用一个硬件解码器，移动端数量有限，全量挂载会直接黑屏。</li>
       </ul></div></div>
     </div></div>
-  <div class="bar">启示：短视频复用长视频的数据模型，节省约一半工作量；<em>代价是每一处视频查询都必须显式声明是否包含短视频</em>，该约定已写入代码规范。</div>
+  <div class="bar">启示：短视频把"技术分享"的发布门槛降到一条手机视频，<em>这是目前唯一一个成员可以自主发布的媒体形态</em>。</div>
   <div class="ft"><div>AI Community · 视频与短视频</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
 </section>
-
 <section class="slide">
   <div class="hdr"><div class="tabs"><div class="tab on">能力现状</div><div class="tab">发展路径</div><div class="tab">建设规划</div><div class="tab">投入与效果</div></div><div class="corner"><b>CARI</b> · AI Community</div></div>
-  <div class="h1 s">【能力现状】社区活动：跨时区日历与报名提醒</div>
-  <div class="sub">同一场活动在不同时区的呈现必须一致且无歧义，这是本模块的核心约束</div>
+  <div class="h1 s">【能力现状】社区活动：从发布到提醒的完整链路</div>
+  <div class="sub">任何成员都可以发布活动，不必经过组织方</div>
   <div class="rule"></div>
   <div class="body col">
-    <div class="row" style="flex:none;height:178px;gap:12px">
-      <div class="mod" style="flex:1.15"><h3>同一场活动的多时区呈现 <span>组织者按本地时间填写一次</span></h3><div class="in p0">
-        <table class="xs fill"><thead><tr><th style="width:118px">浏览者所在地</th><th style="width:124px">页面显示</th><th>处理方式</th></tr></thead>
-        <tbody>
-          <tr><td>多伦多（组织者）</td><td><b>8 月 20 日 14:00</b></td><td>填写值入库为真实 UTC 瞬时 18:00Z，时区单独存列</td></tr>
-          <tr><td>北京</td><td><b>8 月 21 日 02:00</b></td><td>自动跨日，列表分组按浏览者本地日期归并</td></tr>
-          <tr><td>温哥华</td><td><b>8 月 20 日 11:00</b></td><td>并列显示"多伦多 14:00"，免去二次换算</td></tr>
-          <tr><td>全天活动</td><td><b>8 月 20 日 全天</b></td><td>仅存日期、不做换算 —— 否则在其他时区会变成前一天</td></tr>
+    <div class="row" style="flex:none;height:246px;gap:12px">
+      <div class="mod" style="flex:1"><h3>发布方 <span>任何成员均可发起</span></h3><div class="in"><ul class="b sm">
+        <li><b>基本信息：</b>标题、简介、正文、封面（可拖动取景，竖图不被裁切）。</li>
+        <li><b>分类：</b>四个大类（外部活动 / 内部活动 / 专家分享 / 研讨会）+ 十个主题标签（每场最多 3 个）。</li>
+        <li><b>形式与地点：</b>线上 / 线下 / 两者兼有；七个城市可选；会议链接<span class="r">仅登录成员可见</span>。</li>
+        <li><b>讲师阵容：</b>可添加多位讲师，含姓名、职务、单位、头像、简介与链接，详情页以名片形式展示。</li>
+        <li><b>状态管理：</b>可取消（保留展示并加【已取消】标记）、可修改；管理员可置顶推荐。</li>
+      </ul></div></div>
+      <div class="mod b" style="flex:1"><h3>参与方 <span>找得到、记得住、不错过</span></h3><div class="in"><ul class="b bl sm">
+        <li><b>时间按本地显示：</b>组织者按自己时区填一次，其他人看到自己所在地的时刻，并列显示原时区。</li>
+        <li><b>筛选与日历联动：</b>按时间、大类、主题、形式、城市筛选；右侧月历上有活动的日子带圆点，点某天列表即只留当天。</li>
+        <li><b>一键报名 = 订阅提醒：</b>开场前约 30 分钟自动发站内通知与邮件；取消报名即停止提醒。</li>
+        <li><b>加入个人日历：</b>Google 日历链接或下载 .ics 给 Outlook / Apple。</li>
+        <li><b>「我参加的」视图</b>，卡片带高亮边框与已参加标记；往期活动仍可回看，含讲师与内容。</li>
+        <li><b>相关活动推荐：</b>详情页底部推荐同类型或主题重叠的其他活动。</li>
+      </ul></div></div>
+    </div>
+    <div class="row" style="flex:1;margin-top:12px">
+      <div class="mod" style="flex:1.2"><h3>同一场活动在不同地区的显示 <span>组织者只填一次</span></h3><div class="in p0">
+        <table class="xs fill"><thead><tr><th style="width:130px">浏览者所在地</th><th style="width:140px">页面显示</th><th>说明</th></tr></thead><tbody>
+          <tr><td>多伦多（组织者）</td><td><b>8 月 20 日 14:00</b></td><td>组织者按本地时间填写</td></tr>
+          <tr><td>北京</td><td><b>8 月 21 日 02:00</b></td><td>自动跨日，列表按浏览者本地日期分组</td></tr>
+          <tr><td>温哥华</td><td><b>8 月 20 日 11:00</b></td><td>并列显示"多伦多 14:00"，免去心算</td></tr>
+          <tr><td>全天活动</td><td><b>8 月 20 日 全天</b></td><td>不做换算，避免在别的时区变成前一天</td></tr>
         </tbody></table>
       </div></div>
-      <div class="mod d" style="flex:1"><h3>提醒的并发控制 <span>两条触发路径不会重复发送</span></h3><div class="in">
-        <div class="states" style="height:46px">
-          <div class="st-node" style="font-size:12px">网页轮询</div>
-          <div class="st-arrow"><em>抢占</em></div>
-          <div class="st-node gray" style="font-size:12px">提醒标记<br>空 → 现在</div>
-          <div class="st-arrow"><em>返回 0 行</em></div>
-          <div class="st-node" style="font-size:12px">定时任务</div>
-        </div>
-        <div class="cap" style="padding-top:10px">以一次原子更新认领待发送记录：将"已提醒时间"由空值改为当前时刻，返回 0 行即表示已被其他进程处理。<b>因此两条触发路径可同时开启，物理上不可能重复发送同一条提醒</b> —— 内网缺少统一调度设施，该设计为刻意的双保险。</div>
-      </div></div>
-    </div>
-    <div class="row" style="flex:1;margin-top:12px">
-      <div class="mod" style="flex:1"><h3>成员可见能力 <span>报名即订阅提醒</span></h3><div class="in sp"><ul class="b sm">
-        <li>全员可见的活动日历，按大类、主题、城市、线上线下筛选，月历圆点与列表联动。</li>
-        <li>一键报名，开场前约 30 分钟发送站内通知与邮件，含时间、地点与会议链接。</li>
-        <li>导出至 Google / Outlook 日历；活动取消后导出条目自动加【已取消】前缀。</li>
-        <li>「我参加的」独立视图；封面支持自定义取景，竖图不会被裁切。</li>
-      </ul></div></div>
-      <div class="mod d" style="flex:1.1"><h3>两项工程要点 <span>正确性与最小暴露</span></h3><div class="in sp"><ul class="b sm">
-        <li><b>时区选项封闭，换取精确查询。</b>"即将举行 / 某一天"本质是墙上日期条件，同一日期在不同时区对应不同时间区间。因时区仅四个取值，日期条件被展开为<span class="r">四个时区分支加一个全天分支</span>下推数据库执行，筛选、计数、月历共用同一套条件，既无近似也无内存过滤。</li>
-        <li><b>会议链接为服务端裁剪。</b>未登录访客获得的数据中不含该字段，导出的日历文件同样不含。全天活动的结束日按规范顺延一日，否则主流日历软件会少显示一天。</li>
-      </ul></div></div>
+      <div class="col" style="flex:1">
+        <div class="ph" style="flex:1"><div class="big">此处放：活动日历截图</div><div class="sm2">建议截左侧筛选 + 右侧月历圆点联动的画面</div></div>
+        <div class="note" style="flex:none;font-size:12.5px">提醒由"网页轮询"与"服务器定时任务"两条路径共同触发，内网缺少统一调度设施，这是刻意的双保险；两条路径同时开启也<b>不会重复发送同一条提醒</b>。</div>
+      </div>
     </div></div>
-  <div class="bar">启示：把产品约束（时区四选一）转化为工程杠杆，<em>以有限取值换取数据库层的精确筛选</em>，是本模块最具复用价值的做法。</div>
+  <div class="bar">启示：一场讲座的价值取决于有多少该来的人知道 —— <em>全员可见的日历 + 自动提醒，把"通知"从组织者的负担变成系统能力</em>。</div>
   <div class="ft"><div>AI Community · 社区活动</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
 </section>
-
 <section class="slide">
   <div class="hdr"><div class="tabs"><div class="tab on">能力现状</div><div class="tab">发展路径</div><div class="tab">建设规划</div><div class="tab">投入与效果</div></div><div class="corner"><b>CARI</b> · AI Community</div></div>
-  <div class="h1 s">【能力现状】平台底座：通知中枢与全站检索</div>
-  <div class="sub">这一层决定新增板块的接入成本，也是"平台"与"多站拼装"的分界</div>
+  <div class="h1 s">【能力现状】平台底座：一个铃铛、一个搜索框、一块需求板</div>
+  <div class="sub">这些能力被所有板块共用，也是新增板块的接入基础</div>
   <div class="rule"></div>
   <div class="body col">
-    <div class="radial" style="flex:none;height:214px">
-      <div class="spokes">
-        <div class="spoke"><b>视频与短视频</b> —— 评论与回复</div>
-        <div class="spoke"><b>讨论区与论坛</b> —— 回帖与楼中楼</div>
-        <div class="spoke"><b>知识库</b> —— 批注、笔记回复、阅读申请</div>
-        <div class="spoke"><b>技能中心</b> —— 下载申请与审批结果</div>
-        <div class="spoke"><b>社区活动</b> —— 开场前提醒</div>
-        <div class="spoke"><b>公告</b> —— 面向全员的一次性扇出</div>
-      </div>
-      <div class="hub">统一通知中枢<em>6 种类型 · 12 个入口<br>4 类事件 × 2 个渠道可控</em></div>
-      <div class="spokes">
-        <div class="spoke"><b>失败不回连主写入</b> —— 三层降级，通知异常不影响业务落库</div>
-        <div class="spoke"><b>深链定位</b> —— 点击直达该条回复并高亮，必要时自动展开所在楼层</div>
-        <div class="spoke"><b>公告只在发布跃迁时扇出</b> —— 修订正文不会二次触达全员</div>
-        <div class="spoke"><b>邮件按类型开关</b> —— 默认保守，成员自行开启</div>
-      </div>
+    <div class="row" style="flex:none;height:200px;gap:12px">
+      <div class="mod" style="flex:1"><h3>通知中心 <span>全站消息汇入一处</span></h3><div class="in"><ul class="b sm">
+        <li><b>覆盖范围：</b>视频与动态的评论回复、论坛回帖、知识库批注与笔记回复、Skill 下载申请与审批结果、活动开场提醒、全员公告。</li>
+        <li><b>点击直达：</b>不是跳到页面顶部，而是<span class="r">滚动到那条具体回复并高亮</span>；若目标嵌在某个楼层里，该楼层会自动展开 —— 即使它原本在第三页尚未加载。</li>
+        <li><b>自己定开关：</b>四类事件 × 站内信 / 邮件两个渠道，共八个开关，互不影响。</li>
+        <li>未读数红点显示，可一键全部已读。</li>
+      </ul></div></div>
+      <div class="mod b" style="flex:1"><h3>全站检索 <span>⌘K 唤起</span></h3><div class="in"><ul class="b bl sm">
+        <li><b>任何页面按 ⌘K / Ctrl+K</b> 唤起搜索面板，同时搜 11 类内容：Skill、合集包、知识库文档、讨论动态、论坛话题、视频、活动、投票、意见反馈、用户、分类与标签。</li>
+        <li><b>分组展示</b>，上下键选择、回车进入全量结果页。</li>
+        <li>每类内容自带可见性过滤：未发布、已删除、私有内容不会出现在结果里。</li>
+      </ul></div></div>
     </div>
     <div class="row" style="flex:1;margin-top:12px">
-      <div class="mod b" style="flex:1.1"><h3>全站检索 <span>11 类内容并行召回</span></h3><div class="in">
-        <div class="bars">
-          <div class="brow"><div class="blb">技能与合集包</div><div class="btr"><div class="bfl" style="width:88%"></div></div><div class="bvl">已发布 / 非私有</div></div>
-          <div class="brow"><div class="blb">知识库文档</div><div class="btr"><div class="bfl" style="width:80%"></div></div><div class="bvl">状态就绪</div></div>
-          <div class="brow"><div class="blb">讨论与论坛</div><div class="btr"><div class="bfl b2" style="width:72%"></div></div><div class="bvl">未删除</div></div>
-          <div class="brow"><div class="blb">视频（不含短视频）</div><div class="btr"><div class="bfl b2" style="width:64%"></div></div><div class="bvl">显式排除</div></div>
-          <div class="brow"><div class="blb">活动 / 投票 / 反馈</div><div class="btr"><div class="bfl gy2" style="width:56%"></div></div><div class="bvl">按类过滤</div></div>
-          <div class="brow"><div class="blb">用户 / 分类 / 标签</div><div class="btr"><div class="bfl gy2" style="width:44%"></div></div><div class="bvl">账号有效</div></div>
-        </div>
-        <div class="cap" style="padding-top:9px"><b>可见性写进查询本身：</b>每一类内容自带各自的过滤条件，私密账号的工号在服务端即抹去。<span class="rd">跨类型检索最常见的缺陷，是某一类漏加删除或私有过滤</span> —— 因此逐类显式表达，而非统一兜底。</div>
-      </div></div>
-      <div class="mod" style="flex:1"><h3>接入成本 <span>为什么这一层值得先建</span></h3><div class="in sp"><ul class="b sm">
-        <li><b>通知中枢自身承担全部异常</b>，因此后续接入的六个业务域各自只增加两三行调用，无一需要编写补偿逻辑。</li>
-        <li><b>意见反馈板</b>提供需求登记、投票与二级讨论，条目具备五种状态流转，成为功能取舍的公开依据。</li>
-        <li><b>新增一类可检索内容</b>需同步四处（查询与映射、面板分组、结果页、三语文案），已形成明确约定。</li>
+      <div class="mod g" style="flex:1"><h3>意见反馈板 <span>需求登记与进展公开</span></h3><div class="in"><ul class="b sm">
+        <li>任何人都可以提功能建议或问题反馈，给别人的条目投票 +1，并在下面二级讨论。</li>
+        <li>条目带状态标签：<b>待处理 / 已计划 / 处理中 / 已完成 / 不采纳</b>，可按票数排序看什么最被需要。</li>
+        <li>让"下一步做什么"有公开依据，而不是少数人拍板。</li>
       </ul></div></div>
+      <div class="mod" style="flex:1"><h3>公告与个人空间 <span></span></h3><div class="in"><ul class="b sm">
+        <li><b>公告：</b>管理员发布后所有成员通知中心即刻可见，首页常驻最新一条入口。</li>
+        <li><b>个人主页：</b>公开展示自己的 Skill、文档、动态、话题、书架与参与的活动。</li>
+        <li><b>私人工作台：</b>草稿、订阅更新提示、待处理的下载申请集中管理。</li>
+        <li><b>三语界面：</b>中 / 英 / 法即时切换，首次访问按浏览器语言自动选择。</li>
+      </ul></div></div>
+      <div class="col" style="flex:0.78">
+        <div class="shot" style="flex:none"><img src="img/shot-home.jpg" alt="首页"></div>
+        <div class="cap"><b>首页</b> —— 未登录时直接给出安装命令；登录后为今日新增、热门讨论、即将举行的活动与新上架文档（演示数据）。</div>
+      </div>
     </div></div>
-  <div class="bar">启示：判断内部平台是否成熟，标准是"新增第七个板块时账号、通知、评论、权限是否需要重写"—— <em>本系统的答案是否</em>。</div>
+  <div class="bar">启示：这一层决定新增板块的接入成本 —— <em>加第七个板块时，账号、通知、评论、检索、权限均无需重建</em>。</div>
   <div class="ft"><div>AI Community · 平台底座</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
 </section>
-
 <section class="slide">
   <div class="hdr"><div class="tabs"><div class="tab on">能力现状</div><div class="tab">发展路径</div><div class="tab">建设规划</div><div class="tab">投入与效果</div></div><div class="corner"><b>CARI</b> · AI Community</div></div>
-  <div class="h1 s">【能力现状】身份、权限与隐私：五道闸门的纵深防御</div>
-  <div class="sub">实名社区中，此层的每一项设计都直接对应信息安全评审要求</div>
+  <div class="h1 s">【能力现状】账号、权限与隐私：实名之上的分寸感</div>
+  <div class="sub">实名让协作更高效，也要求平台对"谁能看到什么"给出明确边界</div>
   <div class="rule"></div>
   <div class="body col">
-    <div class="shield" style="flex:none;height:238px">
-      <div class="lay"><div class="no">1</div><div class="tx"><b>接入闸：双通道登录</b> —— W3 单点登录与邮箱密码并存，同一人两种方式登录自动合并为同一账号。子路径部署下对回调链路做双向修补（出站补前缀、入站还原前缀、客户端固定同一变量），四处任缺其一即无法登录。</div></div>
-      <div class="lay"><div class="no">2</div><div class="tx"><b>页面闸：服务端布局校验</b> —— 管理后台的鉴权刻意<b>不放在边缘中间件</b>：在反向代理加子路径的组合下中间件读不到安全会话凭据，会把已登录管理员误判为未登录。</div></div>
-      <div class="lay"><div class="no">3</div><div class="tx"><b>接口闸：逐路由独立校验</b> —— 20 个管理接口各自再次校验管理员身份；全部 151 个接口中 74 个含权限判断。页面闸不被视为安全边界。</div></div>
-      <div class="lay"><div class="no">4</div><div class="tx"><b>查询闸：可见性写入查询</b> —— 三档可见性（公开 / 受限申请制 / 私有）在查询阶段生效，私有内容对外返回 404，不暴露存在性；个人主页六个板块的可见性开关，关闭后对非本人<b>根本不发起查询</b>。</div></div>
-      <div class="lay"><div class="no">5</div><div class="tx"><b>输出闸：统一身份裁剪</b> —— 每个服务端边界必须经过统一裁剪函数，返回全新对象，多查询出的字段不会外泄；<span class="r">98 处调用、39 个文件一致执行</span>，并由单元测试锁定输出字段集合。</div></div>
+    <div class="row" style="flex:none;height:198px;gap:12px">
+      <div class="mod" style="flex:1"><h3>登录与身份 <span>成员侧</span></h3><div class="in"><ul class="b sm">
+        <li><b>W3 一键登录：</b>跳转 UniPortal 后即为注册用户，无需填表；此前用邮箱注册过的人会<b>自动合并为同一账号</b>，不会变成两个人。</li>
+        <li><b>部门自动挂载：</b>登录时按工号匹配员工名单，名字旁自动出现「XX 部 · XX 所」标签，本人无需填写也无法自行修改。</li>
+        <li><b>两种登录方式并存：</b>公网部署为邮箱密码，内网增加 W3 通道。</li>
+      </ul></div></div>
+      <div class="mod b" style="flex:1"><h3>隐私控制 <span>成员自己决定</span></h3><div class="in"><ul class="b bl sm">
+        <li><b>隐私账号开关：</b>开启后，其他成员看到的只有昵称与头像，部门、研究所与工号均不显示。</li>
+        <li><b>个人主页分板块开关：</b>Skill、知识库、动态、评论、书架、活动六个板块各自可隐藏，隐藏后他人<b>连数据都取不到</b>；本人仍可见，标注"仅自己可见"。</li>
+        <li><b>内容三档可见性：</b>公开、受限（可被搜到、下载需批准）、私有（对他人不可见）。</li>
+      </ul></div></div>
     </div>
-    <div class="row" style="flex:1;margin-top:11px;gap:10px">
-      <div class="mod" style="flex:1"><h3>组织身份的可信来源 <span>员工名单同步</span></h3><div class="in sp"><ul class="b sm">
-        <li>部门与研究所信息由员工名单<b>按工号严格匹配</b>同步，用户不可自行填写或修改。</li>
-        <li><span class="r">不按用户名匹配</span> —— 公网版为开放注册，用户名源自未经验证的邮箱前缀，按其匹配等于开放身份冒领并可反查花名册。</li>
-        <li>工号入库统一转小写，规避数据库大小写敏感导致的重复行绕过唯一约束。</li>
+    <div class="row" style="flex:1;margin-top:12px">
+      <div class="mod" style="flex:1.15"><h3>管理后台 <span>13 个板块 / 17 个页面</span></h3><div class="in"><ul class="b sm">
+        <li><b>用户管理：</b>管理员、允许发布、允许 Remix、允许使用命令行、每日下载上限，逐项开关即时生效。</li>
+        <li><b>员工名单：</b>支持粘贴文本 / CSV / XLSX 三种导入，逐行显示失败原因，单次上限 2 万行；可一键同步部门信息到账号。</li>
+        <li><b>内容管理：</b>Skill、视频、短视频、知识库、讨论、投票、活动、公告、分类各有管理入口。</li>
+        <li><b>操作日志：</b>37 种管理动作全部留痕，可按动作、对象、管理员检索。</li>
+        <li><b>自助诊断：</b>网络出口、邮件、模型连通性三项即时检测。</li>
       </ul></div></div>
-      <div class="mod d" style="flex:1"><h3>可追溯与可运营 <span>管理后台</span></h3><div class="in sp"><ul class="b sm">
-        <li>13 个管理板块、17 个页面；用户权限开关即时生效（发布、Remix、命令行、下载上限）。</li>
-        <li>员工名单支持粘贴 / CSV / XLSX 三种导入，逐行显示失败原因，单次上限 2 万行。</li>
-        <li><b>37 种管理动作写入操作日志</b>（44 处调用），可按动作、对象、管理员检索。</li>
-      </ul></div></div>
+      <div class="col" style="flex:1">
+        <div class="ph" style="flex:1"><div class="big">此处放：管理后台截图</div><div class="sm2">建议截「用户管理」或「员工名单导入」页面</div></div>
+        <div class="note" style="flex:none;font-size:12.5px">隐私不是前端隐藏，而是<b>服务端裁剪</b>：隐私账号的部门信息在服务端就被移除，数据不会发送到浏览器。员工名单<b>只按工号匹配</b>，不按用户名 —— 公网为开放注册，按用户名匹配等同于开放身份冒领。</div>
+      </div>
     </div></div>
-  <div class="bar">启示：隐私能力的实质不在开关数量，而在<em>数据是否离开过服务器</em>；本系统采用服务端裁剪而非前端隐藏，可直接支撑安全评审。</div>
-  <div class="ft"><div>AI Community · 身份与权限</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
+  <div class="bar">启示：实名社区的信任来自边界清晰 —— <em>该露的自动露（部门、产出），不想露的能彻底关掉（隐私开关）</em>。</div>
+  <div class="ft"><div>AI Community · 账号与权限</div><img src="img/huawei-logo.png" alt="HUAWEI"></div>
 </section>
-
-
 <section class="slide">
   <div class="hdr"><div class="tabs"><div class="tab">能力现状</div><div class="tab on">发展路径</div><div class="tab">建设规划</div><div class="tab">投入与效果</div></div><div class="corner"><b>CARI</b> · AI Community</div></div>
   <div class="h1 s">【发展路径】当前瓶颈不在功能供给，而在参与转化</div>

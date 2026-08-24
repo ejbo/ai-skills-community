@@ -3,6 +3,7 @@ import { Star } from 'lucide-react';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { relativeTime } from '@/lib/i18n-date';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { prisma } from '@/lib/db';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { Avatar } from '@/components/Avatar';
@@ -40,7 +41,7 @@ export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: str
   const maxBar = Math.max(1, ...distribution.map((d) => d.count));
 
   const canReview = !!session?.user && session.user.id !== skill.authorId;
-  const viewerIsAdmin = session?.user?.isAdmin ?? false;
+  const viewerCanSeeIdentity = can(session?.user, 'identity');
 
   return (
     <div className="space-y-6">
@@ -110,7 +111,7 @@ export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: str
           <ul className="space-y-3">
             {reviews.map((r) => {
               // 隐私账号：trim per reviewer before rendering.
-              const author = toPublicAuthor(r.author, viewerIsAdmin);
+              const author = toPublicAuthor(r.author, viewerCanSeeIdentity);
               return (
               <li key={r.id} className="surface rounded-xl p-4">
                 <div className="flex items-center justify-between">

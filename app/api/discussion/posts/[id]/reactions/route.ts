@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { AUTHOR_IDENTITY_FIELDS, toPublicAuthor } from '@/lib/user-identity';
 
 export const dynamic = 'force-dynamic';
@@ -46,7 +47,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     prisma.postLike.count({ where }),
   ]);
 
-  const adm = session.user.isAdmin;
+  const canSeeIdentity = can(session.user, 'identity');
   return NextResponse.json({
     total,
     counts: grouped
@@ -55,7 +56,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     users: rows.map((r) => ({
       reaction: r.reaction,
       createdAt: r.createdAt,
-      author: toPublicAuthor(r.user, adm),
+      author: toPublicAuthor(r.user, canSeeIdentity),
     })),
     hasMore: skip + rows.length < total,
   });

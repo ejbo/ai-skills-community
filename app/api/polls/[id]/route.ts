@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { prisma } from '@/lib/db';
 import { rateLimit } from '@/lib/rate-limit';
 import { getPollDto, viewerFromSession } from '@/lib/poll-queries';
@@ -60,7 +61,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     select: { id: true, creatorId: true, closedAt: true, voterCount: true },
   });
   if (!poll) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  if (poll.creatorId !== session.user.id && !session.user.isAdmin) {
+  if (poll.creatorId !== session.user.id && !can(session.user, 'polls')) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 

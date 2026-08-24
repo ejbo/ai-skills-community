@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { apiReason } from '@/lib/api-errors';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { logAdmin } from '@/lib/audit';
 import {
   deleteUnreferencedMediaFiles,
@@ -74,7 +75,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
   const moderates = pinned !== undefined || locked !== undefined;
-  if (moderates && !session.user.isAdmin) {
+  if (moderates && !can(session.user, 'discussion')) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -155,7 +156,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   if (!before) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   const isAuthor = before.authorId === session.user.id;
-  if (!isAuthor && !session.user.isAdmin) {
+  if (!isAuthor && !can(session.user, 'discussion')) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 

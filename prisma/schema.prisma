@@ -47,6 +47,11 @@ model User {
   showProfileComments Boolean    @default(true)
   showProfileShelf    Boolean    @default(true)
   showProfileEvents   Boolean    @default(true)
+  // 角色（lib/permissions.ts + lib/roles.ts）：null ⇒ 普通成员。指派/配置仅超级管理员可操作。
+  roleId              String?
+  // DERIVED CACHE — "staff" (the role grants ≥1 permission, or is super_admin).
+  // Kept so coarse checks (管理后台 entry link, badges, indexes) stay cheap.
+  // ONLY lib/roles.ts writes it; never toggle it directly — change the role.
   isAdmin             Boolean    @default(false)
   isActive            Boolean    @default(true)
   canPublishSkills    Boolean    @default(true)
@@ -60,6 +65,9 @@ model User {
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
 
+  // Restrict (not SetNull): a vanished role must never turn a holder into a role-less
+  // isAdmin row, which roleForUserRow treats as a legacy super admin.
+  role            Role?                @relation(fields: [roleId], references: [id], onDelete: Restrict)
   skills          Skill[]              @relation("AuthoredSkills")
   reviews         Review[]
   favorites       Favorite[]
@@ -136,6 +144,7 @@ model User {
   @@index([handle])
   @@index([email])
   @@index([isAdmin])
+  @@index([roleId])
   @@index([lastLoginAt])
 }
 
@@ -192,6 +201,29 @@ model AdminLog {
   @@index([adminUserId, createdAt])
   @@index([action, createdAt])
   @@index([targetType, targetId])
+}
+
+// ─── 角色与权限 ───────────────────────────────────────────────────────────
+// A role is a named set of permission KEYS from the code catalog
+// (lib/permissions.ts). Three system rows are seeded by the migration and
+// re-ensured by lib/roles.ts#ensureSystemRoles: super_admin (['*'], locked),
+// admin (every catalog key, editable), member ([], locked). Custom roles are
+// created in 管理后台 → 角色与权限 by a super admin.
+
+model Role {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  name        String
+  description String?
+  isSystem    Boolean  @default(false)
+  permissions String[] @default([])
+  sortOrder   Int      @default(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users User[]
+
+  @@index([sortOrder])
 }
 
 // ─── Taxonomy ────────────────────────────────────────────────────────────
@@ -758,22 +790,22 @@ model Video {
   externalUrl String? // external_embed only (phase-2)
 
   // Status / classification
-  status      VideoStatus     @default(draft)
-  visibility  VideoVisibility @default(public)
-  sourceType  VideoSourceType @default(admin_curated)
+  status       VideoStatus     @default(draft)
+  visibility   VideoVisibility @default(public)
+  sourceType   VideoSourceType @default(admin_curated)
   // 随刷短视频: member-uploaded vertical shorts live in the same table but are
   // excluded from every long-video surface (rails/browse) and vice versa.
-  isShort     Boolean         @default(false)
+  isShort      Boolean         @default(false)
   // 内容来源 (shorts): 搬运 requires the original link + author, shown in 详情.
   originType   VideoOriginType @default(original)
   sourceUrl    String?
   sourceAuthor String?
-  uploaderId  String
-  categoryId  String?
-  language    String?
-  featured    Boolean         @default(false)
-  featuredAt  DateTime?
-  publishedAt DateTime?
+  uploaderId   String
+  categoryId   String?
+  language     String?
+  featured     Boolean         @default(false)
+  featuredAt   DateTime?
+  publishedAt  DateTime?
 
   // Interviewee ("AI 极客访谈"), all optional
   intervieweeName      String?
@@ -1337,6 +1369,15 @@ model LibraryDoc {
   // Bilingual by contract (lib/library/i18n-content.ts): `aiOverview` is the
   // 中文 version, `aiOverviewEn` the English one. The viewer's `locale` cookie
   // picks which is rendered; en/fr fall back to English, then to 中文.
+  // 译文 — direction is fixed: a doc is translated INTO the other language
+  // (中文 doc → English, anything else → 中文). `translationState` covers the
+  // whole-document pass; per-passage translations live in LibraryTranslation
+  // and are filled by BOTH that pass and on-demand selection translation.
+  translationLang  String? // 'zh' | 'en' — what chapters were translated INTO
+  translationState String    @default("none") // none | running | ready | partial | failed
+  translationError String?
+  translatedAt     DateTime?
+
   aiOverview     Json? // { summary: string, outline: string[], keyPoints: string[], questions: string[] }
   aiOverviewEn   Json? // same shape, English — produced by the indexer's translate pass
   aiModel        String?
@@ -1360,6 +1401,7 @@ model LibraryDoc {
   highlights     LibraryHighlight[]
   views          LibraryView[]
   chatMessages   LibraryChatMessage[]
+  translations   LibraryTranslation[]
   comments       LibraryComment[]
   ratings        LibraryRating[]
   accessRequests LibraryAccessRequest[]
@@ -1375,23 +1417,46 @@ model LibraryDoc {
 }
 
 model LibraryChapter {
-  id           String   @id @default(cuid())
-  docId        String
-  chapterIndex Int
-  title        String?
-  html         String // sanitized reading HTML (sanitized at ingest; rendered with dangerouslySetInnerHTML)
-  charCount    Int      @default(0)
+  id             String   @id @default(cuid())
+  docId          String
+  chapterIndex   Int
+  title          String?
+  html           String // sanitized reading HTML (sanitized at ingest; rendered with dangerouslySetInnerHTML)
+  charCount      Int      @default(0)
   // PDF page span (0-based, inclusive) — the 原版 pdf.js view maps highlights
   // and TOC jumps between pages and chapters through these. Null for non-PDF.
-  pageStart    Int?
-  pageEnd      Int?
-  aiSummary    String? // <=120 chars retrieval index entry; null = not yet summarized (checkpoint)
-  aiSummaryEn  String? // English rendering of aiSummary (TOC display only — retrieval always uses aiSummary)
-  aiKeywords   String[] @default([])
+  pageStart      Int?
+  pageEnd        Int?
+  // Whole-chapter 译文: the same sanitized structure with each block's TEXT
+  // replaced by its translation (built from the LibraryTranslation cache).
+  translatedHtml String?
+  aiSummary      String? // <=120 chars retrieval index entry; null = not yet summarized (checkpoint)
+  aiSummaryEn    String? // English rendering of aiSummary (TOC display only — retrieval always uses aiSummary)
+  aiKeywords     String[] @default([])
 
   doc LibraryDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
 
   @@unique([docId, chapterIndex])
+}
+
+/// Shared translation cache — the reason a passage is only ever paid for once.
+/// Keyed by a hash of the NORMALIZED source text plus the target language, so
+/// a selection someone already translated is instant for every later reader,
+/// and the whole-document pass fills exactly the rows selection-translate
+/// reads from.
+model LibraryTranslation {
+  id         String   @id @default(cuid())
+  docId      String
+  targetLang String // 'zh' | 'en'
+  sourceHash String // sha256 of the whitespace-normalized source
+  sourceText String // kept so the cache can be audited / rebuilt
+  text       String
+  createdAt  DateTime @default(now())
+
+  doc LibraryDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  @@unique([docId, targetLang, sourceHash])
+  @@index([docId, targetLang])
 }
 
 model LibraryChunk {
@@ -1537,19 +1602,19 @@ model LibraryRating {
 // Admin-configured LLM override for 知识库 AI (indexing / chat). Single row
 // (id 'default'); null fields fall back to the env-configured provider.
 model LibrarySetting {
-  id          String   @id @default("default")
-  llmProvider String? // 'anthropic' | 'openai'
-  llmBaseUrl  String?
-  llmApiKey   String?
-  llmModel    String?
+  id                 String   @id @default("default")
+  llmProvider        String? // 'anthropic' | 'openai'
+  llmBaseUrl         String?
+  llmApiKey          String?
+  llmModel           String?
   // Wire flags for a SELF-HOSTED OpenAI-compatible server (vLLM/SGLang) only.
   // vLLM accepts and ignores unknown request fields; api.openai.com hard-400s
   // them, so they are opt-in per deployment and never sent to Anthropic.
   // disableThinking sends chat_template_kwargs.enable_thinking=false, which is
   // the root-cause fix for a reasoning model burning its budget inside <think>.
-  llmDisableThinking Boolean @default(false)
-  llmJsonMode        Boolean @default(false)
-  updatedAt   DateTime @updatedAt
+  llmDisableThinking Boolean  @default(false)
+  llmJsonMode        Boolean  @default(false)
+  updatedAt          DateTime @updatedAt
 }
 
 // Per-user "问问这篇文档" conversation history — the reader chat panel loads
@@ -1826,6 +1891,11 @@ enum VoteSubmissionMedia {
   both
 }
 
+enum VotePosterAspect {
+  landscape // 横版 4:3（默认，网格卡片）
+  portrait // 竖版 3:4（竖屏视频的卡片版式）
+}
+
 enum VoteFormField {
   required // 必填
   optional // 选填
@@ -1839,29 +1909,29 @@ enum VoteEntryOrder {
 }
 
 model VoteActivity {
-  id            String             @id @default(cuid())
-  creatorId     String
-  title         String
-  descriptionMd String             @default("")
+  id                    String              @id @default(cuid())
+  creatorId             String
+  title                 String
+  descriptionMd         String              @default("")
   // 滚动公告条文案（组织者随时改，空 = 不显示）。
-  announcement  String             @default("")
-  coverUrl      String? // root-relative; withBasePath at render. null ⇒ first entry thumb
-  status        VoteActivityStatus @default(draft)
-  publishedAt   DateTime?
-  startAt       DateTime? // 定时开始；null = 发布即开始
-  endAt         DateTime? // 截止 UTC instant；null = 手动结束
-  closedAt      DateTime? // 提前结束
-  votesPerUser  Int                @default(10)
-  budgetPeriod  VoteBudgetPeriod   @default(total)
-  maxPerEntry   Int                @default(1) // 单作品上限（daily 时按天）
-  allowRevoke   Boolean            @default(true) // 截止前允许撤票改投
-  resultsMode   VoteResultsMode    @default(after_end)
-  showTitles    Boolean            @default(true) // 显示作品名称（关 = 只显示编号）
-  showAuthors   Boolean            @default(false) // 显示作者；关 = 匿名评选，结束后公示
-  entryOrder    VoteEntryOrder     @default(random)
+  announcement          String              @default("")
+  coverUrl              String? // root-relative; withBasePath at render. null ⇒ first entry thumb
+  status                VoteActivityStatus  @default(draft)
+  publishedAt           DateTime?
+  startAt               DateTime? // 定时开始；null = 发布即开始
+  endAt                 DateTime? // 截止 UTC instant；null = 手动结束
+  closedAt              DateTime? // 提前结束
+  votesPerUser          Int                 @default(10)
+  budgetPeriod          VoteBudgetPeriod    @default(total)
+  maxPerEntry           Int                 @default(1) // 单作品上限（daily 时按天）
+  allowRevoke           Boolean             @default(true) // 截止前允许撤票改投
+  resultsMode           VoteResultsMode     @default(after_end)
+  showTitles            Boolean             @default(true) // 显示作品名称（关 = 只显示编号）
+  showAuthors           Boolean             @default(false) // 显示作者；关 = 匿名评选，结束后公示
+  entryOrder            VoteEntryOrder      @default(random)
   // 文件名解析规则（lib/votes/shared.ts VoteNameRule）：前缀剥离 + 分隔符切段
   // → 作品名/作者/工号。上传时应用；重新应用跳过手工改过的行。
-  nameRule      Json?
+  nameRule              Json?
   // ── 成员自主投稿（报名+审核 flow）──
   // 投稿窗口 = published 且未结束；startAt 只挡投票不挡投稿，所以“先发布晚开投”
   // 天然构成 征集期 → 投票期 两阶段。
@@ -1881,14 +1951,14 @@ model VoteActivity {
   submissionNote        String              @default("") // 投稿须知（弹窗顶部展示）
   // 允许成员对作品评论（灯箱评论 tab；发起人可关）。
   allowComments         Boolean             @default(true)
-  featured      Boolean            @default(false) // admin 精选（hub 顶部推荐位）
-  featuredAt    DateTime?
-  entryCount    Int                @default(0) // 非隐藏作品数（entry 增删/隐藏时重算）
-  voteCount     Int                @default(0) // 总票数（vote tx 内重算）
-  voterCount    Int                @default(0) // 参与人数 distinct voters（vote tx 内重算）
-  deletedAt     DateTime?
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
+  featured              Boolean             @default(false) // admin 精选（hub 顶部推荐位）
+  featuredAt            DateTime?
+  entryCount            Int                 @default(0) // 非隐藏作品数（entry 增删/隐藏时重算）
+  voteCount             Int                 @default(0) // 总票数（vote tx 内重算）
+  voterCount            Int                 @default(0) // 参与人数 distinct voters（vote tx 内重算）
+  deletedAt             DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
 
   creator  User          @relation("CreatedVoteActivities", fields: [creatorId], references: [id], onDelete: Cascade)
   entries  VoteEntry[]
@@ -1902,41 +1972,45 @@ model VoteActivity {
 }
 
 model VoteEntry {
-  id           String        @id @default(cuid())
+  id           String          @id @default(cuid())
   activityId   String
   entryNo      Int // 编号 1..N，上传时分配；展示与搜索用（“搜 42 号投我”）
   kind         VoteEntryKind
   // Unique: the DB backstops racing publishes double-claiming one uploaded
   // file (Postgres unique ignores NULLs, so absent posters never conflict).
-  fileKey      String  @unique // "image/<nanoid>.jpg" | "video/<nanoid>.mp4" under vote-media/
+  fileKey      String          @unique // "image/<nanoid>.jpg" | "video/<nanoid>.mp4" under vote-media/
   fileUrl      String // root-relative /api/votes/media/<key>
-  posterKey    String? @unique // 视频封面（客户端抓帧上传，best-effort）
+  posterKey    String?         @unique // 视频封面（客户端抓帧上传，best-effort；可换自定义图）
   posterUrl    String?
-  originalName String        @default("") // 原始文件名 — 解析规则的输入，创建者可见
-  title        String        @default("") // 解析/手工填写的作品名
+  // 封面裁切（CoverEditor 家法）：aspect 决定网格卡片版式；pos '' = 居中裁切、
+  // 'contain' = 完整显示（模糊铺底）、'50% 30%' = object-position 选区。
+  posterAspect VotePosterAspect @default(landscape)
+  posterPos    String           @default("")
+  originalName String          @default("") // 原始文件名 — 解析规则的输入，创建者可见
+  title        String          @default("") // 解析/手工填写的作品名
   // 作品描述（成员投稿填写；灯箱详情面板展示，导出含此列）。
-  description  String        @default("")
+  description  String          @default("")
   // 自定义表单答案 {fieldId: answer}，字段定义在 activity.submissionFields。
   formData     Json?
-  authorName   String        @default("") // 解析出的作者
-  authorNo     String        @default("") // 解析出的工号（存小写，员工名单契约）
-  titleEdited  Boolean       @default(false) // 手工改过 — 重新应用规则时跳过
-  mimeType     String        @default("")
-  sizeBytes    Int           @default(0) // int32 clamp（同 Video）
-  durationSec  Int           @default(0)
-  hidden       Boolean       @default(false) // 停用/下架：前台隐藏，票数保留
+  authorName   String          @default("") // 解析出的作者
+  authorNo     String          @default("") // 解析出的工号（存小写，员工名单契约）
+  titleEdited  Boolean         @default(false) // 手工改过 — 重新应用规则时跳过
+  mimeType     String          @default("")
+  sizeBytes    Int             @default(0) // int32 clamp（同 Video）
+  durationSec  Int             @default(0)
+  hidden       Boolean         @default(false) // 停用/下架：前台隐藏，票数保留
   // 成员投稿：submitterId 记录投稿人（发起人代传为 null）；status 走审核流。
   // 画廊/榜单/计数一律只含 status=approved（服务端裁剪，同票数可见性契约）。
   submitterId  String?
   status       VoteEntryStatus @default(approved)
-  reviewNote   String        @default("") // 驳回理由，仅投稿者可见
-  voteCount    Int           @default(0) // vote tx 内从 VoteBallot 重算
-  commentCount Int           @default(0) // guarded array tx（like-route pattern）
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  reviewNote   String          @default("") // 驳回理由，仅投稿者可见
+  voteCount    Int             @default(0) // vote tx 内从 VoteBallot 重算
+  commentCount Int             @default(0) // guarded array tx（like-route pattern）
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 
-  activity  VoteActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  submitter User?        @relation("VoteSubmissions", fields: [submitterId], references: [id], onDelete: SetNull)
+  activity  VoteActivity  @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  submitter User?         @relation("VoteSubmissions", fields: [submitterId], references: [id], onDelete: SetNull)
   ballots   VoteBallot[]
   comments  VoteComment[]
 

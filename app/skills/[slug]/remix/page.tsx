@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { prisma } from '@/lib/db';
 import { canAccessSkillContent } from '@/lib/access';
 import { RemixEditor } from './RemixEditor';
@@ -22,9 +23,9 @@ export default async function RemixPage({ params }: { params: { slug: string } }
 
   // You can only remix content you can actually read — otherwise this server
   // component would hand a restricted skill's gated body to the client.
-  const actor = { id: session.user.id, isAdmin: session.user.isAdmin };
+  const actor = { id: session.user.id, roleKey: session.user.roleKey, permissions: session.user.permissions };
   let grantStatus: string | null = null;
-  if (skill.visibility === 'restricted' && actor.id !== skill.authorId && !actor.isAdmin) {
+  if (skill.visibility === 'restricted' && actor.id !== skill.authorId && !can(actor, 'skills')) {
     const g = await prisma.skillAccessRequest.findUnique({
       where: { skillId_userId: { skillId: skill.id, userId: actor.id } },
       select: { status: true },

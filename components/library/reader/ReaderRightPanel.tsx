@@ -25,7 +25,7 @@ export function ReaderRightPanel(props: {
   tab: RightTab;
   onTabChange: (tab: RightTab) => void;
   onClose: () => void;
-  currentUser: { id: string; handle: string; isAdmin: boolean } | null;
+  currentUser: { id: string; handle: string; canModerate: boolean } | null;
   // shared
   docId: string;
   // assistant

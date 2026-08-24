@@ -5,8 +5,21 @@
 // prev/next lightbox. Results/authors arrive ALREADY gated by the server
 // (voteCount/title/author are null when hidden for this viewer) — this
 // component only renders what it was given, never hides client-side.
+//
+// Voting is 先选后提交: a click on a card only edits a LOCAL draft (instant,
+// no network), the sticky toolbar shows the draft-adjusted budget and a single
+// 提交投票 button ships every change in ONE request (POST .../ballots). The
+// draft lives in sessionStorage per tab so a reload never loses a selection.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -24,7 +37,9 @@ import {
   Plus,
   LayoutGrid,
   ListOrdered,
+  RotateCcw,
   Search,
+  Send,
   Trophy,
   Upload,
   X,
@@ -36,14 +51,50 @@ import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { pushToast } from '@/components/Toaster';
 import { withBasePath } from '@/lib/base-path';
 import { copyText } from '@/lib/clipboard';
+import { holdNavBarHidden } from '@/lib/nav-chrome';
 import type { VoteActivityView, VoteEntryView } from '@/lib/vote-queries';
+import {
+  MAX_BALLOT_CHANGES,
+  reconcileDraft,
+  stepDraftCount,
+  type BallotChange,
+  type BallotDraft,
+  type BallotRules,
+} from '@/lib/votes/shared';
 import { Countdown } from './Countdown';
 import { EntryComments } from './EntryComments';
 import { SubmitDialog } from './SubmitDialog';
 
 type SortMode = 'default' | 'no' | 'votes';
 const GRID_PAGE = 48;
+const DRAFT_STORAGE_PREFIX = 'votes:draft:';
+// NavBarShell = 12px top padding + 56px bar; hold it hidden a little early.
+const NAVBAR_BAND_PX = 80;
 type Translate = ReturnType<typeof useTranslations>;
+
+/** Draft = desired count per entry, ONLY where it differs from the server's myVotes. */
+type Draft = BallotDraft;
+
+const ERROR_TOAST: Record<string, string> = {
+  budget_exhausted: 'toast_budget_exhausted',
+  entry_cap: 'toast_entry_cap',
+  vote_closed: 'toast_vote_closed',
+  revoke_forbidden: 'toast_revoke_forbidden',
+  rate_limited: 'toast_rate_limited',
+  entry_unavailable: 'toast_entry_unavailable',
+  budget_reset: 'toast_budget_reset',
+  huawei_required: 'toast_huawei_required',
+};
+// Server answers that mean the client's picture is stale — re-read before retrying.
+const STALE_ERRORS = new Set([
+  'vote_closed',
+  'budget_exhausted',
+  'entry_cap',
+  'revoke_forbidden',
+  'entry_unavailable',
+  'budget_reset',
+  'not_found',
+]);
 
 function fmtDuration(sec: number): string {
   if (!sec || sec <= 0) return '';
@@ -56,6 +107,65 @@ function entryTitle(entry: VoteEntryView, t: Translate): string {
   return entry.title || t('untitled_entry', { no: entry.entryNo });
 }
 
+function rulesOf(view: VoteActivityView): BallotRules {
+  return { votesPerUser: view.votesPerUser, maxPerEntry: view.maxPerEntry, allowRevoke: view.allowRevoke };
+}
+
+interface DraftBudget {
+  changes: BallotChange[];
+  adds: number;
+  removes: number;
+  used: number;
+  remaining: number;
+  /** Votes above votesPerUser (only possible after the creator lowered it) — adds are refused, revokes still go through. */
+  over: number;
+}
+
+/** Budget after the draft applies. Overrides for entries no longer shown are ignored. */
+function draftBudget(view: VoteActivityView, draft: Draft, entryById: ReadonlyMap<string, VoteEntryView>): DraftBudget {
+  let delta = 0;
+  let adds = 0;
+  let removes = 0;
+  const changes: BallotChange[] = [];
+  for (const id in draft) {
+    const entry = entryById.get(id);
+    const count = draft[id];
+    if (!entry || count === entry.myVotes) continue;
+    const d = count - entry.myVotes;
+    delta += d;
+    if (d > 0) adds += d;
+    else removes -= d;
+    changes.push({ entryId: id, count });
+  }
+  const used = view.viewer.budgetUsed + delta;
+  return {
+    changes,
+    adds,
+    removes,
+    used,
+    remaining: Math.max(0, view.votesPerUser - used),
+    over: Math.max(0, used - view.votesPerUser),
+  };
+}
+
+/** Keep the previous entry object when nothing changed so memoized cards skip re-rendering. */
+function sameEntry(a: VoteEntryView, b: VoteEntryView): boolean {
+  for (const key of Object.keys(b) as (keyof VoteEntryView)[]) {
+    if (key === 'customAnswers') continue;
+    if (a[key] !== b[key]) return false;
+  }
+  return JSON.stringify(a.customAnswers) === JSON.stringify(b.customAnswers);
+}
+
+function mergeView(prev: VoteActivityView, next: VoteActivityView): VoteActivityView {
+  const prevById = new Map(prev.entries.map((e) => [e.id, e]));
+  const entries = next.entries.map((e) => {
+    const old = prevById.get(e.id);
+    return old && sameEntry(old, e) ? old : e;
+  });
+  return { ...next, entries };
+}
+
 const RANK_STYLES: Record<number, string> = {
   1: 'bg-amber-400 text-zinc-900',
   2: 'bg-zinc-300 text-zinc-900',
@@ -65,98 +175,169 @@ const RANK_STYLES: Record<number, string> = {
 // Module-level leaves — defining these inside VoteGallery would mint a new
 // component type per render and remount their subtrees on every state change.
 
+/** 卡片版式 class（横版 4:3 / 竖版 3:4 — posterAspect 决定）。 */
+function aspectClass(entry: VoteEntryView): string {
+  return entry.posterAspect === 'portrait' ? 'aspect-[3/4]' : 'aspect-[4/3]';
+}
+
 function EntryMedia({ entry, alt, eager = false }: { entry: VoteEntryView; alt: string; eager?: boolean }) {
   const thumb = entry.kind === 'video' ? entry.posterUrl : entry.fileUrl;
-  if (thumb) {
+  if (!thumb) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={withBasePath(thumb)}
-        alt={alt}
-        loading={eager ? 'eager' : 'lazy'}
-        className="h-full w-full object-cover"
-      />
+      <div className="flex h-full w-full items-center justify-center bg-zinc-200 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-600">
+        <Play className="h-8 w-8" />
+      </div>
+    );
+  }
+  // posterPos 三态：'contain' = 完整显示（模糊铺底）；'x% y%' = 选区；'' = 居中。
+  if (entry.posterPos === 'contain') {
+    return (
+      <div className="relative h-full w-full">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={withBasePath(thumb)}
+          alt=""
+          aria-hidden
+          loading={eager ? 'eager' : 'lazy'}
+          decoding="async"
+          className="absolute inset-0 h-full w-full scale-110 object-cover opacity-60 blur-md"
+        />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={withBasePath(thumb)}
+          alt={alt}
+          loading={eager ? 'eager' : 'lazy'}
+          decoding="async"
+          className="relative h-full w-full object-contain"
+        />
+      </div>
     );
   }
   return (
-    <div className="flex h-full w-full items-center justify-center bg-zinc-200 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-600">
-      <Play className="h-8 w-8" />
-    </div>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={withBasePath(thumb)}
+      alt={alt}
+      loading={eager ? 'eager' : 'lazy'}
+      decoding="async"
+      className="h-full w-full object-cover"
+      style={{ objectPosition: /^\d/.test(entry.posterPos) ? entry.posterPos : '50% 50%' }}
+    />
   );
 }
 
-interface VoteButtonProps {
-  entry: VoteEntryView;
+/**
+ * Everything a card needs from the activity that is NOT per-entry. Rebuilt only
+ * when one of these flags flips (not on every draft click), so memoized cards
+ * stay put while the user selects.
+ */
+interface CardCtx {
   open: boolean;
+  over: boolean;
   loggedIn: boolean;
   canVote: boolean;
+  resultsVisible: boolean;
+  titlesVisible: boolean;
+  authorsVisible: boolean;
   maxPerEntry: number;
   allowRevoke: boolean;
-  budgetRemaining: number;
-  busy: boolean;
-  pop: boolean;
-  size?: 'sm' | 'lg';
-  onVote: (entry: VoteEntryView, action: 'add' | 'remove') => void;
+  /** Draft-adjusted budget left > 0 — flips only when the budget runs out / frees up. */
+  budgetLeft: boolean;
+  submitting: boolean;
 }
 
-function VoteButton({
-  entry,
-  open,
-  loggedIn,
-  canVote,
-  maxPerEntry,
-  allowRevoke,
-  budgetRemaining,
-  busy,
-  pop,
-  size = 'sm',
-  onVote,
-}: VoteButtonProps) {
+type StepFn = (entryId: string, delta: 1 | -1) => void;
+
+interface VoteButtonProps {
+  entry: VoteEntryView;
+  draftCount: number;
+  ctx: CardCtx;
+  pop: boolean;
+  size?: 'sm' | 'lg';
+  onStep: StepFn;
+}
+
+// Three-level visual language: light outline = 投票 (not selected) → strong
+// black outline = 已选 (in the draft, not yet submitted) → solid black = 已投
+// (submitted). Pending 撤回 is a dashed outline with an undo affordance.
+const BTN_NONE =
+  'border border-zinc-300 bg-white/90 text-zinc-800 hover:border-zinc-500 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900/90 dark:text-zinc-100 dark:hover:border-zinc-400';
+const BTN_PENDING =
+  'border-2 border-zinc-900 bg-white text-zinc-900 hover:bg-zinc-100 dark:border-zinc-100 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:bg-zinc-900';
+const BTN_COMMITTED = 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900';
+
+function VoteButton({ entry, draftCount, ctx, pop, size = 'sm', onStep }: VoteButtonProps) {
   const t = useTranslations('votes');
-  const mine = entry.myVotes;
-  const canAdd = open && canVote && budgetRemaining > 0 && mine < maxPerEntry;
-  const canRemove = open && canVote && allowRevoke && mine > 0;
+  const committed = entry.myVotes;
+  const pending = draftCount !== committed;
+  const canAdd = ctx.open && ctx.canVote && ctx.budgetLeft && draftCount < ctx.maxPerEntry && !ctx.submitting;
+  // Taking back an unsubmitted vote is always allowed; going below the
+  // committed count is 撤票 and needs allowRevoke.
+  const canRemove =
+    ctx.open && ctx.canVote && draftCount > 0 && (draftCount > committed || ctx.allowRevoke) && !ctx.submitting;
   const base = size === 'lg' ? 'h-10 px-5 text-sm rounded-full' : 'h-8 px-3 text-xs rounded-full';
 
-  if (!open) {
+  if (!ctx.open) {
     // Ended / not started: state only, no action.
-    return mine > 0 ? (
-      <span
-        className={`inline-flex items-center gap-1 ${base} bg-zinc-900 font-medium text-white dark:bg-zinc-100 dark:text-zinc-900`}
-      >
+    return committed > 0 ? (
+      <span className={`inline-flex items-center gap-1 ${base} ${BTN_COMMITTED} font-medium`}>
         <Check className="h-3.5 w-3.5" />
-        {t('my_votes_n', { count: mine })}
+        {t('my_votes_n', { count: committed })}
       </span>
     ) : null;
   }
 
-  if (maxPerEntry > 1 && mine > 0) {
+  // 撤回待提交：the committed vote(s) are dropped in the draft — offer 恢复.
+  if (draftCount === 0 && committed > 0) {
+    return (
+      <button
+        type="button"
+        title={t('restore_vote')}
+        disabled={ctx.submitting}
+        onClick={(e) => {
+          e.stopPropagation();
+          onStep(entry.id, 1);
+        }}
+        className={`inline-flex items-center gap-1.5 ${base} border border-dashed border-zinc-400 text-zinc-500 transition hover:border-zinc-700 hover:text-zinc-800 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-400 dark:hover:border-zinc-300 dark:hover:text-zinc-100`}
+      >
+        <RotateCcw className="h-3.5 w-3.5" />
+        {t('revoke_pending')}
+      </button>
+    );
+  }
+
+  if (ctx.maxPerEntry > 1 && draftCount > 0) {
     return (
       <span
-        className={`inline-flex items-center gap-1 rounded-full bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 ${size === 'lg' ? 'h-10 px-2' : 'h-8 px-1.5'}`}
+        className={`inline-flex items-center gap-1 rounded-full transition ${pending ? BTN_PENDING : BTN_COMMITTED} ${
+          size === 'lg' ? 'h-10 px-2' : 'h-8 px-1.5'
+        }`}
+        title={pending ? t('selected_pending') : undefined}
       >
         <button
           type="button"
           aria-label={t('revoke')}
-          disabled={busy || !canRemove}
+          disabled={!canRemove}
           onClick={(e) => {
             e.stopPropagation();
-            onVote(entry, 'remove');
+            onStep(entry.id, -1);
           }}
-          className="flex h-6 w-6 items-center justify-center rounded-full transition hover:bg-white/20 disabled:opacity-40 dark:hover:bg-zinc-900/10"
+          className="flex h-6 w-6 items-center justify-center rounded-full transition hover:bg-black/10 disabled:opacity-40 dark:hover:bg-white/15"
         >
           <Minus className="h-3.5 w-3.5" />
         </button>
-        <span className={`tabular-nums text-xs font-semibold ${pop ? 'animate-pulse' : ''}`}>{mine}</span>
+        <span className={`min-w-[1ch] text-center text-xs font-semibold tabular-nums ${pop ? 'animate-pulse' : ''}`}>
+          {draftCount}
+        </span>
         <button
           type="button"
           aria-label={t('vote')}
-          disabled={busy || !canAdd}
+          disabled={!canAdd}
           onClick={(e) => {
             e.stopPropagation();
-            onVote(entry, 'add');
+            onStep(entry.id, 1);
           }}
-          className="flex h-6 w-6 items-center justify-center rounded-full transition hover:bg-white/20 disabled:opacity-40 dark:hover:bg-zinc-900/10"
+          className="flex h-6 w-6 items-center justify-center rounded-full transition hover:bg-black/10 disabled:opacity-40 dark:hover:bg-white/15"
         >
           <Plus className="h-3.5 w-3.5" />
         </button>
@@ -164,22 +345,22 @@ function VoteButton({
     );
   }
 
-  if (mine > 0) {
+  if (draftCount > 0) {
     return (
       <button
         type="button"
-        disabled={busy || !canRemove}
-        title={canRemove ? t('revoke') : undefined}
+        disabled={!canRemove}
+        title={canRemove ? (pending ? t('unselect') : t('revoke')) : t('rule_no_revoke')}
         onClick={(e) => {
           e.stopPropagation();
-          if (canRemove) onVote(entry, 'remove');
+          if (canRemove) onStep(entry.id, -1);
         }}
-        className={`inline-flex items-center gap-1.5 ${base} bg-zinc-900 font-medium text-white transition dark:bg-zinc-100 dark:text-zinc-900 ${
-          canRemove ? 'hover:bg-zinc-700 dark:hover:bg-zinc-300' : 'cursor-default'
-        } ${pop ? 'scale-110' : 'scale-100'} duration-200`}
+        className={`inline-flex items-center gap-1.5 ${base} font-medium transition duration-200 ${
+          pending ? BTN_PENDING : `${BTN_COMMITTED} ${canRemove ? 'hover:bg-zinc-700 dark:hover:bg-zinc-300' : 'cursor-default'}`
+        } ${pop ? 'scale-110' : 'scale-100'} disabled:opacity-100`}
       >
-        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-        {t('voted')}
+        <Check className="h-3.5 w-3.5" />
+        {pending ? t('selected') : t('voted')}
       </button>
     );
   }
@@ -187,33 +368,124 @@ function VoteButton({
   return (
     <button
       type="button"
-      // 匿名用户保持可点（/votes 有登录墙，纯防御）— 点击走 castVote 的登录跳转；
+      // 匿名用户保持可点（/votes 有登录墙，纯防御）— 点击走 step 的登录跳转；
       // 已登录但无 W3 才置灰并提示。
-      disabled={busy || (loggedIn && !canAdd)}
+      disabled={ctx.loggedIn && !canAdd}
       title={
-        loggedIn && !canVote
+        ctx.loggedIn && !ctx.canVote
           ? t('toast_huawei_required')
-          : loggedIn && !canAdd && budgetRemaining <= 0
+          : ctx.loggedIn && !canAdd && !ctx.budgetLeft
             ? t('toast_budget_exhausted')
             : undefined
       }
       onClick={(e) => {
         e.stopPropagation();
-        onVote(entry, 'add');
+        onStep(entry.id, 1);
       }}
-      className={`inline-flex items-center gap-1.5 ${base} border border-zinc-300 bg-white/90 font-medium text-zinc-800 backdrop-blur transition hover:border-zinc-500 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900/90 dark:text-zinc-100 dark:hover:border-zinc-400`}
+      className={`inline-flex items-center gap-1.5 ${base} ${BTN_NONE} font-medium transition`}
     >
-      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+      <Plus className="h-3.5 w-3.5" />
       {t('vote')}
     </button>
   );
 }
+
+interface EntryCardProps {
+  entry: VoteEntryView;
+  draftCount: number;
+  ctx: CardCtx;
+  pop: boolean;
+  onOpen: (entryId: string) => void;
+  onStep: StepFn;
+}
+
+// One grid cell. memo + stable callbacks: a draft click re-renders ONLY the
+// card it touched (and the toolbar), not the whole gallery.
+const EntryCard = memo(function EntryCard({ entry, draftCount, ctx, pop, onOpen, onStep }: EntryCardProps) {
+  const t = useTranslations('votes');
+  const pending = draftCount !== entry.myVotes;
+  return (
+    <div className="group cv-auto -m-1 p-1">
+      <button
+        type="button"
+        onClick={() => onOpen(entry.id)}
+        className="relative block w-full overflow-hidden rounded-xl bg-zinc-100 text-left dark:bg-zinc-900"
+      >
+        <div className={`relative ${aspectClass(entry)}`}>
+          <EntryMedia entry={entry} alt={entryTitle(entry, t)} />
+          {entry.kind === 'video' && (
+            <>
+              <span className="absolute inset-0 flex items-center justify-center">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition group-hover:scale-110">
+                  <Play className="h-4 w-4 translate-x-[1px]" />
+                </span>
+              </span>
+              {entry.durationSec > 0 && (
+                <span className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-white">
+                  {fmtDuration(entry.durationSec)}
+                </span>
+              )}
+            </>
+          )}
+          <span className="absolute left-2 top-2 flex items-center gap-1.5">
+            <span className="rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-white">
+              #{entry.entryNo}
+            </span>
+            {ctx.over && ctx.resultsVisible && (entry.rank ?? 99) <= 3 && (entry.voteCount ?? 0) > 0 && (
+              <span
+                className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${RANK_STYLES[entry.rank ?? 3]}`}
+              >
+                {entry.rank}
+              </span>
+            )}
+          </span>
+          {draftCount > 0 && (
+            <span
+              className={`absolute right-2 top-2 flex h-5 items-center gap-0.5 rounded-full px-1.5 text-[10px] font-semibold ${
+                pending
+                  ? 'border-2 border-zinc-900 bg-white text-zinc-900 dark:border-white dark:bg-zinc-900 dark:text-white'
+                  : 'bg-zinc-900/90 text-white dark:bg-white/90 dark:text-zinc-900'
+              }`}
+            >
+              <Check className="h-3 w-3" />
+              {draftCount > 1 ? draftCount : ''}
+            </span>
+          )}
+          {(ctx.titlesVisible || ctx.authorsVisible) && (
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2.5 pb-2 pt-8">
+              {ctx.titlesVisible && (
+                <span className="block truncate text-xs font-medium text-white">{entryTitle(entry, t)}</span>
+              )}
+              {entry.authorName && (
+                <span className="block truncate text-[10px] text-white/75">
+                  {entry.authorName}
+                  {entry.authorNo ? ` · ${entry.authorNo}` : ''}
+                </span>
+              )}
+            </span>
+          )}
+        </div>
+      </button>
+      <div className="mt-2 flex items-center justify-between gap-2 px-0.5">
+        <VoteButton entry={entry} draftCount={draftCount} ctx={ctx} pop={pop} onStep={onStep} />
+        {entry.voteCount !== null && (
+          <span className="shrink-0 text-xs font-medium tabular-nums text-muted">
+            {t('card_votes', { count: entry.voteCount })}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+});
 
 export function VoteGallery({ initial }: { initial: VoteActivityView }) {
   const t = useTranslations('votes');
   const router = useRouter();
   const [view, setView] = useState<VoteActivityView>(initial);
   const [q, setQ] = useState('');
+  // Filtering a few hundred cards is cheap, but keeping the input's own
+  // keystroke ahead of the grid re-render is what makes typing feel instant.
+  const deferredQ = useDeferredValue(q);
   const [sort, setSort] = useState<SortMode>('default');
   // Lightbox tracks the ENTRY ID, never a list index — re-sorts (own votes,
   // 30s poll refresh, search) must not silently swap the viewed entry.
@@ -222,20 +494,42 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [gridLimit, setGridLimit] = useState(GRID_PAGE);
   const [submitOpen, setSubmitOpen] = useState(false);
-  const [pending, setPending] = useState<Set<string>>(new Set());
+  const [draft, setDraft] = useState<Draft>({});
+  const [submitting, setSubmitting] = useState(false);
   const [popId, setPopId] = useState<string | null>(null);
+  const [stuck, setStuck] = useState(false);
   const viewRef = useRef(view);
   viewRef.current = view;
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const submittingRef = useRef(false);
+  // `step` is the one callback every memoized card receives — read the
+  // translator through a ref so its identity never depends on next-intl's.
+  const tRef = useRef(t);
+  tRef.current = t;
 
   const resultsVisible = view.resultsVisible;
 
+  const entryById = useMemo(() => new Map(view.entries.map((e) => [e.id, e])), [view.entries]);
+  const entryByIdRef = useRef(entryById);
+  entryByIdRef.current = entryById;
+
+  // ── draft budget (what the toolbar and every button key off) ──
+  const budget = useMemo(() => draftBudget(view, draft, entryById), [view, draft, entryById]);
+  const dirty = budget.changes.length > 0;
+
   // ── refresh (poll only for live-leaderboard contests while open) ──
+  // A submit that lands while a poll is in flight bumps the epoch, so the
+  // older snapshot can never overwrite the authoritative post-submit state.
+  const epochRef = useRef(0);
   const refresh = useCallback(async () => {
+    const epoch = epochRef.current;
     try {
       const res = await fetch(`/api/votes/${viewRef.current.id}`);
       if (!res.ok) return;
       const data = await res.json().catch(() => null);
-      if (data?.activity) setView(data.activity as VoteActivityView);
+      if (epoch !== epochRef.current) return;
+      if (data?.activity) setView((prev) => mergeView(prev, data.activity as VoteActivityView));
     } catch {
       /* transient — next poll wins */
     }
@@ -249,81 +543,198 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
     return () => clearInterval(timer);
   }, [view.resultsMode, view.open, refresh]);
 
-  // ── voting ──
-  const castVote = useCallback(
-    async (entry: VoteEntryView, action: 'add' | 'remove') => {
+  // ── draft persistence (per tab, per activity + viewer + budget bucket) ──
+  const storageKey =
+    view.viewer.loggedIn && view.viewer.id
+      ? `${DRAFT_STORAGE_PREFIX}${view.id}:${view.viewer.id}:${view.viewer.dayKey}`
+      : null;
+  // The persist effect may only run once the draft for THIS key is committed —
+  // gate on state that flips in the same batch as the hydrated draft, not on
+  // a ref (a ref flips before the setDraft lands and would wipe storage first).
+  const [hydratedKey, setHydratedKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (!storageKey) {
+      setHydratedKey(null);
+      return;
+    }
+    let next: Draft = {};
+    if (viewRef.current.open) {
+      try {
+        const raw = sessionStorage.getItem(storageKey);
+        const parsed = raw ? (JSON.parse(raw) as unknown) : null;
+        if (parsed && typeof parsed === 'object') {
+          for (const [id, count] of Object.entries(parsed as Record<string, unknown>)) {
+            if (typeof count === 'number' && Number.isInteger(count) && count >= 0) next[id] = count;
+          }
+        }
+      } catch {
+        /* storage blocked — the draft just lives in memory */
+      }
+    }
+    // Always replace: a key change (daily bucket rollover) must not carry
+    // overrides computed against the old bucket into the new one.
+    setDraft(next);
+    setHydratedKey(storageKey);
+  }, [storageKey]);
+  useEffect(() => {
+    if (!storageKey || hydratedKey !== storageKey) return;
+    try {
+      if (Object.keys(draft).length === 0) sessionStorage.removeItem(storageKey);
+      else sessionStorage.setItem(storageKey, JSON.stringify(draft));
+    } catch {
+      /* ignore */
+    }
+  }, [draft, storageKey, hydratedKey]);
+
+  // Re-validate the draft against the server truth whenever it changes:
+  // overrides that now equal myVotes or whose entry vanished are dropped, and
+  // pending ADDS are trimmed to the (possibly lowered) cap/budget so the
+  // toolbar never offers a submit that can only fail.
+  useEffect(() => {
+    const current = viewRef.current;
+    const committed = new Map<string, number>();
+    for (const e of current.entries) committed.set(e.id, e.myVotes);
+    const result = reconcileDraft(rulesOf(current), current.open, current.viewer.budgetUsed, committed, draftRef.current);
+    if (result.changed) setDraft(result.next);
+    if (result.trimmed) pushToast('info', tRef.current('toast_draft_trimmed'));
+  }, [entryById, view.open, view.votesPerUser, view.maxPerEntry, view.viewer.budgetUsed]);
+
+  // Unsubmitted selections are the one thing this flow can silently lose.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+
+  // ── voting (local draft) ──
+  const step = useCallback<StepFn>(
+    (entryId, delta) => {
       const current = viewRef.current;
+      const tt = tRef.current;
       if (!current.viewer.loggedIn) {
-        pushToast('info', t('login_required'));
+        pushToast('info', tt('login_required'));
         router.push(`/auth/login?callbackUrl=${encodeURIComponent(`/votes/${current.id}`)}`);
         return;
       }
       if (!current.viewer.canVote) {
-        pushToast('error', t('toast_huawei_required'));
+        pushToast('error', tt('toast_huawei_required'));
         return;
       }
-      if (pending.has(entry.id)) return;
-      setPending((prev) => new Set(prev).add(entry.id));
-      try {
-        const res = await fetch(`/api/votes/${current.id}/entries/${entry.id}/vote`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ action }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          const code = String(data?.error ?? '');
-          const key =
-            code === 'budget_exhausted'
-              ? 'toast_budget_exhausted'
-              : code === 'entry_cap'
-                ? 'toast_entry_cap'
-                : code === 'vote_closed'
-                  ? 'toast_vote_closed'
-                  : code === 'revoke_forbidden'
-                    ? 'toast_revoke_forbidden'
-                    : code === 'rate_limited'
-                      ? 'toast_rate_limited'
-                      : 'toast_vote_failed';
-          pushToast('error', t(key));
-          if (code === 'vote_closed') void refresh();
-          return;
-        }
-        if (action === 'add') {
-          setPopId(entry.id);
-          setTimeout(() => setPopId((p) => (p === entry.id ? null : p)), 450);
-        }
-        setView((prev) => ({
-          ...prev,
-          voteCount: data.activityVoteCount ?? prev.voteCount,
-          voterCount: data.voterCount ?? prev.voterCount,
-          viewer: {
-            ...prev.viewer,
-            budgetUsed: data.budgetUsed,
-            budgetRemaining: data.budgetRemaining,
-          },
-          entries: prev.entries.map((e) =>
-            e.id === entry.id
-              ? { ...e, myVotes: data.myVotes, voteCount: data.voteCount ?? e.voteCount }
-              : e,
-          ),
-        }));
-      } catch {
-        pushToast('error', t('toast_vote_failed'));
-      } finally {
-        setPending((prev) => {
-          const next = new Set(prev);
-          next.delete(entry.id);
-          return next;
-        });
+      if (!current.open) {
+        pushToast('error', tt('toast_vote_closed'));
+        return;
+      }
+      if (submittingRef.current) return;
+      const entries = entryByIdRef.current;
+      const entry = entries.get(entryId);
+      if (!entry) return;
+      const prev = draftRef.current;
+      if (delta > 0 && !(entryId in prev) && Object.keys(prev).length >= MAX_BALLOT_CHANGES) {
+        pushToast('error', tt('toast_too_many_changes', { count: MAX_BALLOT_CHANGES }));
+        return;
+      }
+      const decided = stepDraftCount(
+        rulesOf(current),
+        entry.myVotes,
+        prev[entryId] ?? entry.myVotes,
+        delta,
+        draftBudget(current, prev, entries).remaining,
+      );
+      if (!decided.ok) {
+        if (decided.error !== 'nothing_to_remove') pushToast('error', tt(ERROR_TOAST[decided.error]));
+        return;
+      }
+      setDraft((p) => {
+        // Re-derive from the latest state (StrictMode / batched clicks).
+        const again = stepDraftCount(
+          rulesOf(current),
+          entry.myVotes,
+          p[entryId] ?? entry.myVotes,
+          delta,
+          draftBudget(current, p, entries).remaining,
+        );
+        if (!again.ok) return p;
+        const next = { ...p };
+        if (again.next === entry.myVotes) delete next[entryId];
+        else next[entryId] = again.next;
+        return next;
+      });
+      if (delta > 0) {
+        setPopId(entryId);
+        setTimeout(() => setPopId((p) => (p === entryId ? null : p)), 450);
       }
     },
-    [pending, refresh, router, t],
+    [router],
   );
+
+  const discard = useCallback(() => setDraft({}), []);
+
+  const submit = useCallback(async () => {
+    const current = viewRef.current;
+    const { changes } = draftBudget(current, draftRef.current, entryByIdRef.current);
+    if (changes.length === 0 || submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/votes/${current.id}/ballots`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ day: current.viewer.dayKey, changes }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const code = String(data?.error ?? '');
+        pushToast('error', t(ERROR_TOAST[code] ?? 'toast_vote_failed'));
+        if (code === 'entry_unavailable' && typeof data?.entryId === 'string') {
+          const gone = data.entryId as string;
+          setDraft((p) => {
+            if (!(gone in p)) return p;
+            const next = { ...p };
+            delete next[gone];
+            return next;
+          });
+        }
+        // The draft was computed against another day's bucket — it means
+        // nothing now; the refresh brings the new dayKey / myVotes.
+        if (code === 'budget_reset') setDraft({});
+        if (STALE_ERRORS.has(code)) await refresh();
+        return;
+      }
+      epochRef.current += 1;
+      const myBallots = (data.myBallots ?? {}) as Record<string, number>;
+      const entryVotes = (data.entryVotes ?? null) as Record<string, number> | null;
+      setView((prev) => ({
+        ...prev,
+        voteCount: data.activityVoteCount ?? prev.voteCount,
+        voterCount: data.voterCount ?? prev.voterCount,
+        viewer: {
+          ...prev.viewer,
+          budgetUsed: data.budgetUsed,
+          budgetRemaining: data.budgetRemaining,
+        },
+        entries: prev.entries.map((e) => {
+          const myVotes = myBallots[e.id] ?? 0;
+          const voteCount = entryVotes && e.id in entryVotes ? entryVotes[e.id] : e.voteCount;
+          return myVotes === e.myVotes && voteCount === e.voteCount ? e : { ...e, myVotes, voteCount };
+        }),
+      }));
+      setDraft({});
+      pushToast('success', t('toast_submitted'));
+    } catch {
+      pushToast('error', t('toast_vote_failed'));
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  }, [refresh, t]);
 
   // ── derived list ──
   const displayed = useMemo(() => {
-    const query = q.trim().toLowerCase();
+    const query = deferredQ.trim().toLowerCase();
     let list = view.entries;
     if (query) {
       list = list.filter(
@@ -339,7 +750,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
       list = list.slice().sort((a, b) => (b.voteCount ?? 0) - (a.voteCount ?? 0) || a.entryNo - b.entryNo);
     }
     return list;
-  }, [view.entries, q, sort, resultsVisible]);
+  }, [view.entries, deferredQ, sort, resultsVisible]);
 
   // 榜单视图按票数排（仅结果可见时提供）；灯箱导航跟随当前视图的顺序。
   const ranked = useMemo(
@@ -363,10 +774,10 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
   // 大量作品时分批渲染（DOM 数量才是卡顿来源；数据本来就一次性到位）。
   useEffect(() => {
     setGridLimit(GRID_PAGE);
-  }, [q, sort, viewMode]);
-  const sentinelRef = useRef<HTMLDivElement>(null);
+  }, [deferredQ, sort, viewMode]);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const el = sentinelRef.current;
+    const el = loadMoreRef.current;
     if (!el || gridLimit >= shown.length) return;
     const obs = new IntersectionObserver(
       (hits) => {
@@ -380,6 +791,41 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
     return () => obs.disconnect();
   }, [gridLimit, shown.length]);
 
+  // ── sticky toolbar: dock at the top and hold the main navbar hidden ──
+  // A 1px sentinel sits directly above the toolbar; once it scrolls out at the
+  // top the toolbar is pinned (sticky top-0). While pinned, the global navbar
+  // must NOT come back on scroll-up (it would stack on the toolbar and cover
+  // more of the works) — released the moment the toolbar unpins.
+  const toolbarSentinelRef = useRef<HTMLDivElement>(null);
+  const [nearTop, setNearTop] = useState(false);
+  useEffect(() => {
+    const el = toolbarSentinelRef.current;
+    if (!el) return;
+    // Docked ⇔ the sentinel scrolled out at the very top.
+    const dock = new IntersectionObserver(([hit]) => {
+      setStuck(!hit.isIntersecting && hit.boundingClientRect.bottom <= 0);
+    });
+    // Hold the navbar from the moment the toolbar enters the band the navbar
+    // would occupy (its 68px + slack), so neither scroll direction ever shows
+    // the two bars overlapping.
+    const band = new IntersectionObserver(
+      ([hit]) => {
+        setNearTop(!hit.isIntersecting && hit.boundingClientRect.bottom <= NAVBAR_BAND_PX);
+      },
+      { rootMargin: `-${NAVBAR_BAND_PX}px 0px 0px 0px` },
+    );
+    dock.observe(el);
+    band.observe(el);
+    return () => {
+      dock.disconnect();
+      band.disconnect();
+    };
+  }, []);
+  useEffect(() => {
+    if (!nearTop) return;
+    return holdNavBarHidden();
+  }, [nearTop]);
+
   const handleCommentCount = useCallback((entryId: string, delta: number) => {
     setView((prev) => ({
       ...prev,
@@ -389,10 +835,15 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
     }));
   }, []);
 
-  // Close only when the viewed entry left the filtered list entirely.
+  const openLightbox = useCallback((entryId: string) => setLightboxId(entryId), []);
+
+  // Close only when the viewed entry left the filtered list entirely — and
+  // never while the deferred filter is still catching up with the input (the
+  // podium click clears the search and opens in the same tick).
   useEffect(() => {
+    if (q !== deferredQ) return;
     if (lightboxId !== null && lightboxIndex === -1) setLightboxId(null);
-  }, [lightboxId, lightboxIndex]);
+  }, [q, deferredQ, lightboxId, lightboxIndex]);
 
   const podium = useMemo(() => {
     if (!(view.over && resultsVisible)) return [];
@@ -433,15 +884,48 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
     pushToast(ok ? 'success' : 'error', ok ? t('share_copied') : t('toast_vote_failed'));
   }
 
-  const voteButtonShared = {
-    open: view.open,
-    loggedIn: view.viewer.loggedIn,
-    canVote: view.viewer.canVote,
-    maxPerEntry: view.maxPerEntry,
-    allowRevoke: view.allowRevoke,
-    budgetRemaining: view.viewer.budgetRemaining,
-    onVote: castVote,
-  };
+  const budgetLeft = budget.remaining > 0;
+  const cardCtx = useMemo<CardCtx>(
+    () => ({
+      open: view.open,
+      over: view.over,
+      loggedIn: view.viewer.loggedIn,
+      canVote: view.viewer.canVote,
+      resultsVisible,
+      titlesVisible: view.titlesVisible,
+      authorsVisible: view.authorsVisible,
+      maxPerEntry: view.maxPerEntry,
+      allowRevoke: view.allowRevoke,
+      budgetLeft,
+      submitting,
+    }),
+    [
+      view.open,
+      view.over,
+      view.viewer.loggedIn,
+      view.viewer.canVote,
+      resultsVisible,
+      view.titlesVisible,
+      view.authorsVisible,
+      view.maxPerEntry,
+      view.allowRevoke,
+      budgetLeft,
+      submitting,
+    ],
+  );
+  const draftCountOf = (entry: VoteEntryView) => draft[entry.id] ?? entry.myVotes;
+  const showBudget = view.open && view.viewer.loggedIn;
+  // react-markdown re-parses on every render; the description only changes
+  // with the payload, so build the element once per text.
+  const description = useMemo(
+    () =>
+      view.descriptionMd ? (
+        <div className="mt-5 rounded-2xl border border-zinc-200/70 p-5 dark:border-zinc-800/70">
+          <MarkdownRenderer content={view.descriptionMd} />
+        </div>
+      ) : null,
+    [view.descriptionMd],
+  );
 
   // ── chips ──
   const ruleChips: string[] = [
@@ -573,11 +1057,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
       </div>
 
       {/* description */}
-      {view.descriptionMd && (
-        <div className="mt-5 rounded-2xl border border-zinc-200/70 p-5 dark:border-zinc-800/70">
-          <MarkdownRenderer content={view.descriptionMd} />
-        </div>
-      )}
+      {description}
 
       {/* podium */}
       {podium.length > 0 && (
@@ -598,7 +1078,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
                 }}
                 className="group overflow-hidden rounded-2xl border border-zinc-200/70 text-left transition hover:border-zinc-400 dark:border-zinc-800/70 dark:hover:border-zinc-600"
               >
-                <div className="relative aspect-[4/3] overflow-hidden bg-zinc-100 dark:bg-zinc-900">
+                <div className={`relative overflow-hidden bg-zinc-100 dark:bg-zinc-900 ${aspectClass(entry)}`}>
                   <EntryMedia entry={entry} alt={entryTitle(entry, t)} eager />
                   <span
                     className={`absolute left-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${RANK_STYLES[entry.rank ?? 3] ?? RANK_STYLES[3]}`}
@@ -623,25 +1103,71 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
         </section>
       )}
 
-      {/* toolbar: budget + search + sort */}
-      <div className="sticky top-16 z-30 mt-8 -mx-2 rounded-2xl border border-zinc-200/70 bg-white/85 px-4 py-3 backdrop-blur dark:border-zinc-800/70 dark:bg-zinc-950/85">
-        <div className="flex flex-wrap items-center gap-3">
-          {view.open && view.viewer.loggedIn && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-900 px-3.5 py-1.5 text-xs font-semibold tabular-nums text-white dark:bg-zinc-100 dark:text-zinc-900">
+      {/* toolbar: budget + submit + search + sort. Sticky at the very top (the
+          main navbar is held hidden while it is pinned); opaque background on
+          purpose — backdrop-blur over a scrolling image grid is the classic
+          jank source. */}
+      <div ref={toolbarSentinelRef} aria-hidden className="mt-8 h-px w-full" />
+      <div
+        // Docked: bleed to the container edge; the inner width (-mx-6 + px-8 ≡
+        // -mx-2 + px-4) and the box height (border-t stays, transparent) are
+        // identical to the resting card so nothing re-wraps or shifts.
+        className={`sticky top-0 z-30 border border-zinc-200/70 bg-white py-2 transition-shadow dark:border-zinc-800/70 dark:bg-zinc-950 ${
+          stuck
+            ? '-mx-6 rounded-none border-x-0 border-t-transparent px-8 shadow-md shadow-black/5 dark:border-t-transparent dark:shadow-black/40'
+            : '-mx-2 rounded-2xl px-4'
+        }`}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          {showBudget && (
+            <span
+              className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold tabular-nums ${
+                budgetLeft
+                  ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
+                  : 'border border-zinc-300 text-zinc-600 dark:border-zinc-700 dark:text-zinc-300'
+              }`}
+            >
               {view.budgetPeriod === 'daily'
-                ? t('budget_remaining_daily', {
-                    remaining: view.viewer.budgetRemaining,
-                    total: view.votesPerUser,
-                  })
-                : t('budget_remaining', {
-                    remaining: view.viewer.budgetRemaining,
-                    total: view.votesPerUser,
-                  })}
+                ? t('budget_remaining_daily', { remaining: budget.remaining, total: view.votesPerUser })
+                : t('budget_remaining', { remaining: budget.remaining, total: view.votesPerUser })}
             </span>
           )}
-          {view.open && view.viewer.loggedIn && !view.viewer.canVote && (
-            <span className="text-xs text-muted">{t('huawei_hint')}</span>
+          {showBudget && dirty && (
+            <>
+              <span className="text-xs font-medium tabular-nums text-zinc-700 dark:text-zinc-300">
+                {[
+                  budget.adds > 0 ? t('pending_adds', { count: budget.adds }) : null,
+                  budget.removes > 0 ? t('pending_removes', { count: budget.removes }) : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
+              <button
+                type="button"
+                onClick={() => void submit()}
+                disabled={submitting}
+                className="inline-flex h-8 items-center gap-1.5 rounded-full bg-zinc-900 px-4 text-xs font-semibold text-white transition hover:bg-zinc-700 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              >
+                {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                {submitting ? t('submitting_votes') : t('submit_votes')}
+              </button>
+              <button
+                type="button"
+                onClick={discard}
+                disabled={submitting}
+                className="inline-flex h-8 items-center rounded-full border border-zinc-200 px-3 text-xs transition hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-800 dark:hover:bg-zinc-800"
+              >
+                {t('discard_draft')}
+              </button>
+            </>
           )}
+          {showBudget && budget.over > 0 && (
+            <span className="text-xs text-muted">{t('over_budget_hint', { count: budget.over })}</span>
+          )}
+          {showBudget && !dirty && view.viewer.canVote && budgetLeft && (
+            <span className="hidden text-xs text-muted lg:inline">{t('batch_hint')}</span>
+          )}
+          {showBudget && !view.viewer.canVote && <span className="text-xs text-muted">{t('huawei_hint')}</span>}
           {!view.open && !view.over && view.startAt && !view.started && (
             <span className="text-xs text-muted">{t('not_started_hint')}</span>
           )}
@@ -654,13 +1180,13 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder={t('search_placeholder')}
-              className="h-9 w-full rounded-lg border border-zinc-200 bg-transparent pl-9 pr-3 text-sm outline-none transition focus:border-zinc-500 dark:border-zinc-800 dark:focus:border-zinc-400"
+              className="h-8 w-full rounded-lg border border-zinc-200 bg-transparent pl-9 pr-3 text-sm outline-none transition focus:border-zinc-500 dark:border-zinc-800 dark:focus:border-zinc-400"
             />
           </div>
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as SortMode)}
-            className="h-9 rounded-lg border border-zinc-200 bg-transparent px-2 text-sm outline-none dark:border-zinc-800 dark:bg-zinc-950"
+            className="h-8 rounded-lg border border-zinc-200 bg-transparent px-2 text-sm outline-none dark:border-zinc-800 dark:bg-zinc-950"
             aria-label={t('sort_label')}
           >
             <option value="default">{t('sort_default')}</option>
@@ -673,7 +1199,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
                 type="button"
                 title={t('view_grid')}
                 onClick={() => setViewMode('grid')}
-                className={`flex h-8 w-8 items-center justify-center rounded-md transition ${
+                className={`flex h-7 w-7 items-center justify-center rounded-md transition ${
                   viewMode === 'grid'
                     ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
                     : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'
@@ -685,7 +1211,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
                 type="button"
                 title={t('view_list')}
                 onClick={() => setViewMode('list')}
-                className={`flex h-8 w-8 items-center justify-center rounded-md transition ${
+                className={`flex h-7 w-7 items-center justify-center rounded-md transition ${
                   viewMode === 'list'
                     ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
                     : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'
@@ -736,7 +1262,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
                   </span>
                 )}
               </span>
-              {entry.myVotes > 0 && <Check className="h-4 w-4 shrink-0 text-zinc-400" />}
+              {draftCountOf(entry) > 0 && <Check className="h-4 w-4 shrink-0 text-zinc-400" />}
               <span className="shrink-0 text-sm font-semibold tabular-nums">
                 {t('card_votes', { count: entry.voteCount ?? 0 })}
               </span>
@@ -746,83 +1272,21 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
       ) : (
         <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
           {shown.slice(0, gridLimit).map((entry) => (
-            <div key={entry.id} className="group">
-              <button
-                type="button"
-                onClick={() => setLightboxId(entry.id)}
-                className="relative block w-full overflow-hidden rounded-xl bg-zinc-100 text-left dark:bg-zinc-900"
-              >
-                <div className="relative aspect-[4/3]">
-                  <EntryMedia entry={entry} alt={entryTitle(entry, t)} />
-                  {entry.kind === 'video' && (
-                    <>
-                      <span className="absolute inset-0 flex items-center justify-center">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition group-hover:scale-110">
-                          <Play className="h-4 w-4 translate-x-[1px]" />
-                        </span>
-                      </span>
-                      {entry.durationSec > 0 && (
-                        <span className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-white">
-                          {fmtDuration(entry.durationSec)}
-                        </span>
-                      )}
-                    </>
-                  )}
-                  <span className="absolute left-2 top-2 flex items-center gap-1.5">
-                    <span className="rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-white">
-                      #{entry.entryNo}
-                    </span>
-                    {view.over && resultsVisible && (entry.rank ?? 99) <= 3 && (entry.voteCount ?? 0) > 0 && (
-                      <span
-                        className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${RANK_STYLES[entry.rank ?? 3]}`}
-                      >
-                        {entry.rank}
-                      </span>
-                    )}
-                  </span>
-                  {entry.myVotes > 0 && (
-                    <span className="absolute right-2 top-2 flex h-5 items-center gap-0.5 rounded-full bg-zinc-900/90 px-1.5 text-[10px] font-semibold text-white dark:bg-white/90 dark:text-zinc-900">
-                      <Check className="h-3 w-3" />
-                      {entry.myVotes > 1 ? entry.myVotes : ''}
-                    </span>
-                  )}
-                  {(view.titlesVisible || view.authorsVisible) && (
-                    <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2.5 pb-2 pt-8">
-                      {view.titlesVisible && (
-                        <span className="block truncate text-xs font-medium text-white">
-                          {entryTitle(entry, t)}
-                        </span>
-                      )}
-                      {entry.authorName && (
-                        <span className="block truncate text-[10px] text-white/75">
-                          {entry.authorName}
-                          {entry.authorNo ? ` · ${entry.authorNo}` : ''}
-                        </span>
-                      )}
-                    </span>
-                  )}
-                </div>
-              </button>
-              <div className="mt-2 flex items-center justify-between gap-2 px-0.5">
-                <VoteButton
-                  entry={entry}
-                  busy={pending.has(entry.id)}
-                  pop={popId === entry.id}
-                  {...voteButtonShared}
-                />
-                {entry.voteCount !== null && (
-                  <span className="shrink-0 text-xs font-medium tabular-nums text-muted">
-                    {t('card_votes', { count: entry.voteCount })}
-                  </span>
-                )}
-              </div>
-            </div>
+            <EntryCard
+              key={entry.id}
+              entry={entry}
+              draftCount={draftCountOf(entry)}
+              ctx={cardCtx}
+              pop={popId === entry.id}
+              onOpen={openLightbox}
+              onStep={step}
+            />
           ))}
         </div>
       )}
 
       {gridLimit < shown.length && (
-        <div ref={sentinelRef} className="mt-6 flex justify-center">
+        <div ref={loadMoreRef} className="mt-6 flex justify-center">
           <button
             type="button"
             onClick={() => setGridLimit((l) => Math.min(l + GRID_PAGE, shown.length))}
@@ -1000,7 +1464,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
 
             {/* action bar */}
             <div
-              className="flex items-center justify-end gap-3 border-t border-white/10 px-5 py-3"
+              className="flex flex-wrap items-center justify-end gap-3 border-t border-white/10 px-5 py-3"
               onClick={(e) => e.stopPropagation()}
             >
               {lightboxEntry.voteCount !== null && (
@@ -1008,12 +1472,24 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
                   {t('card_votes', { count: lightboxEntry.voteCount })}
                 </span>
               )}
+              {showBudget && dirty && (
+                <button
+                  type="button"
+                  onClick={() => void submit()}
+                  disabled={submitting}
+                  className="inline-flex h-10 items-center gap-1.5 rounded-full border border-white/30 px-4 text-sm font-medium text-white transition hover:bg-white/15 disabled:opacity-60"
+                >
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {t('submit_votes_n', { count: budget.adds + budget.removes })}
+                </button>
+              )}
               <VoteButton
                 entry={lightboxEntry}
-                busy={pending.has(lightboxEntry.id)}
+                draftCount={draftCountOf(lightboxEntry)}
+                ctx={cardCtx}
                 pop={popId === lightboxEntry.id}
                 size="lg"
-                {...voteButtonShared}
+                onStep={step}
               />
             </div>
           </div>,

@@ -209,7 +209,7 @@ export function ShortsSidePanel({
               focusCommentId={focusCommentId}
               currentUser={{
                 id: currentUser.id,
-                isAdmin: currentUser.isAdmin,
+                canModerate: currentUser.canModerate,
                 handle: currentUser.handle,
               }}
             />

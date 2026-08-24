@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { listPostCommentReplies } from '@/lib/discussion-queries';
 import { toPublicAuthor } from '@/lib/user-identity';
 
@@ -21,8 +22,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   }
 
   const replies = await listPostCommentReplies(root.id, session?.user?.id ?? null);
-  const adm = Boolean(session?.user?.isAdmin);
+  const canSeeIdentity = can(session?.user, 'identity');
   return NextResponse.json({
-    replies: replies.map((r) => ({ ...r, author: toPublicAuthor(r.author, adm) })),
+    replies: replies.map((r) => ({ ...r, author: toPublicAuthor(r.author, canSeeIdentity) })),
   });
 }

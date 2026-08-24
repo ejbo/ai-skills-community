@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { resolveActor } from '@/lib/auth/either';
+import { can } from '@/lib/permissions';
 import { canAccessSkillContent } from '@/lib/access';
 import { estimateTokenCost } from '@/lib/skill-parser';
 
@@ -44,7 +45,7 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
 
   const actor = await resolveActor(req);
   let grantStatus: string | null = null;
-  if (actor && skill.visibility === 'restricted' && actor.id !== skill.authorId && !actor.isAdmin) {
+  if (actor && skill.visibility === 'restricted' && actor.id !== skill.authorId && !can(actor, 'skills')) {
     const g = await prisma.skillAccessRequest.findUnique({
       where: { skillId_userId: { skillId: skill.id, userId: actor.id } },
       select: { status: true },

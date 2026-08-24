@@ -275,6 +275,28 @@ export function resolveCustomAnswers(
   return out;
 }
 
+// ─── 封面裁切 ───────────────────────────────────────────────────────────────
+// posterPos 三态：'' = 居中裁切（object-cover center，默认）；'contain' =
+// 完整显示（模糊铺底 + contain）；'50% 30%' = object-cover + object-position
+// 选区（PosterCropEditor 拖出来的取景框位置）。
+
+export type VotePosterAspect = 'landscape' | 'portrait';
+export const VOTE_POSTER_ASPECTS: VotePosterAspect[] = ['landscape', 'portrait'];
+
+/** Normalize an untrusted posterPos. Null = malformed (caller 400s). */
+export function parsePosterPos(raw: unknown): string | null {
+  if (raw === undefined || raw === null) return '';
+  if (typeof raw !== 'string') return null;
+  const s = raw.trim();
+  if (s === '' || s === 'contain') return s;
+  const m = /^(\d{1,3})% (\d{1,3})%$/.exec(s);
+  if (!m) return null;
+  const x = Number(m[1]);
+  const y = Number(m[2]);
+  if (x > 100 || y > 100) return null;
+  return `${x}% ${y}%`;
+}
+
 // ─── 校验边界（create/edit 表单与 API 共用） ─────────────────────────────────
 export const VOTE_TITLE_MAX = 80;
 export const VOTE_DESCRIPTION_MAX = 20000;
@@ -286,3 +308,181 @@ export const VOTE_ENTRY_AUTHOR_MAX = 60;
 export const VOTE_ENTRY_AUTHOR_NO_MAX = 30;
 export const VOTE_ENTRY_DESCRIPTION_MAX = 2000;
 export const VOTE_COMMENT_MAX = 1000;
+
+// ─── 批量投票（先选、后统一提交） ───────────────────────────────────────────
+// The gallery keeps a LOCAL draft (desired count per entry) and submits it in
+// ONE request; the server applies the same arithmetic against the ballot rows
+// inside its Serializable tx. Both sides share these pure helpers so the client
+// can refuse a click for exactly the reason the server would reject it.
+
+export interface BallotRules {
+  votesPerUser: number;
+  maxPerEntry: number;
+  allowRevoke: boolean;
+}
+
+/** One submitted change: the DESIRED total on that entry (idempotent on retry). */
+export interface BallotChange {
+  entryId: string;
+  count: number;
+}
+
+// Adds + revokes can each touch up to VOTES_PER_USER_MAX entries.
+export const MAX_BALLOT_CHANGES = 2000;
+
+export type BallotPlanError = 'budget_exhausted' | 'entry_cap' | 'revoke_forbidden' | 'invalid_input';
+
+export interface BallotPlanStep {
+  entryId: string;
+  from: number;
+  to: number;
+}
+
+export interface BallotPlan {
+  /** Only entries whose count actually moves — a no-op change is dropped. */
+  steps: BallotPlanStep[];
+  /** Budget used after the steps apply. */
+  used: number;
+}
+
+export type BallotPlanResult =
+  | { ok: true; plan: BallotPlan }
+  | { ok: false; error: BallotPlanError; entryId?: string };
+
+/**
+ * Diff the desired counts against the current ballots under the rules.
+ * `current` maps entryId → committed count in the active budget bucket and
+ * must include EVERY entry the user has votes on (the total is derived from
+ * it). Entries not mentioned in `changes` are untouched.
+ */
+export function planBallotChanges(
+  rules: BallotRules,
+  current: ReadonlyMap<string, number>,
+  changes: readonly BallotChange[],
+): BallotPlanResult {
+  if (changes.length > MAX_BALLOT_CHANGES) return { ok: false, error: 'invalid_input' };
+  const seen = new Set<string>();
+  const steps: BallotPlanStep[] = [];
+  let used = 0;
+  let adds = 0;
+  for (const c of current.values()) used += c;
+  for (const change of changes) {
+    if (!Number.isInteger(change.count) || change.count < 0) {
+      return { ok: false, error: 'invalid_input', entryId: change.entryId };
+    }
+    if (seen.has(change.entryId)) return { ok: false, error: 'invalid_input', entryId: change.entryId };
+    seen.add(change.entryId);
+    const from = current.get(change.entryId) ?? 0;
+    const to = change.count;
+    if (to === from) continue;
+    // The cap and the budget only gate INCREASES. A creator may lower
+    // maxPerEntry / votesPerUser after ballots exist; a voter who is now over
+    // the new limit must still be able to 撤回 (never trap a voter's budget).
+    if (to > from && to > rules.maxPerEntry) return { ok: false, error: 'entry_cap', entryId: change.entryId };
+    if (to < from && !rules.allowRevoke) {
+      return { ok: false, error: 'revoke_forbidden', entryId: change.entryId };
+    }
+    if (to > from) adds += to - from;
+    used += to - from;
+    steps.push({ entryId: change.entryId, from, to });
+  }
+  if (adds > 0 && used > rules.votesPerUser) return { ok: false, error: 'budget_exhausted' };
+  return { ok: true, plan: { steps, used } };
+}
+
+export type DraftStepError = 'budget_exhausted' | 'entry_cap' | 'revoke_forbidden' | 'nothing_to_remove';
+
+export type DraftStepResult = { ok: true; next: number } | { ok: false; error: DraftStepError };
+
+/**
+ * One click on a card: move the draft count for an entry by ±1.
+ * `committed` = the server's count for that entry, `draft` = the current
+ * local count, `remaining` = budget left AFTER the whole draft is applied.
+ * Taking back a not-yet-submitted vote is always allowed; going BELOW the
+ * committed count is 撤票 and needs allowRevoke.
+ */
+export function stepDraftCount(
+  rules: BallotRules,
+  committed: number,
+  draft: number,
+  delta: 1 | -1,
+  remaining: number,
+): DraftStepResult {
+  if (delta > 0) {
+    if (draft + 1 > rules.maxPerEntry) return { ok: false, error: 'entry_cap' };
+    if (remaining <= 0) return { ok: false, error: 'budget_exhausted' };
+    return { ok: true, next: draft + 1 };
+  }
+  if (draft <= 0) return { ok: false, error: 'nothing_to_remove' };
+  if (draft - 1 < committed && !rules.allowRevoke) return { ok: false, error: 'revoke_forbidden' };
+  return { ok: true, next: draft - 1 };
+}
+
+/** The gallery's local draft: desired count per entry, ONLY where it differs from the committed count. */
+export type BallotDraft = Record<string, number>;
+
+export interface DraftReconcile {
+  next: BallotDraft;
+  /** Something was changed BY THE RULES (cap/budget), not merely pruned as redundant — worth telling the user. */
+  trimmed: boolean;
+  changed: boolean;
+}
+
+/**
+ * Re-validate a draft against fresh server state (poll, submit error, reload):
+ * drop overrides for entries that vanished or that now equal the committed
+ * count, clamp pending ADDS to maxPerEntry, and shed pending adds (newest
+ * first) while the draft would exceed votesPerUser. Revokes are never touched —
+ * they are always allowed by planBallotChanges. `committed` must map every
+ * visible entry to its myVotes; `budgetUsed` is the server's total in the bucket
+ * (including ballots on entries the viewer cannot see).
+ */
+export function reconcileDraft(
+  rules: BallotRules,
+  open: boolean,
+  budgetUsed: number,
+  committed: ReadonlyMap<string, number>,
+  draft: BallotDraft,
+): DraftReconcile {
+  const next: BallotDraft = {};
+  let trimmed = false;
+  let changed = false;
+  let used = budgetUsed;
+  const ids: string[] = [];
+  for (const id in draft) {
+    const mine = committed.get(id);
+    if (!open || mine === undefined) {
+      changed = true;
+      continue;
+    }
+    let count = draft[id];
+    if (!Number.isInteger(count) || count < 0) {
+      changed = true;
+      continue;
+    }
+    if (count > mine && count > rules.maxPerEntry) {
+      count = Math.max(mine, rules.maxPerEntry);
+      trimmed = true;
+    }
+    if (count === mine) {
+      changed = true;
+      continue;
+    }
+    next[id] = count;
+    ids.push(id);
+    used += count - mine;
+  }
+  if (used > rules.votesPerUser) {
+    for (let i = ids.length - 1; i >= 0 && used > rules.votesPerUser; i--) {
+      const id = ids[i];
+      const mine = committed.get(id) ?? 0;
+      while (next[id] > mine && used > rules.votesPerUser) {
+        next[id] -= 1;
+        used -= 1;
+        trimmed = true;
+      }
+      if (next[id] === mine) delete next[id];
+    }
+  }
+  return { next, trimmed, changed: changed || trimmed };
+}

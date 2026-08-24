@@ -12,6 +12,7 @@ import {
 import type { ReactNode } from 'react';
 import { getLocale } from 'next-intl/server';
 import { prisma } from '@/lib/db';
+import { can } from '@/lib/permissions';
 import { DISCOVERABLE_SKILL_WHERE, SKILL_CARD_SELECT } from '@/lib/skill-queries';
 import { SkillCard } from '@/components/SkillCard';
 import { VideoGrid } from '@/components/video/VideoGrid';
@@ -21,7 +22,7 @@ import { trendingVideos } from '@/lib/video/queries';
 import { annotateShortsViewer, featuredShorts, toShortView } from '@/lib/video/shorts-queries';
 import { getTrendingWithin, warmTrending } from '@/lib/github-trending';
 import { listTopics } from '@/lib/discussion-queries';
-import { listEvents } from '@/lib/event-queries';
+import { eventViewerFromSession, listEvents } from '@/lib/event-queries';
 import { browseDocs } from '@/lib/library-queries';
 import { EventTimeCard } from '@/app/events/_components/EventTime';
 import { DocCover } from '@/components/library/DocCover';
@@ -33,7 +34,9 @@ import { HeroBackdrop } from './home/HeroBackdrop';
 interface HomeUser {
   id: string;
   displayName: string;
-  isAdmin: boolean;
+  /** Role claims from the session; every per-surface permission is derived here via `can`. */
+  roleKey: string;
+  permissions: string[];
 }
 
 /**
@@ -54,6 +57,11 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
   const tl = await getTranslations('labels');
   const ts = await getTranslations('shorts');
   const locale = await getLocale();
+
+  // Per-surface permissions — never the coarse staff flag: `identity` trims
+  // author payloads, `shorts` moderates the embedded player.
+  const canSeeIdentity = can(user, 'identity');
+  const canModerateShorts = can(user, 'shorts');
 
   // 今日 figures count from the server's local midnight.
   const todayStart = new Date();
@@ -81,7 +89,7 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
     trendingVideos(8),
     featuredShorts(10),
     listTopics({ sort: 'top', pageSize: 4 }),
-    listEvents({ tab: 'upcoming' }, { id: user.id, isAdmin: user.isAdmin }),
+    listEvents({ tab: 'upcoming' }, eventViewerFromSession({ user })),
     browseDocs({ sort: 'newest', pageSize: 4 }),
     prisma.announcement.findFirst({
       where: { publishedAt: { not: null } },
@@ -108,7 +116,7 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
   // Player payload: viewer like/favorite flags + identity trim, same contract
   // as the 随刷 feed page.
   const shortItems = (await annotateShortsViewer(shorts, user.id)).map((s) =>
-    toShortView(s, user.isAdmin),
+    toShortView(s, canSeeIdentity),
   );
 
   // Panels only render title/counts — raw author identities from listTopics
@@ -202,7 +210,7 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
                 <ShortsShowcase
                   items={shortItems}
                   className="min-h-[520px] flex-1 lg:min-h-0"
-                  currentUser={{ id: user.id, isAdmin: user.isAdmin }}
+                  currentUser={{ id: user.id, canModerate: canModerateShorts }}
                 />
               ) : (
                 <div className="surface flex min-h-[520px] flex-1 flex-col items-center justify-center gap-2 rounded-xl px-6 text-center lg:min-h-0">

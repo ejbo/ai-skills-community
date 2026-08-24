@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { lookup } from 'node:dns/promises';
 import { request as undiciRequest } from 'undici';
-import { auth } from '@/lib/auth';
+import { gateApi } from '@/lib/admin';
 import { env } from '@/lib/env';
 import { describeEgress, egressFor } from '@/lib/net/proxy';
 
@@ -22,8 +22,8 @@ const PROBE_TIMEOUT_MS = 15_000;
 
 // GET — the resolved egress config (no secrets) + where each known endpoint routes.
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const gate = await gateApi('library');
+  if (!gate.ok) return gate.response;
 
   const targets: { label: string; url: string }[] = [
     { label: '公网', url: 'https://mp.weixin.qq.com/' },
@@ -48,8 +48,8 @@ interface Timings {
 
 // POST — actually probe a URL and return the underlying failure verbatim.
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user?.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const gate = await gateApi('library');
+  if (!gate.ok) return gate.response;
 
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });

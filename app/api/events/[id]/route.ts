@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { logAdmin } from '@/lib/audit';
 import { composeEventData, eventContentSchema } from '@/lib/events/validate';
 import { MAX_PINNED_EVENTS } from '@/lib/event-queries';
@@ -28,7 +29,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!event) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   const isAuthor = event.authorId === session.user.id;
-  const isAdmin = Boolean(session.user.isAdmin);
+  const canManage = can(session.user, 'events');
 
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== 'object') {
@@ -75,10 +76,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     );
   }
   const { pinned, cancelled } = parsed.data;
-  if (pinned !== undefined && !isAdmin) {
+  if (pinned !== undefined && !canManage) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
-  if (cancelled !== undefined && !isAuthor && !isAdmin) {
+  if (cancelled !== undefined && !isAuthor && !canManage) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
   // 推荐位 cap enforced on pin (discussion-board convention) — a 4th pin would
@@ -108,7 +109,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   // Audit admin-privileged actions only (author cancelling their own event is
   // an ordinary member action).
-  if (isAdmin && (pinned !== undefined || !isAuthor)) {
+  if (canManage && (pinned !== undefined || !isAuthor)) {
     await logAdmin({
       adminUserId: session.user.id,
       action: 'moderate_event',
@@ -143,7 +144,8 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   if (!event) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   const isAuthor = event.authorId === session.user.id;
-  if (!isAuthor && !session.user.isAdmin) {
+  const canManage = can(session.user, 'events');
+  if (!isAuthor && !canManage) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 

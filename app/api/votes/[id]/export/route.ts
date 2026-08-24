@@ -65,9 +65,9 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const rankById = new Map(visible.map((e, i) => [e.id, ranks[i]]));
   const statusLabel = (s: string) => (s === 'pending' ? '待审核' : s === 'rejected' ? '已驳回' : '已展示');
   // 隐私账号 contract: handle (= W3 工号 for SSO users) and department are
-  // trimmed for non-admin exporters, displayName stays.
+  // trimmed unless the exporter holds `identity`, displayName stays.
   const privHandle = (u: { handle: string; isPrivate: boolean }) =>
-    u.isPrivate && !viewer.isAdmin ? '' : u.handle;
+    u.isPrivate && !viewer.canSeeIdentity ? '' : u.handle;
 
   const header = [
     '行类型',
@@ -139,7 +139,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         '',
         b.user.displayName,
         privHandle(b.user),
-        b.user.isPrivate && !viewer.isAdmin ? '' : (b.user.department ?? ''),
+        b.user.isPrivate && !viewer.canSeeIdentity ? '' : (b.user.department ?? ''),
         String(b.count),
         b.day || '(总量)',
         b.updatedAt.toISOString(),

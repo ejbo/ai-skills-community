@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { requirePermission } from '@/lib/admin';
 import { LibraryManager } from './LibraryManager';
 import { AiSettingsCard } from './AiSettingsCard';
 import { EgressTestPanel } from './EgressTestPanel';
@@ -6,6 +7,7 @@ import { EgressTestPanel } from './EgressTestPanel';
 export const dynamic = 'force-dynamic';
 
 export default async function AdminLibraryPage() {
+  await requirePermission('library');
   const docs = await prisma.libraryDoc.findMany({
     orderBy: { createdAt: 'desc' },
     take: 200,

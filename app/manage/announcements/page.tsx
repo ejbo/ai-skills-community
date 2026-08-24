@@ -1,10 +1,12 @@
 import { prisma } from '@/lib/db';
+import { requirePermission } from '@/lib/admin';
 import { AnnouncementEditor, type AnnouncementRow } from './AnnouncementEditor';
 import { EmailTestPanel } from './EmailTestPanel';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AnnouncementsAdminPage() {
+  await requirePermission('announcements');
   const rows = await prisma.announcement.findMany({
     orderBy: { createdAt: 'desc' },
     include: { createdBy: { select: { displayName: true } } },

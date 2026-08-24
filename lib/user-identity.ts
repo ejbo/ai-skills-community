@@ -5,7 +5,7 @@
 // (RSC page or API route) MUST map rows through toPublicAuthor() before author
 // data reaches a client component: for a private account department/lab are
 // stripped server-side (never shipped-then-hidden client-side), unless the
-// viewer is an admin. `handle` is always kept — it is the profile-URL and
+// viewer holds the `identity` permission (`can(session.user, 'identity')`). `handle` is always kept — it is the profile-URL and
 // ownership key — but UI must not render the `@handle` text when `isPrivate`
 // (for SSO users the handle is the W3 工号).
 
@@ -44,8 +44,8 @@ export interface PublicAuthor {
  * Trim an author for public consumption. Returns a NEW object with exactly the
  * PublicAuthor fields — extra selected fields (id, email, …) never pass through.
  */
-export function toPublicAuthor(author: AuthorIdentity, viewerIsAdmin = false): PublicAuthor {
-  const hide = author.isPrivate && !viewerIsAdmin;
+export function toPublicAuthor(author: AuthorIdentity, viewerCanSeeIdentity = false): PublicAuthor {
+  const hide = author.isPrivate && !viewerCanSeeIdentity;
   return {
     handle: author.handle,
     displayName: author.displayName,
@@ -58,7 +58,7 @@ export function toPublicAuthor(author: AuthorIdentity, viewerIsAdmin = false): P
 
 export function toPublicAuthorOrNull(
   author: AuthorIdentity | null | undefined,
-  viewerIsAdmin = false,
+  viewerCanSeeIdentity = false,
 ): PublicAuthor | null {
-  return author ? toPublicAuthor(author, viewerIsAdmin) : null;
+  return author ? toPublicAuthor(author, viewerCanSeeIdentity) : null;
 }

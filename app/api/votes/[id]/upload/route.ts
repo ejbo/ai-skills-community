@@ -180,6 +180,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         kind: entry!.kind,
         fileUrl: entry!.fileUrl,
         posterUrl: entry!.posterUrl,
+        posterAspect: entry!.posterAspect,
+        posterPos: entry!.posterPos,
         originalName: entry!.originalName,
         title: entry!.title,
         authorName: entry!.authorName,

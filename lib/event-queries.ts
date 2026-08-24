@@ -11,6 +11,7 @@
 // ZONE. Legacy rows with timezone null count as the default zone.
 
 import type { Prisma } from '@prisma/client';
+import { domainViewer, type DomainViewer, type PermissionHolder } from '@/lib/permissions';
 import { prisma } from '@/lib/db';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor, type AuthorIdentity } from '@/lib/user-identity';
 import {
@@ -57,9 +58,14 @@ export interface EventFilters {
   mineFor?: string;
 }
 
-interface Viewer {
-  id: string | null;
-  isAdmin: boolean;
+/** `canManage` = `events` permission (moderate any event); `canSeeIdentity` = `identity`. */
+export type EventViewer = DomainViewer;
+type Viewer = EventViewer;
+
+export function eventViewerFromSession(
+  session: { user?: { id: string } & PermissionHolder } | null,
+): EventViewer {
+  return domainViewer(session?.user, 'events');
 }
 
 // ── where builders ──────────────────────────────────────────────────────────
@@ -220,8 +226,8 @@ export function toPublicEvent(row: EventRow, viewer: Viewer, attending = false):
     attendeeCount: row.attendeeCount,
     attending,
     speakers: row.speakers.map(toSpeakerData),
-    author: toPublicAuthor(row.author as AuthorIdentity, viewer.isAdmin),
-    isOwner: viewer.isAdmin || (viewer.id != null && viewer.id === row.authorId),
+    author: toPublicAuthor(row.author as AuthorIdentity, viewer.canSeeIdentity),
+    isOwner: viewer.canManage || (viewer.id != null && viewer.id === row.authorId),
     isAuthor: viewer.id != null && viewer.id === row.authorId,
   };
 }

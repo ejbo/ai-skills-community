@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { logAdmin } from '@/lib/audit';
 
 const statusSchema = z.object({
@@ -11,7 +12,9 @@ const statusSchema = z.object({
 /** Admin-only: move the feedback through its status workflow. */
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const session = await auth();
-  if (!session?.user?.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  if (!session?.user || !can(session.user, 'feedback')) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
 
   const body = await req.json().catch(() => null);
   const parsed = statusSchema.safeParse(body);
@@ -52,7 +55,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   if (!before) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   const isAuthor = before.authorId === session.user.id;
-  if (!isAuthor && !session.user.isAdmin) {
+  if (!isAuthor && !can(session.user, 'feedback')) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 

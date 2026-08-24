@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { auth } from '@/lib/auth';
+import { gateApi } from '@/lib/admin';
 import { logAdmin } from '@/lib/audit';
 
 const patchSchema = z.object({
@@ -14,8 +14,9 @@ const patchSchema = z.object({
 // PATCH /api/admin/library/[id] (admin) — 推荐 toggle, explicit 类型 (pins it so
 // AI never overwrites), or restore of a soft-deleted doc.
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  const session = await auth();
-  if (!session?.user?.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const gate = await gateApi('library');
+  if (!gate.ok) return gate.response;
+  const { session } = gate;
 
   const body = await req.json().catch(() => null);
   const parsed = patchSchema.safeParse(body);
@@ -77,8 +78,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 // DELETE /api/admin/library/[id] (admin) — soft delete; files and chapters stay
 // so a restore brings the doc back intact.
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  const session = await auth();
-  if (!session?.user?.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const gate = await gateApi('library');
+  if (!gate.ok) return gate.response;
+  const { session } = gate;
 
   const doc = await prisma.libraryDoc.findUnique({
     where: { id: params.id },

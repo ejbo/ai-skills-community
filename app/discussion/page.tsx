@@ -10,6 +10,7 @@ import {
 import { getLocale, getTranslations } from 'next-intl/server';
 import { relativeTime } from '@/lib/i18n-date';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import {
   countTopicsByCategory,
   isDiscussionCategory,
@@ -67,7 +68,7 @@ export default async function DiscussionPage({ searchParams }: { searchParams: S
         handle: session.user.handle,
         displayName: session.user.displayName,
         avatarUrl: session.user.avatarUrl,
-        isAdmin: session.user.isAdmin,
+        canModerate: can(session.user, 'discussion'),
       }
     : null;
   const tab = firstParam(searchParams.tab) === 'forum' ? 'forum' : 'posts';
@@ -103,13 +104,13 @@ export default async function DiscussionPage({ searchParams }: { searchParams: S
             sort={firstParam(searchParams.sort) === 'hot' ? 'hot' : 'new'}
             currentUser={currentUser}
             viewerId={session?.user?.id ?? null}
-            viewerIsAdmin={Boolean(session?.user?.isAdmin)}
+            viewerCanSeeIdentity={can(session?.user, 'identity')}
           />
         ) : (
           <ForumTab
             searchParams={searchParams}
             viewerId={session?.user?.id ?? null}
-            viewerIsAdmin={Boolean(session?.user?.isAdmin)}
+            viewerCanSeeIdentity={can(session?.user, 'identity')}
           />
         )}
       </div>
@@ -122,13 +123,13 @@ async function PostsTab({
   sort,
   currentUser,
   viewerId,
-  viewerIsAdmin,
+  viewerCanSeeIdentity,
 }: {
   q: string;
   sort: 'new' | 'hot';
   currentUser: CurrentUser | null;
   viewerId: string | null;
-  viewerIsAdmin: boolean;
+  viewerCanSeeIdentity: boolean;
 }) {
   const t = await getTranslations('discussion_pages');
   const tp = await getTranslations('profile');
@@ -186,7 +187,7 @@ async function PostsTab({
           // Keyed per stream — a soft nav (sort toggle / search) must remount
           // the feed, not keep the previous stream's state and cursor.
           key={q ? `q:${q}` : `sort:${sort}`}
-          initialPosts={items.map((p) => ({ ...p, author: toPublicAuthor(p.author, viewerIsAdmin) }))}
+          initialPosts={items.map((p) => ({ ...p, author: toPublicAuthor(p.author, viewerCanSeeIdentity) }))}
           initialHasMore={q ? false : hasMore}
           initialCursor={q ? null : nextCursor}
           currentUser={currentUser}
@@ -239,11 +240,11 @@ function formatViews(n: number): string {
 async function ForumTab({
   searchParams,
   viewerId,
-  viewerIsAdmin,
+  viewerCanSeeIdentity,
 }: {
   searchParams: SearchParams;
   viewerId: string | null;
-  viewerIsAdmin: boolean;
+  viewerCanSeeIdentity: boolean;
 }) {
   const t = await getTranslations('discussion_pages');
   const tp = await getTranslations('profile');
@@ -400,9 +401,9 @@ async function ForumTab({
           ) : (
             <ul className="surface divide-y divide-zinc-100 overflow-hidden rounded-2xl dark:divide-zinc-800/60">
               {items.map((topic) => {
-                const author = toPublicAuthor(topic.author, viewerIsAdmin);
+                const author = toPublicAuthor(topic.author, viewerCanSeeIdentity);
                 const participants = topic.participants.map((p) =>
-                  toPublicAuthor(p, viewerIsAdmin),
+                  toPublicAuthor(p, viewerCanSeeIdentity),
                 );
                 return (
                   // The vote button is a SIBLING of the row link (not nested inside

@@ -14,7 +14,7 @@ import { BackButton } from '@/components/BackButton';
 import { DeptTag } from '@/components/DeptTag';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { withBasePath } from '@/lib/base-path';
-import { getEventDetail, listRelatedEvents } from '@/lib/event-queries';
+import { eventViewerFromSession, getEventDetail, listRelatedEvents } from '@/lib/event-queries';
 import { eventOverAt, toWallDate } from '@/lib/events/time';
 import { DEFAULT_EVENT_TIMEZONE, eventLinkHref } from '@/lib/events/types';
 import { AddToCalendar } from '../_components/AddToCalendar';
@@ -39,7 +39,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
   const t = await getTranslations('event_form');
   const tl = await getTranslations('labels');
   const session = await auth();
-  const viewer = { id: session?.user?.id ?? null, isAdmin: Boolean(session?.user?.isAdmin) };
+  const viewer = eventViewerFromSession(session);
   const event = await getEventDetail(params.id, viewer);
   if (!event) notFound();
   const related = await listRelatedEvents(
@@ -327,7 +327,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
                   pinned={event.pinned}
                   cancelled={event.cancelled}
                   isAuthor={event.isAuthor}
-                  isAdmin={viewer.isAdmin}
+                  canModerate={viewer.canManage}
                 />
               </div>
             )}

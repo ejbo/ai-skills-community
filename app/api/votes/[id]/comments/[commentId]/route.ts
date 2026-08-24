@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { can } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // DELETE /api/votes/[id]/comments/[commentId] — author, activity creator or
-// admin. Hard delete (flat list, nothing to orphan); counter moves in the same
+// `votes` manager. Hard delete (flat list, nothing to orphan); counter moves in the same
 // guarded array tx, races fall through to the authoritative state.
 export async function DELETE(
   _req: Request,
@@ -30,7 +31,7 @@ export async function DELETE(
   }
   const allowed =
     comment.authorId === session.user.id ||
-    session.user.isAdmin ||
+    can(session.user, 'votes') ||
     comment.activity.creatorId === session.user.id;
   if (!allowed) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 

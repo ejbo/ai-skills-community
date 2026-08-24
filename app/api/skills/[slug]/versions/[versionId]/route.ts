@@ -2,17 +2,18 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { compareSemver } from '@/lib/version';
 
 const schema = z.object({ action: z.enum(['set_current', 'yank', 'restore']) });
 
-async function loadOwned(slug: string, userId: string, isAdmin: boolean) {
+async function loadOwned(slug: string, userId: string, canManage: boolean) {
   const skill = await prisma.skill.findUnique({
     where: { slug },
     include: { versions: true },
   });
   if (!skill || skill.deletedAt) return null;
-  if (skill.authorId !== userId && !isAdmin) return 'forbidden' as const;
+  if (skill.authorId !== userId && !canManage) return 'forbidden' as const;
   return skill;
 }
 
@@ -24,7 +25,7 @@ export async function PATCH(
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
-  const owned = await loadOwned(params.slug, session.user.id, Boolean(session.user.isAdmin));
+  const owned = await loadOwned(params.slug, session.user.id, can(session.user, 'skills'));
   if (owned === null) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   if (owned === 'forbidden') return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 

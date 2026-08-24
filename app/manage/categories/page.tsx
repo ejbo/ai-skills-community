@@ -1,9 +1,11 @@
 import { prisma } from '@/lib/db';
+import { requirePermission } from '@/lib/admin';
 import { CategoryEditor } from './CategoryEditor';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminCategoriesPage() {
+  await requirePermission('categories');
   const categories = await prisma.category.findMany({
     orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     include: {

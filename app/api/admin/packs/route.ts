@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { auth } from '@/lib/auth';
+import { gateApi } from '@/lib/admin';
 import { logAdmin } from '@/lib/audit';
 import { packInputSchema, checkPackSkills } from '@/lib/pack-admin';
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user?.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const gate = await gateApi('packs');
+  if (!gate.ok) return gate.response;
+  const { session } = gate;
 
   const body = await req.json().catch(() => null);
   const parsed = packInputSchema.safeParse(body);

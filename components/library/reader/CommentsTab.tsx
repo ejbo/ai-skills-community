@@ -14,7 +14,7 @@ export function CommentsTab({
 }: {
   docId: string;
   commentCount: number;
-  currentUser: { id: string; handle: string; isAdmin: boolean } | null;
+  currentUser: { id: string; handle: string; canModerate: boolean } | null;
 }) {
   return (
     <div className="reader-comments h-full overflow-y-auto overscroll-contain px-4 py-3">

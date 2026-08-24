@@ -114,6 +114,14 @@
    emitted for `animate-*` utilities, which bit the `.shimmer` class above.
    @layer utilities keeps variant support (motion-safe: etc.). */
 @layer utilities {
+  /* Long media grids (the vote gallery): cards outside the viewport skip
+     layout/paint entirely, so scrolling a few hundred posters stays smooth.
+     `auto` intrinsic size reuses the last rendered height once known, so the
+     scrollbar does not jump as cards enter/leave the rendered window. */
+  .cv-auto {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 320px;
+  }
   /* Above-the-fold entrance; `both` keeps content hidden through a staggered
      animation-delay, then visible after. */
   .animate-rise {

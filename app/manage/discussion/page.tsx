@@ -1,4 +1,5 @@
 import { format } from 'date-fns';
+import { requirePermission } from '@/lib/admin';
 import { prisma } from '@/lib/db';
 import { DiscussionManager } from './DiscussionManager';
 
@@ -9,6 +10,7 @@ export const dynamic = 'force-dynamic';
 // /manage/packs; mutations go through the member-facing routes, which already
 // enforce isAdmin + logAdmin for moderation actions.
 export default async function AdminDiscussionPage() {
+  await requirePermission('discussion');
   const [posts, topics] = await Promise.all([
     prisma.post.findMany({
       orderBy: { createdAt: 'desc' },

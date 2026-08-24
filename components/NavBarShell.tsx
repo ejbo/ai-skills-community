@@ -1,14 +1,19 @@
 'use client';
 
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { useNavBarHeldHidden } from '@/lib/nav-chrome';
 
 // Client chrome around the (server-rendered) nav header:
 //   - `.container` makes the bar align edge-to-edge with every content section
 //     below (same max-width + gutter), so it reads as one consistent column.
 //   - Auto-hide: slide the bar up when the reader scrolls down (gets out of the
 //     way of content) and bring it back the moment they scroll up.
+//   - A page can HOLD it hidden (lib/nav-chrome.ts) while its own sticky bar
+//     is pinned to the top, so the scroll-up reveal never stacks on that bar.
 export function NavBarShell({ children }: { children: ReactNode }) {
-  const [hidden, setHidden] = useState(false);
+  const [autoHidden, setHidden] = useState(false);
+  const held = useNavBarHeldHidden();
+  const hidden = autoHidden || held;
   const lastY = useRef(0);
   const ticking = useRef(false);
 

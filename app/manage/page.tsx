@@ -1,10 +1,32 @@
 import { Users, Package, Download, Sparkles, Activity } from 'lucide-react';
+import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
+import { getManageActor } from '@/lib/admin';
+import { hasPermission, isPermissionKey, manageSectionsFor, permissionDef } from '@/lib/permissions';
 import { DashboardCharts } from './DashboardCharts';
 
 export const dynamic = 'force-dynamic';
 
-export default async function AdminDashboard() {
+export default async function AdminDashboard({
+  searchParams,
+}: {
+  searchParams?: { denied?: string | string[] };
+}) {
+  const actor = await getManageActor();
+  if (!actor) redirect('/');
+  // Staff without 仪表盘: land on their first section instead of a dead page.
+  if (!hasPermission(actor.role, 'dashboard')) {
+    const first = manageSectionsFor(actor.role).find((s) => s.href !== '/manage');
+    if (first) redirect(first.href);
+    return (
+      <div className="surface rounded-xl p-6 text-sm text-muted">
+        当前角色「{actor.role.roleName}」没有任何后台板块权限。请联系超级管理员调整角色。
+      </div>
+    );
+  }
+  const deniedRaw = Array.isArray(searchParams?.denied) ? searchParams?.denied[0] : searchParams?.denied;
+  const denied = deniedRaw === 'super' ? '角色与权限（仅超级管理员）' : deniedRaw && isPermissionKey(deniedRaw) ? permissionDef(deniedRaw).label : null;
+
   const since = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
   const [
@@ -38,6 +60,11 @@ export default async function AdminDashboard() {
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-semibold tracking-tight">仪表盘</h2>
+      {denied && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          当前角色「{actor.role.roleName}」没有「{denied}」板块的权限，已返回仪表盘。
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard

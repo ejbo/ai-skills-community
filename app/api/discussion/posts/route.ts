@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { apiReason } from '@/lib/api-errors';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import { listPosts } from '@/lib/discussion-queries';
 import { mediaArraySchema, mediaKeysAvailable, resolveMedia } from '@/lib/discussion-media';
@@ -22,9 +23,9 @@ export async function GET(req: Request) {
     sort: sp.get('sort') === 'hot' ? 'hot' : 'new',
     viewerId: session?.user?.id ?? null,
   });
-  const adm = Boolean(session?.user?.isAdmin);
+  const canSeeIdentity = can(session?.user, 'identity');
   return NextResponse.json({
-    items: items.map((p) => ({ ...p, author: toPublicAuthor(p.author, adm) })),
+    items: items.map((p) => ({ ...p, author: toPublicAuthor(p.author, canSeeIdentity) })),
     hasMore,
     nextCursor,
   });
@@ -116,7 +117,7 @@ export async function POST(req: Request) {
     ok: true,
     post: {
       ...created,
-      author: toPublicAuthor(created.author, session.user.isAdmin),
+      author: toPublicAuthor(created.author, can(session.user, 'identity')),
       myReaction: null,
       reactions: [],
     },

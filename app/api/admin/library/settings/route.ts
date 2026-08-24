@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { auth } from '@/lib/auth';
+import { gateApi } from '@/lib/admin';
 import { logAdmin } from '@/lib/audit';
 import { env } from '@/lib/env';
 import { bustLibraryLlmCache } from '@/lib/library/llm';
@@ -11,8 +11,8 @@ export const dynamic = 'force-dynamic';
 // GET /api/admin/library/settings — current 知识库 AI override (+ env fallback
 // info). The stored API key is masked; the UI sends '__keep__' to keep it.
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const gate = await gateApi('library');
+  if (!gate.ok) return gate.response;
 
   const row = await prisma.librarySetting.findUnique({ where: { id: 'default' } }).catch(() => null);
   return NextResponse.json({
@@ -46,8 +46,9 @@ const putSchema = z.object({
 // PUT /api/admin/library/settings — save the override (null everything to
 // fall back to env).
 export async function PUT(req: Request) {
-  const session = await auth();
-  if (!session?.user?.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const gate = await gateApi('library');
+  if (!gate.ok) return gate.response;
+  const { session } = gate;
 
   const body = await req.json().catch(() => null);
   const parsed = putSchema.safeParse(body);

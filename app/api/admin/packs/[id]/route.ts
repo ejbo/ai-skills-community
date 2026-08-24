@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { auth } from '@/lib/auth';
+import { gateApi } from '@/lib/admin';
 import { logAdmin } from '@/lib/audit';
 import { packUpdateSchema, checkPackSkills } from '@/lib/pack-admin';
 
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
-  const session = await auth();
-  if (!session?.user?.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const gate = await gateApi('packs');
+  if (!gate.ok) return gate.response;
+  const { session } = gate;
 
   const body = await req.json().catch(() => null);
   const parsed = packUpdateSchema.safeParse(body);
@@ -67,8 +68,9 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  const session = await auth();
-  if (!session?.user?.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const gate = await gateApi('packs');
+  if (!gate.ok) return gate.response;
+  const { session } = gate;
 
   const before = await prisma.skillPack.findUnique({ where: { id: params.id } });
   if (!before) return NextResponse.json({ error: 'not_found' }, { status: 404 });

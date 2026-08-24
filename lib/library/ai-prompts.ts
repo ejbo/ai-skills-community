@@ -190,6 +190,44 @@ export function parseTranslatedChapterSummaries(text: string): Map<number, strin
   return out;
 }
 
+/**
+ * Batch passage translation — the single prompt behind BOTH on-demand
+ * selection translation and the whole-document pass, so the two fill the same
+ * cache rows. Keyed by index so a partial or reordered reply still lands.
+ */
+export function translatePassagesPrompt(input: {
+  targetLang: 'zh' | 'en';
+  passages: string[];
+}): { system: string; user: string; maxTokens?: number } {
+  const target = input.targetLang === 'zh' ? 'Simplified Chinese' : 'English';
+  return {
+    system:
+      `You are a precise technical translator. Translate each passage into ${target}. ` +
+      'Keep technical terms, code identifiers, product names and proper nouns in their original ' +
+      'form. Translate faithfully — do not summarize, expand, or add commentary. Preserve the ' +
+      'passage order and count. Output ONE JSON object of the form ' +
+      '{"items":[{"i":<the same index integer>,"text":"<translation>"}]} covering every input ' +
+      'passage, and nothing else.',
+    user: JSON.stringify({ items: input.passages.map((text, i) => ({ i, text })) }, null, 0),
+  };
+}
+
+/** Map index → translation. Tolerant: unparseable ⇒ empty map (caller retries/skips). */
+export function parseTranslatedPassages(text: string): Map<number, string> {
+  const out = new Map<number, string>();
+  const obj = extractJsonObject(text);
+  if (!obj || !Array.isArray(obj.items)) return out;
+  for (const raw of obj.items) {
+    if (!raw || typeof raw !== 'object') continue;
+    const item = raw as Record<string, unknown>;
+    const i = Number(item.i);
+    const value = asStr(item.text);
+    if (!Number.isInteger(i) || !value) continue;
+    out.set(i, value);
+  }
+  return out;
+}
+
 export function retrievePrompt(input: {
   question: string;
   history: { role: string; content: string }[];

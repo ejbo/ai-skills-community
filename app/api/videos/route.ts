@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { browseVideos } from '@/lib/video/queries';
 import { parseVideoSort } from '@/lib/video/types';
 import { uniqueVideoSlug } from '@/lib/video/slug';
@@ -56,7 +57,7 @@ const createSchema = z.object({
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
-  if (!session.user.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  if (!can(session.user, 'videos')) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const body = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(body);

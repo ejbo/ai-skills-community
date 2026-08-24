@@ -5,7 +5,8 @@ import { format } from 'date-fns';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { relativeTime } from '@/lib/i18n-date';
-import { getDocBySlug } from '@/lib/library-queries';
+import { getDocBySlug, libraryViewerFromSession } from '@/lib/library-queries';
+import { can } from '@/lib/permissions';
 import { CATEGORY_NAME_BY_SLUG, isDocType } from '@/lib/library/types';
 import { pickOverview, pickText } from '@/lib/library/i18n-content';
 import { withBasePath } from '@/lib/base-path';
@@ -71,13 +72,11 @@ export default async function DocDetailPage({
     getLocale(),
   ]);
   const session = await auth();
-  const viewer = session?.user
-    ? { id: session.user.id, isAdmin: Boolean(session.user.isAdmin) }
-    : null;
+  const viewer = libraryViewerFromSession(session);
   const doc = await getDocBySlug(params.slug, viewer);
   if (!doc) notFound();
 
-  const isAdmin = viewer?.isAdmin ?? false;
+  const canManage = viewer?.canManage ?? false;
   const isUploader = viewer?.id === doc.uploaderId;
   const ready = doc.status === 'ready';
   const canRead = doc.canRead;
@@ -149,7 +148,7 @@ export default async function DocDetailPage({
                   {t('download_original')}
                 </a>
               )}
-              {(isUploader || isAdmin) && (
+              {(isUploader || canManage) && (
                 <Link
                   href={`/library/${doc.slug}/edit`}
                   className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-200 px-4 text-sm font-medium transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
@@ -294,12 +293,12 @@ export default async function DocDetailPage({
               />
             )}
 
-            {isAdmin && (
+            {canManage && (
               <AdminDocActions docId={doc.id} featured={doc.featured} deleted={Boolean(doc.deletedAt)} />
             )}
           </div>
 
-          {doc.visibility === 'restricted' && (isUploader || isAdmin) && (
+          {doc.visibility === 'restricted' && (isUploader || canManage) && (
             <AccessRequestsPanel docId={doc.id} />
           )}
 
@@ -311,7 +310,7 @@ export default async function DocDetailPage({
               <p className="mt-1 break-words text-xs text-muted">
                 {doc.processingError ?? t('unknown_error')}
               </p>
-              {(isUploader || isAdmin) && (
+              {(isUploader || canManage) && (
                 <div className="mt-3">
                   <ReprocessButton docId={doc.id} />
                 </div>
@@ -383,7 +382,7 @@ export default async function DocDetailPage({
                     ? {
                         id: session.user.id,
                         handle: session.user.handle,
-                        isAdmin: Boolean(session.user.isAdmin),
+                        canModerate: can(session.user, 'library'),
                       }
                     : null
                 }

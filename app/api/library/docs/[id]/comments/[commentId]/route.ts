@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { logAdmin } from '@/lib/audit';
 
 // DELETE /api/library/docs/[id]/comments/[commentId] (author/admin) — the
@@ -21,7 +22,7 @@ export async function DELETE(
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
   const isAuthor = comment.authorId === session.user.id;
-  if (!isAuthor && !session.user.isAdmin) {
+  if (!isAuthor && !can(session.user, 'library')) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 

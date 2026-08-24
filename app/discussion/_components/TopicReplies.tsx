@@ -37,7 +37,7 @@ export interface ReplyThreadView extends ReplyView {
 
 interface CurrentUser {
   handle: string;
-  isAdmin: boolean;
+  canModerate: boolean;
 }
 
 export function TopicReplies({
@@ -232,7 +232,7 @@ function ReplyBlock({
 
   const isTombstone = reply.status === 'deleted';
   const isOwn = currentUser?.handle === reply.author.handle;
-  const canDelete = !isTombstone && (isOwn || Boolean(currentUser?.isAdmin));
+  const canDelete = !isTombstone && (isOwn || Boolean(currentUser?.canModerate));
 
   // Notification deep link: /discussion/topics/<id>?focus=<replyId> — scroll + flash.
   useEffect(() => {

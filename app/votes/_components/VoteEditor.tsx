@@ -41,6 +41,7 @@ import {
   type VoteNameRule,
 } from '@/lib/votes/shared';
 import { probeAndCapture, uploadVoteMedia } from './vote-upload';
+import { PosterDialog } from './PosterDialog';
 import { VoteStatsPanel } from './VoteStatsPanel';
 
 type EditorTab = 'info' | 'rules' | 'submission' | 'entries' | 'stats';
@@ -222,6 +223,8 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
   const [savingSubmission, setSavingSubmission] = useState(false);
   // 分页签：设置项太多，一屏全铺让人无从下手 — 归类后按需展开。
   const [tab, setTab] = useState<EditorTab>('info');
+  // 封面编辑对话框（作品表 → 封面按钮）。
+  const [posterEntry, setPosterEntry] = useState<VoteEntryEditRow | null>(null);
 
   const [entries, setEntries] = useState<VoteEntryEditRow[]>(initial.entries);
   const [rule, setRule] = useState<VoteNameRule>(parseNameRule(initial.nameRule) ?? DEFAULT_NAME_RULE);
@@ -1307,6 +1310,14 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
                           )}
                           <button
                             type="button"
+                            title={t('ed_poster_btn')}
+                            onClick={() => setPosterEntry(entry)}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                          >
+                            <ImagePlus className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
                             title={entry.hidden ? t('ed_unhide') : t('ed_hide')}
                             onClick={() => void patchEntry(entry, { hidden: !entry.hidden })}
                             className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
@@ -1365,6 +1376,18 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
           </div>
           <VoteStatsPanel activityId={initial.id} />
         </Section>
+      )}
+
+      {posterEntry && (
+        <PosterDialog
+          activityId={initial.id}
+          entry={posterEntry}
+          onClose={() => setPosterEntry(null)}
+          onSaved={(patch) => {
+            setEntries((prev) => prev.map((e) => (e.id === posterEntry.id ? { ...e, ...patch } : e)));
+            setPosterEntry((prev) => (prev ? { ...prev, ...patch } : prev));
+          }}
+        />
       )}
     </div>
   );

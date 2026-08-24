@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { requirePermission } from '@/lib/admin';
 import { format } from 'date-fns';
 import { prisma } from '@/lib/db';
 import { VisibilityBadge } from '@/components/VisibilityBadge';
@@ -13,6 +14,7 @@ export default async function AdminSkillsPage({
 }: {
   searchParams: { q?: string; status?: string; source?: string; visibility?: string; page?: string };
 }) {
+  await requirePermission('skills');
   const page = Math.max(1, Number(searchParams.page ?? 1));
   const q = (searchParams.q ?? '').trim();
   const statusFilter = searchParams.status as 'draft' | 'published' | 'archived' | undefined;

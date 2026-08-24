@@ -1,7 +1,8 @@
 import { notFound, redirect } from 'next/navigation';
 import { getLocale } from 'next-intl/server';
 import { requireUser } from '@/lib/admin';
-import { getDocReaderData } from '@/lib/library-queries';
+import { getDocReaderData, libraryViewerFromSession } from '@/lib/library-queries';
+import { can } from '@/lib/permissions';
 import { ReaderShell } from '@/components/library/reader/ReaderShell';
 import './reader.css';
 
@@ -22,6 +23,8 @@ export default async function LibraryReaderPage({
   searchParams: SearchParams;
 }) {
   const session = await requireUser();
+  const viewer = libraryViewerFromSession(session);
+  if (!viewer) redirect('/auth/login');
 
   // Negative sentinel = resume from saved progress (getDocReaderData clamps).
   // Number('') is 0, so an empty/whitespace ?ch= must fall through to resume
@@ -32,7 +35,7 @@ export default async function LibraryReaderPage({
     searchParams.view === 'flow' ? 'flow' : searchParams.view === 'paged' ? 'paged' : undefined;
   const data = await getDocReaderData(
     params.slug,
-    { id: session.user.id, isAdmin: session.user.isAdmin },
+    viewer,
     Number.isFinite(requested) ? Math.trunc(requested) : -1,
     view,
     await getLocale(),
@@ -63,7 +66,7 @@ export default async function LibraryReaderPage({
       currentUser={{
         id: session.user.id,
         handle: session.user.handle,
-        isAdmin: Boolean(session.user.isAdmin),
+        canModerate: can(session.user, 'library'),
       }}
     />
   );

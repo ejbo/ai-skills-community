@@ -7,7 +7,10 @@ import { verifyPassword } from '@/lib/auth/password';
 import { syncDirectoryToUserAtLogin } from '@/lib/employee-directory';
 import { env } from '@/lib/env';
 import { createHuaweiFetch } from '@/lib/auth/huawei-fetch';
+import { buildAuthCookies } from '@/lib/auth/cookies';
 import { hostBypassesProxy } from '@/lib/net/proxy';
+import { cache as reactCache } from 'react';
+import { ROLE_SELECT, roleForUserRow, type EffectiveRole } from '@/lib/roles';
 
 declare module 'next-auth' {
   interface Session {
@@ -16,7 +19,12 @@ declare module 'next-auth' {
       handle: string;
       email: string;
       displayName: string;
+      /** Derived "staff" flag (any permission at all) — what 管理后台 entry checks read. */
       isAdmin: boolean;
+      /** Role key (`super_admin` | `admin` | `member` | custom). Feed `can(session.user, …)`. */
+      roleKey: string;
+      /** Permission keys from lib/permissions.ts (super_admin carries `['*']`). */
+      permissions: string[];
       authMethod: 'password' | 'huawei_sso' | 'both';
       avatarUrl: string | null;
     } & DefaultSession['user'];
@@ -108,15 +116,100 @@ function buildProviders(): Provider[] {
 // AUTH_URL=.../ai-community yields "/ai-community", breaking the callback). Pin it to
 // the SAME build-time var the client `AuthProvider` and next.config use, so server and
 // client never drift. Empty NEXT_PUBLIC_BASE_PATH ⇒ "/api/auth" (root deploy, unchanged).
-const AUTH_BASE_PATH = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}/api/auth`;
+const PUBLIC_BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+const AUTH_BASE_PATH = `${PUBLIC_BASE_PATH}/api/auth`;
+
+// Same derivation @auth/core uses internally (AUTH_URL protocol — reqWithEnvURL
+// rewrites every inbound origin to AUTH_URL's). Passed explicitly so the default
+// cookie attrs and OUR cookie names below can never disagree. Read the RAW env,
+// not `env.AUTH_URL`: zod's http://localhost:3000 default is invisible to
+// next-auth, and an https production deploy that legitimately omits AUTH_URL
+// (trustHost via AUTH_TRUST_HOST) must still get Secure cookies — hence the
+// NODE_ENV fallback. Https deploys SHOULD set AUTH_URL=https://… regardless.
+const RAW_AUTH_URL = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? '';
+const USE_SECURE_COOKIES = RAW_AUTH_URL
+  ? RAW_AUTH_URL.startsWith('https://')
+  : process.env.NODE_ENV === 'production';
+
+/**
+ * How stale the role/permission claims in the JWT may get before a refresh.
+ * Deliberately LONGER than the SessionProvider's 60 s refetchInterval
+ * (components/AuthProvider.tsx): that poll hits /api/auth/session, which is the
+ * one path that re-signs and SETS the cookie. A bare `auth()` in a route handler
+ * or RSC cannot persist a refreshed token (next-auth's no-arg auth() discards
+ * the Set-Cookie), so without the poll every auth() after the TTL would re-query.
+ */
+const ROLE_CLAIMS_TTL_MS = 90_000;
+
+const PROFILE_CLAIMS_SELECT = {
+  displayName: true,
+  avatarUrl: true,
+  isAdmin: true,
+  isActive: true,
+  role: { select: ROLE_SELECT },
+} as const;
+
+type ProfileClaimsRow = Parameters<typeof roleForUserRow>[0] & {
+  displayName: string;
+  avatarUrl: string | null;
+  isActive: boolean;
+};
+
+const NO_ROLE: EffectiveRole = {
+  roleId: null,
+  roleKey: 'member',
+  roleName: '普通成员',
+  permissions: [],
+  isStaff: false,
+  isSuperAdmin: false,
+};
+
+// One DB read per request even if several auth() calls find the claims stale
+// (layout + page + route all call auth()). React's cache is request-scoped in
+// the server build and undefined elsewhere — fall back to the bare function.
+const memo: <T extends (...args: never[]) => unknown>(fn: T) => T =
+  typeof reactCache === 'function' ? reactCache : (fn) => fn;
+const loadProfileClaims = memo(async (userId: string): Promise<ProfileClaimsRow | null> =>
+  prisma.user.findUnique({ where: { id: userId }, select: PROFILE_CLAIMS_SELECT }),
+);
+
+function applyRoleClaims(token: Record<string, unknown>, role: EffectiveRole) {
+  token.isAdmin = role.isStaff;
+  token.roleKey = role.roleKey;
+  token.perms = role.permissions;
+  token.permsAt = Date.now();
+}
+
+function applyProfileClaims(token: Record<string, unknown>, row: ProfileClaimsRow) {
+  token.displayName = row.displayName;
+  token.avatarUrl = row.avatarUrl;
+  // A disabled account keeps its cookie until expiry (pre-existing), but it must
+  // not keep — or regain — any role power through a refresh.
+  applyRoleClaims(token, row.isActive ? roleForUserRow(row) : NO_ROLE);
+}
+
+function roleClaimsStale(token: Record<string, unknown>): boolean {
+  const at = token.permsAt;
+  return typeof at !== 'number' || Date.now() - at > ROLE_CLAIMS_TTL_MS;
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: env.AUTH_SECRET,
   basePath: AUTH_BASE_PATH,
   session: { strategy: 'jwt' },
   providers: buildProviders(),
+  useSecureCookies: USE_SECURE_COOKIES,
+  // App-scoped cookie names + paths (lib/auth/cookies.ts). The shared host also
+  // answers on its pre-2026-07 hostname alias, and the default host-wide
+  // `authjs.*` Path=/ cookies are what let stale / wrong-jar state cookies kill
+  // the W3 callback with "InvalidCheck: state value could not be parsed".
+  cookies: buildAuthCookies({ basePath: PUBLIC_BASE_PATH, secure: USE_SECURE_COOKIES }),
+  // @auth/core puts these VERBATIM into Location headers (no basePath
+  // prefixing), so they must carry the deploy prefix themselves or error
+  // redirects land on the host root — which on the shared box is another app.
   pages: {
-    signIn: '/auth/login',
+    signIn: `${PUBLIC_BASE_PATH}/auth/login`,
+    error: `${PUBLIC_BASE_PATH}/auth/error`,
   },
   callbacks: {
     async signIn({ user, account }) {
@@ -194,31 +287,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user, trigger }) {
       if (user) {
         // Sign-in: seed the token with everything the app reads from the session,
-        // including the mutable profile fields (avatar / display name).
-        const dbUser = await prisma.user.findUnique({ where: { email: user.email! } });
+        // including the mutable profile fields (avatar / display name) and the role.
+        // W3 logins must look up by 工号, not email: the profile email can be a
+        // synthesized `<uid>@huawei.com` while the linked row keeps a real
+        // corporate address (or vice versa) — an email miss here would mint a
+        // session with no uid/handle, i.e. "logged in" but broken everywhere.
+        const w3Id = (user as { huaweiW3Id?: string }).huaweiW3Id;
+        const dbUser = await prisma.user.findUnique({
+          where: w3Id ? { huaweiW3Id: w3Id } : { email: user.email! },
+          select: { ...PROFILE_CLAIMS_SELECT, id: true, handle: true, authMethod: true },
+        });
         if (dbUser) {
           token.uid = dbUser.id;
           token.handle = dbUser.handle;
-          token.isAdmin = dbUser.isAdmin;
           token.authMethod = dbUser.authMethod;
-          token.displayName = dbUser.displayName;
-          token.avatarUrl = dbUser.avatarUrl;
+          applyProfileClaims(token, dbUser);
         }
-      } else if (trigger === 'update' && token.uid) {
-        // The user changed their profile and the client called `useSession().update()`.
-        // Refresh the mutable fields ONCE here, so the per-request session() callback
-        // below never has to touch the DB. This is the whole point of the change:
-        // the old code re-queried Postgres on *every* request (incl. every video
-        // range/seek) just to keep the avatar fresh.
-        const dbUser = await prisma.user.findUnique({
-          where: { id: token.uid as string },
-          select: { displayName: true, avatarUrl: true, isAdmin: true },
-        });
-        if (dbUser) {
-          token.displayName = dbUser.displayName;
-          token.avatarUrl = dbUser.avatarUrl;
-          token.isAdmin = dbUser.isAdmin;
-        }
+      } else if (token.uid && (trigger === 'update' || roleClaimsStale(token))) {
+        // Refresh the mutable claims (a) when the client calls `useSession().update()`
+        // after a profile edit and (b) once the claims are older than ROLE_CLAIMS_TTL_MS,
+        // so a role change / demotion / 停用 lands within ~a minute WITHOUT a DB query
+        // on every request (the old per-request re-query hurt every video range/seek).
+        // Persistence: ONLY the session endpoint re-signs the cookie, and the
+        // SessionProvider polls it every 60 s (< TTL), so an active tab never lets the
+        // claims go stale for bare auth() callers; a returning idle tab pays one memoized
+        // read per request until its first poll. See ROLE_CLAIMS_TTL_MS above.
+        const dbUser = await loadProfileClaims(token.uid as string);
+        if (dbUser) applyProfileClaims(token, dbUser);
       }
       return token;
     },
@@ -228,6 +323,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.id = token.uid as string;
         session.user.handle = token.handle as string;
         session.user.isAdmin = Boolean(token.isAdmin);
+        session.user.roleKey = typeof token.roleKey === 'string' ? token.roleKey : 'member';
+        session.user.permissions = Array.isArray(token.perms)
+          ? (token.perms as unknown[]).filter((p): p is string => typeof p === 'string')
+          : [];
         session.user.authMethod = (token.authMethod as 'password' | 'huawei_sso' | 'both') ?? 'password';
         session.user.displayName = (token.displayName as string) ?? session.user.name ?? '';
         session.user.avatarUrl = (token.avatarUrl as string | null) ?? null;

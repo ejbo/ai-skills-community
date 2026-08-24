@@ -71,15 +71,15 @@ export default async function VideosPage({ searchParams }: { searchParams: Searc
   if (!isBrowse && searchParams.tab !== 'videos') {
     const actor = await getVideoActor();
     const viewerId = actor?.id ?? null;
-    const viewerIsAdmin = actor?.isAdmin ?? false;
+    const canSeeIdentity = actor?.canSeeIdentity ?? false;
     const [heroRows, latestRes] = await Promise.all([
       featuredShorts(10),
       listShorts({ sort: 'new', limit: 18, viewerId }),
     ]);
     const heroItems = (await annotateShortsViewer(heroRows, viewerId)).map((s) =>
-      toShortView(s, viewerIsAdmin),
+      toShortView(s, canSeeIdentity),
     );
-    const latest = latestRes.items.map((s) => toShortView(s, viewerIsAdmin));
+    const latest = latestRes.items.map((s) => toShortView(s, canSeeIdentity));
 
     return (
       <div className="container animate-fade-in py-6">
@@ -96,7 +96,7 @@ export default async function VideosPage({ searchParams }: { searchParams: Searc
         <ShortsBrowse
           heroItems={heroItems}
           latest={latest}
-          currentUser={actor ? { id: actor.id, isAdmin: actor.isAdmin } : null}
+          currentUser={actor ? { id: actor.id, canModerate: actor.canManageShorts } : null}
         />
       </div>
     );

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { requirePermission } from '@/lib/admin';
 import { notFound } from 'next/navigation';
 import { format } from 'date-fns';
 import { prisma } from '@/lib/db';
@@ -36,6 +37,7 @@ function Who({ user }: { user: Identity | null }) {
 }
 
 export default async function AdminSkillDetailPage({ params }: { params: { slug: string } }) {
+  await requirePermission('skills');
   const skill = await prisma.skill.findUnique({
     where: { slug: params.slug },
     include: {

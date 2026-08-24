@@ -9,15 +9,18 @@
 // 隐私账号 contract (toPublicAuthor trim).
 
 import { prisma } from '@/lib/db';
+import { hasPermission, type PermissionHolder } from '@/lib/permissions';
 import {
   AUTHOR_IDENTITY_SELECT,
   toPublicAuthor,
   type PublicAuthor,
 } from '@/lib/user-identity';
 
+/** `canManage` = `polls` permission (results visibility bypass); `canSeeIdentity` = `identity`. */
 export interface PollViewer {
   id: string;
-  isAdmin: boolean;
+  canManage: boolean;
+  canSeeIdentity: boolean;
 }
 
 export interface PollOptionDto {
@@ -44,6 +47,8 @@ export interface PollDto {
   voterCount: number;
   creator: PublicAuthor;
   isCreator: boolean;
+  /** `polls` permission — may edit / end this poll like the creator. */
+  canManage: boolean;
   myVotes: string[];
   showResults: boolean;
   options: PollOptionDto[];
@@ -83,7 +88,7 @@ export async function getPollDto(
   const ended = pollEnded(poll);
   const isCreator = viewer != null && viewer.id === poll.creatorId;
   const showResults =
-    !poll.resultsAfterVote || ended || isCreator || Boolean(viewer?.isAdmin) || myVotes.length > 0;
+    !poll.resultsAfterVote || ended || isCreator || Boolean(viewer?.canManage) || myVotes.length > 0;
   // Voter identities only for logged-in viewers (reactions-panel precedent) —
   // counts may be public, member identities are not.
   const showVoters = showResults && !poll.anonymous && viewer != null;
@@ -106,7 +111,7 @@ export async function getPollDto(
     for (const votes of perOption) {
       for (const v of votes) {
         const list = votersByOption.get(v.optionId) ?? [];
-        list.push(toPublicAuthor(v.user, Boolean(viewer?.isAdmin)));
+        list.push(toPublicAuthor(v.user, Boolean(viewer?.canSeeIdentity)));
         votersByOption.set(v.optionId, list);
       }
     }
@@ -124,8 +129,9 @@ export async function getPollDto(
     createdAt: poll.createdAt.toISOString(),
     ended,
     voterCount: poll.voterCount,
-    creator: toPublicAuthor(poll.creator, Boolean(viewer?.isAdmin)),
+    creator: toPublicAuthor(poll.creator, Boolean(viewer?.canSeeIdentity)),
     isCreator,
+    canManage: Boolean(viewer?.canManage),
     myVotes,
     showResults,
     options: poll.options.map((o) => ({
@@ -139,8 +145,12 @@ export async function getPollDto(
 }
 
 export function viewerFromSession(
-  session: { user?: { id: string; isAdmin?: boolean } } | null,
+  session: { user?: { id: string } & PermissionHolder } | null,
 ): PollViewer | null {
   if (!session?.user) return null;
-  return { id: session.user.id, isAdmin: Boolean(session.user.isAdmin) };
+  return {
+    id: session.user.id,
+    canManage: hasPermission(session.user, 'polls'),
+    canSeeIdentity: hasPermission(session.user, 'identity'),
+  };
 }

@@ -16,6 +16,8 @@ export interface UploadedEntry {
   kind: 'image' | 'video';
   fileUrl: string;
   posterUrl: string | null;
+  posterAspect: 'landscape' | 'portrait';
+  posterPos: string;
   originalName: string;
   title: string;
   authorName: string;

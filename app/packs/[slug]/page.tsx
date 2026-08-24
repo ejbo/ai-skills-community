@@ -4,6 +4,7 @@ import { Boxes, Download, Layers, Pencil } from 'lucide-react';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { relativeTime } from '@/lib/i18n-date';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { getPackBySlug } from '@/lib/pack-queries';
 import { InstallSnippet } from '@/components/InstallSnippet';
 import { withBasePath } from '@/lib/base-path';
@@ -18,10 +19,10 @@ export default async function PackDetailPage({ params }: { params: { slug: strin
   const pack = await getPackBySlug(params.slug);
   if (!pack) notFound();
 
-  // Draft packs are admin-preview only (mirrors how draft skills behave).
+  // Draft packs are previewable only by 合集包 managers (`packs` permission) — mirrors how draft skills behave.
   const session = await auth();
-  const isAdmin = Boolean(session?.user?.isAdmin);
-  if (!pack.isPublished && !isAdmin) notFound();
+  const canManagePacks = can(session?.user, 'packs');
+  if (!pack.isPublished && !canManagePacks) notFound();
 
   const skills = pack.items.map((i) => i.skill);
   const t = await getTranslations('skills_misc');
@@ -52,7 +53,7 @@ export default async function PackDetailPage({ params }: { params: { slug: strin
                 {t('pack_draft_admin_only')}
               </span>
             )}
-            {isAdmin && (
+            {canManagePacks && (
               <Link
                 href="/manage/packs"
                 className="inline-flex items-center gap-1 rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-muted transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-800"

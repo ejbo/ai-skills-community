@@ -13,7 +13,8 @@ export default async function HomePage() {
         user={{
           id: session.user.id,
           displayName: session.user.displayName,
-          isAdmin: session.user.isAdmin,
+          roleKey: session.user.roleKey,
+          permissions: session.user.permissions,
         }}
       />
     );

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { requirePermission } from '@/lib/admin';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { prisma } from '@/lib/db';
@@ -9,6 +10,7 @@ import { EditVideoControls } from './EditVideoControls';
 export const dynamic = 'force-dynamic';
 
 export default async function EditVideoPage({ params }: { params: { id: string } }) {
+  await requirePermission('videos');
   const t = await getTranslations({ namespace: 'video' });
 
   const [video, categories] = await Promise.all([

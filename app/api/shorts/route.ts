@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { apiReason } from '@/lib/api-errors';
 import { toPublicAuthor } from '@/lib/user-identity';
 import { uniqueVideoSlug } from '@/lib/video/slug';
@@ -43,9 +44,9 @@ export async function GET(req: Request) {
     viewerId: session.user.id,
     uploaderId,
   });
-  const adm = Boolean(session.user.isAdmin);
+  const canSeeIdentity = can(session.user, 'identity');
   return NextResponse.json({
-    items: items.map((s) => ({ ...s, uploader: toPublicAuthor(s.uploader, adm) })),
+    items: items.map((s) => ({ ...s, uploader: toPublicAuthor(s.uploader, canSeeIdentity) })),
     hasMore,
     nextCursor,
   });
@@ -161,7 +162,7 @@ export async function POST(req: Request) {
     ok: true,
     short: {
       ...short,
-      uploader: toPublicAuthor(short.uploader, Boolean(session.user.isAdmin)),
+      uploader: toPublicAuthor(short.uploader, can(session.user, 'identity')),
       likedByMe: false,
       favoritedByMe: false,
     },

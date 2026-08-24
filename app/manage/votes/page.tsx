@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { requirePermission } from '@/lib/admin';
 import { voteOver } from '@/lib/votes/shared';
 import { VotesManager, type VoteAdminRow } from './VotesManager';
 
@@ -7,6 +8,7 @@ export const dynamic = 'force-dynamic';
 // /manage/votes — 投票活动管理（精选 / 删除）。Auth 已由 /manage/layout.tsx 的
 // requireAdmin() 把守；本页只查数据。
 export default async function ManageVotesPage() {
+  await requirePermission('votes');
   const rows = await prisma.voteActivity.findMany({
     where: { deletedAt: null },
     orderBy: { createdAt: 'desc' },

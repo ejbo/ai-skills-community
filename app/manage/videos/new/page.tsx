@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { requirePermission } from '@/lib/admin';
 import { getTranslations } from 'next-intl/server';
 import { listVideoCategories } from '@/lib/video/queries';
 import { VideoForm } from '@/components/video/VideoForm';
@@ -6,6 +7,7 @@ import { VideoForm } from '@/components/video/VideoForm';
 export const dynamic = 'force-dynamic';
 
 export default async function NewVideoPage() {
+  await requirePermission('videos');
   const t = await getTranslations({ namespace: 'video' });
   const categories = await listVideoCategories();
 

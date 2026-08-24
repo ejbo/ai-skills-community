@@ -5,6 +5,7 @@ import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Loader2 } from 'lucide-react';
+import { sanitizeCallbackPath } from '@/lib/auth/callback-path';
 
 export function LoginForm({
   callbackUrl,
@@ -31,7 +32,9 @@ export function LoginForm({
       if (res?.error) {
         setMsg(t('invalid_credentials'));
       } else {
-        router.push(callbackUrl ?? '/');
+        // Sanitized: the raw query value must never become an open redirect.
+        // (router.push re-adds the deploy basePath itself.)
+        router.push(sanitizeCallbackPath(callbackUrl, process.env.NEXT_PUBLIC_BASE_PATH ?? ''));
         router.refresh();
       }
     });

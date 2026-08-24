@@ -6,7 +6,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { LLMConfigError, toSseResponseStream } from '@/lib/llm';
 import { getLibraryProvider } from '@/lib/library/llm';
 import { buildChatContext } from '@/lib/library/retrieval';
-import { canReadDoc } from '@/lib/library-queries';
+import { canReadDoc, libraryViewerFromSession } from '@/lib/library-queries';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -57,7 +57,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!doc || doc.deletedAt || doc.status !== 'ready') {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
-  if (!(await canReadDoc(doc, { id: session.user.id, isAdmin: session.user.isAdmin }))) {
+  if (!(await canReadDoc(doc, libraryViewerFromSession(session)))) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 

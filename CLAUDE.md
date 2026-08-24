@@ -79,10 +79,13 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
    re-`cp` the unit after editing). Re-check the node path after `nvm install` (the nvm path
    embeds the version). `.env` is auto-loaded by Next from `WorkingDirectory` — don't use
    systemd `EnvironmentFile=` (its inline `#` comments would corrupt values).
-8. **`/manage` admin gate lives in `app/manage/layout.tsx` via `requireAdmin()` (server-side
-   `auth()` + isAdmin), NOT edge middleware.** `getToken()` in edge middleware can't see the
-   secure session cookie behind the proxy+subpath, so it false-negatives logged-in admins and
-   bounces them to a (wrong-host) login. There is intentionally no `middleware.ts`.
+8. **`/manage` gates are server-side, NOT edge middleware.** The layout (`app/manage/layout.tsx`)
+   admits any *staff* role via `getManageActor()` and filters the nav by permission; **every section
+   page then calls `requirePermission('<domain>')`** (`lib/admin.ts`) and every `/api/admin/*` route
+   uses `gateApi('<domain>')` — both read the role from the DB, so a revoked role locks out on the
+   next request. `getToken()` in edge middleware can't see the secure session cookie behind the
+   proxy+subpath, so it false-negatives logged-in admins and bounces them to a (wrong-host) login.
+   There is intentionally no `middleware.ts`.
 9. **Client `fetch('/api/...')` must carry the basePath.** Root-relative client fetches resolve
    to `<origin>/api/...` (origin root → neighbour app/404), not `/ai-community/api/...`, so every
    client-side write breaks under the subpath while RSC reads work. Fixed globally by
@@ -93,6 +96,25 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
    rendering a stored root-relative media URL must wrap it in `withBasePath()` at render time.
    `components/Avatar.tsx` and the video components do this; if you add a new `<img src={…url}>`,
    wrap it or the image 404s under `/ai-community`.
+10. **W3 login dying with `InvalidCheck: state value could not be parsed` = hostname-alias cookie
+    split, NOT a code bug.** The cari server block also answers on its pre-2026-07 name
+    (`ai4news.rnd.huawei.com`) and news users still enter through it; auth cookies are HOST-scoped
+    while `AUTH_URL` pins the OAuth callback to `cari` — a login started on the alias writes its
+    state cookie into the wrong jar and the callback finds nothing (in @auth/core 0.37.2 a
+    *missing* state cookie throws this same "could not be parsed" message). Three shipped
+    defenses, keep all: (a) nginx 301s non-cari hosts inside both `/ai-community` locations
+    (deploy conf); (b) the root layout's `canonicalRedirectTarget` backstop (lib/auth/cookies.ts —
+    SSO deploys only, loopback/IP exempt); (c) cookies are app-scoped `aic.*` names path-limited to
+    the basePath (`buildAuthCookies`) so no epoch/app/alias residue accidentally shadows them — cookie NAMES
+    are also the JWT salt, so renaming them logs everyone out once (expected). `pages.signIn`/
+    `pages.error` are used VERBATIM by @auth/core (no basePath prefixing) — they must carry
+    `NEXT_PUBLIC_BASE_PATH`; `/auth/error` shows the error code + developer contact, and the login
+    page only maps `CredentialsSignin` to 邮箱或密码错误 (other codes get the SSO banner).
+    TOPOLOGY (owner decision 2026-08): the two hostnames are SEPARATE SITES — news keeps
+    ai4news.rnd.huawei.com untouched, ai-community answers ONLY on cari. Never mount the
+    /ai-community locations under the news server_name; the per-location `if` guards + layout
+    backstop enforce the split even on a shared block. Do NOT change news config for this
+    (docs/huawei-sso-deploy.md "Domain separation").
 
 ## Conventions
 
@@ -444,6 +466,38 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   too (hiding keeps votes but must never trap a voter's budget). All counters are
   RECOMPUTED from ballot rows inside a Serializable tx with jittered P2034 retries (every
   vote rewrites the same VoteActivity row — contention is real, don't drop the backoff).
+  **Voting is 先选后提交 (2026-08-24)**: a card click only edits a LOCAL draft in
+  `VoteGallery` (`Draft = Record<entryId, desiredCount>`, holding ONLY overrides that
+  differ from `entry.myVotes`; persisted per tab in sessionStorage
+  `votes:draft:<activity>:<viewer.id>:<dayKey>`), the sticky toolbar shows the
+  draft-adjusted budget + 提交投票/放弃, and ONE `POST /api/votes/[id]/ballots`
+  `{ changes: [{ entryId, count }] }` (count = DESIRED total on that entry, so a retried
+  submit is idempotent; unlisted entries untouched) applies everything through
+  `planBallotChanges` (lib/votes/shared.ts, pure + unit-tested; `stepDraftCount` is its
+  client twin so a click is refused for exactly the reason the server would reject it)
+  inside the same Serializable tx. Invariants the review pinned: the cap and the budget
+  gate INCREASES only (a creator may lower votesPerUser/maxPerEntry after ballots exist —
+  a voter over the new limit must still be able to 撤回); the body echoes the client's
+  `day` bucket and the server 400s `budget_reset` on a mismatch (a tab kept open across
+  Beijing midnight would otherwise turn "+1" into an absolute count on the fresh day —
+  the client clears the draft and re-reads); writes are batched (deleteMany / createMany /
+  updateMany-per-count + ONE recount `UPDATE … SUM()` statement) with `timeout: 20s`, so a
+  1000-entry draft never hits Prisma's 5 s P2028; `reconcileDraft` re-validates the local
+  draft against every fresh payload (poll / failed submit / reload) — sheds pending adds
+  newest-first when over budget, never touches revokes — so the toolbar can never offer a
+  submit that only fails; a submit bumps `epochRef` so an in-flight 30 s poll can't
+  overwrite the post-submit state. There is NO per-vote endpoint any more — don't
+  reintroduce one. Perf contract for the gallery: `EntryCard` is memo'd and fed a
+  `CardCtx` that only rebuilds on flag flips (`budgetLeft` boolean, never the remaining
+  number), `mergeView` keeps entry identity across the 30s poll, cards carry `.cv-auto`
+  (content-visibility), and the toolbar is OPAQUE — backdrop-blur over the image grid
+  was the scroll jank. The toolbar is `sticky top-0`; a 1px sentinel above it flips
+  `stuck` (dock styling) and a second observer with an 80px `rootMargin` band calls
+  `holdNavBarHidden()` (`lib/nav-chrome.ts`, counted holds) as soon as the toolbar enters
+  the strip the navbar would occupy, so the global `NavBarShell` never overlaps it in
+  either scroll direction — the scroll-up reveal used to stack both bars over the works.
+  Docked and resting toolbar keep the SAME inner width/height (`-mx-6 px-8` ≡ `-mx-2 px-4`,
+  `border-t-transparent` not `border-t-0`) so docking never re-wraps the controls.
   Results visibility (realtime / after_end / creator_only) and 匿名评选
   (showAuthors=false ⇒ authors hidden until over, then auto-revealed) are trimmed
   SERVER-side in `lib/vote-queries.ts` — hub cards, detail payload, vote responses,
@@ -503,7 +557,19 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   lazy via `/entries/[entryId]/ballots`; ballot-fetch failures are NOT cached as empty).
   Export is ONE detailed CSV (entry row + indented per-ballot rows, dynamic custom-field
   columns; same privacy trims). Custom-answer rows key on the field `id`, never the label
-  (labels can collide).
+  (labels can collide). **封面裁切 (migration `20260824000000_vote_poster_crop`)**:
+  `VoteEntry.posterAspect` (landscape 4:3 | portrait 3:4 — grid/podium cards render the
+  entry's own aspect) + `posterPos` THREE-state ('' = center object-cover, 'contain' =
+  full image on blurred backdrop, '50% 30%' = object-position selection), validated by
+  `parsePosterPos` on both the submissions POST and the entry PATCH. `PosterCropEditor`
+  shows the FULL image with a draggable aspect frame, outside dimmed (= never shown);
+  the object-position algebra is p% = frameOffset/(dispImg−dispFrame)·100, and `natural`
+  dims MUST reset when imageUrl swaps (stale geometry saves a wrong crop). Entry points:
+  SubmitDialog 封面 section (member: custom cover upload replaces the captured frame;
+  images crop themselves) and the entries-table 封面 button → `PosterDialog` (creator:
+  更换封面图 uploads immediately, crop saves via PATCH). The creator upload route's
+  response entry must carry posterAspect/posterPos (a missing field seeds the editor with
+  undefined → NaN frame geometry).
 - **员工名单 (Employee Directory)**: admin roster at `/manage/employees` (`EmployeeDirectory` model;
   bulk import via paste / CSV / XLSX — parsers in `lib/employee-import.ts`, merge rules in
   `lib/employee-admin.ts`; 工号 canonicalized to lowercase at write time — the DB unique index is
@@ -513,14 +579,61 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   the handle: it derives from the unverified email local part under open registration, so matching
   it would let `<工号>@any.tld` squatters inherit an employee's 部门/研究所 and harvest the roster.
   Deleting an entry never touches users; 停用 (isActive=false) entries are excluded from all sync.
+- **角色与权限 (RBAC, migration `20260824180000_add_roles`)**: `User.isAdmin` is no longer a
+  decision — it is a DERIVED "staff" cache (any permission at all) written only by `lib/roles.ts`.
+  Truth = `Role` (`key`, `permissions String[]`) + `User.roleId` (null ⇒ 普通成员). The catalog is
+  CODE: `lib/permissions.ts` (import-free, client-safe) — 17 keys, one per 管理后台 section
+  (`dashboard users employees skills packs videos shorts discussion votes library categories
+  announcements logs`) plus site-only `feedback events polls` and `identity` (see 隐私账号 below).
+  Adding a domain = one catalog entry + granting it to roles in 管理后台 → 角色与权限 (the seeded
+  `admin` role gets every key at migration time only; later keys are granted explicitly).
+  `super_admin` is decided by ROLE KEY (its list is `['*']`) and is the ONLY role that can open
+  /manage/roles, create/edit/delete roles, or assign roles (`POST /api/admin/users/[id]/role`);
+  rules in `lib/roles.ts#assignRole`: never your own account, last active super admin can't be
+  demoted, Serializable tx. `/api/admin/users/[id]/toggle` refuses `isAdmin`, refuses staff targets
+  for non-super actors, self-disable, and disabling the last super admin. Decide with
+  `can(session.user, '<domain>')` (JWT copy: `session.user.roleKey/permissions`, refreshed on
+  sign-in, `useSession().update()`, and every 60 s — `ROLE_CLAIMS_TTL_MS`) or, for /manage pages and
+  /api/admin routes, `requirePermission` / `gateApi` (DB-backed). CLI PATs resolve the role too
+  (`lib/auth/either.ts`), so `can(actor, 'skills')` works for the CLI. lib query helpers take a
+  `DomainViewer { id, canManage, canSeeIdentity }` (`domainViewer(session?.user, 'votes')`,
+  `eventViewerFromSession`, `libraryViewerFromSession`, `videoActorFrom`) — `canManage` is the
+  domain key, `canSeeIdentity` is `identity`, and they are deliberately orthogonal. **JWT freshness
+  depends on the SessionProvider poll** (`components/AuthProvider.tsx` `refetchInterval={60}`):
+  next-auth's bare `auth()` discards the refreshed cookie, only `/api/auth/session` re-signs it, so
+  the poll (< `ROLE_CLAIMS_TTL_MS` = 90 s) is what keeps bare `auth()` free of DB reads — don't
+  remove it. `User.roleId` is `onDelete: Restrict` on purpose (a vanished role must never leave a
+  role-less `isAdmin` row, which `roleForUserRow` reads as a legacy super admin). Video and
+  short share the table, so `canManageVideo`/`canModerateComment` branch on `video.isShort`
+  (`videos` vs `shorts`). Client viewer props are named `canModerate` and computed PER SURFACE by
+  the RSC (never shipped as a raw staff flag). Only three surfaces still read `isAdmin`: the
+  UserMenu 管理后台 link, `/api/auth/me`, and the SUBJECT's badge on `/users/[handle]`.
+  Transitional safety net: `roleForUserRow` treats `isAdmin=true` with NO role as a legacy super
+  admin (the same promotion the migration does), so a `prisma db push` deploy that skipped the
+  migration's UPDATE does not lock every admin out; `pnpm roles:sync` (`scripts/sync-roles.ts`)
+  makes it explicit and recomputes the cache. Tests: `tests/permissions.test.ts`,
+  `tests/roles.test.ts` (pins `scripts/seed.ts`'s admin list to the catalog).
+- **页面访问 (PageVisit)**: `lib/page-visit.ts` names EVERY `app/**/page.tsx` route and
+  `tests/page-visit.test.ts` enforces it in BOTH directions (a new page without a name, or a stale
+  entry, fails the suite); unknown paths are still logged (pageName null ⇒ the UI shows the raw
+  path), so nothing silently drops out of a user's history again. Staff viewers' visits to
+  user-specific pages (`USER_SPECIFIC_TEMPLATES`: `/users/[handle]`, `/manage/users/[id]`) are
+  REDACTED to the route template at write time (`redactUserSpecificPath`, keyed on the JWT
+  `isAdmin`) and masked at display time for legacy rows (`displayVisitPath`) — the activity is
+  kept, WHO they looked at is not. Query strings never reach the store (`normalizePath`), and the
+  `referrer` column goes through `sanitizeReferrer` (the tracker fires from the visited page, so the
+  raw header is that page's full URL — storing it raw would re-leak the redacted path). The roles
+  migration ALSO rewrites existing staff rows (path → template, referrer → NULL); `pnpm roles:sync`
+  repeats that data step for `db push` deploys.
 - **隐私账号 & identity display**: `User.isPrivate` toggle at Settings → 隐私. Contract
   (`lib/user-identity.ts`): author queries select `AUTHOR_IDENTITY_SELECT` and every server
-  boundary (RSC props / API JSON) maps through `toPublicAuthor(author, viewerIsAdmin)` so a private
-  user's department/lab are stripped SERVER-side (never shipped-then-hidden); UI renders
+  boundary (RSC props / API JSON) maps through `toPublicAuthor(author, can(user, 'identity'))` so a
+  private user's department/lab are stripped SERVER-side (never shipped-then-hidden); UI renders
   `<DeptTag/>` (`components/DeptTag.tsx`) next to names and hides the `@handle` TEXT when
   `isPrivate` (profile links keep working; handle stays in payloads for ownership checks).
-  Admins always see full identity (and a 隐私 badge in /manage). Any NEW surface that renders
-  another user's identity must follow this select → trim → DeptTag pattern.
+  Full identity is unlocked by the `identity` PERMISSION only — a domain permission such as
+  `discussion` does NOT imply it (the 隐私 badge in /manage reads the raw row). Any NEW surface
+  that renders another user's identity must follow this select → trim → DeptTag pattern.
 - **Video delivery**: the file route (`app/api/videos/file/[...key]`) streams from local disk with
   HTTP Range. Under concurrency the bottleneck is that bytes flow through Node — set
   `VIDEO_X_ACCEL_REDIRECT=true` + add the internal `/_video/` nginx location (see deploy conf)
@@ -562,16 +675,29 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
     React's `commitUpdate` right after mouseup. Do not "simplify" it back to an inline literal.
     (`CodeViewer.tsx` and `app/skills/[slug]/FilesTab.tsx` still have the inline form — same latent
     bug, lower stakes.)
-  - **Text selection in the reader is the BROWSER'S, untouched.** There is deliberately NO floating
-    selection toolbar, no hover hit-testing, no `mousedown`/`mousemove` handler and nothing rendered
-    over the article. A `fixed` panel that parks on the text and `preventDefault`s mousedown so its
-    own buttons can act on the live selection is exactly what made the text under it unselectable —
-    the user hit it repeatedly and had it removed. **Do not reintroduce one.** Acting on a selection
-    lives where it cannot touch the text: the 我的笔记 panel composer (which reads the selection
-    passively on `mouseup` into `lastSelectionRef` + `selectionQuote`) and the `1`–`4` / `N`
-    keyboard shortcuts. Popovers for marks that ALREADY exist are fine — they open on `click`, after
-    the drag is over. `MarginNotes` gutter stacks hide themselves when the gutter is under 56px,
-    for the same reason.
+  - **译文 (migration `20260824120000_library_translation_cache`)**: ONE shared cache,
+    `LibraryTranslation(docId, targetLang, sourceHash → text)`, keyed by the hash of the
+    WHITESPACE-NORMALIZED source — so a DOM selection and a stored HTML block hit the same row, a
+    passage is paid for ONCE for the whole community, and the whole-document pass fills exactly the
+    rows on-demand selection-translate reads. Direction is fixed per doc (`targetLangFor`: 中文 doc
+    → English, otherwise → 中文). `POST /api/library/translate` is cache-first and answers a hit
+    WITHOUT touching the model or the rate limiter. The whole-doc pass (`lib/library/translate-doc.ts`)
+    runs automatically after indexing only under `LIBRARY_AUTO_TRANSLATE_MAX_CHARS` (default 40k —
+    articles are ready before anyone opens them, books wait for a reader to click 翻译全文, which is
+    `POST /api/library/docs/[id]/translate` and ignores the cap). It translates LEAF BLOCKS and
+    rebuilds the chapter through `applyBlockTranslations`, which writes each translation with
+    `textContent` — so no model output is ever parsed as markup, tables/figures/images survive, and
+    `<pre>/<code>` is never sent to a translator. Partial coverage is fine: untranslated blocks keep
+    the original. **译文 mode hides highlights** — marks anchor to the ORIGINAL character offsets.
+  - **Selection actions are a floating toolbar again** (`SelectionToolbar.tsx`): 高亮 / 笔记 / 翻译 /
+    问 AI / 复制, all CLICKABLE — the `1`–`4` / `N` keys are a shortcut, never the only way in. It
+    was deleted once after being blamed for unselectable text; the real cause was the
+    `dangerouslySetInnerHTML` identity bug above. The rules that keep it safe: the CONTAINER never
+    `preventDefault`s mousedown (only the buttons do, so it is not a black hole that eats the next
+    drag), ANY outside mousedown dismisses it, and it is positioned from `anchoring.textRects`
+    (never `Range.getClientRects`, which also returns block border boxes), flipping below the
+    selection when there is no room above. `MarginNotes` gutter stacks still hide themselves when
+    the gutter is under 56px so nothing else overlays the column.
   - **Reader marks are painted BY THE BROWSER** (`components/library/reader/highlighter.ts`,
     CSS Custom Highlight API + `::highlight()` rules in `read/reader.css`, keyed on the `--hl-*`
     tokens so 浅色/护眼/深色 come free). Nothing is injected into the article and NO rectangles are

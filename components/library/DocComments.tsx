@@ -42,7 +42,7 @@ export function DocComments({
 }: {
   docId: string;
   commentCount: number;
-  currentUser: { id: string; handle: string; isAdmin: boolean } | null;
+  currentUser: { id: string; handle: string; canModerate: boolean } | null;
   focusId: string | null;
 }) {
   const t = useTranslations('library_ui');
@@ -145,7 +145,7 @@ export function DocComments({
   }
 
   const canDelete = (c: CommentNode) =>
-    !!currentUser && (currentUser.isAdmin || currentUser.handle === c.author.handle);
+    !!currentUser && (currentUser.canModerate || currentUser.handle === c.author.handle);
 
   const renderComment = (c: CommentNode, parentId: string | null) => {
     const deleted = c.status === 'deleted';

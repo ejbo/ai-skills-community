@@ -65,7 +65,7 @@ export interface CurrentUser {
   handle: string;
   displayName: string;
   avatarUrl?: string | null;
-  isAdmin: boolean;
+  canModerate: boolean;
 }
 
 export function formatBytes(n: number): string {

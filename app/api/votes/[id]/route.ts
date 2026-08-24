@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { logAdmin } from '@/lib/audit';
+import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import {
   findManagedActivity,
@@ -96,7 +97,7 @@ const moderationSchema = z.object({
 });
 
 // PATCH /api/votes/[id] — three branches (events pattern):
-//   { featured }            admin moderation (logAdmin'd)
+//   { featured }            `votes` moderation (logAdmin'd)
 //   { publish } / { closed } lifecycle (creator or admin)
 //   otherwise                partial content/settings edit (creator or admin)
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -109,7 +110,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   // ── admin feature toggle ──
   if ('featured' in body) {
-    if (!session.user.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    if (!can(session.user, 'votes')) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     const parsed = moderationSchema.safeParse(body);
     if (!parsed.success) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
     const activity = await prisma.voteActivity.findUnique({ where: { id: params.id } });
@@ -289,7 +290,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
     where: { id: activity.id, deletedAt: null },
     data: { deletedAt: new Date(), featured: false, featuredAt: null },
   });
-  if (session.user.isAdmin && activity.creatorId !== session.user.id) {
+  if (viewer.canManage && activity.creatorId !== session.user.id) {
     await logAdmin({
       adminUserId: session.user.id,
       action: 'delete_vote_activity',

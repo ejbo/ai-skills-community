@@ -9,6 +9,7 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import { PrismaClient } from '@prisma/client';
 import { config as loadEnv } from 'dotenv';
+import { SUPER_ADMIN_ROLE_KEY, WILDCARD_PERMISSION } from '@/lib/permissions';
 
 loadEnv();
 loadEnv({ path: '.env.local', override: true });
@@ -452,8 +453,16 @@ const COMMENTS: Record<string, CommentSeed[]> = {
 };
 
 async function main() {
+  // Demo videos are owned by someone who may manage 长视频: a role carrying the
+  // `videos` permission (or super_admin / the wildcard). Falls back to any user.
   const admin =
-    (await prisma.user.findFirst({ where: { isAdmin: true } })) ?? (await prisma.user.findFirst());
+    (await prisma.user.findFirst({
+      where: {
+        role: {
+          OR: [{ key: SUPER_ADMIN_ROLE_KEY }, { permissions: { hasSome: [WILDCARD_PERMISSION, 'videos'] } }],
+        },
+      },
+    })) ?? (await prisma.user.findFirst());
   if (!admin) {
     throw new Error('No user found to own demo videos — run pnpm db:seed first.');
   }

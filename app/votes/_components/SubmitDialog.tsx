@@ -30,6 +30,8 @@ import {
   VOTE_ENTRY_TITLE_MAX,
 } from '@/lib/votes/shared';
 import { probeAndCapture, uploadVoteSubmission } from './vote-upload';
+import { PosterCropEditor } from './PosterCropEditor';
+import type { VotePosterAspect } from '@/lib/votes/shared';
 
 const inputCls =
   'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:focus:border-zinc-400';
@@ -75,6 +77,12 @@ export function SubmitDialog({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isVideo, setIsVideo] = useState(false);
   const [poster, setPoster] = useState<Blob | null>(null);
+  // 自定义封面图（优先于自动抓帧）+ 裁切（版式 / 取景框位置）。
+  const [posterCustom, setPosterCustom] = useState<File | null>(null);
+  const [posterPreviewUrl, setPosterPreviewUrl] = useState<string | null>(null);
+  const [posterAspect, setPosterAspect] = useState<VotePosterAspect>('landscape');
+  const [posterPos, setPosterPos] = useState('');
+  const [posterEditorOpen, setPosterEditorOpen] = useState(false);
   const [durationSec, setDurationSec] = useState(0);
   const [probing, setProbing] = useState(false);
   const [title, setTitle] = useState('');
@@ -89,6 +97,7 @@ export function SubmitDialog({
   const [pct, setPct] = useState(0);
   const [deleting, setDeleting] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const posterInputRef = useRef<HTMLInputElement>(null);
   // Guards the async probe: re-picking mid-probe must not let the OLD probe's
   // poster/duration (or its finally) land on the NEW file's state.
   const pickSeqRef = useRef(0);
@@ -123,6 +132,20 @@ export function SubmitDialog({
     },
     [previewUrl],
   );
+
+  // 裁切编辑器的底图：自定义封面 > 抓帧 >（图片作品）图片本身。
+  useEffect(() => {
+    const source = posterCustom ?? (isVideo ? poster : null);
+    if (!source) {
+      setPosterPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(source);
+    setPosterPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [posterCustom, poster, isVideo]);
+
+  const cropImageUrl = posterPreviewUrl ?? (!isVideo ? previewUrl : null);
 
   function errKey(e: unknown): string {
     const msg = e instanceof Error ? e.message : '';
@@ -177,6 +200,10 @@ export function SubmitDialog({
     setPreviewUrl(url);
     setIsVideo(video);
     setPoster(null);
+    setPosterCustom(null);
+    setPosterAspect('landscape');
+    setPosterPos('');
+    setPosterEditorOpen(false);
     setDurationSec(0);
     if (video) {
       setProbing(true);
@@ -191,6 +218,16 @@ export function SubmitDialog({
         if (pickSeqRef.current === seq) setProbing(false);
       }
     }
+  }
+
+  function pickCustomPoster(f: File) {
+    if (!f.type.startsWith('image/') || f.size > 10 * 1024 * 1024) {
+      pushToast('error', t('sub_poster_invalid'));
+      return;
+    }
+    setPosterCustom(f);
+    setPosterPos('');
+    setPosterEditorOpen(true);
   }
 
   async function submit() {
@@ -222,9 +259,10 @@ export function SubmitDialog({
     try {
       const media = await uploadVoteSubmission(view.id, file, file.name, 'media', setPct);
       let posterKey: string | null = null;
-      if (isVideo && poster) {
+      const posterBlob = posterCustom ?? poster;
+      if (isVideo && posterBlob) {
         try {
-          const p = await uploadVoteSubmission(view.id, poster, `${file.name}.jpg`, 'poster');
+          const p = await uploadVoteSubmission(view.id, posterBlob, `${file.name}.jpg`, 'poster');
           posterKey = p.key;
         } catch {
           /* poster is best-effort */
@@ -243,6 +281,8 @@ export function SubmitDialog({
           authorName: authorName.trim(),
           includeAuthorNo,
           formData: answers,
+          posterAspect,
+          posterPos,
           durationSec,
         }),
       });
@@ -261,6 +301,10 @@ export function SubmitDialog({
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       setPreviewUrl(null);
       setPoster(null);
+      setPosterCustom(null);
+      setPosterAspect('landscape');
+      setPosterPos('');
+      setPosterEditorOpen(false);
       setTitle('');
       setDescription('');
       setAnswers({});
@@ -437,6 +481,59 @@ export function SubmitDialog({
                     {t('sub_repick')}
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* 封面：自定义图 + 裁切编辑（视频抓帧/自定义；图片直接裁自身） */}
+            {file && !probing && (
+              <div className="rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-medium">{t('sub_poster_heading')}</span>
+                  <span className="flex items-center gap-3 text-xs">
+                    {isVideo && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => posterInputRef.current?.click()}
+                        className="font-medium text-zinc-700 underline underline-offset-2 disabled:opacity-50 dark:text-zinc-300"
+                      >
+                        {t('sub_poster_replace')}
+                      </button>
+                    )}
+                    {cropImageUrl && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setPosterEditorOpen((v) => !v)}
+                        className="font-medium text-zinc-700 underline underline-offset-2 disabled:opacity-50 dark:text-zinc-300"
+                      >
+                        {posterEditorOpen ? t('sub_poster_close') : t('sub_poster_edit')}
+                      </button>
+                    )}
+                  </span>
+                </div>
+                {posterEditorOpen && cropImageUrl && (
+                  <div className="mt-3">
+                    <PosterCropEditor
+                      imageUrl={cropImageUrl}
+                      aspect={posterAspect}
+                      pos={posterPos}
+                      onAspectChange={setPosterAspect}
+                      onPosChange={setPosterPos}
+                    />
+                  </div>
+                )}
+                <input
+                  ref={posterInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) pickCustomPoster(f);
+                    e.target.value = '';
+                  }}
+                />
               </div>
             )}
             <input

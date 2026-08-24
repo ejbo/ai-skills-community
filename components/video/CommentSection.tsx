@@ -14,7 +14,7 @@ interface Props {
   slug: string;
   initialComments: VideoCommentView[];
   initialCursor: string | null;
-  currentUser: { id: string; isAdmin: boolean; handle?: string } | null;
+  currentUser: { id: string; canModerate: boolean; handle?: string } | null;
   /**
    * Explicit deep-link target. `undefined` (detail page) = read ?focus= from
    * the URL; a string/null (shorts drawer, whose feed rewrites the URL via

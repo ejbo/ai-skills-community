@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { getComment } from '@/lib/video/queries';
 import { toPublicAuthor } from '@/lib/user-identity';
 
@@ -26,6 +27,6 @@ export async function GET(_req: Request, { params }: { params: { slug: string; i
     rootId,
     isReply: target.parentId !== null,
     // 隐私账号: trim department/lab before the author leaves the server.
-    root: root ? { ...root, author: toPublicAuthor(root.author, session.user.isAdmin ?? false) } : root,
+    root: root ? { ...root, author: toPublicAuthor(root.author, can(session.user, 'identity')) } : root,
   });
 }

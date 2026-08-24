@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
-import { getDocBySlug } from '@/lib/library-queries';
+import { getDocBySlug, libraryViewerFromSession } from '@/lib/library-queries';
 import { BackButton } from '@/components/BackButton';
 import { DocEditor } from './DocEditor';
 // The chapter editor renders the chapter with the READER's typography
@@ -13,12 +13,12 @@ export const dynamic = 'force-dynamic';
 export default async function DocEditPage({ params }: { params: { slug: string } }) {
   const t = await getTranslations('library');
   const session = await auth();
-  if (!session?.user) redirect(`/auth/login?callbackUrl=/library/${params.slug}/edit`);
+  const viewer = libraryViewerFromSession(session);
+  if (!viewer) redirect(`/auth/login?callbackUrl=/library/${params.slug}/edit`);
 
-  const viewer = { id: session.user.id, isAdmin: Boolean(session.user.isAdmin) };
   const doc = await getDocBySlug(params.slug, viewer);
   if (!doc) notFound();
-  if (doc.uploaderId !== viewer.id && !viewer.isAdmin) notFound();
+  if (doc.uploaderId !== viewer.id && !viewer.canManage) notFound();
 
   return (
     <div className="container max-w-4xl py-8">

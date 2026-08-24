@@ -1,6 +1,11 @@
 import Link from 'next/link';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { formatDistanceToNowStrict } from 'date-fns';
+import { requirePermission } from '@/lib/admin';
+import { listRoles } from '@/lib/roles';
+import { MEMBER_ROLE_KEY } from '@/lib/permissions';
+import { RoleBadge } from './RoleBadge';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,23 +14,36 @@ const PAGE_SIZE = 30;
 export default async function UsersListPage({
   searchParams,
 }: {
-  searchParams: { q?: string; page?: string; sort?: string };
+  searchParams: { q?: string; page?: string; sort?: string; role?: string };
 }) {
+  await requirePermission('users');
+
   const page = Math.max(1, Math.floor(Number(searchParams.page)) || 1);
   const q = (searchParams.q ?? '').trim();
   const sort = (searchParams.sort ?? 'last_seen') as 'last_seen' | 'created' | 'email';
+  const roleKey = (searchParams.role ?? '').trim();
 
-  const where = q
-    ? {
-        OR: [
-          { email: { contains: q, mode: 'insensitive' as const } },
-          { displayName: { contains: q, mode: 'insensitive' as const } },
-          { handle: { contains: q, mode: 'insensitive' as const } },
-          { huaweiW3Id: { contains: q, mode: 'insensitive' as const } },
-          { huaweiW3Name: { contains: q, mode: 'insensitive' as const } },
-        ],
-      }
-    : {};
+  const clauses: Prisma.UserWhereInput[] = [];
+  if (q) {
+    clauses.push({
+      OR: [
+        { email: { contains: q, mode: 'insensitive' } },
+        { displayName: { contains: q, mode: 'insensitive' } },
+        { handle: { contains: q, mode: 'insensitive' } },
+        { huaweiW3Id: { contains: q, mode: 'insensitive' } },
+        { huaweiW3Name: { contains: q, mode: 'insensitive' } },
+      ],
+    });
+  }
+  if (roleKey) {
+    // null roleId means 普通成员 (rows created before the role table existed).
+    clauses.push(
+      roleKey === MEMBER_ROLE_KEY
+        ? { OR: [{ role: { key: MEMBER_ROLE_KEY } }, { roleId: null }] }
+        : { role: { key: roleKey } },
+    );
+  }
+  const where: Prisma.UserWhereInput = clauses.length ? { AND: clauses } : {};
 
   const orderBy =
     sort === 'created'
@@ -34,7 +52,7 @@ export default async function UsersListPage({
         ? { email: 'asc' as const }
         : { lastSeenAt: { sort: 'desc' as const, nulls: 'last' as const } };
 
-  const [users, total] = await Promise.all([
+  const [users, total, roles] = await Promise.all([
     prisma.user.findMany({
       where,
       orderBy,
@@ -56,9 +74,11 @@ export default async function UsersListPage({
         department: true,
         lab: true,
         isPrivate: true,
+        role: { select: { key: true, name: true } },
       },
     }),
     prisma.user.count({ where }),
+    listRoles(),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -77,6 +97,18 @@ export default async function UsersListPage({
           placeholder="搜索 email / 用户名 / W3 工号 / W3 姓名…"
           className="h-9 flex-1 rounded-lg border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
         />
+        <select
+          name="role"
+          defaultValue={roleKey}
+          className="h-9 rounded-lg border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
+        >
+          <option value="">全部角色</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.key}>
+              {r.name}
+            </option>
+          ))}
+        </select>
         <select
           name="sort"
           defaultValue={sort}
@@ -100,7 +132,7 @@ export default async function UsersListPage({
               <th>工号</th>
               <th>部门 / 研究所</th>
               <th>Email</th>
-              <th>身份</th>
+              <th>角色</th>
               <th>登录方式</th>
               <th>最近在线</th>
               <th>注册时间</th>
@@ -146,15 +178,7 @@ export default async function UsersListPage({
                 </td>
                 <td className="text-[12px] text-muted">{u.email}</td>
                 <td>
-                  {u.isAdmin ? (
-                    <span className="badge" style={{ background: '#EEF0FF', color: '#3833A8' }}>
-                      Admin
-                    </span>
-                  ) : (
-                    <span className="badge" style={{ background: '#f4f4f5', color: '#71717a' }}>
-                      User
-                    </span>
-                  )}
+                  <RoleBadge roleKey={u.role?.key ?? MEMBER_ROLE_KEY} name={u.role?.name ?? '普通成员'} staff={u.isAdmin} />
                 </td>
                 <td className="text-[12px]">
                   {u.authMethod === 'both' ? '密码 + W3' : u.authMethod === 'huawei_sso' ? 'W3' : '密码'}
@@ -182,7 +206,7 @@ export default async function UsersListPage({
         </table>
       </div>
 
-      <Pagination current={page} totalPages={totalPages} q={q} sort={sort} />
+      <Pagination current={page} totalPages={totalPages} q={q} sort={sort} role={roleKey} />
     </div>
   );
 }
@@ -192,16 +216,20 @@ function Pagination({
   totalPages,
   q,
   sort,
+  role,
 }: {
   current: number;
   totalPages: number;
   q: string;
   sort: string;
+  role: string;
 }) {
   const prev = Math.max(1, current - 1);
   const next = Math.min(totalPages, current + 1);
   const url = (p: number) =>
-    `/manage/users?page=${p}${q ? `&q=${encodeURIComponent(q)}` : ''}${sort ? `&sort=${sort}` : ''}`;
+    `/manage/users?page=${p}${q ? `&q=${encodeURIComponent(q)}` : ''}${sort ? `&sort=${sort}` : ''}${
+      role ? `&role=${encodeURIComponent(role)}` : ''
+    }`;
   return (
     <div className="flex items-center justify-end gap-2 text-xs">
       <Link

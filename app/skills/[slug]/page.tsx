@@ -4,6 +4,7 @@ import { Bell, GitFork, Heart, Star, Calendar, Tag as TagIcon, ExternalLink, Dow
 import { getLocale, getTranslations } from 'next-intl/server';
 import { relativeTime } from '@/lib/i18n-date';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { getSkillBySlug } from '@/lib/skill-queries';
 import { prisma } from '@/lib/db';
 import { canAccessSkillContent } from '@/lib/access';
@@ -40,14 +41,20 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
 
   const session = await auth();
   const actor = session?.user
-    ? { id: session.user.id, isAdmin: session.user.isAdmin, via: 'session' as const, scopes: null }
+    ? {
+        id: session.user.id,
+        roleKey: session.user.roleKey,
+        permissions: session.user.permissions,
+        via: 'session' as const,
+        scopes: null,
+      }
     : null;
   // The "Manage" tab is for the skill's OWNER only (admins use the admin panel).
   const isAuthor = actor?.id === skill.authorId;
 
   // Viewer's grant status for restricted skills.
   let grantStatus: string | null = null;
-  if (actor && skill.visibility === 'restricted' && actor.id !== skill.authorId && !actor.isAdmin) {
+  if (actor && skill.visibility === 'restricted' && actor.id !== skill.authorId && !can(actor, 'skills')) {
     const g = await prisma.skillAccessRequest.findUnique({
       where: { skillId_userId: { skillId: skill.id, userId: actor.id } },
       select: { status: true },
@@ -76,7 +83,7 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
     skill.descriptionMd === (skill.currentVersion?.contentInline ?? null);
 
   // 隐私账号：department/lab trimmed server-side before rendering.
-  const author = toPublicAuthor(skill.author, session?.user?.isAdmin ?? false);
+  const author = toPublicAuthor(skill.author, can(session?.user, 'identity'));
 
   const t = await getTranslations('detail');
   const ts = await getTranslations('skill_detail');

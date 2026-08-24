@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
-import { canReadDoc } from '@/lib/library-queries';
+import { canReadDoc, libraryViewerFromSession } from '@/lib/library-queries';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +20,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
   const doc = await loadDoc(params.id);
   if (!doc || doc.deletedAt) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  if (!(await canReadDoc(doc, { id: session.user.id, isAdmin: session.user.isAdmin }))) {
+  if (!(await canReadDoc(doc, libraryViewerFromSession(session)))) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 

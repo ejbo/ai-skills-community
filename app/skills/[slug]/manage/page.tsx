@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { ExternalLink } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { prisma } from '@/lib/db';
 import { BackButton } from '@/components/BackButton';
 import { ManagePanel, coerceSection } from './ManagePanel';
@@ -26,7 +27,7 @@ export default async function ManageSkillPage({
     select: { authorId: true, deletedAt: true, name: true },
   });
   if (!skill || skill.deletedAt) notFound();
-  if (skill.authorId !== session.user.id && !session.user.isAdmin) {
+  if (skill.authorId !== session.user.id && !can(session.user, 'skills')) {
     redirect(`/skills/${params.slug}`);
   }
 

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { logAdmin } from '@/lib/audit';
 import { apiReason } from '@/lib/api-errors';
 import { toPublicAuthor } from '@/lib/user-identity';
@@ -43,7 +44,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
   const moderates = featured !== undefined;
-  if (moderates && !session.user.isAdmin) {
+  if (moderates && !can(session.user, 'shorts')) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -72,7 +73,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   return NextResponse.json({
     ok: true,
-    short: { ...updated, uploader: toPublicAuthor(updated.uploader, Boolean(session.user.isAdmin)) },
+    short: { ...updated, uploader: toPublicAuthor(updated.uploader, can(session.user, 'identity')) },
   });
 }
 
@@ -89,7 +90,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   if (!short) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   const isAuthor = short.uploaderId === session.user.id;
-  if (!isAuthor && !session.user.isAdmin) {
+  if (!isAuthor && !can(session.user, 'shorts')) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 

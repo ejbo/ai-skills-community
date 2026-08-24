@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, MessageSquare } from 'lucide-react';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { relativeTime } from '@/lib/i18n-date';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { listFeedback, isFeedbackStatus, type FeedbackSort } from '@/lib/feedback-queries';
 import { toPublicAuthor } from '@/lib/user-identity';
 import { DeptTag } from '@/components/DeptTag';
@@ -36,7 +37,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
   const g = await getTranslations();
   const locale = await getLocale();
   const session = await auth();
-  const viewerIsAdmin = session?.user?.isAdmin ?? false;
+  const viewerCanSeeIdentity = can(session?.user, 'identity');
   const status = isFeedbackStatus(searchParams.status) ? searchParams.status : undefined;
   const sort: FeedbackSort = searchParams.sort === 'top' ? 'top' : 'newest';
 
@@ -117,7 +118,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
         ) : (
           <ul className="surface divide-y divide-zinc-100 overflow-hidden rounded-2xl dark:divide-zinc-800/60">
             {items.map((f) => {
-              const author = toPublicAuthor(f.author, viewerIsAdmin);
+              const author = toPublicAuthor(f.author, viewerCanSeeIdentity);
               return (
               // The vote button is a SIBLING of the row link (not nested inside
               // it) — interactive-in-interactive markup breaks a11y/aux-click.

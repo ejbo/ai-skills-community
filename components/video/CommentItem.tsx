@@ -19,7 +19,8 @@ import { useCommentFocus } from './CommentFocusContext';
 interface Props {
   slug: string;
   comment: VideoCommentView;
-  currentUser: { id: string; isAdmin: boolean; handle?: string } | null;
+  /** `canModerate` = the viewer holds the permission for THIS video's kind (videos / shorts). */
+  currentUser: { id: string; canModerate: boolean; handle?: string } | null;
   onChanged: () => void;
   // For a reply, lets the composed reply-to-reply be appended to the TOP-level
   // thread's flat reply list (DB threading is 2 levels deep).
@@ -55,7 +56,7 @@ export function CommentItem({ slug, comment, currentUser, onChanged, onAddSiblin
   // author-only "edit" affordance when the viewer's handle matches; the server
   // re-authorizes every mutation by id regardless, so this is purely a UI hint.
   const isOwn = Boolean(currentUser?.handle && currentUser.handle === comment.author.handle);
-  const canDelete = isOwn || Boolean(currentUser?.isAdmin);
+  const canDelete = isOwn || Boolean(currentUser?.canModerate);
 
   // Deep-link focus (from a notification): scroll to + highlight this comment, or
   // — if this is the thread root of a nested target — open replies so it mounts.

@@ -16,6 +16,7 @@ import {
 import { getLocale, getTranslations } from 'next-intl/server';
 import { relativeTime } from '@/lib/i18n-date';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { searchSite, type SiteSearchResults } from '@/lib/search';
 import { SearchBar } from '@/components/SearchBar';
 
@@ -54,8 +55,9 @@ export default async function SearchPage({
   const q = firstParam(searchParams.q);
   const [session, t, locale] = await Promise.all([auth(), getTranslations('nav'), getLocale()]);
   const reldate = makeReldate(locale);
+  // `viewerCanSeeIdentity` only gates the 隐私账号 handle in user rows — it is the `identity` permission.
   const results = q
-    ? await searchSite(q, { viewerIsAdmin: session?.user?.isAdmin ?? false, perType: PER_TYPE })
+    ? await searchSite(q, { viewerCanSeeIdentity: can(session?.user, 'identity'), perType: PER_TYPE })
     : null;
 
   const groups: { key: keyof SiteSearchResults; label: string; icon: typeof FileCode2; rows: Row[] }[] =

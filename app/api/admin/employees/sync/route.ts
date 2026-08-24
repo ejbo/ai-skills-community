@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { gateApi } from '@/lib/admin';
 import { logAdmin } from '@/lib/audit';
 import { syncAllEntriesToUsers } from '@/lib/employee-directory';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST() {
-  const session = await auth();
-  if (!session?.user?.isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const gate = await gateApi('employees');
+  if (!gate.ok) return gate.response;
+  const { session } = gate;
 
   const result = await syncAllEntriesToUsers();
 

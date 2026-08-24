@@ -4,6 +4,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { relativeTime } from '@/lib/i18n-date';
 import { Eye, MessageSquare } from 'lucide-react';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { getTopicDetail, recordTopicView } from '@/lib/discussion-queries';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { BackButton } from '@/components/BackButton';
@@ -51,11 +52,11 @@ export default async function TopicDetailPage({
   await recordTopicView(topic.id, viewerKey);
 
   const viewer = session?.user
-    ? { handle: session.user.handle, isAdmin: session.user.isAdmin }
+    ? { handle: session.user.handle, canModerate: can(session.user, 'discussion') }
     : null;
-  const viewerIsAdmin = Boolean(viewer?.isAdmin);
+  const canSeeIdentity = can(session?.user, 'identity');
   const isAuthor = viewer?.handle === topic.author.handle;
-  const author = toPublicAuthor(topic.author, viewerIsAdmin);
+  const author = toPublicAuthor(topic.author, canSeeIdentity);
 
   const threads: ReplyThreadView[] = topic.replies.map((c) => ({
     id: c.id,
@@ -63,14 +64,14 @@ export default async function TopicDetailPage({
     status: c.status,
     replyCount: c.replyCount,
     createdAt: c.createdAt,
-    author: toPublicAuthor(c.author, viewerIsAdmin),
+    author: toPublicAuthor(c.author, canSeeIdentity),
     replies: c.replies.map((r) => ({
       id: r.id,
       bodyMd: r.bodyMd,
       status: r.status,
       replyCount: r.replyCount,
       createdAt: r.createdAt,
-      author: toPublicAuthor(r.author, viewerIsAdmin),
+      author: toPublicAuthor(r.author, canSeeIdentity),
     })),
   }));
 
@@ -122,7 +123,7 @@ export default async function TopicDetailPage({
             topicId={topic.id}
             pinned={topic.pinned}
             locked={topic.locked}
-            isAdmin={Boolean(viewer?.isAdmin)}
+            canModerate={Boolean(viewer?.canModerate)}
             isAuthor={isAuthor}
           />
         </div>
@@ -140,7 +141,7 @@ export default async function TopicDetailPage({
             topicId={topic.id}
             initialThreads={threads}
             currentUser={viewer}
-            locked={topic.locked && !viewer?.isAdmin}
+            locked={topic.locked && !viewer?.canModerate}
             focusId={searchParams.focus}
           />
         </div>

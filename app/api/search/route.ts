@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { EMPTY_SEARCH_RESULTS, searchSite } from '@/lib/search';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +13,7 @@ export async function GET(req: Request) {
 
   const session = await auth();
   const results = await searchSite(q, {
-    viewerIsAdmin: session?.user?.isAdmin ?? false,
+    viewerCanSeeIdentity: can(session?.user, 'identity'),
     perType: 6,
   });
   return NextResponse.json({ q, ...results });

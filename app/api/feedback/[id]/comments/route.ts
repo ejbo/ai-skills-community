@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import { notifyFeedbackReply } from '@/lib/notifications';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
@@ -130,7 +131,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     ok: true,
     comment: {
       ...comment,
-      author: toPublicAuthor(comment.author, session.user.isAdmin ?? false),
+      author: toPublicAuthor(comment.author, can(session.user, 'identity')),
     },
   });
 }

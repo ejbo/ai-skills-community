@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { logAdmin } from '@/lib/audit';
+import { canModerateComment, videoActorFrom } from '@/lib/video/access';
 
 const editSchema = z.object({ bodyMd: z.string().min(1).max(2000) });
 
@@ -33,22 +34,33 @@ export async function PATCH(req: Request, { params }: { params: { slug: string; 
   return NextResponse.json({ ok: true });
 }
 
-// DELETE /api/videos/[slug]/comments/[id] (author or admin) -> { ok }
+// DELETE /api/videos/[slug]/comments/[id] (author or moderator) -> { ok }
 export async function DELETE(req: Request, { params }: { params: { slug: string; id: string } }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
   const comment = await prisma.videoComment.findUnique({
     where: { id: params.id },
-    select: { id: true, authorId: true, videoId: true, parentId: true, replyCount: true, status: true },
+    select: {
+      id: true,
+      authorId: true,
+      videoId: true,
+      parentId: true,
+      replyCount: true,
+      status: true,
+      // Shorts and long videos are moderated by different permissions.
+      video: { select: { isShort: true } },
+    },
   });
   if (!comment || comment.status === 'deleted') {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
   const isAuthor = comment.authorId === session.user.id;
-  const isAdmin = session.user.isAdmin;
-  if (!isAuthor && !isAdmin) {
+  const actor = videoActorFrom(session.user);
+  // Author, or the `videos` / `shorts` moderator for this comment's video kind.
+  const canModerate = canModerateComment(actor, comment.authorId, { isShort: comment.video.isShort });
+  if (!canModerate) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -68,7 +80,8 @@ export async function DELETE(req: Request, { params }: { params: { slug: string;
     }
   });
 
-  if (isAdmin && !isAuthor) {
+  // A non-author who passed the gate is a moderator — audit the deletion.
+  if (!isAuthor) {
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
     await logAdmin({
       adminUserId: session.user.id,

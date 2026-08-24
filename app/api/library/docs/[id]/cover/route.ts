@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import {
   deleteLibraryFile,
@@ -25,13 +26,13 @@ const EXT_BY_MIME: Record<string, string> = {
 
 const LIBRARY_FILE_PREFIX = '/api/library/file/';
 
-async function loadEditableDoc(id: string, userId: string, isAdmin: boolean) {
+async function loadEditableDoc(id: string, userId: string, canManage: boolean) {
   const doc = await prisma.libraryDoc.findUnique({
     where: { id },
     select: { id: true, uploaderId: true, coverUrl: true, deletedAt: true },
   });
   if (!doc || doc.deletedAt) return { error: 404 as const };
-  if (doc.uploaderId !== userId && !isAdmin) return { error: 403 as const };
+  if (doc.uploaderId !== userId && !canManage) return { error: 403 as const };
   return { doc };
 }
 
@@ -51,7 +52,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const gate = rateLimit(`library:cover:${session.user.id}`, 20, MINUTE_MS);
   if (!gate.allowed) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
-  const found = await loadEditableDoc(params.id, session.user.id, session.user.isAdmin);
+  const found = await loadEditableDoc(params.id, session.user.id, can(session.user, 'library'));
   if ('error' in found) {
     return NextResponse.json(
       { error: found.error === 404 ? 'not_found' : 'forbidden' },
@@ -90,7 +91,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
-  const found = await loadEditableDoc(params.id, session.user.id, session.user.isAdmin);
+  const found = await loadEditableDoc(params.id, session.user.id, can(session.user, 'library'));
   if ('error' in found) {
     return NextResponse.json(
       { error: found.error === 404 ? 'not_found' : 'forbidden' },

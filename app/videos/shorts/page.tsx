@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 import { requireUser } from '@/lib/admin';
+import { can } from '@/lib/permissions';
 import { getShortForFeed, listShorts, toShortView } from '@/lib/video/shorts-queries';
 import { parseShortsSort } from '@/lib/video/shorts-shared';
 import { ShortsFeed } from './_components/ShortsFeed';
@@ -24,7 +25,8 @@ interface PageProps {
 export default async function ShortsPage({ searchParams }: PageProps) {
   const session = await requireUser();
   const viewerId = session.user.id;
-  const viewerIsAdmin = Boolean(session.user.isAdmin);
+  const canSeeIdentity = can(session.user, 'identity');
+  const canModerate = can(session.user, 'shorts');
 
   const sort = parseShortsSort(firstParam(searchParams.sort));
   const deepLinkId = firstParam(searchParams.v);
@@ -45,11 +47,11 @@ export default async function ShortsPage({ searchParams }: PageProps) {
       // Keyed per stream — switching 最热/最新 must remount the feed, not keep
       // the previous stream's items and cursor.
       key={sort}
-      initialItems={rows.map((s) => toShortView(s, viewerIsAdmin))}
+      initialItems={rows.map((s) => toShortView(s, canSeeIdentity))}
       initialCursor={feed.nextCursor}
       initialHasMore={feed.hasMore}
       sort={sort}
-      currentUser={{ id: viewerId, isAdmin: viewerIsAdmin, handle: session.user.handle }}
+      currentUser={{ id: viewerId, canModerate, handle: session.user.handle }}
       initialFocus={focus && deepLinked ? { itemId: deepLinked.id, commentId: focus } : null}
       autoOpenComments={firstParam(searchParams.comments) === '1'}
       autoOpenUpload={firstParam(searchParams.upload) === '1'}

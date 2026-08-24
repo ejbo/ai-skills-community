@@ -22,6 +22,7 @@ import {
   type SelectionContext,
   type SelectionPayload,
 } from './MarkPopover';
+import { SelectionToolbar, type TranslationResult } from './SelectionToolbar';
 import { useReaderPrefs, READER_WIDTHS } from './reader-prefs';
 import { ReaderHighlighter, supportsNativeHighlights, type HlBox } from './highlighter';
 import { getTextOffsetOfPoint, invalidateAnchorCache, rootTextLength } from './anchoring';
@@ -43,12 +44,17 @@ export interface ReaderDocInfo {
   aiIndexState: string;
   language: string | null;
   commentCount: number;
+  /** 译文 availability — 'none' | 'running' | 'ready' | 'partial' | 'failed'. */
+  translationState: string;
+  translationLang: string | null;
 }
 
 interface ChapterPayload {
   chapterIndex: number;
   title: string | null;
   html: string;
+  /** Whole-chapter 译文, when the document has been translated. */
+  translatedHtml: string | null;
 }
 
 interface Props {
@@ -62,7 +68,7 @@ interface Props {
   highlights: HighlightItem[];
   initialChat: string | null;
   focusHighlightId: string | null;
-  currentUser: { id: string; handle: string; isAdmin: boolean } | null;
+  currentUser: { id: string; handle: string; canModerate: boolean } | null;
 }
 
 const PENDING_JUMP_KEY = 'library:pendingJump';
@@ -124,6 +130,13 @@ export function ReaderShell({
   // and enables its actions). Written on mouseup only — the drag is over by
   // then, so this can never disturb the selection it describes.
   const [selectionQuote, setSelectionQuote] = useState<string | null>(null);
+  // 原文 / 译文. Highlights anchor to the ORIGINAL text's character offsets, so
+  // they are deliberately not painted over the translation.
+  const [textView, setTextView] = useState<'original' | 'translated'>('original');
+  const [translationState, setTranslationState] = useState(doc.translationState);
+  const [translating, setTranslating] = useState(false);
+  const hasTranslation = translationState === 'ready' || translationState === 'partial';
+  const showTranslated = textView === 'translated' && hasTranslation;
   // The mark popover hosts a note textarea — while it is open, nothing may
   // unmount the popover out from under an unsaved draft.
   const [editingMarkNote, setEditingMarkNote] = useState(false);
@@ -145,14 +158,6 @@ export function ReaderShell({
   const [boxes, setBoxes] = useState<HlBox[]>([]);
   const [flashBoxes, setFlashBoxes] = useState<HlBox[]>([]);
   const flashTimerRef = useRef<number | null>(null);
-  const [translate, setTranslate] = useState<{
-    top: number;
-    left: number;
-    text: string;
-    result: string | null;
-    loading: boolean;
-    error: string | null;
-  } | null>(null);
   // PDF: 原版 = browser-native iframe (reliable, no annotation — browser
   // boundary); 精读 = extracted reader where highlights / notes / AI work.
   const [pdfView, setPdfView] = useState<'original' | 'text'>(
@@ -603,7 +608,10 @@ export function ReaderShell({
   const repaint = useCallback(() => {
     const h = highlighterRef.current;
     const container = scrollRef.current;
-    if (!h || !container || showOriginalPdf) {
+    // 译文 replaces the article text, so the ORIGINAL character offsets every
+    // mark is anchored to no longer describe anything on screen. Painting is
+    // suppressed rather than mis-anchored.
+    if (!h || !container || showOriginalPdf || showTranslated) {
       h?.clear();
       setBoxes([]);
       setFlashBoxes([]);
@@ -631,7 +639,7 @@ export function ReaderShell({
     }));
     setBoxes(h.paint(chapterRootsRef.current, chapterHighlights, community, container));
     setMarksVersion((v) => v + 1);
-  }, [chapterHighlights, communityNotes, userFilter, showOthers, showOriginalPdf, nativeHl]);
+  }, [chapterHighlights, communityNotes, userFilter, showOthers, showOriginalPdf, showTranslated, nativeHl]);
 
   // Kept in a ref (not read directly) so listeners that must outlive `repaint`'s
   // identity — the MutationObserver below — never need to be torn down.
@@ -1225,40 +1233,6 @@ export function ReaderShell({
     [],
   );
 
-  const handleTranslate = useCallback((text: string, anchorPos: { top: number; left: number }) => {
-    setTranslate({
-      top: Math.min(anchorPos.top, window.innerHeight - 220),
-      left: Math.min(Math.max(anchorPos.left, 180), window.innerWidth - 180),
-      text,
-      result: null,
-      loading: true,
-      error: null,
-    });
-    void (async () => {
-      try {
-        const res = await fetch('/api/library/translate', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ text }),
-        });
-        const data = await res.json().catch(() => ({}));
-        setTranslate((prev) =>
-          prev && prev.text === text
-            ? {
-                ...prev,
-                loading: false,
-                result: res.ok ? (data.translation ?? null) : null,
-                error: res.ok ? null : (data?.reason ?? t('translate_failed_retry')),
-              }
-            : prev,
-        );
-      } catch {
-        setTranslate((prev) =>
-          prev && prev.text === text ? { ...prev, loading: false, error: t('network_error_retry') } : prev,
-        );
-      }
-    })();
-  }, [t]);
 
   // Selection shortcuts — the keyboard replaces the floating toolbar that used
   // to sit on the text. Silent when nothing is selected, so a stray keypress
@@ -1277,26 +1251,76 @@ export function ReaderShell({
       } else if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
         noteSelection();
-      } else if (e.key === 't' || e.key === 'T') {
-        e.preventDefault();
-        translateSelectionRef.current();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [showOriginalPdf, highlightSelection, noteSelection]);
 
-  // Held in a ref so the shortcut effect above (declared earlier) can reach it.
-  const translateSelectionRef = useRef<() => void>(() => {});
-  const translateSelection = useCallback(() => {
-    const payload = takeSelection();
-    if (!payload) return;
-    handleTranslate(payload.quote.slice(0, 3000), {
-      top: Math.round(window.innerHeight * 0.28),
-      left: Math.round(window.innerWidth / 2),
-    });
-  }, [takeSelection, handleTranslate]);
-  translateSelectionRef.current = translateSelection;
+  /** Cache-first selection translation — the API answers instantly on a hit. */
+  const translateText = useCallback(
+    async (text: string): Promise<TranslationResult> => {
+      const res = await fetch('/api/library/translate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ docId: doc.id, text: text.slice(0, 6000) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.translation) {
+        throw new Error(data?.reason ?? t('translate_failed_retry'));
+      }
+      return { text: data.translation as string, cached: Boolean(data.cached) };
+    },
+    [doc.id, t],
+  );
+
+
+  /** Translate the WHOLE document once, for everyone. */
+  const startDocTranslation = useCallback(async () => {
+    if (translating) return;
+    setTranslating(true);
+    try {
+      const res = await fetch(`/api/library/docs/${doc.id}/translate`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        pushToast('error', data?.reason ?? t('translate_failed_retry'));
+        setTranslating(false);
+        return;
+      }
+      setTranslationState('running');
+    } catch {
+      pushToast('error', t('network_error_retry'));
+      setTranslating(false);
+    }
+  }, [doc.id, translating, t]);
+
+  // Poll while a whole-document pass runs; a finished pass needs the server's
+  // chapter payload, so refresh the route rather than faking it client-side.
+  useEffect(() => {
+    if (translationState !== 'running') return;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        try {
+          const res = await fetch(`/api/library/docs/${doc.id}/translate`);
+          const data = await res.json().catch(() => null);
+          if (!data?.state || data.state === 'running') return;
+          window.clearInterval(timer);
+          setTranslating(false);
+          setTranslationState(data.state);
+          if (data.state === 'ready' || data.state === 'partial') {
+            setTextView('translated');
+            router.refresh();
+          } else if (data.error) {
+            pushToast('error', String(data.error));
+          }
+        } catch {
+          /* retry next tick */
+        }
+      })();
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [translationState, doc.id, router, t]);
+
 
   // ── render ────────────────────────────────────────────────────────────
 
@@ -1349,6 +1373,17 @@ export function ReaderShell({
           doc.format !== 'pdf' && chapterCount > 1
             ? { mode, available: flowAvailable, onChange: changeMode }
             : null
+        }
+        translation={
+          showOriginalPdf
+            ? null
+            : {
+                state: translationState,
+                view: textView,
+                busy: translating,
+                onChangeView: setTextView,
+                onTranslateAll: () => void startDocTranslation(),
+              }
         }
         pdfMode={
           doc.format === 'pdf' && doc.fileUrl
@@ -1411,6 +1446,8 @@ export function ReaderShell({
                 <section key={ch.chapterIndex} data-chapter-index={ch.chapterIndex}>
                   <ReaderContent
                     html={ch.html}
+                    translatedHtml={ch.translatedHtml}
+                    view={showTranslated ? 'translated' : 'original'}
                     docTitle={doc.title}
                     author={doc.author}
                     siteName={doc.siteName}
@@ -1488,43 +1525,6 @@ export function ReaderShell({
         )}
       </div>
 
-
-      {translate && (
-        <div
-          className="reader-panel rborder fixed z-50 w-80 -translate-x-1/2 rounded-xl border p-3 shadow-xl"
-          style={{ top: translate.top, left: translate.left }}
-          role="dialog"
-          aria-label={t('translate')}
-        >
-          <div className="flex items-center gap-1.5">
-            <Languages className="h-3.5 w-3.5 text-accent-500" />
-            <span className="text-xs font-semibold">{t('translate')}</span>
-            <button
-              type="button"
-              onClick={() => setTranslate(null)}
-              aria-label={tc('dismiss')}
-              className="r-muted ml-auto grid h-6 w-6 place-items-center rounded-md transition hover:bg-[var(--reader-hover)]"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          <p className="r-muted mt-2 line-clamp-2 border-l-2 border-[var(--reader-border)] pl-2 text-xs">
-            {translate.text}
-          </p>
-          <div className="mt-2 max-h-48 overflow-y-auto text-sm leading-relaxed">
-            {translate.loading ? (
-              <span className="r-muted flex items-center gap-1.5 text-xs">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                {t('translating')}
-              </span>
-            ) : translate.error ? (
-              <span className="text-xs text-danger">{translate.error}</span>
-            ) : (
-              <span className="whitespace-pre-wrap">{translate.result}</span>
-            )}
-          </div>
-        </div>
-      )}
 
       {markPopover &&
         (() => {

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { requirePermission } from '@/lib/admin';
 import { format } from 'date-fns';
 import { Plus } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
@@ -23,6 +24,7 @@ export default async function AdminVideosPage({
 }: {
   searchParams: { q?: string; page?: string };
 }) {
+  await requirePermission('videos');
   const t = await getTranslations({ namespace: 'video' });
   const page = Math.max(1, Number(searchParams.page ?? 1));
   const q = (searchParams.q ?? '').trim();

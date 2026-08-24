@@ -84,7 +84,7 @@ export function PostCard({
   const paletteLeaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isAuthor = currentUser?.handle === post.author.handle;
-  const isAdmin = Boolean(currentUser?.isAdmin);
+  const canModerate = Boolean(currentUser?.canModerate);
   // LinkedIn's clamp split: fewer lines when the card also carries media.
   const clampMax = post.media.length > 0 ? '5.5rem' : '9rem';
 
@@ -337,7 +337,7 @@ export function PostCard({
                   {tc('edit')}
                 </button>
               )}
-              {isAdmin && (
+              {canModerate && (
                 <button
                   onClick={togglePin}
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
@@ -346,7 +346,7 @@ export function PostCard({
                   {pinned ? t('unpin') : t('pin')}
                 </button>
               )}
-              {(isAuthor || isAdmin) && (
+              {(isAuthor || canModerate) && (
                 <button
                   onClick={remove}
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-danger transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
