@@ -16,6 +16,14 @@ const profileSchema = z.object({
     })
     .nullable()
     .optional(),
+  bannerUrl: z
+    .string()
+    .max(2048)
+    .refine((v) => v === '' || v.startsWith('/') || /^https?:\/\//.test(v), {
+      message: 'must be an uploaded path or http(s) URL',
+    })
+    .nullable()
+    .optional(),
 });
 
 const passwordSchema = z.object({
@@ -28,7 +36,7 @@ export async function GET() {
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, email: true, handle: true, displayName: true, bio: true, avatarUrl: true, isAdmin: true, huaweiW3Id: true, huaweiW3Name: true },
+    select: { id: true, email: true, handle: true, displayName: true, bio: true, avatarUrl: true, bannerUrl: true, isAdmin: true, huaweiW3Id: true, huaweiW3Name: true },
   });
   return NextResponse.json({ user });
 }
@@ -45,11 +53,12 @@ export async function PUT(req: Request) {
   if (parsed.data.displayName !== undefined) data.displayName = parsed.data.displayName;
   if (parsed.data.bio !== undefined) data.bio = parsed.data.bio || null;
   if (parsed.data.avatarUrl !== undefined) data.avatarUrl = parsed.data.avatarUrl || null;
+  if (parsed.data.bannerUrl !== undefined) data.bannerUrl = parsed.data.bannerUrl || null;
 
   const updated = await prisma.user.update({
     where: { id: session.user.id },
     data,
-    select: { id: true, displayName: true, bio: true, avatarUrl: true },
+    select: { id: true, displayName: true, bio: true, avatarUrl: true, bannerUrl: true },
   });
   return NextResponse.json({ user: updated });
 }

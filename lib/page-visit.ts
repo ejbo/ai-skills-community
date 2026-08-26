@@ -35,6 +35,7 @@ export const PAGE_NAMES: readonly PageNameEntry[] = [
   ['/settings', '账号设置'],
   ['/settings/notifications', '通知设置'],
   ['/settings/privacy', '隐私设置'],
+  ['/settings/tags', '我的标签'],
   ['/settings/tokens', 'CLI Token'],
   ['/settings/security', '安全设置'],
   ['/settings/language', '语言设置'],
@@ -98,6 +99,7 @@ export const PAGE_NAMES: readonly PageNameEntry[] = [
 
   ['/manage', '管理仪表盘'],
   ['/manage/users', '用户管理'],
+  ['/manage/user-tags', '用户标签'],
   ['/manage/users/[id]', '用户详情'],
   ['/manage/roles', '角色与权限'],
   ['/manage/employees', '员工名单'],
@@ -112,6 +114,7 @@ export const PAGE_NAMES: readonly PageNameEntry[] = [
   ['/manage/votes', '投票活动管理'],
   ['/manage/zones', '技术专区管理'],
   ['/manage/library', '知识库管理'],
+  ['/manage/library/categories', '知识库分类'],
   ['/manage/categories', '类别管理'],
   ['/manage/announcements', '公告管理'],
   ['/manage/logs', '操作日志'],
