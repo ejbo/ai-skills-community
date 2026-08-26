@@ -9,8 +9,8 @@ import { Lock, Pin } from 'lucide-react';
 // namespace: render tl(`discussionCategory.${category}`).
 export const CATEGORY_META: Record<DiscussionCategory, { className: string; dot: string }> = {
   tech: {
-    className: 'bg-accent-500/10 text-accent-600 dark:text-accent-300',
-    dot: 'bg-accent-500',
+    className: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',
+    dot: 'bg-indigo-500',
   },
   models: {
     className: 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300',
@@ -84,7 +84,7 @@ export function CategoryChip({ category }: { category: DiscussionCategory }) {
 export function PinnedBadge() {
   const t = useTranslations('discussion');
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-600 dark:text-accent-300">
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-zinc-900/[0.06] dark:bg-white/10 px-2 py-0.5 text-[11px] font-medium text-zinc-900 dark:text-zinc-50">
       <Pin className="h-3 w-3" />
       {t('pinned_badge')}
     </span>

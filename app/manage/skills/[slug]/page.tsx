@@ -56,7 +56,7 @@ export default async function AdminSkillDetailPage({ params }: { params: { slug:
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-2 text-xs text-muted">
-        <Link href="/manage/skills" className="hover:text-accent-600">
+        <Link href="/manage/skills" className="hover:text-zinc-900">
           ← Skill 审核
         </Link>
       </div>
@@ -64,7 +64,7 @@ export default async function AdminSkillDetailPage({ params }: { params: { slug:
       <div className="surface flex flex-wrap items-start justify-between gap-3 rounded-xl p-4">
         <div>
           <div className="flex items-center gap-2">
-            <Link href={`/skills/${skill.slug}`} className="text-xl font-semibold hover:text-accent-600">
+            <Link href={`/skills/${skill.slug}`} className="text-xl font-semibold hover:text-zinc-900">
               {skill.name}
             </Link>
             <VisibilityBadge visibility={skill.visibility} showPublic />
@@ -72,7 +72,7 @@ export default async function AdminSkillDetailPage({ params }: { params: { slug:
           <div className="mt-0.5 font-mono text-[11px] text-muted">{skill.slug}</div>
           <div className="mt-1 text-xs text-muted">
             作者{' '}
-            <Link href={`/users/${skill.author.handle}`} className="hover:text-accent-600">
+            <Link href={`/users/${skill.author.handle}`} className="hover:text-zinc-900">
               {skill.author.displayName}
             </Link>{' '}
             · {skill.author.email} · 当前 v{skill.currentVersion?.version ?? '—'}

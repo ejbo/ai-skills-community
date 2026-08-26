@@ -67,7 +67,7 @@ export default async function VideoDetailPage({ params, searchParams }: PageProp
 
   return (
     <div className="container py-6 md:py-8">
-      <VideoBreadcrumb items={[{ label: t('nav'), href: '/videos?tab=videos' }, { label: video.title }]} />
+      <VideoBreadcrumb items={[{ label: t('nav'), href: '/videos' }, { label: video.title }]} />
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_360px]">
         {/* MAIN COLUMN */}
         <div className="min-w-0 space-y-6">

@@ -26,7 +26,7 @@ export default async function AnnouncementPage({ params }: { params: { id: strin
         <BackButton label={t('back')} />
       </div>
       <article className="space-y-5">
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-accent-600">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-zinc-50">
           <Megaphone className="h-4 w-4" />
           {t('kicker')}
         </div>

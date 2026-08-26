@@ -264,7 +264,7 @@ export function PostCard({
       {/* Author row */}
       <div className="flex items-start gap-3">
         <Link href={`/users/${post.author.handle}`} className="shrink-0">
-          <Avatar name={post.author.displayName} src={post.author.avatarUrl} size="md" tone="subtle" />
+          <Avatar name={post.author.displayName} src={post.author.avatarUrl} size="md" />
         </Link>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -381,7 +381,7 @@ export function PostCard({
             <button
               onClick={saveEdit}
               disabled={busy || !editDraft.trim()}
-              className="flex h-8 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-xs font-medium text-white hover:bg-accent-600 disabled:opacity-60"
+              className="flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-xs font-medium text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
             >
               {busy && <Loader2 className="h-3 w-3 animate-spin" />}
               {tc('save')}
@@ -464,7 +464,7 @@ export function PostCard({
                   title={t(`reaction_${r}`)}
                   aria-label={t(`reaction_${r}`)}
                   className={`rounded-full p-1 text-2xl leading-none transition duration-150 hover:-translate-y-1 hover:scale-125 ${
-                    myReaction === r ? 'bg-accent-500/10' : ''
+                    myReaction === r ? 'bg-zinc-900/[0.06] dark:bg-white/10' : ''
                   }`}
                 >
                   {REACTION_META[r].emoji}
@@ -478,7 +478,7 @@ export function PostCard({
             aria-pressed={myReaction !== null}
             className={`${actionBtn} w-full ${
               myReaction
-                ? 'font-medium text-accent-600 dark:text-accent-300'
+                ? 'font-medium text-zinc-900 dark:text-zinc-50'
                 : 'text-zinc-600 dark:text-zinc-300'
             }`}
           >

@@ -66,7 +66,7 @@ export function LoginForm({
       <button
         type="submit"
         disabled={pending}
-        className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-accent-500 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+        className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
       >
         {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
         {t('login')}

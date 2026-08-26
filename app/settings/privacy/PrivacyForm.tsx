@@ -41,7 +41,7 @@ export function PrivacyForm({ initialIsPrivate }: { initialIsPrivate: boolean })
         disabled={saving}
         onClick={toggle}
         className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition ${
-          isPrivate ? 'bg-accent-500' : 'bg-zinc-300 dark:bg-zinc-700'
+          isPrivate ? 'bg-zinc-900 dark:bg-zinc-100' : 'bg-zinc-300 dark:bg-zinc-700'
         } disabled:opacity-60`}
       >
         <span

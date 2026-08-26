@@ -325,7 +325,7 @@ export default async function UserDetailPage({ params }: { params: { id: string 
               {adminActions.map((a) => (
                 <li key={a.id} className="flex items-center justify-between gap-3 py-1.5 text-xs">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-[11px] text-accent-600">{a.action}</span>
+                    <span className="font-mono text-[11px] text-zinc-900 dark:text-zinc-50">{a.action}</span>
                     <span className="text-muted">by {a.adminUser.displayName}</span>
                   </div>
                   <span className="font-mono text-[11px] text-muted tabular-nums">

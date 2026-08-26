@@ -42,7 +42,7 @@ export default async function ManageSkillPage({
           <BackButton fallbackHref={`/skills/${params.slug}`} />
         </div>
         <div className="text-xs text-muted">
-          <Link href="/dashboard" className="hover:text-accent-600">
+          <Link href="/dashboard" className="hover:text-zinc-900">
             {td('title')}
           </Link>{' '}
           / {skill.name}
@@ -53,7 +53,7 @@ export default async function ManageSkillPage({
           </h1>
           <Link
             href={`/skills/${params.slug}`}
-            className="inline-flex items-center gap-1.5 text-sm text-accent-600 hover:text-accent-700"
+            className="inline-flex items-center gap-1.5 text-sm text-zinc-900 dark:text-zinc-50 hover:text-zinc-900"
           >
             <ExternalLink className="h-3.5 w-3.5" />
             {t('view_public_page')}

@@ -97,7 +97,7 @@ export default async function AdminSkillsPage({
           <option value="restricted">受限下载</option>
           <option value="private">私密</option>
         </select>
-        <button className="h-9 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white hover:bg-accent-600">
+        <button className="h-9 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300">
           筛选
         </button>
       </form>
@@ -128,13 +128,13 @@ export default async function AdminSkillsPage({
             {skills.map((s) => (
               <tr key={s.id}>
                 <td>
-                  <Link href={`/manage/skills/${s.slug}`} className="font-medium hover:text-accent-600">
+                  <Link href={`/manage/skills/${s.slug}`} className="font-medium hover:text-zinc-900">
                     {s.name}
                   </Link>
                   <div className="font-mono text-[10px] text-muted">{s.slug}</div>
                 </td>
                 <td>
-                  <Link href={`/users/${s.author.handle}`} className="hover:text-accent-600">
+                  <Link href={`/users/${s.author.handle}`} className="hover:text-zinc-900">
                     {s.author.displayName}
                   </Link>
                 </td>

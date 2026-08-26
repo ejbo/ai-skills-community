@@ -31,7 +31,7 @@ export function DocsNav({ groups }: { groups: NavGroup[] }) {
                   aria-current={active ? 'page' : undefined}
                   className={`rounded-lg px-3 py-1.5 text-sm transition ${
                     active
-                      ? 'bg-accent-500/10 font-medium text-accent-600 dark:text-accent-300'
+                      ? 'bg-zinc-900/[0.06] dark:bg-white/10 font-medium text-zinc-900 dark:text-zinc-50'
                       : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white'
                   }`}
                 >

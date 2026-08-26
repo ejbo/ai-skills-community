@@ -174,9 +174,9 @@ function TreeView({
                   <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                 )}
                 {isOpen ? (
-                  <FolderOpen className="h-3.5 w-3.5 shrink-0 text-accent-500" />
+                  <FolderOpen className="h-3.5 w-3.5 shrink-0 text-zinc-900 dark:text-zinc-50" />
                 ) : (
-                  <Folder className="h-3.5 w-3.5 shrink-0 text-accent-500" />
+                  <Folder className="h-3.5 w-3.5 shrink-0 text-zinc-900 dark:text-zinc-50" />
                 )}
                 <span className="truncate">{node.name}</span>
               </button>
@@ -200,7 +200,7 @@ function TreeView({
               onClick={() => onSelect(node.path)}
               className={`flex w-full items-center gap-1 rounded px-1.5 py-1 text-left text-sm ${
                 active
-                  ? 'bg-accent-500/10 text-accent-700 dark:text-accent-300'
+                  ? 'bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50'
                   : 'text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800'
               }`}
               style={{ paddingLeft: `${depth * 12 + 22}px` }}
@@ -277,7 +277,7 @@ function ViewToggle({
 }) {
   const ts = useTranslations('skill_detail');
   const base = 'inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium transition';
-  const on = 'bg-accent-500/10 text-accent-700 dark:text-accent-300';
+  const on = 'bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50';
   const off = 'text-muted hover:bg-zinc-100 dark:hover:bg-zinc-800';
   return (
     <div className="inline-flex overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">

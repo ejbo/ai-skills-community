@@ -63,7 +63,7 @@ export default async function EditVideoPage({ params }: { params: { id: string }
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 text-xs text-muted">
-        <Link href="/manage/videos" className="hover:text-accent-600">
+        <Link href="/manage/videos" className="hover:text-zinc-900">
           ← {t('manage.title')}
         </Link>
       </div>

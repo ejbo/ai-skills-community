@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { User, Key, Lock, Bell, Languages, ShieldCheck } from 'lucide-react';
+import { User, Key, Lock, Bell, Languages, ShieldCheck, Tag } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 
@@ -11,6 +11,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
 
   const links = [
     { href: '/settings', label: t('nav_profile'), icon: <User className="h-4 w-4" /> },
+    { href: '/settings/tags', label: t('nav_tags'), icon: <Tag className="h-4 w-4" /> },
     { href: '/settings/notifications', label: t('nav_notifications'), icon: <Bell className="h-4 w-4" /> },
     { href: '/settings/privacy', label: t('nav_privacy'), icon: <ShieldCheck className="h-4 w-4" /> },
     { href: '/settings/tokens', label: t('nav_tokens'), icon: <Key className="h-4 w-4" /> },

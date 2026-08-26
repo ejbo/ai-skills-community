@@ -4,10 +4,11 @@
 // egress all live on the server (lib/github-trending.ts); this leaf owns the
 // day/week/month switch, a per-period client cache and the scroll container.
 //
-// Deliberately monochrome: the ONLY colour on the panel is GitHub's own
-// language dot, which is real data. Everything else is ink, paper and
-// hairlines, so the panel reads as an instrument next to the video player
-// rather than as another tinted card.
+// Ink chrome, real colour on the data: GitHub's own per-language hex and the
+// gold star are the two things a reader actually scans for on this list, so
+// they keep their colour. The panel around them — header, tabs, rules, rank
+// numerals, the +N delta — stays ink, paper and hairlines, so it reads as an
+// instrument next to the video player rather than as another tinted card.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
@@ -304,18 +305,19 @@ function RepoRow({
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] tabular-nums text-zinc-500 dark:text-zinc-500">
             {repo.language && (
               <span className="flex items-center gap-1.5">
-                {/* The one spot of colour on the panel, and it is real data:
-                    GitHub's own per-language hex. */}
+                {/* Real data: GitHub's own per-language hex, at the same 8px
+                    github.com uses so a familiar language is recognised by its
+                    colour before the label is read. */}
                 <span
                   aria-hidden
-                  className="h-[7px] w-[7px] shrink-0 rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/15 dark:[filter:saturate(0.9)_brightness(1.15)]"
+                  className="h-2 w-2 shrink-0 rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/15 dark:[filter:saturate(0.95)_brightness(1.15)]"
                   style={{ backgroundColor: repo.languageColor || 'rgb(161 161 170)' }}
                 />
                 {repo.language}
               </span>
             )}
             <span className="flex items-center gap-1" title={t('stars_sr', { count: repo.stars })}>
-              <Star className="h-3 w-3 text-zinc-400" aria-hidden />
+              <Star className="h-3 w-3 text-amber-500" fill="currentColor" aria-hidden />
               {COMPACT.format(repo.stars)}
             </span>
             <span className="flex items-center gap-1" title={t('forks_sr', { count: repo.forks })}>

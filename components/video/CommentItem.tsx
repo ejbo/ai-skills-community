@@ -176,7 +176,7 @@ export function CommentItem({ slug, comment, currentUser, onChanged, onAddSiblin
       ref={rootRef}
       id={`comment-${comment.id}`}
       className={`flex scroll-mt-24 gap-3 rounded-xl transition-colors ${
-        highlighted ? 'bg-accent-500/10 ring-2 ring-accent-500/40' : ''
+        highlighted ? 'bg-zinc-900/[0.06] dark:bg-white/10 ring-2 ring-zinc-900/25 dark:ring-zinc-100/25' : ''
       }`}
     >
       {author.avatarUrl ? (

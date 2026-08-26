@@ -74,7 +74,7 @@ export function VersionUploader({ slug, currentVersion }: { slug: string; curren
       {detected && (
         <div className="text-xs text-muted">
           {t('detected_version')}
-          <span className="font-mono text-accent-600">v{detected}</span>
+          <span className="font-mono text-zinc-900 dark:text-zinc-50">v{detected}</span>
         </div>
       )}
       <FileDropZone staged={staged} onChange={onChange} title={t('upload_new_version')} />
@@ -84,7 +84,7 @@ export function VersionUploader({ slug, currentVersion }: { slug: string; curren
           value={changelog}
           onChange={(e) => setChangelog(e.target.value)}
           placeholder={t('changelog_placeholder')}
-          className="w-full rounded-lg border border-zinc-300 bg-[rgb(var(--surface))] px-3 py-2 text-sm outline-none transition focus:border-accent-500 dark:border-zinc-700"
+          className="w-full rounded-lg border border-zinc-300 bg-[rgb(var(--surface))] px-3 py-2 text-sm outline-none transition focus:border-zinc-900 dark:focus:border-zinc-100 dark:border-zinc-700"
         />
       </div>
       <div className="flex justify-end">
@@ -92,7 +92,7 @@ export function VersionUploader({ slug, currentVersion }: { slug: string; curren
           type="button"
           disabled={pending || !hasSkillMd(staged)}
           onClick={submit}
-          className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+          className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
         >
           {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           {t('publish_new_version')}

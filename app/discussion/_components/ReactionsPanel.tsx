@@ -175,7 +175,6 @@ export function ReactionsPanel({ postId, onClose }: { postId: string; onClose: (
                         name={u.author.displayName}
                         src={u.author.avatarUrl}
                         size="sm"
-                        tone="subtle"
                       />
                       {isReactionType(u.reaction) && (
                         <span className="absolute -bottom-1 -right-1 text-sm leading-none">
@@ -203,7 +202,7 @@ export function ReactionsPanel({ postId, onClose }: { postId: string; onClose: (
             <button
               onClick={loadMore}
               disabled={loadingMore}
-              className="mx-2 my-1 flex items-center gap-1.5 text-sm font-medium text-accent-600 hover:underline disabled:opacity-60 dark:text-accent-300"
+              className="mx-2 my-1 flex items-center gap-1.5 text-sm font-medium text-zinc-900 dark:text-zinc-50 hover:underline disabled:opacity-60"
             >
               {loadingMore && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               {t('load_more_reactors', { count: total })}
@@ -233,7 +232,7 @@ function TabButton({
     >
       {children}
       {active && (
-        <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-accent-500" />
+        <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-zinc-900 dark:bg-zinc-100" />
       )}
     </button>
   );

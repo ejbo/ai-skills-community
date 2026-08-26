@@ -28,7 +28,7 @@ export async function EventCard({ event, showDate = false }: { event: PublicEven
     // 我要参加的活动：accent 边框 + 徽章，让「这是我加入的」一眼可辨。
     <article
       className={`card-hover surface relative flex gap-4 rounded-2xl p-4 ${
-        event.attending ? '!border-accent-500/60 ring-1 ring-accent-500/25' : ''
+        event.attending ? '!border-zinc-900/40 dark:border-zinc-100/40 ring-1 ring-zinc-900/25 dark:ring-zinc-100/25' : ''
       }`}
     >
       <div className="min-w-0 flex-1">
@@ -44,7 +44,7 @@ export async function EventCard({ event, showDate = false }: { event: PublicEven
           </span>
           {event.cancelled && <CancelledBadge />}
           {event.attending && !joinable && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-600 dark:text-accent-400">
+            <span className="inline-flex items-center gap-1 rounded-full bg-zinc-900/[0.06] dark:bg-white/10 px-2 py-0.5 text-[11px] font-medium text-zinc-900 dark:text-zinc-50">
               <CalendarCheck2 className="h-3 w-3" />
               {t('attending_badge')}
             </span>
@@ -109,7 +109,7 @@ export async function EventCard({ event, showDate = false }: { event: PublicEven
               href={websiteHref}
               target="_blank"
               rel="noopener noreferrer nofollow"
-              className="relative z-10 inline-flex items-center gap-1 rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-zinc-500 transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700 dark:text-zinc-400"
+              className="relative z-10 inline-flex items-center gap-1 rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-zinc-500 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-400"
             >
               <ExternalLink className="h-3 w-3" />
               {t('website_signup')}

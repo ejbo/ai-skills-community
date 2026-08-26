@@ -154,12 +154,12 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
                   <DownloadButton
                     slug={skill.slug}
                     version={skill.currentVersion?.version}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:border-accent-500 hover:bg-accent-500/5 hover:text-accent-700 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-accent-400 dark:hover:bg-accent-500/10 dark:hover:text-accent-300"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:bg-zinc-900/10 dark:hover:bg-white/[0.14] hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:text-zinc-50"
                   />
                 ) : (
                   <a
                     href={`/auth/login?callbackUrl=/skills/${skill.slug}`}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:border-accent-500 hover:bg-accent-500/5 hover:text-accent-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-accent-400 dark:hover:bg-accent-500/10 dark:hover:text-accent-300"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:bg-zinc-900/10 dark:hover:bg-white/[0.14] hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:text-zinc-50"
                   >
                     <Download className="h-3.5 w-3.5" />
                     {ts('download_zip')}
@@ -247,7 +247,7 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
                 href={skill.externalSourceUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-accent-600 hover:text-accent-700"
+                className="inline-flex items-center gap-1 text-xs text-zinc-900 dark:text-zinc-50 hover:text-zinc-900"
               >
                 <ExternalLink className="h-3 w-3" />
                 {ts('view_upstream')}
@@ -256,7 +256,7 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
             {skill.forkedFrom && (
               <div className="text-xs">
                 <span className="text-muted">{ts('forked_from')} </span>
-                <Link href={`/skills/${skill.forkedFrom.slug}`} className="text-accent-600 hover:underline">
+                <Link href={`/skills/${skill.forkedFrom.slug}`} className="text-zinc-900 dark:text-zinc-50 hover:underline">
                   {skill.forkedFrom.name}
                 </Link>
               </div>
@@ -357,7 +357,7 @@ async function VersionsTab({ skillId }: { skillId: string }) {
         <li key={v.id} className="surface rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <span className="rounded bg-accent-500/10 px-2 py-0.5 font-mono text-xs text-accent-700 dark:text-accent-300">
+              <span className="rounded bg-zinc-900/[0.06] dark:bg-white/10 px-2 py-0.5 font-mono text-xs text-zinc-900 dark:text-zinc-50">
                 v{v.version}
               </span>
               {v.publishedAt && (

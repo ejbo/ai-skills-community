@@ -80,13 +80,12 @@ export function PostComposer({
           name={currentUser?.displayName ?? t('guest')}
           src={currentUser?.avatarUrl}
           size="md"
-          tone="subtle"
         />
         <button
           onClick={() => {
             if (requireLogin()) setOpen(true);
           }}
-          className="h-11 flex-1 rounded-full border border-zinc-200 bg-zinc-50 px-4 text-left text-sm text-muted transition hover:border-accent-400 hover:bg-white dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-900/60"
+          className="h-11 flex-1 rounded-full border border-zinc-200 bg-zinc-50 px-4 text-left text-sm text-muted transition hover:border-zinc-400 hover:bg-white dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-900/60"
         >
           {t('composer_placeholder')}
         </button>
@@ -102,7 +101,6 @@ export function PostComposer({
             name={currentUser?.displayName ?? ''}
             src={currentUser?.avatarUrl}
             size="sm"
-            tone="subtle"
           />
           <span className="text-sm font-medium">{currentUser?.displayName}</span>
         </div>
@@ -132,7 +130,7 @@ export function PostComposer({
         <button
           onClick={submit}
           disabled={busy || uploading > 0}
-          className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-accent-500 px-5 text-sm font-medium text-white hover:bg-accent-600 disabled:opacity-60"
+          className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-5 text-sm font-medium text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
         >
           {(busy || uploading > 0) && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           {t('publish')}

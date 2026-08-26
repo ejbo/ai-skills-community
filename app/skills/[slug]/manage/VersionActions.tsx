@@ -40,7 +40,7 @@ export function VersionActions({
     });
   }
 
-  const btn = 'rounded-md border border-zinc-300 px-2 py-1 text-[11px] font-medium transition hover:border-accent-500 hover:text-accent-600 disabled:opacity-50 dark:border-zinc-700';
+  const btn = 'rounded-md border border-zinc-300 px-2 py-1 text-[11px] font-medium transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-50 dark:border-zinc-700';
 
   return (
     <span className="inline-flex items-center gap-1.5">

@@ -91,7 +91,7 @@ export function FileDropZone({
           void extractDataTransfer(e.dataTransfer).then(ingest);
         }}
         className={`m-3.5 flex flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-6 text-center transition ${
-          dragging ? 'border-accent-500 bg-accent-500/5' : 'border-zinc-300 dark:border-zinc-700'
+          dragging ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10' : 'border-zinc-300 dark:border-zinc-700'
         }`}
       >
         <p className="text-sm text-muted">
@@ -105,7 +105,7 @@ export function FileDropZone({
               <button
                 type="button"
                 onClick={() => fileInput.current?.click()}
-                className="font-semibold text-accent-600 hover:text-accent-700 dark:text-accent-400"
+                className="font-semibold text-zinc-900 dark:text-zinc-50 hover:text-zinc-900"
               >
                 {t('dropzone_pick_files')}
               </button>{' '}
@@ -113,7 +113,7 @@ export function FileDropZone({
               <button
                 type="button"
                 onClick={() => folderInput.current?.click()}
-                className="font-semibold text-accent-600 hover:text-accent-700 dark:text-accent-400"
+                className="font-semibold text-zinc-900 dark:text-zinc-50 hover:text-zinc-900"
               >
                 {t('dropzone_pick_folder')}
               </button>

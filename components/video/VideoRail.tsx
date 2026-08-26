@@ -53,7 +53,7 @@ export function VideoRail({ title, href, videos }: VideoRailProps) {
         {href && (
           <Link
             href={href}
-            className="text-sm font-medium text-muted transition-colors hover:text-accent-600"
+            className="text-sm font-medium text-muted transition-colors hover:text-zinc-900"
           >
             {th('view_all')} →
           </Link>

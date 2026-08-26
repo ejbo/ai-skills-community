@@ -44,13 +44,13 @@ export default async function AuthErrorPage({
           <div className="mt-6 flex items-center justify-center gap-3">
             <Link
               href="/auth/login"
-              className="flex h-10 items-center justify-center rounded-lg bg-accent-500 px-5 text-sm font-medium text-white transition hover:bg-accent-600"
+              className="flex h-10 items-center justify-center rounded-lg bg-zinc-900 dark:bg-zinc-100 px-5 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
             >
               {t('retry')}
             </Link>
             <Link
               href="/"
-              className="surface flex h-10 items-center justify-center rounded-lg px-5 text-sm font-medium text-muted transition hover:text-accent-600"
+              className="surface flex h-10 items-center justify-center rounded-lg px-5 text-sm font-medium text-muted transition hover:text-zinc-900"
             >
               {t('home')}
             </Link>

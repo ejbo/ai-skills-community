@@ -33,7 +33,7 @@ export function BackButton({
     <button
       type="button"
       onClick={() => (canGoBack ? router.back() : router.push(fallbackHref))}
-      className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-muted transition hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 dark:hover:bg-zinc-800 dark:hover:text-white"
+      className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-muted transition hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 dark:focus-visible:ring-zinc-100 dark:hover:bg-zinc-800 dark:hover:text-white"
     >
       <ArrowLeft className="h-4 w-4" />
       {label ?? t('back')}

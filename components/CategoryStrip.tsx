@@ -41,7 +41,7 @@ function Pill({ active, onClick, label }: { active: boolean; onClick: () => void
       onClick={onClick}
       className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition ${
         active
-          ? 'border-accent-500 bg-accent-500/10 text-accent-700 dark:text-accent-300'
+          ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50'
           : 'border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200'
       }`}
     >

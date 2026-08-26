@@ -124,7 +124,7 @@ export function TopicReplies({
             link: (chunks) => (
               <Link
                 href="/auth/login"
-                className="text-accent-600 hover:underline dark:text-accent-300"
+                className="text-zinc-900 dark:text-zinc-50 hover:underline"
               >
                 {chunks}
               </Link>
@@ -267,7 +267,7 @@ function ReplyBlock({
     <div
       ref={ref}
       id={`tr-${reply.id}`}
-      className={`rounded-xl transition-shadow ${flash ? 'ring-2 ring-accent-500/60' : ''}`}
+      className={`rounded-xl transition-shadow ${flash ? 'ring-2 ring-zinc-900/25 dark:ring-zinc-100/25' : ''}`}
     >
       <div className="flex items-start gap-2.5">
         <Link href={`/users/${reply.author.handle}`} className="mt-0.5 shrink-0">
@@ -275,7 +275,6 @@ function ReplyBlock({
             name={reply.author.displayName}
             src={reply.author.avatarUrl}
             size={isRoot ? 'sm' : 'xs'}
-            tone="subtle"
           />
         </Link>
         <div className="min-w-0 flex-1">
@@ -397,7 +396,7 @@ function ReplyBox({
         <button
           onClick={submit}
           disabled={busy || !bodyMd.trim() || tooLong}
-          className="flex h-8 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-xs font-medium text-white hover:bg-accent-600 disabled:opacity-60"
+          className="flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-xs font-medium text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
         >
           {busy && <Loader2 className="h-3 w-3 animate-spin" />}
           {t('send')}

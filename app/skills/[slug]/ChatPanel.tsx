@@ -62,7 +62,7 @@ export function ChatPanel({ slug }: { slug: string }) {
                 <button
                   key={s}
                   onClick={() => send(s)}
-                  className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-600 transition hover:border-accent-500 hover:text-accent-700 dark:border-zinc-700 dark:text-zinc-300"
+                  className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-600 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-300"
                 >
                   {s}
                 </button>
@@ -75,7 +75,7 @@ export function ChatPanel({ slug }: { slug: string }) {
               <div
                 className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
                   msg.role === 'user'
-                    ? 'bg-accent-500 text-white'
+                    ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900'
                     : 'bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100'
                 }`}
               >
@@ -119,7 +119,7 @@ export function ChatPanel({ slug }: { slug: string }) {
         <button
           onClick={() => send(input)}
           disabled={pending || !input.trim()}
-          className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+          className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
         >
           {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
           {t('send')}

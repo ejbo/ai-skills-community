@@ -104,21 +104,21 @@ export default async function DashboardPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href={`/users/${session.user.handle ?? session.user.id}`}
-            className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-3.5 text-sm font-medium transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
+            className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-3.5 text-sm font-medium transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700"
           >
             <User className="h-3.5 w-3.5" />
             {t('view_profile')}
           </Link>
           <Link
             href="/library/shelf"
-            className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-3.5 text-sm font-medium transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
+            className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-3.5 text-sm font-medium transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700"
           >
             <LibraryBig className="h-3.5 w-3.5" />
             {t('my_shelf')}
           </Link>
           <Link
             href="/skills/new"
-            className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600"
+            className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
           >
             <Plus className="h-3.5 w-3.5" />
             {t('new_skill')}
@@ -157,7 +157,7 @@ export default async function DashboardPage() {
               <li key={s.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <Link href={`/skills/${s.slug}`} className="truncate font-medium hover:text-accent-600">
+                    <Link href={`/skills/${s.slug}`} className="truncate font-medium hover:text-zinc-900">
                       {s.name}
                     </Link>
                     <SourceBadge source={s.sourceType} />
@@ -194,7 +194,7 @@ export default async function DashboardPage() {
                   <span className="text-[11px]">{relativeTime(s.updatedAt, locale)}</span>
                   <Link
                     href={`/skills/${s.slug}/manage`}
-                    className="rounded border border-zinc-200 px-2 py-0.5 text-[11px] transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
+                    className="rounded border border-zinc-200 px-2 py-0.5 text-[11px] transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700"
                   >
                     {t('manage')}
                   </Link>
@@ -230,7 +230,7 @@ export default async function DashboardPage() {
                 <li key={s.skillId} className="flex flex-wrap items-center gap-3 px-4 py-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <Link href={`/skills/${s.skill.slug}`} className="truncate font-medium hover:text-accent-600">
+                      <Link href={`/skills/${s.skill.slug}`} className="truncate font-medium hover:text-zinc-900">
                         {s.skill.name}
                       </Link>
                       <SourceBadge source={s.skill.sourceType} />
@@ -260,7 +260,7 @@ export default async function DashboardPage() {
           title={t('section_my_docs')}
           count={myDocs.length}
           extra={
-            <Link href="/library" className="ml-auto text-sm text-accent-600 hover:text-accent-700">
+            <Link href="/library" className="ml-auto text-sm text-zinc-900 dark:text-zinc-50 hover:text-zinc-900">
               {t('go_library')}
             </Link>
           }
@@ -275,7 +275,7 @@ export default async function DashboardPage() {
                 <div className="min-w-0 flex-1">
                   <Link
                     href={`/library/${d.slug}`}
-                    className="block truncate text-sm font-medium hover:text-accent-600"
+                    className="block truncate text-sm font-medium hover:text-zinc-900"
                   >
                     {d.title}
                   </Link>
@@ -308,7 +308,7 @@ export default async function DashboardPage() {
                 </div>
                 <Link
                   href={`/library/${d.slug}/edit`}
-                  className="shrink-0 rounded-md border border-zinc-200 px-2 py-1 text-[11px] transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
+                  className="shrink-0 rounded-md border border-zinc-200 px-2 py-1 text-[11px] transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700"
                 >
                   {t('edit')}
                 </Link>
@@ -348,7 +348,7 @@ export default async function DashboardPage() {
             title={t('section_my_posts')}
             count={myPosts.length}
             extra={
-              <Link href="/discussion" className="ml-auto text-sm text-accent-600 hover:text-accent-700">
+              <Link href="/discussion" className="ml-auto text-sm text-zinc-900 dark:text-zinc-50 hover:text-zinc-900">
                 {t('go_discussion')}
               </Link>
             }
@@ -454,7 +454,7 @@ function Empty({
     <div className="surface mt-3 rounded-2xl px-6 py-10 text-center">
       <p className="text-sm text-muted">{hint}</p>
       {action && (
-        <Link href={action.href} className="mt-3 inline-block text-sm text-accent-600 hover:text-accent-700">
+        <Link href={action.href} className="mt-3 inline-block text-sm text-zinc-900 dark:text-zinc-50 hover:text-zinc-900">
           {action.label}
         </Link>
       )}

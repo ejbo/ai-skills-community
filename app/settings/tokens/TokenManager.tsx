@@ -101,7 +101,7 @@ export function TokenManager({ initialTokens }: { initialTokens: Token[] }) {
         <button
           onClick={create}
           disabled={creating}
-          className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+          className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
         >
           {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
           {t('token_generate')}
@@ -121,7 +121,7 @@ export function TokenManager({ initialTokens }: { initialTokens: Token[] }) {
               <code className="flex-1 truncate font-mono text-xs">{newlyCreated.raw}</code>
               <button
                 onClick={copyRaw}
-                className="flex h-7 items-center gap-1 rounded-md bg-accent-500 px-2 text-xs text-white transition hover:bg-accent-600"
+                className="flex h-7 items-center gap-1 rounded-md bg-zinc-900 dark:bg-zinc-100 px-2 text-xs text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
               >
                 {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                 {copied ? tc('copied') : tc('copy')}

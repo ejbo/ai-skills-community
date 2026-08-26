@@ -57,7 +57,7 @@ export default async function PrivacySettingsPage() {
         <h3 className="text-sm font-medium">{t('privacy_current_dept')}</h3>
         <p className="mt-2 text-sm">
           {dept ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-accent-500/10 px-2.5 py-1 text-[13px] font-medium text-accent-600">
+            <span className="inline-flex items-center gap-1 rounded-full bg-zinc-900/[0.06] dark:bg-white/10 px-2.5 py-1 text-[13px] font-medium text-zinc-900 dark:text-zinc-50">
               {dept}
             </span>
           ) : (

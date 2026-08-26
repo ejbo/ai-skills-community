@@ -17,6 +17,7 @@ import {
   Play,
   ShieldCheck,
   Vote,
+  Tag,
 } from 'lucide-react';
 import { getManageActor } from '@/lib/admin';
 import { manageSectionsFor, type PermissionKey } from '@/lib/permissions';
@@ -46,6 +47,15 @@ export default async function ManageLayout({ children }: { children: React.React
   const { session, role } = actor;
 
   const links = manageSectionsFor(role).map((s) => ({ href: s.href, label: s.label, icon: ICONS[s.perm] }));
+  // 用户标签 rides the `users` permission — same audience, no new catalog entry.
+  if (links.some((l) => l.href === '/manage/users')) {
+    const i = links.findIndex((l) => l.href === '/manage/users');
+    links.splice(i + 1, 0, {
+      href: '/manage/user-tags',
+      label: '用户标签',
+      icon: <Tag className="h-4 w-4" />,
+    });
+  }
   if (role.isSuperAdmin) {
     const i = links.findIndex((l) => l.href === '/manage/users');
     links.splice(i >= 0 ? i + 1 : links.length, 0, {

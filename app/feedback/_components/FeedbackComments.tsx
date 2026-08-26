@@ -114,7 +114,7 @@ export function FeedbackComments({
             link: (chunks) => (
               <Link
                 href={`/auth/login?callbackUrl=${encodeURIComponent(`/feedback/${feedbackId}`)}`}
-                className="text-accent-600 underline dark:text-accent-300"
+                className="text-zinc-900 dark:text-zinc-50 underline"
               >
                 {chunks}
               </Link>
@@ -273,7 +273,7 @@ function CommentBlock({
     <div
       ref={ref}
       id={`fc-${comment.id}`}
-      className={`rounded-xl transition-shadow ${flash ? 'ring-2 ring-accent-500/60' : ''}`}
+      className={`rounded-xl transition-shadow ${flash ? 'ring-2 ring-zinc-900/25 dark:ring-zinc-100/25' : ''}`}
     >
       <div className="flex items-start gap-2.5">
         <Avatar
@@ -301,7 +301,7 @@ function CommentBlock({
               {currentUser ? (
                 <button
                   onClick={onReply}
-                  className="flex items-center gap-1 transition hover:text-accent-600"
+                  className="flex items-center gap-1 transition hover:text-zinc-900"
                 >
                   <CornerDownRight className="h-3 w-3" />
                   {g('video.comments.reply')}
@@ -311,7 +311,7 @@ function CommentBlock({
                   onClick={() =>
                     router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`)
                   }
-                  className="flex items-center gap-1 transition hover:text-accent-600"
+                  className="flex items-center gap-1 transition hover:text-zinc-900"
                 >
                   <CornerDownRight className="h-3 w-3" />
                   {g('video.comments.reply')}
@@ -418,7 +418,7 @@ function CommentBox({
           onClick={submit}
           disabled={busy || !bodyMd.trim() || tooLong}
           title={tooLong ? t('comment_too_long') : undefined}
-          className="flex h-8 items-center gap-1.5 rounded-lg bg-accent-500 px-3 text-xs font-medium text-white hover:bg-accent-600 disabled:opacity-60"
+          className="flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-3 text-xs font-medium text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
         >
           {busy && <Loader2 className="h-3 w-3 animate-spin" />}
           {g('video.ai.send')}

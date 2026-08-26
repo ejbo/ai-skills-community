@@ -101,7 +101,7 @@ export default async function TopicDetailPage({
               {topic.title}
             </h1>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-              <Avatar name={author.displayName} src={author.avatarUrl} size="xs" tone="subtle" />
+              <Avatar name={author.displayName} src={author.avatarUrl} size="xs" />
               <Link href={`/users/${author.handle}`} className="hover:underline">
                 {author.displayName}
               </Link>

@@ -52,8 +52,8 @@ export function CardAttendButton({ id, attending }: { id: string; attending: boo
       disabled={busy}
       className={`relative z-10 ml-auto inline-flex h-7 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-medium transition disabled:opacity-60 ${
         isAttending
-          ? 'bg-accent-500 text-white hover:bg-accent-600'
-          : 'border border-accent-500/60 bg-accent-500/10 text-accent-600 hover:bg-accent-500/20 dark:text-accent-400'
+          ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300'
+          : 'border border-zinc-900/40 dark:border-zinc-100/40 bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50 hover:bg-zinc-900/10 dark:hover:bg-white/[0.14]'
       }`}
     >
       {busy ? (

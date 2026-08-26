@@ -32,7 +32,7 @@ export function VisibilitySelector({
             onClick={() => onChange(v)}
             className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition ${
               value === v
-                ? 'border-accent-500 bg-accent-500/10 text-accent-700 dark:text-accent-300'
+                ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50'
                 : 'border-zinc-300 hover:border-zinc-400 dark:border-zinc-700'
             }`}
           >

@@ -63,7 +63,7 @@ export function CreateVoteForm() {
       <button
         type="submit"
         disabled={busy || !title.trim()}
-        className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50"
+        className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {busy && <Loader2 className="h-4 w-4 animate-spin" />}
         {t('create_submit')}

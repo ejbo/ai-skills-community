@@ -245,7 +245,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
         </div>
         <Link
           href={publishHref}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600"
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
         >
           <Plus className="h-4 w-4" />
           {t('publish')}
@@ -354,7 +354,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
                 href={eventsHref(searchParams, { tab: '', preset: '', day: '', from: '', to: '' })}
                 className={
                   tab === 'upcoming'
-                    ? 'rounded-md bg-accent-500 px-3 py-1 text-xs font-medium text-white'
+                    ? 'rounded-md bg-zinc-900 dark:bg-zinc-100 px-3 py-1 text-xs font-medium text-white dark:text-zinc-900'
                     : 'rounded-md px-3 py-1 text-xs text-muted transition hover:text-zinc-900 dark:hover:text-zinc-100'
                 }
               >
@@ -364,7 +364,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
                 href={eventsHref(searchParams, { tab: 'past', preset: '', day: '', from: '', to: '' })}
                 className={
                   tab === 'past'
-                    ? 'rounded-md bg-accent-500 px-3 py-1 text-xs font-medium text-white'
+                    ? 'rounded-md bg-zinc-900 dark:bg-zinc-100 px-3 py-1 text-xs font-medium text-white dark:text-zinc-900'
                     : 'rounded-md px-3 py-1 text-xs text-muted transition hover:text-zinc-900 dark:hover:text-zinc-100'
                 }
               >
@@ -376,7 +376,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
                 href={eventsHref(searchParams, { mine: mine ? '' : '1' })}
                 className={`inline-flex h-[30px] items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition ${
                   mine
-                    ? 'border-accent-500 bg-accent-500/10 text-accent-600 dark:text-accent-400'
+                    ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50'
                     : 'border-zinc-200 text-muted hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-800 dark:hover:text-zinc-100'
                 }`}
               >
@@ -411,7 +411,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
                 <Link
                   key={c.label}
                   href={c.href}
-                  className="inline-flex items-center gap-1 rounded-full bg-accent-500/10 px-2.5 py-1 text-xs font-medium text-accent-600 transition hover:bg-accent-500/20 dark:text-accent-400"
+                  className="inline-flex items-center gap-1 rounded-full bg-zinc-900/[0.06] dark:bg-white/10 px-2.5 py-1 text-xs font-medium text-zinc-900 dark:text-zinc-50 transition hover:bg-zinc-900/10 dark:hover:bg-white/[0.14]"
                 >
                   {c.label}
                   <X className="h-3 w-3" />
@@ -426,7 +426,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
           {showPinned && pinned.length > 0 && (
             <section className="mb-6 space-y-3">
               <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-                <Pin className="h-4 w-4 text-accent-500" />
+                <Pin className="h-4 w-4 text-zinc-900 dark:text-zinc-50" />
                 {t('featured')}
               </h2>
               {pinned.map((ev) => (
@@ -473,7 +473,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
                   {list.page > 1 ? (
                     <Link
                       href={eventsHref(searchParams, { page: String(list.page - 1) })}
-                      className="text-muted transition hover:text-accent-600"
+                      className="text-muted transition hover:text-zinc-900"
                     >
                       {tb('prev_page')}
                     </Link>
@@ -486,7 +486,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
                   {list.page < list.pageCount ? (
                     <Link
                       href={eventsHref(searchParams, { page: String(list.page + 1) })}
-                      className="text-muted transition hover:text-accent-600"
+                      className="text-muted transition hover:text-zinc-900"
                     >
                       {tb('next_page')}
                     </Link>
@@ -521,7 +521,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
 function chipCls(active: boolean): string {
   return `inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-xs transition ${
     active
-      ? 'border-accent-500 bg-accent-500/10 font-medium text-accent-600 dark:text-accent-400'
+      ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10 font-medium text-zinc-900 dark:text-zinc-50'
       : 'border-zinc-200 text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900'
   }`;
 }
@@ -551,7 +551,7 @@ function RailLink({
       href={href}
       className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-[13px] transition ${
         active
-          ? 'bg-accent-500/10 font-medium text-accent-600 dark:text-accent-400'
+          ? 'bg-zinc-900/[0.06] dark:bg-white/10 font-medium text-zinc-900 dark:text-zinc-50'
           : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
       }`}
     >
@@ -624,11 +624,11 @@ async function MiniCalendar({
               title={has ? t('day_event_count', { count: counts[c.key] }) : undefined}
               className={`relative mx-auto flex h-8 w-8 items-center justify-center rounded-lg text-xs transition ${
                 selected
-                  ? 'bg-accent-500 font-semibold text-white'
+                  ? 'bg-zinc-900 dark:bg-zinc-100 font-semibold text-white dark:text-zinc-900'
                   : c.inMonth
                     ? `hover:bg-zinc-100 dark:hover:bg-zinc-800 ${
                         isToday
-                          ? 'font-semibold text-accent-600 dark:text-accent-400'
+                          ? 'font-semibold text-zinc-900 dark:text-zinc-50'
                           : 'text-zinc-700 dark:text-zinc-200'
                       }`
                     : 'text-zinc-300 dark:text-zinc-600'
@@ -637,7 +637,7 @@ async function MiniCalendar({
               {c.day}
               {has && (
                 <span
-                  className={`absolute bottom-1 h-1 w-1 rounded-full ${selected ? 'bg-white' : 'bg-accent-500'}`}
+                  className={`absolute bottom-1 h-1 w-1 rounded-full ${selected ? 'bg-white' : 'bg-zinc-900 dark:bg-zinc-100'}`}
                 />
               )}
             </Link>
@@ -677,7 +677,7 @@ async function MonthAgenda({ sp, cal }: { sp: SearchParams; cal: CalendarMonthDa
             <li key={entry.key}>
               <Link
                 href={eventsHref(sp, { day: entry.key, preset: '', from: '', to: '' })}
-                className="text-xs font-medium text-muted transition hover:text-accent-600"
+                className="text-xs font-medium text-muted transition hover:text-zinc-900"
               >
                 {fmtDateShortL(d, locale)} {weekdayShortL(d, locale)}
               </Link>
@@ -695,7 +695,7 @@ async function MonthAgenda({ sp, cal }: { sp: SearchParams; cal: CalendarMonthDa
                     </span>
                     <Link
                       href={`/events/${it.id}`}
-                      className={`min-w-0 flex-1 truncate transition hover:text-accent-600 ${
+                      className={`min-w-0 flex-1 truncate transition hover:text-zinc-900 ${
                         it.cancelled ? 'text-muted line-through' : ''
                       }`}
                     >

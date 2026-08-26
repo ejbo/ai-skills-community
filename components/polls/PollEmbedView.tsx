@@ -78,7 +78,7 @@ export function PollEmbedView({ node, deleteNode, extension }: NodeViewProps) {
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-start gap-2">
-          <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-accent-500/10 text-accent-600 dark:text-accent-400">
+          <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50">
             <BarChart3 className="h-3.5 w-3.5" />
           </span>
           {missing ? (

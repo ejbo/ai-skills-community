@@ -176,7 +176,7 @@ export function ComparisonStudio({ slug, initial }: { slug: string; initial: Stu
         {model && <span className="font-mono text-[11px] text-muted">{t('model_label', { model })}</span>}
         <button
           onClick={() => setShowPreview((v) => !v)}
-          className="ml-auto inline-flex items-center gap-1 text-xs text-muted hover:text-accent-600"
+          className="ml-auto inline-flex items-center gap-1 text-xs text-muted hover:text-zinc-900"
         >
           {showPreview ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
           {showPreview ? t('hide_preview') : t('show_preview')}
@@ -212,7 +212,7 @@ export function ComparisonStudio({ slug, initial }: { slug: string; initial: Stu
         <button
           onClick={generate}
           disabled={chatPending}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
         >
           {chatPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
           {t('generate_btn')}
@@ -225,7 +225,7 @@ export function ComparisonStudio({ slug, initial }: { slug: string; initial: Stu
                 <div
                   className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm ${
                     m.role === 'user'
-                      ? 'bg-accent-500 text-white'
+                      ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900'
                       : 'w-full bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100'
                   }`}
                 >
@@ -235,7 +235,7 @@ export function ComparisonStudio({ slug, initial }: { slug: string; initial: Stu
                         <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed">{m.content}</pre>
                         <button
                           onClick={() => adopt(m.content)}
-                          className="inline-flex items-center gap-1 rounded-md border border-accent-500/40 px-2 py-1 text-xs text-accent-700 transition hover:bg-accent-500/10 dark:text-accent-300"
+                          className="inline-flex items-center gap-1 rounded-md border border-zinc-900/40 dark:border-zinc-100/40 px-2 py-1 text-xs text-zinc-900 dark:text-zinc-50 transition hover:bg-zinc-900/10 dark:hover:bg-white/[0.14]"
                         >
                           <Check className="h-3 w-3" />
                           {t('adopt_btn')}
@@ -269,7 +269,7 @@ export function ComparisonStudio({ slug, initial }: { slug: string; initial: Stu
               <button
                 onClick={sendFollowup}
                 disabled={chatPending || !followup.trim()}
-                className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-3 text-sm font-medium transition hover:border-accent-500 disabled:opacity-60 dark:border-zinc-700"
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-3 text-sm font-medium transition hover:border-zinc-400 dark:hover:border-zinc-500 disabled:opacity-60 dark:border-zinc-700"
               >
                 <Send className="h-3.5 w-3.5" />
               </button>
@@ -307,7 +307,7 @@ export function ComparisonStudio({ slug, initial }: { slug: string; initial: Stu
               <button
                 onClick={runBaseline}
                 disabled={baselinePending}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-4 text-sm font-medium transition hover:border-accent-500 disabled:opacity-60 dark:border-zinc-700"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-4 text-sm font-medium transition hover:border-zinc-400 dark:hover:border-zinc-500 disabled:opacity-60 dark:border-zinc-700"
               >
                 {baselinePending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FlaskConical className="h-3.5 w-3.5" />}
                 {t('baseline_run')}
@@ -346,7 +346,7 @@ export function ComparisonStudio({ slug, initial }: { slug: string; initial: Stu
           <button
             onClick={() => save('published')}
             disabled={saving}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
           >
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
             {tUpload('publish')}
@@ -354,7 +354,7 @@ export function ComparisonStudio({ slug, initial }: { slug: string; initial: Stu
           <button
             onClick={() => save('draft')}
             disabled={saving}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-4 text-sm font-medium transition hover:border-accent-500 disabled:opacity-60 dark:border-zinc-700"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-4 text-sm font-medium transition hover:border-zinc-400 dark:hover:border-zinc-500 disabled:opacity-60 dark:border-zinc-700"
           >
             {tUpload('save_draft')}
           </button>
@@ -405,7 +405,7 @@ function RawOutput({
 }) {
   return (
     <div className="rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
-      <div className={`mb-1 text-[11px] font-semibold uppercase tracking-wider ${accent ? 'text-accent-600' : 'text-muted'}`}>
+      <div className={`mb-1 text-[11px] font-semibold uppercase tracking-wider ${accent ? 'text-zinc-900 dark:text-zinc-50' : 'text-muted'}`}>
         {title}
       </div>
       <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">

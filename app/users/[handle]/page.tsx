@@ -128,7 +128,7 @@ export default async function UserProfilePage({ params }: { params: { handle: st
                 {t('joined', { time: relativeTime(user.createdAt, locale) })}
               </span>
               {user.isAdmin && (
-                <span className="rounded-full bg-accent-500/15 px-2 py-0.5 text-[11px] font-medium text-accent-700 dark:text-accent-300">
+                <span className="rounded-full bg-zinc-900/[0.06] dark:bg-white/10 px-2 py-0.5 text-[11px] font-medium text-zinc-900 dark:text-zinc-50">
                   Admin
                 </span>
               )}
@@ -214,7 +214,7 @@ export default async function UserProfilePage({ params }: { params: { handle: st
                   <div className="min-w-0 flex-1">
                     <Link
                       href={`/library/${d.slug}`}
-                      className="block truncate text-sm font-medium hover:text-accent-600"
+                      className="block truncate text-sm font-medium hover:text-zinc-900"
                     >
                       {d.title}
                     </Link>
@@ -356,7 +356,7 @@ export default async function UserProfilePage({ params }: { params: { handle: st
           hiddenLabel={t('hidden_badge')}
           extra={
             isOwner ? (
-              <Link href="/library/shelf" className="ml-auto text-sm text-accent-600 hover:text-accent-700">
+              <Link href="/library/shelf" className="ml-auto text-sm text-zinc-900 dark:text-zinc-50 hover:text-zinc-900">
                 {t('view_shelf_all')}
               </Link>
             ) : undefined
@@ -382,7 +382,7 @@ export default async function UserProfilePage({ params }: { params: { handle: st
                       </div>
                     )}
                   </div>
-                  <p className="mt-1.5 line-clamp-2 text-xs font-medium leading-snug group-hover:text-accent-600">
+                  <p className="mt-1.5 line-clamp-2 text-xs font-medium leading-snug group-hover:text-zinc-900">
                     {d.title}
                   </p>
                 </Link>
@@ -495,7 +495,7 @@ function OwnerLink({
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1 text-xs font-medium transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1 text-xs font-medium transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700"
     >
       {icon}
       {children}

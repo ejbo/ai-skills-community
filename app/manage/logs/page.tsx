@@ -67,7 +67,7 @@ export default async function LogsPage({
             </option>
           ))}
         </select>
-        <button className="h-9 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white hover:bg-accent-600">
+        <button className="h-9 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300">
           筛选
         </button>
       </form>

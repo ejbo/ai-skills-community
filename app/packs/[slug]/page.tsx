@@ -40,7 +40,7 @@ export default async function PackDetailPage({ params }: { params: { slug: strin
       <section className="space-y-5">
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1 rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-600 dark:text-accent-300">
+            <span className="inline-flex items-center gap-1 rounded-full bg-zinc-900/[0.06] dark:bg-white/10 px-2 py-0.5 text-[11px] font-medium text-zinc-900 dark:text-zinc-50">
               <Boxes className="h-3 w-3" />
               {tb('packs')}
             </span>
@@ -56,7 +56,7 @@ export default async function PackDetailPage({ params }: { params: { slug: strin
             {canManagePacks && (
               <Link
                 href="/manage/packs"
-                className="inline-flex items-center gap-1 rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-muted transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-800"
+                className="inline-flex items-center gap-1 rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-muted transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-800"
               >
                 <Pencil className="h-3 w-3" />
                 {tn('manage')}

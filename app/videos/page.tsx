@@ -30,7 +30,13 @@ interface SearchParams {
   tab?: string;
 }
 
-/** Videos tab switcher: Shorts (default) | Geek Videos. */
+/**
+ * Videos tab switcher: Geek Videos (default) | Shorts.
+ *
+ * Bare `/videos` is the Geek Videos home — the long-form board is what the
+ * section is named after, so it is what a visitor lands on. Shorts keep their
+ * own entry at `?tab=shorts` (and the immersive feed at `/videos/shorts`).
+ */
 function VideosTabs({
   active,
   videosLabel,
@@ -45,13 +51,13 @@ function VideosTabs({
   const off = 'text-muted hover:text-zinc-800 dark:hover:text-zinc-200';
   return (
     <div className="flex w-fit items-center gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-900">
-      <Link href="/videos" className={`${base} ${active === 'shorts' ? on : off}`}>
-        <Play className="h-4 w-4" />
-        {shortsLabel}
-      </Link>
-      <Link href="/videos?tab=videos" className={`${base} ${active === 'videos' ? on : off}`}>
+      <Link href="/videos" className={`${base} ${active === 'videos' ? on : off}`}>
         <Clapperboard className="h-4 w-4" />
         {videosLabel}
+      </Link>
+      <Link href="/videos?tab=shorts" className={`${base} ${active === 'shorts' ? on : off}`}>
+        <Play className="h-4 w-4" />
+        {shortsLabel}
       </Link>
     </div>
   );
@@ -67,8 +73,8 @@ export default async function VideosPage({ searchParams }: { searchParams: Searc
     searchParams.q || searchParams.category || searchParams.sort || searchParams.page,
   );
 
-  // ── Shorts tab — the DEFAULT view (Douyin-style browse; unified player) ────
-  if (!isBrowse && searchParams.tab !== 'videos') {
+  // ── Shorts tab — opt-in via ?tab=shorts (Douyin-style browse; unified player) ─
+  if (!isBrowse && searchParams.tab === 'shorts') {
     const actor = await getVideoActor();
     const viewerId = actor?.id ?? null;
     const canSeeIdentity = actor?.canSeeIdentity ?? false;
@@ -102,14 +108,16 @@ export default async function VideosPage({ searchParams }: { searchParams: Searc
     );
   }
 
-  // ── Home (Netflix billboard + rails) ───────────────────────────────────────
+  // ── Geek Videos home — the DEFAULT view (Netflix billboard + rails) ────────
   if (!isBrowse) {
     const actor = await getVideoActor();
     const feed = await getHomeFeed(actor?.id ?? null);
 
     return (
       <div className="animate-fade-in">
-        <div className="container pt-6">
+        {/* mb-6, not a bare pt: the switcher was resting directly on the
+            billboard's top edge, so the two read as one welded block. */}
+        <div className="container mb-6 pt-6">
           <VideosTabs active="videos" videosLabel={ts('tab_videos')} shortsLabel={ts('tab_shorts')} />
         </div>
         {feed.hero.length > 0 && (
@@ -147,7 +155,7 @@ export default async function VideosPage({ searchParams }: { searchParams: Searc
 
   return (
     <div className="container animate-fade-in py-6">
-      <VideoBreadcrumb items={[{ label: t('nav'), href: '/videos?tab=videos' }, { label: browseLeaf }]} />
+      <VideoBreadcrumb items={[{ label: t('nav'), href: '/videos' }, { label: browseLeaf }]} />
       <div className="space-y-4">
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{t('feed.title')}</h1>
         <SearchBar />
@@ -174,8 +182,7 @@ export default async function VideosPage({ searchParams }: { searchParams: Searc
 
 function buildHref(searchParams: SearchParams, page: number): string {
   const sp = new URLSearchParams();
-  // Pagination must stay inside the Geek Videos tab (bare /videos = Shorts).
-  sp.set('tab', 'videos');
+  // Bare /videos IS the Geek Videos tab, so browse links carry no `tab` at all.
   if (searchParams.q) sp.set('q', searchParams.q);
   if (searchParams.category) sp.set('category', searchParams.category);
   if (searchParams.sort) sp.set('sort', searchParams.sort);
@@ -224,7 +231,7 @@ function PageLink({
   children: React.ReactNode;
 }) {
   const base =
-    'inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500';
+    'inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 dark:focus-visible:ring-zinc-100';
   if (disabled) {
     return (
       <span

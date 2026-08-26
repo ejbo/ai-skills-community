@@ -66,7 +66,7 @@ export function AccessRequestPanel({
         </p>
         <button
           onClick={() => router.push(`/auth/login?callbackUrl=/skills/${slug}`)}
-          className="mt-3 inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-3 text-sm font-medium text-white transition hover:bg-accent-600"
+          className="mt-3 inline-flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-3 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
         >
           {t('login_to_apply')}
         </button>
@@ -103,12 +103,12 @@ export function AccessRequestPanel({
         placeholder={t('request_reason_placeholder')}
         maxLength={500}
         rows={2}
-        className="mt-3 w-full resize-y rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-accent-500 dark:border-zinc-700 dark:bg-zinc-900"
+        className="mt-3 w-full resize-y rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-zinc-900 dark:focus:border-zinc-100 dark:border-zinc-700 dark:bg-zinc-900"
       />
       <button
         onClick={apply}
         disabled={submitting || pending}
-        className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-3 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+        className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-3 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
       >
         <Send className="h-3.5 w-3.5" />
         {t('apply_download')}

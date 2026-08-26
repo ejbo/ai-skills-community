@@ -69,7 +69,7 @@ export function FeedbackComposer({ loggedIn }: { loggedIn: boolean }) {
     return (
       <button
         onClick={openForm}
-        className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-4 text-sm font-medium text-zinc-800 transition hover:border-accent-500 hover:text-accent-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-accent-400 dark:hover:text-accent-300"
+        className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-4 text-sm font-medium text-zinc-800 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:text-zinc-50"
       >
         <MessageSquarePlus className="h-4 w-4" />
         {t('submit_feedback')}
@@ -106,8 +106,8 @@ export function FeedbackComposer({ loggedIn }: { loggedIn: boolean }) {
             onClick={() => setCategory(key)}
             className={`rounded-full border px-3 py-1 text-xs transition ${
               category === key
-                ? 'border-accent-500 bg-accent-500/10 font-medium text-accent-600 dark:text-accent-300'
-                : `${meta.className} hover:border-accent-400`
+                ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10 font-medium text-zinc-900 dark:text-zinc-50'
+                : `${meta.className} hover:border-zinc-400`
             }`}
           >
             {t(`category_${key}`)}
@@ -128,7 +128,7 @@ export function FeedbackComposer({ loggedIn }: { loggedIn: boolean }) {
         <button
           onClick={submit}
           disabled={busy}
-          className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white hover:bg-accent-600 disabled:opacity-60"
+          className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
         >
           {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           {t('submit')}

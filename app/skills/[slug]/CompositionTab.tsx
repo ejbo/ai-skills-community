@@ -61,7 +61,7 @@ export async function CompositionTab({ skillId }: { skillId: string }) {
             return (
               <li key={r.skillId} className="group relative overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
                 <div
-                  className="absolute inset-y-0 left-0 bg-accent-500/10 transition-all group-hover:bg-accent-500/15"
+                  className="absolute inset-y-0 left-0 bg-zinc-900/[0.06] dark:bg-white/10 transition-all group-hover:bg-zinc-900/10 dark:hover:bg-white/[0.14]"
                   style={{ width: `${pct}%` }}
                   aria-hidden
                 />
@@ -71,7 +71,7 @@ export async function CompositionTab({ skillId }: { skillId: string }) {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="truncate font-medium group-hover:text-accent-600">{r.name}</span>
+                      <span className="truncate font-medium group-hover:text-zinc-900">{r.name}</span>
                       <SourceBadge source={r.sourceType} />
                     </div>
                     <p className="mt-0.5 truncate text-xs text-muted">{r.summary}</p>
@@ -84,7 +84,7 @@ export async function CompositionTab({ skillId }: { skillId: string }) {
             );
           })}
         </ul>
-        <div className="mt-4 flex items-center justify-between rounded-xl border border-dashed border-accent-500/30 bg-accent-500/5 p-3 text-xs">
+        <div className="mt-4 flex items-center justify-between rounded-xl border border-dashed border-zinc-900/40 dark:border-zinc-100/40 bg-zinc-900/[0.06] dark:bg-white/10 p-3 text-xs">
           <span>{t('composition_stack_install', { count: rows.length })}</span>
           <code className="rounded bg-white px-2 py-1 font-mono dark:bg-zinc-900">
             skills install {rows.map((r) => r.slug).join(' ')}

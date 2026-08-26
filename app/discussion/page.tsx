@@ -82,7 +82,7 @@ export default async function DiscussionPage({ searchParams }: { searchParams: S
         {tab === 'forum' && (
           <Link
             href="/discussion/topics/new"
-            className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600"
+            className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
           >
             <MessageSquarePlus className="h-4 w-4" />
             {t('start_topic')}
@@ -206,7 +206,7 @@ async function PostsTab({
               {hotTopics.map((topic) => (
                 <li key={topic.id}>
                   <Link href={`/discussion/topics/${topic.id}`} className="group block">
-                    <span className="line-clamp-2 text-sm text-zinc-700 transition group-hover:text-accent-600 dark:text-zinc-200 dark:group-hover:text-accent-300">
+                    <span className="line-clamp-2 text-sm text-zinc-700 transition group-hover:text-zinc-900 dark:text-zinc-200 dark:group-hover:text-zinc-50">
                       {topic.title}
                     </span>
                     <span className="mt-0.5 flex items-center gap-2 text-[11px] text-muted">
@@ -220,7 +220,7 @@ async function PostsTab({
             </ul>
             <Link
               href="/discussion?tab=forum&sort=top"
-              className="mt-3 inline-block text-xs font-medium text-accent-600 hover:underline dark:text-accent-300"
+              className="mt-3 inline-block text-xs font-medium text-zinc-900 dark:text-zinc-50 hover:underline"
             >
               {t('view_all_arrow')}
             </Link>
@@ -342,8 +342,8 @@ async function ForumTab({
                 href={forumHref(searchParams, { category: chip.key, page: '1', q: '' })}
                 className={`rounded-full border px-3 py-1 text-xs transition ${
                   active
-                    ? 'border-accent-500 bg-accent-500/10 font-medium text-accent-600 dark:text-accent-300'
-                    : 'border-zinc-200 text-zinc-600 hover:border-accent-400 dark:border-zinc-800 dark:text-zinc-300'
+                    ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10 font-medium text-zinc-900 dark:text-zinc-50'
+                    : 'border-zinc-200 text-zinc-600 hover:border-zinc-400 dark:border-zinc-800 dark:text-zinc-300'
                 }`}
               >
                 {chip.label}
@@ -423,7 +423,7 @@ async function ForumTab({
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          {topic.pinned && <Pin className="h-3.5 w-3.5 shrink-0 text-accent-500" />}
+                          {topic.pinned && <Pin className="h-3.5 w-3.5 shrink-0 text-zinc-900 dark:text-zinc-50" />}
                           {topic.locked && <Lock className="h-3.5 w-3.5 shrink-0 text-muted" />}
                           <span className="truncate text-sm font-medium">{topic.title}</span>
                           {topic.categories.map((c) => (
@@ -440,7 +440,6 @@ async function ForumTab({
                             name={author.displayName}
                             src={author.avatarUrl}
                             size="xs"
-                            tone="subtle"
                           />
                           <span className="truncate">{author.displayName}</span>
                           <DeptTag department={author.department} lab={author.lab} />
@@ -465,7 +464,6 @@ async function ForumTab({
                                 name={p.displayName}
                                 src={p.avatarUrl}
                                 size="xs"
-                                tone="subtle"
                                 className="ring-2 ring-white dark:ring-zinc-900"
                               />
                             ))}
@@ -496,7 +494,7 @@ async function ForumTab({
               {page > 1 ? (
                 <Link
                   href={forumHref(searchParams, { page: String(page - 1) })}
-                  className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 font-medium text-zinc-700 transition hover:border-accent-500 hover:text-accent-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+                  className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 font-medium text-zinc-700 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
                 >
                   <ChevronLeft className="h-4 w-4" />
                   {tb('prev_page')}
@@ -513,7 +511,7 @@ async function ForumTab({
               {hasMore ? (
                 <Link
                   href={forumHref(searchParams, { page: String(page + 1) })}
-                  className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 font-medium text-zinc-700 transition hover:border-accent-500 hover:text-accent-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+                  className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 font-medium text-zinc-700 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
                 >
                   {tb('next_page')}
                   <ChevronRight className="h-4 w-4" />

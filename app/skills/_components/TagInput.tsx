@@ -29,7 +29,7 @@ export function TagInput({
   }
 
   return (
-    <div className="flex min-h-[2.5rem] flex-wrap items-center gap-1.5 rounded-lg border border-zinc-300 bg-[rgb(var(--surface))] px-2 py-1.5 transition focus-within:border-accent-500 focus-within:shadow-[0_0_0_3px_rgb(var(--accent)/0.15)] dark:border-zinc-700">
+    <div className="flex min-h-[2.5rem] flex-wrap items-center gap-1.5 rounded-lg border border-zinc-300 bg-[rgb(var(--surface))] px-2 py-1.5 transition focus-within:border-zinc-900 dark:focus-within:border-zinc-100 focus-within:shadow-[0_0_0_3px_rgb(var(--accent)/0.15)] dark:border-zinc-700">
       {value.map((tag) => (
         <span
           key={tag}

@@ -1,6 +1,7 @@
-// Shared user avatar: shows the uploaded image when present, otherwise a colored
-// initial badge. Server-safe (no hooks) so it works in both server and client
-// components. Used in the navbar, comments, reviews, author bylines, cards, etc.
+// Shared user avatar: shows the uploaded image when present, otherwise an
+// initial badge tinted with a colour derived from the person's name.
+// Server-safe (no hooks) so it works in both server and client components.
+// Used in the navbar, comments, reviews, author bylines, cards, etc.
 
 import { withBasePath } from '@/lib/base-path';
 
@@ -14,23 +15,52 @@ const SIZE: Record<Size, string> = {
   xl: 'h-16 w-16 text-2xl',
 };
 
+/**
+ * Identity palette. A person is not chrome — the whole point of a fallback
+ * badge is that you recognise the same colleague in a comment thread, a card
+ * byline and the member list without reading the name, which a grey disc can
+ * never do. Twelve hues, all held at roughly the same lightness/chroma so a
+ * list of them reads as one family rather than as confetti, and all dark
+ * enough to carry white glyphs in either theme.
+ */
+const IDENTITY_COLORS = [
+  '#B24357', // rose
+  '#B85C2B', // clay
+  '#8F7420', // ochre
+  '#4C7F3F', // moss
+  '#2F7F6B', // teal
+  '#2C7391', // steel
+  '#3E63A8', // cobalt
+  '#5C5BA6', // indigo
+  '#7C4F9B', // violet
+  '#9E4278', // magenta
+  '#6B6252', // taupe
+  '#A8443C', // brick
+] as const;
+
+/** FNV-1a 32-bit — same person, same colour, on every surface and every render. */
+function fnv1a(str: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+export function identityColor(name: string): string {
+  return IDENTITY_COLORS[fnv1a(name.trim().toLowerCase()) % IDENTITY_COLORS.length];
+}
+
 export function Avatar({
   name,
   src,
   size = 'md',
-  tone = 'solid',
   className = '',
 }: {
   name: string;
   src?: string | null;
   size?: Size;
-  /**
-   * Fallback-badge style: `solid` (accent fill), `subtle` (tinted accent) or
-   * `neutral` (grey). `neutral` exists for surfaces that carry no accent
-   * colour at all, like the homepage; `solid` is the navbar default and must
-   * not be redefined.
-   */
-  tone?: 'solid' | 'subtle' | 'neutral';
   className?: string;
 }) {
   const dims = SIZE[size];
@@ -44,18 +74,12 @@ export function Avatar({
       />
     );
   }
-  const initial = (name?.trim()?.charAt(0) || 'U').toUpperCase();
-  const toneCls =
-    tone === 'neutral'
-      ? 'bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200'
-      : tone === 'subtle'
-        ? 'bg-accent-500/15 text-accent-600 dark:text-accent-300'
-        : // Ink, not accent: this is the navbar fallback badge, so an indigo
-          // disc sat above every page as the loudest chroma in the chrome.
-          'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900';
+  const label = name?.trim() || 'U';
+  const initial = (label.charAt(0) || 'U').toUpperCase();
   return (
     <span
-      className={`flex ${dims} shrink-0 items-center justify-center rounded-full font-semibold uppercase ${toneCls} ${className}`}
+      className={`flex ${dims} shrink-0 items-center justify-center rounded-full font-semibold uppercase text-white ${className}`}
+      style={{ backgroundColor: identityColor(label) }}
       aria-hidden
     >
       {initial}

@@ -168,7 +168,7 @@ export function TopicForm({
                   className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
                 >
                   <span>{tl(`discussionCategory.${key}`)}</span>
-                  {selected && <Check className="h-4 w-4 text-accent-500" />}
+                  {selected && <Check className="h-4 w-4 text-zinc-900 dark:text-zinc-50" />}
                 </button>
               );
             })}
@@ -197,7 +197,7 @@ export function TopicForm({
         <button
           onClick={submit}
           disabled={busy || uploading > 0}
-          className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-5 text-sm font-medium text-white hover:bg-accent-600 disabled:opacity-60"
+          className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-5 text-sm font-medium text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
         >
           {(busy || uploading > 0) && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           {topicId ? tc('save') : t('publish')}

@@ -29,7 +29,7 @@ export function VideoRowActions({ id, slug }: { id: string; slug: string }) {
     <div className="flex items-center gap-1">
       <Link
         href={`/manage/videos/${id}/edit`}
-        className="flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:text-accent-600 dark:border-zinc-800"
+        className="flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:text-zinc-900 dark:border-zinc-800"
         aria-label={t('comments.edit')}
       >
         <Pencil className="h-3.5 w-3.5" />

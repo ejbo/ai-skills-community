@@ -53,8 +53,8 @@ export function AttendButton({
         disabled={busy}
         className={
           state.attending
-            ? 'flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-accent-500 bg-accent-500/10 text-sm font-medium text-accent-600 transition hover:bg-accent-500/20 disabled:opacity-60 dark:text-accent-400'
-            : 'flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-accent-500 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60'
+            ? 'flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10 text-sm font-medium text-zinc-900 dark:text-zinc-50 transition hover:bg-zinc-900/10 dark:hover:bg-white/[0.14] disabled:opacity-60'
+            : 'flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60'
         }
       >
         {busy ? (

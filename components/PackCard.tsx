@@ -29,23 +29,23 @@ export function PackCard(props: PackCardProps) {
       className="card-hover surface group flex flex-col gap-3 rounded-xl p-4"
     >
       <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-accent-50 text-xl dark:bg-accent-500/15">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-zinc-100 text-xl dark:bg-white/10">
           {props.icon && isIconImage(props.icon) ? (
             // <img> is outside the fetch shim — basePath must be applied here.
             <img src={withBasePath(props.icon)} alt="" className="h-10 w-10 object-cover" />
           ) : props.icon ? (
             props.icon
           ) : (
-            <Boxes className="h-5 w-5 text-accent-500" />
+            <Boxes className="h-5 w-5 text-zinc-900 dark:text-zinc-50" />
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-base font-semibold tracking-tight group-hover:text-accent-600">
+          <h3 className="truncate text-base font-semibold tracking-tight group-hover:text-zinc-900">
             {props.name}
           </h3>
           <p className="mt-1 line-clamp-2 text-sm text-muted">{props.summary}</p>
         </div>
-        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-600 dark:text-accent-300">
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-zinc-900/[0.06] dark:bg-white/10 px-2 py-0.5 text-[11px] font-medium text-zinc-900 dark:text-zinc-50">
           <Layers className="h-3 w-3" />
           {t('pack_skill_count', { count: props.skills.length })}
         </span>

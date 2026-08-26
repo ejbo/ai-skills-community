@@ -63,7 +63,7 @@ interface SpeakerDraft extends EventSpeakerData {
 }
 
 const INPUT_CLS =
-  'h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm transition focus:border-accent-500 focus:outline-none dark:border-zinc-800 dark:bg-zinc-900';
+  'h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm transition focus:border-zinc-900 dark:focus:border-zinc-100 focus:outline-none dark:border-zinc-800 dark:bg-zinc-900';
 
 // IANA zone → flat message-key suffix (a zone value can't be a key itself).
 const TZ_KEY: Record<string, string> = {
@@ -280,7 +280,7 @@ export function EventForm({ eventId, initial }: { eventId?: string; initial?: Ev
               onClick={() => setKind(k.value)}
               className={`rounded-xl border p-3 text-left transition ${
                 kind === k.value
-                  ? 'border-accent-500 bg-accent-500/5 ring-1 ring-accent-500'
+                  ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10 ring-1 ring-zinc-900/25 dark:ring-zinc-100/25'
                   : 'border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700'
               }`}
             >
@@ -301,7 +301,7 @@ export function EventForm({ eventId, initial }: { eventId?: string; initial?: Ev
               onClick={() => toggleTopic(tp.slug)}
               className={`rounded-full border px-3 py-1 text-xs transition ${
                 topics.includes(tp.slug)
-                  ? 'border-accent-500 bg-accent-500/10 font-medium text-accent-600 dark:text-accent-400'
+                  ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10 font-medium text-zinc-900 dark:text-zinc-50'
                   : 'border-zinc-200 text-zinc-600 hover:border-zinc-300 dark:border-zinc-800 dark:text-zinc-300'
               }`}
             >
@@ -318,7 +318,7 @@ export function EventForm({ eventId, initial }: { eventId?: string; initial?: Ev
             type="checkbox"
             checked={allDay}
             onChange={(e) => setAllDay(e.target.checked)}
-            className="h-4 w-4 rounded border-zinc-300 text-accent-500 focus:ring-accent-500"
+            className="h-4 w-4 rounded border-zinc-300 text-zinc-900 dark:text-zinc-50 focus:ring-zinc-900 dark:focus:ring-zinc-100"
           />
           {t('all_day_label')}
         </label>
@@ -372,7 +372,7 @@ export function EventForm({ eventId, initial }: { eventId?: string; initial?: Ev
               onClick={() => setMode(m.value)}
               className={
                 mode === m.value
-                  ? 'rounded-md bg-accent-500 px-4 py-1.5 text-xs font-medium text-white'
+                  ? 'rounded-md bg-zinc-900 dark:bg-zinc-100 px-4 py-1.5 text-xs font-medium text-white dark:text-zinc-900'
                   : 'rounded-md px-4 py-1.5 text-xs text-muted transition hover:text-zinc-900 dark:hover:text-zinc-100'
               }
             >
@@ -440,7 +440,7 @@ export function EventForm({ eventId, initial }: { eventId?: string; initial?: Ev
                 setCoverPos(''); // 新图默认完整显示，裁切重新选
               })
             }
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-dashed border-zinc-300 px-4 text-sm text-muted transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-dashed border-zinc-300 px-4 text-sm text-muted transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700"
           >
             <ImagePlus className="h-4 w-4" />
             {t('upload_cover')}
@@ -470,7 +470,7 @@ export function EventForm({ eventId, initial }: { eventId?: string; initial?: Ev
               setWithSpeakers(e.target.checked);
               if (e.target.checked && speakers.length === 0) addSpeaker();
             }}
-            className="h-4 w-4 rounded border-zinc-300 text-accent-500 focus:ring-accent-500"
+            className="h-4 w-4 rounded border-zinc-300 text-zinc-900 dark:text-zinc-50 focus:ring-zinc-900 dark:focus:ring-zinc-100"
           />
           {t('with_speakers')}
         </label>
@@ -530,7 +530,7 @@ export function EventForm({ eventId, initial }: { eventId?: string; initial?: Ev
                       maxLength={2000}
                       rows={2}
                       placeholder={t('speaker_bio_placeholder')}
-                      className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm transition focus:border-accent-500 focus:outline-none dark:border-zinc-800 dark:bg-zinc-900"
+                      className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm transition focus:border-zinc-900 dark:focus:border-zinc-100 focus:outline-none dark:border-zinc-800 dark:bg-zinc-900"
                     />
                   </div>
                   <div className="flex shrink-0 flex-col gap-1">
@@ -568,7 +568,7 @@ export function EventForm({ eventId, initial }: { eventId?: string; initial?: Ev
               <button
                 type="button"
                 onClick={addSpeaker}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-dashed border-zinc-300 px-4 text-sm text-muted transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-dashed border-zinc-300 px-4 text-sm text-muted transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700"
               >
                 <Plus className="h-4 w-4" />
                 {t('add_speaker')}
@@ -584,7 +584,7 @@ export function EventForm({ eventId, initial }: { eventId?: string; initial?: Ev
           type="button"
           onClick={submit}
           disabled={busy || uploading > 0}
-          className="inline-flex h-10 items-center gap-2 rounded-lg bg-accent-500 px-6 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+          className="inline-flex h-10 items-center gap-2 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-6 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
         >
           {(busy || uploading > 0) && <Loader2 className="h-4 w-4 animate-spin" />}
           {uploading > 0 ? t('uploading_image') : eventId ? t('save_changes') : t('publish_event')}

@@ -337,7 +337,7 @@ export function SkillForm({
                   onClick={() => setSourceType(v)}
                   className={`flex-1 rounded-lg border px-3 py-1.5 text-sm transition ${
                     sourceType === v
-                      ? 'border-accent-500 bg-accent-500/10 text-accent-700 dark:text-accent-300'
+                      ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50'
                       : 'border-zinc-300 hover:border-zinc-400 dark:border-zinc-700'
                   }`}
                 >
@@ -396,7 +396,7 @@ export function SkillForm({
                   type="checkbox"
                   checked={useReadme}
                   onChange={(e) => setUseReadme(e.target.checked)}
-                  className="h-3.5 w-3.5 accent-accent-500"
+                  className="h-3.5 w-3.5 accent-zinc-900 dark:accent-zinc-100"
                 />
                 {t('use_readme_label')}
               </label>
@@ -421,7 +421,7 @@ export function SkillForm({
                     onClick={() => setStatus(s)}
                     className={`flex-1 rounded-lg border px-3 py-1.5 text-sm transition ${
                       status === s
-                        ? 'border-accent-500 bg-accent-500/10 text-accent-700 dark:text-accent-300'
+                        ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50'
                         : 'border-zinc-300 hover:border-zinc-400 dark:border-zinc-700'
                     }`}
                   >
@@ -505,7 +505,7 @@ export function SkillForm({
                 type="button"
                 disabled={pending || !skillMdPresent}
                 onClick={() => submitCreate(true)}
-                className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+                className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
               >
                 {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 {tUp('publish')}
@@ -516,7 +516,7 @@ export function SkillForm({
               type="button"
               disabled={pending}
               onClick={submitEdit}
-              className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+              className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
             >
               {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               {tc('save')}
@@ -587,7 +587,7 @@ export function SkillForm({
               <button
                 type="button"
                 onClick={() => setOverviewExpanded(false)}
-                className="rounded-lg bg-accent-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-accent-600"
+                className="rounded-lg bg-zinc-900 dark:bg-zinc-100 px-3 py-1.5 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
               >
                 {t('done')}
               </button>

@@ -17,7 +17,10 @@ export function StatRow({ stats }: { stats: SkillStats }) {
       <Stat icon={<Heart className="h-3 w-3" />} value={formatCount(stats.likes)} />
       {typeof stats.rating === 'number' && stats.rating > 0 && (
         <Stat
-          icon={<Star className="h-3 w-3" fill="currentColor" />}
+          // A rating star is gold everywhere a rating has ever been shown; a
+          // grey one reads as "disabled". The number stays in ink so the row
+          // still scans as one line of statistics.
+          icon={<Star className="h-3 w-3 text-amber-500" fill="currentColor" />}
           value={`${stats.rating.toFixed(1)}${stats.reviewCount ? ` (${stats.reviewCount})` : ''}`}
         />
       )}

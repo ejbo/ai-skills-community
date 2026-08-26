@@ -63,8 +63,8 @@ export function UpvoteButton({
   const base =
     'flex flex-col items-center justify-center rounded-lg border font-mono tabular-nums transition disabled:opacity-60';
   const tone = upvoted
-    ? 'border-accent-500 bg-accent-500/10 text-accent-600 dark:text-accent-300'
-    : 'border-zinc-200 text-zinc-500 hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700 dark:text-zinc-400';
+    ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50'
+    : 'border-zinc-200 text-zinc-500 hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-400';
   const dims = size === 'lg' ? 'h-14 w-12 text-sm' : 'h-11 w-10 text-xs';
 
   return (

@@ -61,7 +61,7 @@
   transition: background 150ms;
 }
 .manage-shell table.data tbody tr:hover {
-  background: rgb(94 90 255 / 0.04);
+  background: rgb(var(--text) / 0.035);
 }
 .manage-shell .badge {
   display: inline-flex;
@@ -92,7 +92,7 @@
   transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .manage-shell .toggle[data-on='true'] {
-  background: rgb(94 90 255);
+  background: rgb(var(--text));
 }
 .manage-shell .toggle[data-on='true']::after {
   transform: translateX(16px);

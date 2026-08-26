@@ -29,7 +29,7 @@ export default async function DocsIndexPage() {
                     className="card-hover surface group flex flex-col rounded-xl p-4"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <h3 className="text-sm font-semibold group-hover:text-accent-600 dark:group-hover:text-accent-400">
+                      <h3 className="text-sm font-semibold group-hover:text-zinc-900 dark:group-hover:text-zinc-50">
                         {t(item.labelKey)}
                       </h3>
                       <ArrowUpRight className="h-3.5 w-3.5 shrink-0 -translate-x-1 text-muted opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100" />

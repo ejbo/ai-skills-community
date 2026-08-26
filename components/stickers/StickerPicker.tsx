@@ -383,7 +383,7 @@ export function StickerPicker({
           type="button"
           onClick={onPickFiles}
           disabled={needsLogin || uploading > 0}
-          className="flex h-7 items-center gap-1 rounded-lg px-2 text-xs font-medium text-accent-600 transition hover:bg-accent-500/10 disabled:opacity-40 dark:text-accent-400"
+          className="flex h-7 items-center gap-1 rounded-lg px-2 text-xs font-medium text-zinc-900 dark:text-zinc-50 transition hover:bg-zinc-900/10 dark:hover:bg-white/[0.14] disabled:opacity-40"
         >
           {uploading > 0 ? (
             <>
@@ -407,7 +407,7 @@ export function StickerPicker({
             <button
               type="button"
               onClick={goLogin}
-              className="rounded-lg bg-accent-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-accent-600"
+              className="rounded-lg bg-zinc-900 dark:bg-zinc-100 px-3 py-1.5 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
             >
               {t('login')}
             </button>
@@ -423,7 +423,7 @@ export function StickerPicker({
               <button
                 type="button"
                 onClick={onPickFiles}
-                className="flex items-center gap-1 rounded-lg border border-accent-500/60 bg-accent-500/10 px-2.5 py-1 text-xs font-medium text-accent-600 transition hover:bg-accent-500/20 dark:text-accent-400"
+                className="flex items-center gap-1 rounded-lg border border-zinc-900/40 dark:border-zinc-100/40 bg-zinc-900/[0.06] dark:bg-white/10 px-2.5 py-1 text-xs font-medium text-zinc-900 dark:text-zinc-50 transition hover:bg-zinc-900/10 dark:hover:bg-white/[0.14]"
               >
                 <Plus className="h-3.5 w-3.5" />
                 {t('upload')}
@@ -477,7 +477,7 @@ export function StickerPicker({
             onClick={() => setTab(id)}
             className={`flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition ${
               tab === id
-                ? 'bg-accent-500/10 text-accent-600 dark:text-accent-400'
+                ? 'bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50'
                 : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
             }`}
           >

@@ -77,7 +77,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
               >
                 {chip.label}
                 {active && (
-                  <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-accent-500" />
+                  <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-zinc-900 dark:bg-zinc-100" />
                 )}
               </Link>
             );
@@ -161,7 +161,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
             {page > 1 ? (
               <Link
                 href={pageHref(searchParams, { page: String(page - 1) })}
-                className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 font-medium text-zinc-700 transition hover:border-accent-500 hover:text-accent-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+                className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 font-medium text-zinc-700 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
               >
                 <ChevronLeft className="h-4 w-4" />
                 {g('browse.prev_page')}
@@ -178,7 +178,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
             {hasMore ? (
               <Link
                 href={pageHref(searchParams, { page: String(page + 1) })}
-                className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 font-medium text-zinc-700 transition hover:border-accent-500 hover:text-accent-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+                className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 font-medium text-zinc-700 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
               >
                 {g('browse.next_page')}
                 <ChevronRight className="h-4 w-4" />

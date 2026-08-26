@@ -47,7 +47,7 @@ export function ComparisonView({
             />
             <OutputColumn
               title={t('with_skill')}
-              icon={<Sparkles className="h-3.5 w-3.5 text-accent-600" />}
+              icon={<Sparkles className="h-3.5 w-3.5 text-zinc-900 dark:text-zinc-50" />}
               text={example.withOutput}
               emptyText={t('empty_output_md')}
             />

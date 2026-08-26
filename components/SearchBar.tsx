@@ -39,7 +39,7 @@ export function SearchBar({ placeholder }: { placeholder?: string }) {
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder={placeholder ?? t('search_in_page')}
-        className="h-11 w-full rounded-xl border border-zinc-200 bg-white pl-10 pr-9 text-sm transition focus:border-accent-500 focus:outline-none focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-800 dark:bg-zinc-900"
+        className="h-11 w-full rounded-xl border border-zinc-200 bg-white pl-10 pr-9 text-sm transition focus:border-zinc-900 dark:focus:border-zinc-100 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-zinc-100 dark:border-zinc-800 dark:bg-zinc-900"
       />
       {value && (
         <button

@@ -61,7 +61,7 @@ export async function Landing() {
       <section className="relative overflow-hidden">
         <HeroBackdrop />
         <div className="container relative flex flex-col items-center py-16 text-center md:py-24">
-          <div className="animate-rise inline-flex items-center gap-2 rounded-full border border-accent-500/30 bg-accent-500/10 px-3.5 py-1 text-xs font-medium text-accent-700 dark:border-accent-400/30 dark:text-accent-300">
+          <div className="animate-rise inline-flex items-center gap-2 rounded-full border border-zinc-900/40 dark:border-zinc-100/40 bg-zinc-900/[0.06] dark:bg-white/10 px-3.5 py-1 text-xs font-medium text-zinc-900 dark:text-zinc-50 dark:border-zinc-100/30">
             <Sparkles className="h-3 w-3" />
             {t('hero_badge_v2')}
           </div>
@@ -70,7 +70,7 @@ export async function Landing() {
             style={{ animationDelay: '70ms' }}
           >
             {t('hero_heading_pre')}
-            <span className="bg-gradient-to-r from-accent-500 to-sky-600 bg-clip-text text-transparent dark:from-accent-400 dark:to-sky-400">
+            <span className="bg-gradient-to-r from-zinc-900 to-zinc-500 bg-clip-text text-transparent dark:from-zinc-100 dark:to-zinc-400">
               {t('hero_heading_em')}
             </span>
           </h1>
@@ -89,7 +89,7 @@ export async function Landing() {
           >
             <Link
               href="/skills"
-              className="flex h-10 items-center gap-1.5 rounded-xl bg-accent-500 px-5 text-sm font-medium text-white shadow-lg shadow-accent-500/25 transition hover:bg-accent-600 hover:shadow-accent-500/30"
+              className="flex h-10 items-center gap-1.5 rounded-xl bg-zinc-900 dark:bg-zinc-100 px-5 text-sm font-medium text-white dark:text-zinc-900 shadow-lg shadow-zinc-900/15 dark:shadow-black/40 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 hover:shadow-zinc-900/15"
             >
               {t('browse_skills')}
               <ArrowRight className="h-4 w-4" />
@@ -132,7 +132,7 @@ export async function Landing() {
             <Reveal key={s.key} delay={(i % 3) * 0.07} className="h-full">
               <Link href={s.href} className="card-hover surface group flex h-full flex-col rounded-2xl p-5">
                 <div className="flex items-center justify-between">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-500/15 text-accent-600 transition-colors duration-200 group-hover:bg-accent-500 group-hover:text-white dark:text-accent-400 dark:group-hover:text-white">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50 transition-colors duration-200 group-hover:bg-zinc-900 group-hover:text-white dark:group-hover:bg-zinc-100 dark:group-hover:text-white">
                     <s.icon className="h-4 w-4" />
                   </span>
                   <ArrowUpRight className="h-4 w-4 -translate-x-1 text-muted opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100" />
@@ -186,10 +186,10 @@ export async function Landing() {
       {/* Closing CTA */}
       <section className={`container pb-16 md:pb-24 ${trending.length === 0 ? 'pt-12' : ''}`}>
         <Reveal>
-          <div className="relative overflow-hidden rounded-3xl border border-accent-500/20 bg-gradient-to-br from-accent-500/10 via-transparent to-sky-500/10 px-6 py-14 text-center dark:border-accent-400/20">
+          <div className="relative overflow-hidden rounded-3xl border border-zinc-900/40 dark:border-zinc-100/40 bg-gradient-to-br from-zinc-900/10 via-transparent to-sky-500/10 px-6 py-14 text-center dark:border-zinc-100/30">
             <div
               aria-hidden
-              className="pointer-events-none absolute left-1/2 top-[-140px] h-[260px] w-[520px] -translate-x-1/2 rounded-full bg-accent-500/15 blur-3xl"
+              className="pointer-events-none absolute left-1/2 top-[-140px] h-[260px] w-[520px] -translate-x-1/2 rounded-full bg-zinc-900/[0.06] dark:bg-white/10 blur-3xl"
             />
             <h2 className="relative text-2xl font-semibold tracking-tight md:text-3xl">
               {t('cta_title')}
@@ -198,7 +198,7 @@ export async function Landing() {
             <div className="relative mt-6 flex flex-wrap items-center justify-center gap-3">
               <Link
                 href="/auth/signup"
-                className="flex h-10 items-center gap-1.5 rounded-xl bg-accent-500 px-5 text-sm font-medium text-white shadow-lg shadow-accent-500/25 transition hover:bg-accent-600"
+                className="flex h-10 items-center gap-1.5 rounded-xl bg-zinc-900 dark:bg-zinc-100 px-5 text-sm font-medium text-white dark:text-zinc-900 shadow-lg shadow-zinc-900/15 dark:shadow-black/40 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
               >
                 {t('join_now')}
                 <ArrowRight className="h-4 w-4" />

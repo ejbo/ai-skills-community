@@ -32,6 +32,14 @@ const config: Config = {
         '5xl': ['3rem', { lineHeight: '1.1', letterSpacing: '-0.02em' }],
       },
       colors: {
+        /**
+         * Kept only so a stray `accent-*` class in future code still resolves
+         * to SOMETHING sane. Nothing in app/ or components/ uses this ramp any
+         * more: chrome is ink (zinc + the per-theme `--accent` token in
+         * globals.css) and colour is reserved for content. Reach for zinc, or
+         * for the content palettes (source/ok/warn/danger) and the per-domain
+         * category maps (discussion/events badges.tsx).
+         */
         accent: {
           50: '#EEF0FF',
           100: '#DCDFFF',
@@ -44,6 +52,8 @@ const config: Config = {
           800: '#2B287F',
           900: '#1E1C57',
         },
+        // Legacy skill-source hexes. SourceBadge now uses the blue/emerald/
+        // violet ramps directly so it can carry a dark-mode variant.
         source: {
           internal: '#4A6FA5',
           external: '#3FA577',

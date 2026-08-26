@@ -427,7 +427,7 @@ export function SearchTrigger() {
                           onClick={() => go(item)}
                           className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
                             i === active
-                              ? 'bg-accent-500/10 text-accent-700 dark:text-accent-300'
+                              ? 'bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50'
                               : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'
                           } ${item.group === null ? 'mt-1' : ''}`}
                         >

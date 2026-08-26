@@ -201,7 +201,7 @@ export function PollComposerDialog({
   if (!open) return null;
 
   const inputCls =
-    'w-full rounded-lg border border-[rgb(var(--border))] bg-transparent px-3 py-1.5 text-sm focus:border-accent-500 focus:outline-none';
+    'w-full rounded-lg border border-[rgb(var(--border))] bg-transparent px-3 py-1.5 text-sm focus:border-zinc-900 dark:focus:border-zinc-100 focus:outline-none';
   const toggleRow =
     'flex cursor-pointer items-center justify-between gap-3 rounded-lg px-1 py-1.5 text-sm';
 
@@ -284,7 +284,7 @@ export function PollComposerDialog({
           <button
             type="button"
             onClick={addOption}
-            className="mt-1.5 flex items-center gap-1 self-start rounded-lg px-2 py-1 text-xs font-medium text-accent-600 transition hover:bg-accent-500/10 dark:text-accent-400"
+            className="mt-1.5 flex items-center gap-1 self-start rounded-lg px-2 py-1 text-xs font-medium text-zinc-900 dark:text-zinc-50 transition hover:bg-zinc-900/10 dark:hover:bg-white/[0.14]"
           >
             <Plus className="h-3.5 w-3.5" />
             {t('add_option')}
@@ -299,7 +299,7 @@ export function PollComposerDialog({
               type="checkbox"
               checked={multiple}
               onChange={(e) => setMultiple(e.target.checked)}
-              className="h-4 w-4 accent-accent-500"
+              className="h-4 w-4 accent-zinc-900 dark:accent-zinc-100"
               disabled={formDisabled}
             />
           </label>
@@ -327,7 +327,7 @@ export function PollComposerDialog({
               type="checkbox"
               checked={anonymous}
               onChange={(e) => setAnonymous(e.target.checked)}
-              className="h-4 w-4 accent-accent-500"
+              className="h-4 w-4 accent-zinc-900 dark:accent-zinc-100"
               disabled={formDisabled}
             />
           </label>
@@ -337,7 +337,7 @@ export function PollComposerDialog({
               type="checkbox"
               checked={resultsAfterVote}
               onChange={(e) => setResultsAfterVote(e.target.checked)}
-              className="h-4 w-4 accent-accent-500"
+              className="h-4 w-4 accent-zinc-900 dark:accent-zinc-100"
               disabled={formDisabled}
             />
           </label>
@@ -355,14 +355,14 @@ export function PollComposerDialog({
 
         {/* Login hint (401 keeps the form alive; navigation is the user's call) */}
         {needsLogin && (
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-accent-500/10 px-3 py-2 text-sm">
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-zinc-900/[0.06] dark:bg-white/10 px-3 py-2 text-sm">
             <span className="text-muted">{t('login_required')}</span>
             <button
               type="button"
               onClick={() =>
                 router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`)
               }
-              className="shrink-0 rounded-lg bg-accent-500 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-accent-600"
+              className="shrink-0 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-2.5 py-1 text-xs font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
             >
               {t('login')}
             </button>
@@ -382,7 +382,7 @@ export function PollComposerDialog({
             type="button"
             disabled={submitting || formDisabled}
             onClick={submit}
-            className="flex items-center gap-1.5 rounded-lg bg-accent-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+            className="flex items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-3 py-1.5 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
           >
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
             {editing ? t('save') : t('create')}

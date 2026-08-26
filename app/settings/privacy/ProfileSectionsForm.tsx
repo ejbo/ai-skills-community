@@ -68,7 +68,7 @@ export function ProfileSectionsForm({ initial }: { initial: ProfileSectionFlags 
               disabled={saving === field}
               onClick={() => toggle(field)}
               className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition ${
-                flags[field] ? 'bg-accent-500' : 'bg-zinc-300 dark:bg-zinc-700'
+                flags[field] ? 'bg-zinc-900 dark:bg-zinc-100' : 'bg-zinc-300 dark:bg-zinc-700'
               } disabled:opacity-60`}
             >
               <span

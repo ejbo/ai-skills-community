@@ -85,7 +85,7 @@ export function ProfileForm({ user }: { user: User }) {
       <Field label={t('employee_id')}>
         <div className="flex items-center gap-2">
           <input value={user.handle} disabled className="input font-mono text-muted" />
-          <Link href={`/users/${user.handle}`} className="shrink-0 text-xs text-accent-600 hover:underline">
+          <Link href={`/users/${user.handle}`} className="shrink-0 text-xs text-zinc-900 dark:text-zinc-50 hover:underline">
             {t('view_profile')}
           </Link>
         </div>
@@ -144,7 +144,7 @@ export function ProfileForm({ user }: { user: User }) {
                 type="button"
                 onClick={() => fileRef.current?.click()}
                 disabled={uploading}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-3 text-sm font-medium transition hover:border-accent-500 disabled:opacity-60 dark:border-zinc-700"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-3 text-sm font-medium transition hover:border-zinc-400 dark:hover:border-zinc-500 disabled:opacity-60 dark:border-zinc-700"
               >
                 {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
                 {t('upload_avatar')}
@@ -168,7 +168,7 @@ export function ProfileForm({ user }: { user: User }) {
         <button
           onClick={save}
           disabled={pending}
-          className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+          className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
         >
           {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           {t('save')}

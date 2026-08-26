@@ -68,7 +68,7 @@ export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: str
               <span className="font-mono tabular-nums text-muted">{star}★</span>
               <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
                 <div
-                  className="h-full rounded-full bg-accent-500"
+                  className="h-full rounded-full bg-zinc-900 dark:bg-zinc-100"
                   style={{ width: `${(count / maxBar) * 100}%` }}
                 />
               </div>
@@ -94,7 +94,7 @@ export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: str
             link: (chunks) => (
               <Link
                 href={`/auth/login?callbackUrl=/skills/${slug}?tab=reviews`}
-                className="text-accent-600 hover:underline"
+                className="text-zinc-900 dark:text-zinc-50 hover:underline"
               >
                 {chunks}
               </Link>
@@ -115,7 +115,7 @@ export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: str
               return (
               <li key={r.id} className="surface rounded-xl p-4">
                 <div className="flex items-center justify-between">
-                  <Link href={`/users/${author.handle}`} className="flex items-center gap-2 hover:text-accent-600">
+                  <Link href={`/users/${author.handle}`} className="flex items-center gap-2 hover:text-zinc-900">
                     <Avatar name={author.displayName} src={author.avatarUrl} size="sm" />
                     <span className="text-sm font-medium">{author.displayName}</span>
                     <DeptTag department={author.department} lab={author.lab} />
@@ -140,8 +140,8 @@ export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: str
                   </div>
                 )}
                 {r.authorReply && (
-                  <div className="mt-3 rounded-lg border-l-2 border-accent-500 bg-accent-500/5 p-3 text-sm">
-                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-accent-600">
+                  <div className="mt-3 rounded-lg border-l-2 border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10 p-3 text-sm">
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-900 dark:text-zinc-50">
                       {t('author_reply')}
                     </div>
                     <MarkdownRenderer content={r.authorReply} compact />

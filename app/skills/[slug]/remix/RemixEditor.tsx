@@ -168,7 +168,7 @@ export function RemixEditor({ source, categories }: { source: Source; categories
               {view === m && (
                 <motion.span
                   layoutId="remixTab"
-                  className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-accent-500"
+                  className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-zinc-900 dark:bg-zinc-100"
                   transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                 />
               )}
@@ -221,7 +221,7 @@ export function RemixEditor({ source, categories }: { source: Source; categories
             type="button"
             disabled={pending}
             onClick={() => publish('publish')}
-            className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+            className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
           >
             {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitFork className="h-3.5 w-3.5" />}
             {t('remix_publish_btn')}

@@ -46,7 +46,7 @@ export function SortMenu() {
         onClick={() => setOpen((o) => !o)}
         className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 text-sm transition hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900"
       >
-        <TrendingUp className="h-3.5 w-3.5 text-accent-500" />
+        <TrendingUp className="h-3.5 w-3.5 text-zinc-400 dark:text-zinc-500" />
         {labels[current]}
         <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
       </button>
@@ -58,7 +58,7 @@ export function SortMenu() {
               onClick={() => select(key)}
               className={`block w-full rounded-lg px-3 py-1.5 text-left text-sm transition ${
                 current === key
-                  ? 'bg-accent-500/10 text-accent-700 dark:text-accent-300'
+                  ? 'bg-zinc-900/[0.06] font-medium text-zinc-900 dark:bg-white/10 dark:text-zinc-50'
                   : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'
               }`}
             >

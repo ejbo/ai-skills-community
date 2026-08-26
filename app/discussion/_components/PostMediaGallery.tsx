@@ -276,7 +276,7 @@ function VideoLinkCard({ media }: { media: MediaView }) {
       href={media.url}
       target="_blank"
       rel="noopener noreferrer nofollow"
-      className="flex items-center gap-3 rounded-xl border border-zinc-200 p-3 transition hover:border-accent-500 dark:border-zinc-800 dark:hover:border-accent-400"
+      className="flex items-center gap-3 rounded-xl border border-zinc-200 p-3 transition hover:border-zinc-400 dark:hover:border-zinc-500 dark:border-zinc-800"
     >
       <span className="flex h-12 w-16 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-white dark:bg-zinc-800">
         <Play className="h-5 w-5" />
@@ -316,7 +316,7 @@ function FileCard({ media }: { media: MediaView }) {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-center gap-3 rounded-xl border border-zinc-200 p-3 transition hover:border-accent-500 dark:border-zinc-800 dark:hover:border-accent-400"
+      className="flex items-center gap-3 rounded-xl border border-zinc-200 p-3 transition hover:border-zinc-400 dark:hover:border-zinc-500 dark:border-zinc-800"
     >
       <span
         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${meta.className}`}

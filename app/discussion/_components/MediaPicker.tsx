@@ -306,7 +306,7 @@ export function MediaPicker({
             {t('video_uploading', { pct: Math.round(videoPct) })}
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-            <div className="h-full bg-accent-500 transition-all" style={{ width: `${videoPct}%` }} />
+            <div className="h-full bg-zinc-900 dark:bg-zinc-100 transition-all" style={{ width: `${videoPct}%` }} />
           </div>
         </div>
       )}
@@ -380,7 +380,7 @@ export function MediaPicker({
           />
           <button
             onClick={confirmLink}
-            className="h-9 rounded-lg bg-accent-500 px-3 text-sm font-medium text-white hover:bg-accent-600"
+            className="h-9 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-3 text-sm font-medium text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300"
           >
             {t('add')}
           </button>

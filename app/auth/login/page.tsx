@@ -40,7 +40,7 @@ export default async function LoginPage({
     <div className="container flex min-h-[calc(100vh-128px)] items-center justify-center py-12">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-accent-500/15 text-accent-600">
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50">
             <Sparkles className="h-5 w-5" />
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">{t('choose_method')}</h1>
@@ -84,7 +84,7 @@ export default async function LoginPage({
             <p className="mt-4 text-center text-sm text-muted">
               <Link
                 href={`/auth/signup${callbackUrl ? `?callbackUrl=${encodeURIComponent(callbackUrl)}` : ''}`}
-                className="font-medium text-accent-600 hover:text-accent-700"
+                className="font-medium text-zinc-900 dark:text-zinc-50 hover:text-zinc-900"
               >
                 {t('or_signup')}
               </Link>

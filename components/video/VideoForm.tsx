@@ -336,7 +336,7 @@ export function VideoForm({
               type="checkbox"
               checked={featured}
               onChange={(e) => setFeatured(e.target.checked)}
-              className="h-4 w-4 rounded border-zinc-300 text-accent-500 focus:ring-accent-500"
+              className="h-4 w-4 rounded border-zinc-300 text-zinc-900 dark:text-zinc-50 focus:ring-zinc-900 dark:focus:ring-zinc-100"
             />
             {t('home.featured')}
           </label>

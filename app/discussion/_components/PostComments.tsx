@@ -203,7 +203,7 @@ export function PostComments({
             link: (chunks) => (
               <Link
                 href="/auth/login"
-                className="text-accent-600 hover:underline dark:text-accent-300"
+                className="text-zinc-900 dark:text-zinc-50 hover:underline"
               >
                 {chunks}
               </Link>
@@ -266,7 +266,7 @@ export function PostComments({
             <button
               onClick={loadMore}
               disabled={loadingMore}
-              className="flex items-center gap-1.5 text-sm font-medium text-accent-600 hover:underline disabled:opacity-60 dark:text-accent-300"
+              className="flex items-center gap-1.5 text-sm font-medium text-zinc-900 dark:text-zinc-50 hover:underline disabled:opacity-60"
             >
               {loadingMore ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -358,7 +358,7 @@ function ThreadBlock({
             <button
               onClick={expandReplies}
               disabled={expanding}
-              className="flex items-center gap-1.5 text-xs font-medium text-accent-600 hover:underline disabled:opacity-60 dark:text-accent-300"
+              className="flex items-center gap-1.5 text-xs font-medium text-zinc-900 dark:text-zinc-50 hover:underline disabled:opacity-60"
             >
               {expanding ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -481,7 +481,7 @@ function CommentBlock({
     <div
       ref={ref}
       id={`pc-${comment.id}`}
-      className={`rounded-xl transition-shadow ${flash ? 'ring-2 ring-accent-500/60' : ''}`}
+      className={`rounded-xl transition-shadow ${flash ? 'ring-2 ring-zinc-900/25 dark:ring-zinc-100/25' : ''}`}
     >
       <div className="flex items-start gap-2.5">
         <Link href={`/users/${comment.author.handle}`} className="mt-0.5 shrink-0">
@@ -489,7 +489,6 @@ function CommentBlock({
             name={comment.author.displayName}
             src={comment.author.avatarUrl}
             size="xs"
-            tone="subtle"
           />
         </Link>
         <div className="min-w-0 flex-1">
@@ -518,7 +517,7 @@ function CommentBlock({
                 aria-pressed={liked}
                 className={`flex items-center gap-1 transition ${
                   liked
-                    ? 'font-medium text-accent-600 dark:text-accent-300'
+                    ? 'font-medium text-zinc-900 dark:text-zinc-50'
                     : 'hover:text-zinc-700 dark:hover:text-zinc-200'
                 }`}
               >
@@ -616,7 +615,6 @@ function CommentBox({
         name={currentUser.displayName}
         src={currentUser.avatarUrl}
         size="xs"
-        tone="subtle"
         className="mt-1"
       />
       <div className="min-w-0 flex-1 space-y-2">
@@ -641,7 +639,7 @@ function CommentBox({
           <button
             onClick={submit}
             disabled={busy || !bodyMd.trim() || tooLong}
-            className="flex h-8 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-xs font-medium text-white hover:bg-accent-600 disabled:opacity-60"
+            className="flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-xs font-medium text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
           >
             {busy && <Loader2 className="h-3 w-3 animate-spin" />}
             {t('send')}

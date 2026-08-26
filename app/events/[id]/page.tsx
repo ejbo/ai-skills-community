@@ -108,7 +108,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
             ))}
             {event.cancelled && <CancelledBadge />}
             {event.pinned && (
-              <span className="inline-flex items-center rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-600 dark:text-accent-400">
+              <span className="inline-flex items-center rounded-full bg-zinc-900/[0.06] dark:bg-white/10 px-2 py-0.5 text-[11px] font-medium text-zinc-900 dark:text-zinc-50">
                 {t('pinned_badge')}
               </span>
             )}
@@ -150,7 +150,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
                         className="h-24 w-24 shrink-0 rounded-xl object-cover sm:h-28 sm:w-28"
                       />
                     ) : (
-                      <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-xl bg-accent-500/10 text-3xl font-semibold text-accent-600 sm:h-28 sm:w-28">
+                      <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-xl bg-zinc-900/[0.06] dark:bg-white/10 text-3xl font-semibold text-zinc-900 dark:text-zinc-50 sm:h-28 sm:w-28">
                         {s.name.slice(0, 1)}
                       </div>
                     )}
@@ -163,7 +163,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
                             target="_blank"
                             rel="noopener noreferrer nofollow"
                             aria-label={t('speaker_homepage', { name: s.name })}
-                            className="text-muted transition hover:text-accent-600"
+                            className="text-muted transition hover:text-zinc-900"
                           >
                             <Link2 className="h-4 w-4" />
                           </a>
@@ -211,7 +211,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
                   <div>
                     <Link
                       href={`/auth/login?callbackUrl=${encodeURIComponent(`/events/${event.id}`)}`}
-                      className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-accent-500 text-sm font-medium text-white transition hover:bg-accent-600"
+                      className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
                     >
                       <CalendarPlus className="h-4 w-4" />
                       {te('attend_login')}
@@ -281,7 +281,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
                   href={meetingHref}
                   target="_blank"
                   rel="noopener noreferrer nofollow"
-                  className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-accent-500 text-sm font-medium text-white transition hover:bg-accent-600"
+                  className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
                 >
                   <Video className="h-4 w-4" />
                   {t('join_online')}
@@ -294,7 +294,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
                       link: (chunks) => (
                         <Link
                           href={`/auth/login?callbackUrl=${encodeURIComponent(`/events/${event.id}`)}`}
-                          className="text-accent-600 underline-offset-2 hover:underline"
+                          className="text-zinc-900 dark:text-zinc-50 underline-offset-2 hover:underline"
                         >
                           {chunks}
                         </Link>
@@ -308,7 +308,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
                   href={websiteHref}
                   target="_blank"
                   rel="noopener noreferrer nofollow"
-                  className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-200 text-sm font-medium text-zinc-700 transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700 dark:text-zinc-200"
+                  className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-200 text-sm font-medium text-zinc-700 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-200"
                 >
                   <ExternalLink className="h-4 w-4" />
                   {t('website_page')}
@@ -355,7 +355,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
                             </span>
                           </span>
                           <span className="min-w-0">
-                            <span className="line-clamp-2 text-[13px] font-medium leading-snug transition group-hover:text-accent-600">
+                            <span className="line-clamp-2 text-[13px] font-medium leading-snug transition group-hover:text-zinc-900">
                               {ev.title}
                             </span>
                             <span className="mt-0.5 block text-[11px] text-muted">

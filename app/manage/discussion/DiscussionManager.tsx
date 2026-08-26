@@ -103,7 +103,7 @@ export function DiscussionManager({ posts, topics }: { posts: PostRow[]; topics:
                 <tr key={p.id}>
                   <td className="max-w-[360px] px-4 py-2.5">
                     <span className="line-clamp-2">
-                      {p.pinned && <Pin className="mr-1 inline h-3 w-3 text-accent-500" />}
+                      {p.pinned && <Pin className="mr-1 inline h-3 w-3 text-zinc-900 dark:text-zinc-50" />}
                       {p.excerpt}
                     </span>
                     {p.mediaCount > 0 && (
@@ -191,7 +191,7 @@ export function DiscussionManager({ posts, topics }: { posts: PostRow[]; topics:
                 <tr key={row.id}>
                   <td className="max-w-[300px] px-4 py-2.5">
                     <span className="line-clamp-1">
-                      {row.pinned && <Pin className="mr-1 inline h-3 w-3 text-accent-500" />}
+                      {row.pinned && <Pin className="mr-1 inline h-3 w-3 text-zinc-900 dark:text-zinc-50" />}
                       {row.locked && <Lock className="mr-1 inline h-3 w-3 text-zinc-400" />}
                       {row.title}
                     </span>

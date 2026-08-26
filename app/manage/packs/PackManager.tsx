@@ -126,7 +126,7 @@ export function PackManager({ packs, aiEnabled }: { packs: PackRow[]; aiEnabled:
       {!draft && (
         <button
           onClick={() => setDraft(emptyDraft)}
-          className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white hover:bg-accent-600"
+          className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300"
         >
           <Plus className="h-3.5 w-3.5" />
           新建合集包
@@ -218,14 +218,14 @@ export function PackManager({ packs, aiEnabled }: { packs: PackRow[]; aiEnabled:
                           dirtyRef.current = false;
                           setDraft({ ...p, id: p.id, skills: [...p.skills] });
                         }}
-                        className="flex h-6 items-center rounded border border-zinc-200 px-2 text-[11px] hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
+                        className="flex h-6 items-center rounded border border-zinc-200 px-2 text-[11px] hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700"
                       >
                         编辑
                       </button>
                       <Link
                         href={`/packs/${p.slug}`}
                         target="_blank"
-                        className="flex h-6 items-center gap-0.5 rounded border border-zinc-200 px-2 text-[11px] hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
+                        className="flex h-6 items-center gap-0.5 rounded border border-zinc-200 px-2 text-[11px] hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700"
                       >
                         <ExternalLink className="h-3 w-3" />
                         预览
@@ -236,7 +236,7 @@ export function PackManager({ packs, aiEnabled }: { packs: PackRow[]; aiEnabled:
                       <button
                         onClick={() => togglePublish(p)}
                         disabled={pending || draft?.id === p.id}
-                        className="flex h-6 items-center rounded border border-zinc-200 px-2 text-[11px] hover:border-accent-500 hover:text-accent-600 disabled:opacity-60 dark:border-zinc-700"
+                        className="flex h-6 items-center rounded border border-zinc-200 px-2 text-[11px] hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-700"
                       >
                         {p.isPublished ? '下架' : '发布'}
                       </button>
@@ -477,7 +477,7 @@ function PackEditor({
             <button
               onClick={() => iconFileRef.current?.click()}
               disabled={iconUploading}
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-xs hover:border-accent-500 hover:text-accent-600 disabled:opacity-60 dark:border-zinc-700"
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-xs hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-700"
             >
               {iconUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
               上传图片
@@ -551,7 +551,7 @@ function PackEditor({
             type="checkbox"
             checked={draft.isPublished}
             onChange={(e) => set('isPublished', e.target.checked)}
-            className="h-4 w-4 accent-accent-500"
+            className="h-4 w-4 accent-zinc-900 dark:accent-zinc-100"
           />
           发布（对所有用户可见）
         </label>
@@ -565,7 +565,7 @@ function PackEditor({
           <button
             onClick={save}
             disabled={saving}
-            className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white hover:bg-accent-600 disabled:opacity-60"
+            className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
           >
             {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             {creating ? '创建' : '保存'}
@@ -696,7 +696,7 @@ function SkillPicker({
                     setQ('');
                     setResults([]);
                   }}
-                  className="flex w-full items-center gap-2 bg-white px-3 py-2 text-left text-sm hover:bg-accent-50 disabled:opacity-40 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                  className="flex w-full items-center gap-2 bg-white px-3 py-2 text-left text-sm hover:bg-zinc-100 disabled:opacity-40 dark:bg-zinc-900 dark:hover:bg-zinc-800"
                 >
                   <span className="min-w-0 flex-1">
                     <span className="font-medium">{r.name}</span>
@@ -709,7 +709,7 @@ function SkillPicker({
                   {added ? (
                     <span className="shrink-0 text-[11px] text-muted">已加入</span>
                   ) : (
-                    <Plus className="h-3.5 w-3.5 shrink-0 text-accent-500" />
+                    <Plus className="h-3.5 w-3.5 shrink-0 text-zinc-900 dark:text-zinc-50" />
                   )}
                 </button>
               </li>

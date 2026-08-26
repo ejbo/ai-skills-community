@@ -67,8 +67,8 @@ export function TopicUpvoteButton({
       title={upvoted ? t('upvote_undo') : '+1'}
       className={`flex shrink-0 flex-col items-center justify-center rounded-lg border transition ${dims} ${
         upvoted
-          ? 'border-accent-500 bg-accent-500/10 font-medium text-accent-600 dark:text-accent-300'
-          : 'border-zinc-200 text-zinc-600 hover:border-accent-400 hover:text-accent-600 dark:border-zinc-800 dark:text-zinc-300 dark:hover:text-accent-300'
+          ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10 font-medium text-zinc-900 dark:text-zinc-50'
+          : 'border-zinc-200 text-zinc-600 hover:border-zinc-400 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-300 dark:hover:text-zinc-50'
       }`}
     >
       <ChevronUp className="h-4 w-4" />

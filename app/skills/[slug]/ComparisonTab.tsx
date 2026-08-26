@@ -36,7 +36,7 @@ export async function ComparisonTab({
         <p className="text-sm text-muted">{t('tab_none_published')}</p>
         <Link
           href={`/skills/${slug}/manage?section=comparison`}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600"
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
         >
           <Pencil className="h-3.5 w-3.5" />
           {t('tab_go_edit')}

@@ -34,14 +34,14 @@ export default async function CategoriesPage() {
             className="card-hover surface group rounded-2xl p-5"
           >
             <div className="flex items-start justify-between">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-500/10 text-accent-600">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50">
                 <FolderOpen className="h-4 w-4" />
               </div>
               <span className="font-mono text-xs tabular-nums text-muted">
                 {c._count.skills}
               </span>
             </div>
-            <h3 className="mt-3 text-base font-semibold group-hover:text-accent-600">{c.name}</h3>
+            <h3 className="mt-3 text-base font-semibold group-hover:text-zinc-900">{c.name}</h3>
             {c.description && <p className="mt-1 text-xs text-muted">{c.description}</p>}
           </Link>
         ))}

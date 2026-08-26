@@ -52,7 +52,7 @@ export async function NavBar({ session }: { session: Session | null }) {
           ) : (
             <Link
               href="/auth/login"
-              className="rounded-lg bg-accent-500 px-3.5 py-1.5 text-sm font-medium text-white transition hover:bg-accent-600"
+              className="rounded-lg bg-zinc-900 dark:bg-zinc-100 px-3.5 py-1.5 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
             >
               {t('login')}
             </Link>

@@ -75,7 +75,7 @@ export default async function FeedbackDetailPage({
               {feedback.title}
             </h1>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-              <Avatar name={author.displayName} src={author.avatarUrl} size="xs" tone="subtle" />
+              <Avatar name={author.displayName} src={author.avatarUrl} size="xs" />
               <span>{author.displayName}</span>
               <DeptTag department={author.department} lab={author.lab} />
               <span>·</span>

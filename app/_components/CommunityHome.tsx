@@ -8,6 +8,7 @@ import {
   Flame,
   MessagesSquare,
   Play,
+  Plus,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { getLocale } from 'next-intl/server';
@@ -26,6 +27,8 @@ import { eventViewerFromSession, listEvents } from '@/lib/event-queries';
 import { browseDocs } from '@/lib/library-queries';
 import { EventTimeCard } from '@/app/events/_components/EventTime';
 import { DocCover } from '@/components/library/DocCover';
+import { CATEGORY_META } from '@/app/discussion/_components/badges';
+import { KIND_META } from '@/app/events/_components/badges';
 import { getTranslations } from 'next-intl/server';
 import { Reveal } from './home/Reveal';
 import { SectionHeader } from './home/SectionHeader';
@@ -42,12 +45,14 @@ interface HomeUser {
 /**
  * Community home shown to signed-in users at `/`.
  *
- * Visual contract: ink on paper. The page carries no accent colour of its own,
- * so the only saturated pixels are the ones that ARE the content — the video
- * frames in the shorts player and GitHub's per-language dot. Everything else is
- * zinc, hairlines and tabular numerals. Do not reintroduce tinted icon chips,
- * accent link colours or blurred colour glows; that combination is what made
- * this page read as a template.
+ * Visual contract: ink chrome, colourful content. Every pixel the page itself
+ * owns — headings, rules, buttons, links, the backdrop — is zinc and hairlines,
+ * so nothing competes with the material. Everything that IS the material keeps
+ * its real colour: book spines, GitHub's per-language dot, forum categories,
+ * event kinds, people's avatars, video frames. Do not reintroduce tinted icon
+ * chips, accent link colours or blurred colour glows (that combination is what
+ * made the page read as a template) — and do not grey out the content again
+ * either, which is what made it read as a spreadsheet.
  *
  * Band order, top to bottom: hero (greeting + today's figures, GitHub 热榜,
  * shorts player), 社区此刻, 热门 Skills, 热门视频.
@@ -172,6 +177,7 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
                         label={t('briefing_events_label')}
                         href={`/events/${events[0].id}`}
                         text={events[0].title}
+                        dot={KIND_META[events[0].kind]?.dot}
                       />
                     )}
                     {announcement && (
@@ -179,6 +185,7 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
                         label={t('announcement_label')}
                         href={`/announcements/${announcement.id}`}
                         text={announcement.title}
+                        dot="bg-amber-500"
                       />
                     )}
                   </div>
@@ -216,6 +223,15 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
                 <div className="surface flex min-h-[520px] flex-1 flex-col items-center justify-center gap-2 rounded-xl px-6 text-center lg:min-h-0">
                   <p className="text-sm font-medium">{ts('empty_title')}</p>
                   <p className="max-w-xs text-xs text-muted">{ts('empty_hint')}</p>
+                  {/* The slot is 520px tall; without a way out it is just a
+                      void on the most valuable part of the page. */}
+                  <Link
+                    href="/videos/shorts?upload=1"
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-zinc-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-zinc-700 active:scale-95 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+                  >
+                    <Plus className="h-3.5 w-3.5" aria-hidden />
+                    {ts('upload')}
+                  </Link>
                 </div>
               )}
             </div>
@@ -244,9 +260,11 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
                         <span className="min-w-0 flex-1 truncate text-sm font-medium">
                           {topic.title}
                         </span>
-                        <Chip>
+                        <TaxonomyChip
+                          cls={CATEGORY_META[topic.categories[0] ?? topic.category]?.className}
+                        >
                           {tl(`discussionCategory.${topic.categories[0] ?? topic.category}`)}
-                        </Chip>
+                        </TaxonomyChip>
                       </div>
                       <p className="mt-0.5 text-xs tabular-nums text-muted">
                         {t('topic_meta', { replies: topic.replyCount, views: topic.viewCount })}
@@ -270,7 +288,9 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
                         <span className="min-w-0 flex-1 truncate text-sm font-medium">
                           {ev.title}
                         </span>
-                        <Chip>{tl(`eventKind.${ev.kind}`)}</Chip>
+                        <TaxonomyChip cls={KIND_META[ev.kind]?.badge}>
+                          {tl(`eventKind.${ev.kind}`)}
+                        </TaxonomyChip>
                       </div>
                       <p className="mt-0.5 truncate text-xs text-muted">
                         <EventTimeCard
@@ -302,8 +322,7 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
                           title={doc.title}
                           coverUrl={doc.coverUrl}
                           docType={doc.docType}
-                          mono
-                          className="h-11 w-8 shrink-0 rounded"
+                          className="h-11 w-8 shrink-0 rounded shadow-sm ring-1 ring-black/5 dark:ring-white/10"
                         />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium">{doc.title}</p>
@@ -403,10 +422,28 @@ function Figure({ value, label }: { value: string; label: string }) {
   );
 }
 
-/** "活动 · <title>" line under the figures. */
-function BriefLine({ label, href, text }: { label: string; href: string; text: string }) {
+/**
+ * "活动 · <title>" line under the figures. The dot is the only colour, and it
+ * is the same hue the row's own board uses for that kind, so the two lines are
+ * told apart before either label is read.
+ */
+function BriefLine({
+  label,
+  href,
+  text,
+  dot,
+}: {
+  label: string;
+  href: string;
+  text: string;
+  dot?: string;
+}) {
   return (
     <Link href={href} className="group flex min-w-0 items-baseline gap-2 text-xs">
+      <span
+        aria-hidden
+        className={`mt-[1px] h-1.5 w-1.5 shrink-0 self-center rounded-full ${dot ?? 'bg-zinc-400'}`}
+      />
       <span className="shrink-0 text-muted">{label}</span>
       <span className="min-w-0 truncate decoration-zinc-300 underline-offset-2 group-hover:underline dark:decoration-zinc-600">
         {text}
@@ -415,10 +452,19 @@ function BriefLine({ label, href, text }: { label: string; href: string; text: s
   );
 }
 
-/** Neutral taxonomy chip. Replaces the hue-per-category pills on this page. */
-function Chip({ children }: { children: ReactNode }) {
+/**
+ * Taxonomy chip. The colour is not invented here: it is passed in from the
+ * board that owns the taxonomy (CATEGORY_META for the forum, KIND_META for
+ * events), so a category reads the same on the homepage as it does on the page
+ * the row links to. Unknown values fall back to ink.
+ */
+function TaxonomyChip({ cls, children }: { cls?: string; children: ReactNode }) {
   return (
-    <span className="inline-flex shrink-0 items-center rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+    <span
+      className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+        cls ?? 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'
+      }`}
+    >
       {children}
     </span>
   );

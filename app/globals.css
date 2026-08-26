@@ -8,8 +8,14 @@
   --border: 228 228 231;
   --text: 24 24 27;
   --text-muted: 113 113 122;
-  --accent: 94 90 255;
-  --accent-soft: 238 240 255;
+  /* Chrome accent = ink. Focus rings, text selection and the few remaining
+     `var(--accent)` call sites are the page talking about itself, and the page
+     has no colour of its own: every saturated pixel in this product belongs to
+     content (book spines, GitHub's language dots, forum categories, event
+     kinds, people's avatars, video frames). Per-theme so a focus ring stays
+     visible on both grounds — which a fixed hex could not do. */
+  --accent: 24 24 27;
+  --accent-soft: 244 244 245;
   --shadow-card: 0 1px 2px rgba(24, 24, 27, 0.04), 0 4px 12px rgba(24, 24, 27, 0.04);
 }
 
@@ -19,8 +25,8 @@
   --border: 39 39 42;
   --text: 244 244 245;
   --text-muted: 161 161 170;
-  --accent: 138 134 255;
-  --accent-soft: 35 33 80;
+  --accent: 244 244 245;
+  --accent-soft: 39 39 42;
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
@@ -37,7 +43,7 @@
     @apply font-sans text-base;
   }
   ::selection {
-    background-color: rgb(var(--accent) / 0.22);
+    background-color: rgb(var(--accent) / 0.18);
   }
   *:focus-visible {
     outline: 2px solid rgb(var(--accent));

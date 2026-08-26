@@ -201,7 +201,7 @@ export function PollWidget({ id }: { id: string }) {
     <div className="not-prose surface my-2 max-w-md rounded-xl p-3.5">
       {/* Header */}
       <div className="mb-2 flex items-start gap-2">
-        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-accent-500/10 text-accent-600 dark:text-accent-400">
+        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50">
           <BarChart3 className="h-3.5 w-3.5" />
         </span>
         <p className="text-sm font-medium leading-6">{poll.question}</p>
@@ -225,8 +225,8 @@ export function PollWidget({ id }: { id: string }) {
                 className={`relative w-full overflow-hidden rounded-lg border px-3 py-2 text-left text-sm transition ${
                   showSelect
                     ? isSelected
-                      ? 'border-accent-500 bg-accent-500/10'
-                      : 'border-[rgb(var(--border))] hover:border-accent-500/60 hover:bg-accent-500/5'
+                      ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10'
+                      : 'border-[rgb(var(--border))] hover:border-zinc-900/40 dark:hover:border-zinc-100/40 hover:bg-zinc-900/10 dark:hover:bg-white/[0.14]'
                     : 'cursor-default border-[rgb(var(--border))]'
                 }`}
               >
@@ -234,14 +234,14 @@ export function PollWidget({ id }: { id: string }) {
                 {poll.showResults && !showSelect && (
                   <span
                     aria-hidden
-                    className={`absolute inset-y-0 left-0 ${mine ? 'bg-accent-500/25' : 'bg-accent-500/10'}`}
+                    className={`absolute inset-y-0 left-0 ${mine ? 'bg-zinc-900/[0.06] dark:bg-white/10' : 'bg-zinc-900/[0.06] dark:bg-white/10'}`}
                     style={{ width: `${pct}%`, transition: 'width 0.4s ease' }}
                   />
                 )}
                 <span className="relative flex items-start justify-between gap-2">
                   <span className="flex min-w-0 items-start gap-1.5">
                     {(showSelect ? isSelected : mine) && (
-                      <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-600 dark:text-accent-400" />
+                      <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-900 dark:text-zinc-50" />
                     )}
                     <span className="min-w-0 break-words">{o.text}</span>
                   </span>
@@ -284,7 +284,7 @@ export function PollWidget({ id }: { id: string }) {
           type="button"
           disabled={busy || selected.length === 0}
           onClick={() => submitVote(selected)}
-          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-50"
+          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-3 py-1.5 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-50"
         >
           {busy && <Loader2 className="h-4 w-4 animate-spin" />}
           {selected.length > 0 ? t('vote_n', { count: selected.length }) : t('vote')}
@@ -304,7 +304,7 @@ export function PollWidget({ id }: { id: string }) {
           <>
             <button
               type="button"
-              className="font-medium text-accent-600 transition hover:underline dark:text-accent-400"
+              className="font-medium text-zinc-900 dark:text-zinc-50 transition hover:underline"
               onClick={() => {
                 setSelected(poll.myVotes);
                 setEditing(true);

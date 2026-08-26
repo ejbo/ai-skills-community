@@ -77,7 +77,7 @@ export function EmailTestPanel() {
         <button
           onClick={send}
           disabled={sending || !to.trim()}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-4 text-sm font-medium transition hover:border-accent-500 disabled:opacity-60 dark:border-zinc-700"
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-4 text-sm font-medium transition hover:border-zinc-400 dark:hover:border-zinc-500 disabled:opacity-60 dark:border-zinc-700"
         >
           {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
           发送测试

@@ -29,7 +29,7 @@ export function LanguageForm({ current }: { current: string }) {
             className="flex w-full items-center justify-between px-5 py-3.5 text-left text-sm transition first:rounded-t-2xl last:rounded-b-2xl hover:bg-zinc-50 dark:hover:bg-zinc-900/60"
           >
             <span className={active ? 'font-medium' : ''}>{o.label}</span>
-            {active && <Check className="h-4 w-4 text-accent-500" />}
+            {active && <Check className="h-4 w-4 text-zinc-900 dark:text-zinc-50" />}
           </button>
         );
       })}

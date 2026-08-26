@@ -26,7 +26,7 @@ export function PasswordLoginSection({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mx-auto flex items-center gap-1.5 text-sm text-muted transition hover:text-accent-600"
+        className="mx-auto flex items-center gap-1.5 text-sm text-muted transition hover:text-zinc-900"
       >
         <Mail className="h-3.5 w-3.5" />
         {t('password_login_toggle')}

@@ -99,7 +99,7 @@ export function NotificationPreferenceForm({ initial }: { initial: PrefValues })
       <button
         onClick={save}
         disabled={pending}
-        className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+        className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
       >
         {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
         {t('save')}
@@ -116,7 +116,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
       aria-checked={checked}
       onClick={onChange}
       className={`relative h-5 w-9 shrink-0 rounded-full transition ${
-        checked ? 'bg-accent-500' : 'bg-zinc-300 dark:bg-zinc-700'
+        checked ? 'bg-zinc-900 dark:bg-zinc-100' : 'bg-zinc-300 dark:bg-zinc-700'
       }`}
     >
       <span

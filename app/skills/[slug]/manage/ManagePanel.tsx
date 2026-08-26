@@ -148,7 +148,7 @@ async function OverviewSection({
         </div>
         <Link
           href={versionsHref}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600"
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
         >
           <Upload className="h-3.5 w-3.5" />
           {t('upload_new_version')}
@@ -248,7 +248,7 @@ async function VersionsSection({
                 <li key={v.id} className="flex flex-wrap items-center gap-3 border-b border-zinc-100 px-4 py-3 text-sm last:border-b-0 dark:border-zinc-800/60">
                   <span className="font-mono font-semibold">v{v.version}</span>
                   {isCurrent && (
-                    <span className="rounded-full bg-accent-500/15 px-2 py-0.5 text-[10px] font-semibold text-accent-600 dark:text-accent-300">{t('badge_current')}</span>
+                    <span className="rounded-full bg-zinc-900/[0.06] dark:bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-zinc-900 dark:text-zinc-50">{t('badge_current')}</span>
                   )}
                   <span
                     className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${

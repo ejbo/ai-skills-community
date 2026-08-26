@@ -34,7 +34,10 @@ export function SkillCard(props: SkillCardProps) {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-base font-semibold tracking-tight decoration-zinc-300 underline-offset-2 transition-colors group-hover:underline dark:decoration-zinc-600">
+          {/* Two lines, not `truncate`: a one-line clamp cut real skill names
+              in half ("React Component Scaf…") on every grid narrower than
+              four columns. */}
+          <h3 className="line-clamp-2 text-base font-semibold leading-snug tracking-tight decoration-zinc-300 underline-offset-2 transition-colors group-hover:underline dark:decoration-zinc-600">
             {props.name}
           </h3>
           <p className="mt-1 line-clamp-2 text-sm text-muted">{props.summary}</p>
@@ -50,7 +53,6 @@ export function SkillCard(props: SkillCardProps) {
             name={props.author.displayName}
             src={props.author.avatarUrl}
             size="xs"
-            tone="neutral"
           />
           <span className="truncate">{props.author.displayName}</span>
           <span>·</span>

@@ -108,7 +108,7 @@ export default async function AdminVideosPage({
                   <td>
                     <Link
                       href={`/manage/videos/${v.id}/edit`}
-                      className="font-medium hover:text-accent-600"
+                      className="font-medium hover:text-zinc-900"
                     >
                       {v.title}
                     </Link>

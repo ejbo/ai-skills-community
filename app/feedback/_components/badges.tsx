@@ -10,7 +10,7 @@ export const STATUS_META: Record<FeedbackStatus, { className: string }> = {
     className: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
   },
   planned: {
-    className: 'bg-accent-500/10 text-accent-600 dark:text-accent-300',
+    className: 'bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50',
   },
   in_progress: {
     className: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300',
@@ -25,7 +25,7 @@ export const STATUS_META: Record<FeedbackStatus, { className: string }> = {
 
 export const CATEGORY_META: Record<FeedbackCategory, { className: string }> = {
   feature: {
-    className: 'border-accent-200 text-accent-600 dark:border-accent-500/30 dark:text-accent-300',
+    className: 'border-zinc-900 dark:border-zinc-100 text-zinc-900 dark:text-zinc-50 dark:border-zinc-100/30',
   },
   bug: {
     className: 'border-rose-200 text-rose-600 dark:border-rose-500/30 dark:text-rose-300',

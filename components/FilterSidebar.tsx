@@ -55,7 +55,7 @@ export function FilterSidebar({ categories }: { categories: Category[] }) {
                   onClick={() => update({ category: active ? null : c.slug })}
                   className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition ${
                     active
-                      ? 'bg-accent-500/10 text-accent-700 dark:text-accent-300'
+                      ? 'bg-zinc-900/[0.06] font-medium text-zinc-900 dark:bg-white/10 dark:text-zinc-50'
                       : 'text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
                   }`}
                 >
@@ -78,7 +78,7 @@ export function FilterSidebar({ categories }: { categories: Category[] }) {
           onChange={(e) => setLocalTokens(Number(e.target.value))}
           onMouseUp={() => update({ maxTokens: localTokens === 10000 ? null : String(localTokens) })}
           onTouchEnd={() => update({ maxTokens: localTokens === 10000 ? null : String(localTokens) })}
-          className="w-full accent-accent-500"
+          className="w-full accent-zinc-900 dark:accent-zinc-100"
         />
         <div className="mt-1 flex justify-between font-mono text-[11px] tabular-nums text-muted">
           <span>0</span>
@@ -94,7 +94,7 @@ export function FilterSidebar({ categories }: { categories: Category[] }) {
               onClick={() => update({ minRating: n === minRating ? null : String(n) })}
               className={`h-8 flex-1 rounded-md text-xs font-medium transition ${
                 n <= minRating
-                  ? 'bg-accent-500/15 text-accent-700 dark:text-accent-300'
+                  ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
                   : 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700'
               }`}
             >
@@ -106,7 +106,7 @@ export function FilterSidebar({ categories }: { categories: Category[] }) {
 
       <button
         onClick={reset}
-        className="text-xs font-medium text-accent-600 hover:text-accent-700"
+        className="text-xs font-medium text-zinc-600 underline decoration-zinc-300 underline-offset-2 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:decoration-zinc-600 dark:hover:text-zinc-100"
       >
         {t('reset_filters')}
       </button>

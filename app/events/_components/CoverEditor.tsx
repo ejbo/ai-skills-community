@@ -91,7 +91,7 @@ export function CoverEditor({
           <button
             type="button"
             onClick={() => onPosChange('')}
-            className="shrink-0 text-accent-600 underline-offset-2 hover:underline dark:text-accent-400"
+            className="shrink-0 text-zinc-900 dark:text-zinc-50 underline-offset-2 hover:underline"
           >
             {t('cover_reset')}
           </button>

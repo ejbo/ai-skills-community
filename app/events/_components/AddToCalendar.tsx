@@ -54,7 +54,7 @@ export function AddToCalendar({
   }
 
   const btn =
-    'inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg border border-zinc-200 px-2 text-xs font-medium text-zinc-700 transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700 dark:text-zinc-200';
+    'inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg border border-zinc-200 px-2 text-xs font-medium text-zinc-700 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-200';
   return (
     <div className="flex gap-2">
       <button type="button" onClick={openGoogle} className={btn}>

@@ -53,7 +53,7 @@ export function ManageNav({
             {active && (
               <motion.span
                 layoutId="manageTab"
-                className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-accent-500"
+                className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-zinc-900 dark:bg-zinc-100"
                 transition={{ type: 'spring', stiffness: 380, damping: 30 }}
               />
             )}

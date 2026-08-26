@@ -81,7 +81,7 @@ export async function VoteCard({ vote }: { vote: PublicVoteCard }) {
       <div className="p-4">
         <h3 className="line-clamp-1 text-base font-semibold tracking-tight">{vote.title}</h3>
         <div className="mt-2 flex min-w-0 items-center gap-2 text-sm text-muted">
-          <Avatar name={vote.creator.displayName} src={vote.creator.avatarUrl} size="xs" tone="neutral" />
+          <Avatar name={vote.creator.displayName} src={vote.creator.avatarUrl} size="xs" />
           <span className="truncate">{vote.creator.displayName}</span>
           <DeptTag department={vote.creator.department} lab={vote.creator.lab} />
         </div>

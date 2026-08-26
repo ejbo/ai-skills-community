@@ -958,7 +958,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight">{view.title}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted">
-            <Avatar name={view.creator.displayName} src={view.creator.avatarUrl} size="xs" tone="neutral" />
+            <Avatar name={view.creator.displayName} src={view.creator.avatarUrl} size="xs" />
             <Link href={`/users/${view.creator.handle}`} className="hover:underline">
               {view.creator.displayName}
             </Link>

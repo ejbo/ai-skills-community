@@ -11,7 +11,7 @@ export function LogDetailsModal({ details, action }: { details: unknown; action:
     <>
       <button
         onClick={() => setOpen(true)}
-        className="text-[11px] text-accent-600 hover:text-accent-700 hover:underline"
+        className="text-[11px] text-zinc-900 dark:text-zinc-50 hover:text-zinc-900 hover:underline"
       >
         查看
       </button>

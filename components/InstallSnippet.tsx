@@ -28,7 +28,7 @@ export function InstallSnippet({ slug, version }: { slug: string; version?: stri
 
   return (
     <div className="space-y-1.5">
-      <div className="surface flex items-center gap-3 rounded-xl p-1 pl-4 shadow-[inset_0_0_0_1px_rgba(94,90,255,0.18)]">
+      <div className="surface flex items-center gap-3 rounded-xl p-1 pl-4 shadow-[inset_0_0_0_1px_rgb(24_24_27/0.14)] dark:shadow-[inset_0_0_0_1px_rgb(255_255_255/0.14)]">
         <span className="font-mono text-zinc-400 select-none">$</span>
         <code className="min-w-0 flex-1 truncate font-mono text-sm text-zinc-800 dark:text-zinc-100">
           {cmd}
@@ -36,7 +36,7 @@ export function InstallSnippet({ slug, version }: { slug: string; version?: stri
         <button
           onClick={copy}
           aria-label={copied ? t('copied') : t('copy')}
-          className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-3 text-sm font-medium text-white transition hover:bg-accent-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-zinc-950"
+          className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-3 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 dark:focus-visible:ring-zinc-100 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-zinc-950"
         >
           <AnimatePresence mode="wait" initial={false}>
             {copied ? (
@@ -70,7 +70,7 @@ export function InstallSnippet({ slug, version }: { slug: string; version?: stri
       <p className="text-[11px] text-muted">
         {tu.rich('install_cli_hint', {
           link: (chunks) => (
-            <Link href="/docs/cli" className="underline hover:text-accent-600">
+            <Link href="/docs/cli" className="underline hover:text-zinc-900">
               {chunks}
             </Link>
           ),

@@ -70,7 +70,7 @@ export function TopicActions({
   if (!canModerate && !isAuthor) return null;
 
   const btn =
-    'flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-xs font-medium text-zinc-700 transition hover:border-accent-500 hover:text-accent-700 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200';
+    'flex h-8 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-xs font-medium text-zinc-700 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200';
 
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2">

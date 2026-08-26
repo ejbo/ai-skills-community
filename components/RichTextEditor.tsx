@@ -305,7 +305,7 @@ function ToolbarButton({
       onClick={onClick}
       className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
         active
-          ? 'bg-accent-500/15 text-accent-600 dark:text-accent-300'
+          ? 'bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50'
           : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-50'
       }`}
     >

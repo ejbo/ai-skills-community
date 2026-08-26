@@ -44,7 +44,7 @@ export function DetailTabs({
           >
             {label}
             {tab === 'versions' && hasVersions && (
-              <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-accent-500" />
+              <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-zinc-900 dark:bg-zinc-100" />
             )}
             {tab === 'manage' && pendingCount > 0 && (
               <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-danger" />
@@ -52,7 +52,7 @@ export function DetailTabs({
             {active && (
               <motion.span
                 layoutId="detailTab"
-                className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-accent-500"
+                className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-zinc-900 dark:bg-zinc-100"
                 transition={{ type: 'spring', stiffness: 380, damping: 30 }}
               />
             )}

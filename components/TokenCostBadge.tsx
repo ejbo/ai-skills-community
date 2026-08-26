@@ -1,11 +1,20 @@
 import { Zap } from 'lucide-react';
 
+/**
+ * Token cost is a threshold, not a category: cheap skills stay quiet in ink and
+ * only an expensive one earns colour. That keeps a grid of cards calm while
+ * still flagging the handful that will eat a context window.
+ */
+function toneFor(tokens: number): string {
+  if (tokens >= 3000) return 'text-danger';
+  if (tokens >= 1000) return 'text-warn';
+  return 'text-zinc-500 dark:text-zinc-400';
+}
+
 export function TokenCostBadge({ tokens, compact = false }: { tokens: number; compact?: boolean }) {
-  // Green/amber/red on a 12px glyph next to two other pills read as decoration,
-  // not as a threshold anyone acts on. The number is the data.
   return (
     <span
-      className="inline-flex items-center gap-1 font-mono text-xs tabular-nums text-zinc-500 dark:text-zinc-400"
+      className={`inline-flex items-center gap-1 font-mono text-xs tabular-nums ${toneFor(tokens)}`}
       title={`Estimated ${tokens.toLocaleString()} tokens when activated`}
       aria-label={`Token cost: ${tokens} tokens`}
     >

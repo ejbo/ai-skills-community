@@ -342,7 +342,7 @@ export function ShortsFeed({
       <div className="pointer-events-none absolute inset-x-0 top-0 z-[9] bg-gradient-to-b from-black/60 to-transparent pb-12 pt-3">
         <div className="flex items-center gap-4 px-4">
           <Link
-            href="/videos"
+            href="/videos?tab=shorts"
             className="pointer-events-auto text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)] transition hover:scale-110 active:scale-90"
             aria-label={t('back')}
           >

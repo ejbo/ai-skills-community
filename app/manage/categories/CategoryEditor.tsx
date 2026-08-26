@@ -83,7 +83,7 @@ export function CategoryEditor({ categories }: { categories: Category[] }) {
           <button
             onClick={create}
             disabled={pending}
-            className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white hover:bg-accent-600 disabled:opacity-60"
+            className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
           >
             {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
             创建
@@ -192,7 +192,7 @@ function CategoryRow({
         <input
           value={draft.name}
           onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-          className="h-7 w-full rounded border border-transparent bg-transparent px-1 text-sm transition hover:border-zinc-200 focus:border-accent-500 focus:bg-white dark:hover:border-zinc-800 dark:focus:bg-zinc-900"
+          className="h-7 w-full rounded border border-transparent bg-transparent px-1 text-sm transition hover:border-zinc-200 focus:border-zinc-900 dark:focus:border-zinc-100 focus:bg-white dark:hover:border-zinc-800 dark:focus:bg-zinc-900"
         />
       </td>
       <td className="font-mono text-[11px] text-muted">{category.slug}</td>
@@ -200,7 +200,7 @@ function CategoryRow({
         <input
           value={draft.description}
           onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-          className="h-7 w-full rounded border border-transparent bg-transparent px-1 text-xs transition hover:border-zinc-200 focus:border-accent-500 focus:bg-white dark:hover:border-zinc-800 dark:focus:bg-zinc-900"
+          className="h-7 w-full rounded border border-transparent bg-transparent px-1 text-xs transition hover:border-zinc-200 focus:border-zinc-900 dark:focus:border-zinc-100 focus:bg-white dark:hover:border-zinc-800 dark:focus:bg-zinc-900"
         />
       </td>
       <td>
@@ -208,7 +208,7 @@ function CategoryRow({
           type="number"
           value={draft.sortOrder}
           onChange={(e) => setDraft({ ...draft, sortOrder: Number(e.target.value) || 0 })}
-          className="h-7 w-16 rounded border border-transparent bg-transparent px-1 text-right font-mono text-xs tabular-nums transition hover:border-zinc-200 focus:border-accent-500 focus:bg-white dark:hover:border-zinc-800 dark:focus:bg-zinc-900"
+          className="h-7 w-16 rounded border border-transparent bg-transparent px-1 text-right font-mono text-xs tabular-nums transition hover:border-zinc-200 focus:border-zinc-900 dark:focus:border-zinc-100 focus:bg-white dark:hover:border-zinc-800 dark:focus:bg-zinc-900"
         />
       </td>
       <td className="font-mono text-[11px] tabular-nums">{category.skillCount}</td>
@@ -218,7 +218,7 @@ function CategoryRow({
             <button
               onClick={save}
               disabled={pending}
-              className="flex h-6 items-center gap-1 rounded bg-accent-500 px-2 text-[11px] text-white hover:bg-accent-600 disabled:opacity-60"
+              className="flex h-6 items-center gap-1 rounded bg-zinc-900 dark:bg-zinc-100 px-2 text-[11px] text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
             >
               <Save className="h-3 w-3" />
               保存
