@@ -360,27 +360,54 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   with the caption and can never overlap it. Embed fullscreen is a TOGGLE tracked via
   `fullscreenchange` (wheel/touch listeners live on the fullscreened element, so 上下刷 works in
   fullscreen; ↑/↓/M added while fullscreen). Nav renames:
-  Skills Center→Skills, Geek Hub→Videos; `/videos` DEFAULTS to the Shorts tab (Geek Videos =
-  `?tab=videos` — pagination/breadcrumbs must carry it). Shorts CTAs are NEUTRAL (zinc/white
+  Skills Center→Skills, Geek Hub→Videos. **`/videos` DEFAULTS to Geek Videos** (2026-08-26 — the
+  section is named after the long-form board, so that is what a visitor lands on); Shorts is the
+  second tab at `?tab=shorts`, and the immersive feed stays at `/videos/shorts` (its back arrow
+  returns to `?tab=shorts`). Bare `/videos` therefore carries NO `tab` param — pagination and
+  breadcrumbs must not add one. The switcher keeps `mb-6` above the billboard; without it the two
+  read as one welded block. Shorts CTAs are NEUTRAL (zinc/white
   solids) — the user explicitly rejected accent-blue "AI-looking" buttons; homepage shorts header
   has view-all ONLY (no upload button).
-- **首页 (signed-in home) is 黑白 by contract**: `app/_components/CommunityHome.tsx`. Band order is
+- **配色契约 (2026-08-26): ink chrome, colourful content.** ONE rule decides every colour
+  question in this app: *the page has no colour of its own; colour belongs to the material.*
+  - **Chrome is ink.** Primary buttons, toggles, active tabs/pills, progress bars, focus rings,
+    sliders, selection — all `zinc-900` in light / `zinc-100` in dark (`--accent` in
+    `app/globals.css` is now a PER-THEME ink token, not indigo, so a focus ring stays visible on
+    both grounds). There is **no `accent-*` class left in `app/**` or `components/**`**; the ramp
+    survives in `tailwind.config.ts` only as a fallback for stray future code. The indigo
+    `bg-accent-500` button was what the user called "ai 风很浓" — do not bring it back, and do not
+    invent a new brand hue for buttons. The only saturated pixel the chrome owns is the CARI logo.
+  - **Content keeps its real colour.** Book spines (`DocCover` — hashed hue, no grayscale variant,
+    the `mono` prop is GONE), GitHub's per-language dot + the gold star (`GithubTrending`), skill
+    source/visibility pills (`SourceBadge` blue/emerald/violet, `VisibilityBadge` emerald/amber/
+    zinc), the token-cost threshold (`TokenCostBadge` — ink until it is actually expensive), rating
+    stars (`StatRow`, amber), forum categories (`app/discussion/_components/badges.tsx`), event
+    kinds (`app/events/_components/badges.tsx`), the notification badge (red), video frames, and
+    **people** — `Avatar`'s fallback badge is a name-hashed colour from a 12-hue identity palette
+    (`identityColor`, exported), which is why the `tone` prop was deleted from the component and
+    from ~37 call sites. Greying these out is what the user rejected as "强行弄成了黑白".
+  - Taxonomy chips take their class from the board that OWNS the taxonomy (the homepage imports
+    `CATEGORY_META`/`KIND_META`) so a category looks the same on the homepage as on the page the
+    row links to. Never re-invent a per-domain palette at the call site.
+  - The 知识库 reader is the one surface with its own accent: `--reader-accent` /
+    `--reader-accent-rgb` in `read/reader.css` (a deep book-blue, lifted for the dark page) drive
+    in-article links, blockquote rules, prose selection and citation chips. They follow the READER
+    theme, never the site's — a wall of ink is the wrong answer for a reading surface.
+- **首页 (signed-in home)**: `app/_components/CommunityHome.tsx`. Band order is
   hero (greeting + 今日 figures, **GitHub 热榜**, shorts player) → 社区此刻 → 热门 Skills → 热门视频;
   热门 Skills deliberately sits BELOW 社区此刻 (it used to own the hero-left slot the 热榜 now has).
-  The page carries **no accent colour of its own** — the only saturated pixels are the video frames
-  and GitHub's per-language dot, both of which are data. Do not reintroduce tinted icon chips
-  (`bg-accent-500/15` + icon), accent link colours, blurred colour glows, or hue-per-category pills;
-  that combination is exactly what the user rejected as "太 AI". `HeroBackdrop` is now colourless
-  (hairline grid + neutral overhead light + an inlined feTurbulence grain tile; the light-mode
-  gradient MUST keep its `dark:hidden` or it washes out the dark hero). `SectionHeader` closes with
-  a hairline rule instead of a chip. **No `contain: paint` on the hero section** — paint containment
-  makes it a containing block for `position: fixed` descendants, the same trap as `card-hover`'s
-  transform. De-colouring reached shared components on purpose (`Avatar` default tone + new
-  `neutral` tone, `SourceBadge`/`VisibilityBadge`/`TokenCostBadge`, `NotificationBell`,
-  `DocCover`'s opt-in `mono` prop, `VideoCard` hover damped to 1.02/-2px): leaving any of them
-  would put coloured chips back inside the homepage's own sections. `tailwind.config.ts`'s
-  `accent-*` ramp and the `--accent` CSS var are intentionally UNCHANGED — the other ~66 routes
-  still use them.
+  It follows the 配色契约 above: ink chrome, and the material (spines, language dots, category
+  chips, avatars, video frames) in colour. Do not reintroduce tinted icon chips
+  (`bg-accent-500/15` + icon), accent link colours or blurred colour glows — that combination is
+  what the user rejected as "太 AI" — and do NOT grey the content out again either, which is what
+  the user rejected next. `HeroBackdrop` is colourless (hairline grid + neutral overhead light +
+  an inlined feTurbulence grain tile; the light-mode gradient MUST keep its `dark:hidden` or it
+  washes out the dark hero). `SectionHeader` closes with a hairline rule instead of a chip. The
+  hero brief lines carry the source's own dot (event kind / amber for 公告) and the empty shorts
+  slot carries an upload CTA rather than 520px of void. **No `contain: paint` on the hero
+  section** — paint containment makes it a containing block for `position: fixed` descendants,
+  the same trap as `card-hover`'s transform. `SkillCard` titles are `line-clamp-2`, never
+  `truncate` (a one-line clamp cut real names in half at every grid width under four columns).
 - **GitHub 热榜**: `lib/github-trending-shared.ts` is the pure, unit-tested half (types +
   `parseTrendingHtml`, dependency-free regex — one trending page is ~650 KB and gets re-parsed on
   every cache miss, so no jsdom; it drops `<svg>` blocks WHOLE before tag-stripping because the
@@ -612,7 +639,24 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   server content), reduced-motion + fine-pointer gated. **Trap that tsc cannot catch**: a helper
   exported from a `'use client'` module is only a client REFERENCE when an RSC page imports it —
   calling it there throws "is not a function" at runtime (this bit `settingsTabsFor`; keep such
-  helpers in plain modules like `app/zones/_components/settings-tabs.ts`). **`Zone.slug` is
+  helpers in plain modules like `app/zones/_components/settings-tabs.ts`).
+  **v2 (migration `20260826120000_zone_columns_post_visibility`)**: 栏目 (`ZoneColumn`, service in
+  `lib/zones/columns.ts`) is the per-zone content taxonomy, ORTHOGONAL to `ZonePostType` (which is the
+  content FORMAT) — 版主 curates `official` rows in 版块设置, members create their own from the composer
+  when `Zone.allowMemberColumns`; `getOrCreateColumn` dedupes on `columnDedupeKey` BEFORE creating and
+  keeps the slug stable across renames (`?column=<slug>` links are shared). **Per-post visibility**
+  `ZonePost.visibility zone|members|restricted` NARROWS within the zone and never widens it: the pure
+  decision lives in the import-free `lib/zones/post-access.ts` (`decideZonePostAccess`) and its SQL twin
+  `zonePostVisibilityWhere` — lists must EXCLUDE in SQL, never fetch-then-filter (paging counts break),
+  and the pair must stay in agreement. `restricted` grants are `ZonePostViewer` rows (`designated` or
+  `code`); the share code is a capability token (like a 提取码, `timingSafeEqual`-compared, rotating it
+  evicts everyone who used the old one), shipped ONLY to author/co-authors/moderators, and redeeming it
+  still requires `access.canRead` — a grant never opens a zone you cannot read. `/zones` is a
+  **feed-first landing** (`listZoneFeed` across zones: 最新/最热, multi-select 研究所→部门 via
+  `zoneOrgTree`, 栏目/类型 facets, search) with 动态 / 版块 / 我的版块 tabs; the 版块 tab groups by 研究所.
+  Zone chrome rules: the 管理 and 加入 dropdowns MUST portal out of the header (it is
+  `relative overflow-hidden`) — both ride `useAnchoredPanel`; 研究所·部门 gets its own prominent
+  untruncated row (never the capped `DeptTag`); and zone titles are PLAIN TEXT (no BlurText). **`Zone.slug` is
   IMMUTABLE** after creation (notification links / bookmarks embed it): the PATCH route strips it
   and `updateZone` throws `slug_immutable` as the lib-level backstop. Post publish is re-gated on
   the draft→published TRANSITION (`canPost`, `canModerate` for announcements) — being the author is
@@ -640,12 +684,50 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   contiguous — never trust the prefilter alone, never store an un-canonicalized 工号, and never add a
   new literal `huaweiW3Id`/`accountNumber` equality (`/manage/users` search ORs in the key too).
   Import and 全量同步 build ONE user index up front (import refreshes it every 5 s so a first SSO
-  login mid-import is still caught) so roster rows with no registered user cost no write; legacy
+  login mid-import is still caught) so roster rows with no registered user cost no write; the import
+  additionally loads the WHOLE roster into a `DirectoryIndex` once (lib/employee-match.ts) instead of
+  querying per row, and keeps it in sync as it creates/updates/merges. Legacy
   duplicates (`84412632` + `z84412632`) resolve MOST-RECENTLY-UPDATED on every path (login-time
   sync takes `findDirectoryEntries()[0]`, 全量同步 writes oldest→newest so the same row wins — keep
   them in agreement or a user's department flip-flops); admin create/update treat a same-key row as
   `account_exists`.
   Deleting an entry never touches users; 停用 (isActive=false) entries are excluded from all sync.
+  **Re-uploading a roster OVERWRITES, it does not duplicate** (`lib/employee-match.ts`,
+  `resolveImportTarget`, 2026-08-26). The original roster was imported with no 工号 at all, so a
+  re-upload carrying 工号 matched nothing and created a second row per person. Order now:
+  (1) 工号 digit key — the only identity trusted outright, and it WINS over 姓名 (a hit is renamed
+  to the file's spelling); (2) 姓名 (`canonicalPersonName` = same NFKC/whitespace/case folding as
+  工号) among rows that have NO 工号 — the pre-工号 rows — narrowed by 部门 then 研究所, and the
+  file's 工号 is BACKFILLED onto the row it matches; (3) for a file row with no 工号, the single row
+  with that name, whose 工号 is left untouched. Rule 2 only ever looks at account-less rows, so a
+  name can never steal a 工号 another row already owns. Anything still ambiguous is REFUSED, never
+  guessed: a row with a 工号 is created + warned ("请人工核对合并"), one without is skipped + warned;
+  both land in `warnings` (shown in the panel, kept in the audit log). Field rules: non-empty values
+  always overwrite (that IS the 覆盖), blanks only clear under the `clearMissing` option, 工号 is
+  never cleared and never rewritten to a different one, and 停用 rows are updated but never
+  re-activated by an import (use 批量启用). `mergeNameDuplicates` is the opt-in, destructive cleanup
+  for damage from before this rule existed: once a matched row carries a 工号 it DELETES same-name
+  account-less rows — but ONLY those `classifyNameDuplicates` finds non-contradictory (部门/研究所
+  blank, or equal to the import row's or the kept row's before/after value). **A plain
+  `filter(!accountNumber)` there was a confirmed data-loss bug**: 王伟/z84412632/无线 plus a legacy
+  王伟//终端 (a different person) meant re-uploading the 无线 list deleted the 终端 王伟, even on an
+  import that changed nothing — and `narrow()` had often just used 部门 to decide those two rows are
+  different people, so the merge was breaking this module's own "never guess" rule while
+  `resolveImportTarget` refuses to even UPDATE a row it can't disambiguate. Contradicting rows are
+  reported, never deleted, and every actual deletion is listed row-by-row in `mergedRows` (response,
+  panel and audit log) — a hard delete behind an aggregate count is unauditable and unrecoverable.
+  Counters (`added/updated/unchanged/backfilledAccounts/mergedDuplicates/skipped`) are pinned by
+  `tests/employee-import-merge.test.ts` (in-memory DB) + `tests/employee-match.test.ts` (pure).
+  **Bulk ops**: `/api/admin/employees/bulk` (删除/停用/启用) takes EITHER `ids` OR
+  `{all:true, filter}` (exactly one — a body carrying both is rejected, since "silently prefer
+  `all`" on a full-table-delete endpoint is how accidents happen); the filter path re-runs
+  `employeeWhere()` from `lib/employee-queries.ts` — the SAME function the page uses — so
+  「选择全部 N 条」 acts on exactly the set that filter renders (other PAGES of it included, which is
+  the point) and never on a set the two could disagree about. Keep that single source; a second copy
+  of the `where` would drift and delete rows the admin never saw. 启用 re-pushes
+  部门/研究所 to users (停用 rows were skipped while disabled), 停用/删除 never touch users. The
+  `?dup=1` 仅看重名 filter is a cleanup aid over the RAW stored name (a `groupBy`), deliberately not
+  the canonical matching key.
 - **角色与权限 (RBAC, migration `20260824180000_add_roles`)**: `User.isAdmin` is no longer a
   decision — it is a DERIVED "staff" cache (any permission at all) written only by `lib/roles.ts`.
   Truth = `Role` (`key`, `permissions String[]`) + `User.roleId` (null ⇒ 普通成员). The catalog is
@@ -768,6 +850,33 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
     `textContent` — so no model output is ever parsed as markup, tables/figures/images survive, and
     `<pre>/<code>` is never sent to a translator. Partial coverage is fine: untranslated blocks keep
     the original. **译文 mode hides highlights** — marks anchor to the ORIGINAL character offsets.
+  - **知识库分类 live in `LibraryCategory`**, not in code — official rows are curated at
+    `/manage/library/categories` and lead the picker; ANY member may add one from the picker's
+    新建分类 box. Creation is FIND-OR-CREATE (`lib/library/categories.ts`): typing a name that
+    already exists in either language reuses it instead of forking the taxonomy, and a purely-CJK
+    name gets a short hash slug (the slug is an identifier, never display text). `slug` is what
+    `LibraryDoc.categories` stores, so renaming — or deleting — a category never rewrites
+    documents; a deleted category just stops being offered. The 16 built-ins are SEEDED by
+    migration `20260826130000_user_tags_library_categories` with their original slugs, so
+    `labels.libCategory.*` still renders them; member categories have no message key and render
+    their stored name. **The AI may only file a doc under OFFICIAL categories** — `overviewPrompt`
+    takes the live official list and `parseOverview` validates against it.
+  - **用户卡片 + 用户标签** (`components/user/UserHoverCard.tsx`, `lib/user-tags.ts`): wrap any name
+    or avatar in `<UserHoverCard handle=…>` and it gains a hover card (banner, avatar, role badge,
+    部门/研究所, 签名 = `User.bio`, tags, counts). One fetch per user per page via a module-level
+    cache, fired on 150 ms hover INTENT so sweeping a list of forty annotators is not forty
+    requests. Tags are two kinds in one table: `manual` (granted at `/manage/user-tags`, singly or
+    by pasting a 工号 list) and `auto` (reconciled from what the member IS — today 版主 of a 专区 —
+    and never grantable by hand). Either kind is HIDEABLE by the member at 设置 → 我的标签: the
+    assignment stays, the card just stops showing it. The auto reconciler is best-effort and
+    wrapped in try/catch — the 专区 tables are a separate evolving feature and must never be able
+    to take down a user card. `toPublicAuthor`/`PublicAuthor` are deliberately untouched; the card
+    is its own endpoint (`/api/users/[handle]/card`) with the same 隐私账号 trimming.
+  - **Deleting a chapter** (`removeChapter`, DELETE on the chapters route) is the escape hatch for
+    an extraction that swallowed an ad block. `chapterIndex` is DENSE and uniquely indexed per doc,
+    so renumbering walks the later chapters ONE AT A TIME (a bulk `decrement` collides with the row
+    it is about to overwrite) and carries chunks + highlights along, inside one transaction. The
+    last chapter cannot be deleted, and chunk-derived stats are only rewritten when chunks remain.
   - **共享批注 is a first-class surface** (`AnnotationsTab.tsx`, its own 批注 tab; migration
     `20260825120000_library_annotation_social`). One list of every annotation whose owner turned on
     公开我的笔记, with the three controls a discussion list needs: WHO (multi-select annotator rail —
