@@ -16,6 +16,7 @@ import {
   notifyTopicReplyEmail,
   notifyAnnouncementEmail,
   notifyEventReminderEmail,
+  notifyZoneReplyEmail,
 } from '@/lib/email';
 
 // Mirrors the @default(...) values on NotificationPreference. Used when a user
@@ -523,5 +524,132 @@ export async function notifyEventReminder(opts: {
     });
   } catch (e) {
     console.error('[notify] event reminder failed:', e);
+  }
+}
+
+// ─── 技术专区 ──────────────────────────────────────────────────────────────
+
+/**
+ * Reply landed on someone's zone post or on their comment under one. Same
+ * reuse of the comment_reply/reply_reply types + preference pair as the
+ * discussion board; deep link `/zones/<slug>/posts/<id>?focus=<commentId>`.
+ */
+export async function notifyZoneReply(opts: {
+  recipientId: string;
+  recipientEmail: string;
+  actorId: string;
+  actorName: string;
+  zoneSlug: string;
+  postId: string;
+  postTitle: string;
+  focusId: string; // the new comment's id (deep-link target)
+  bodyMd: string;
+  isReplyToComment: boolean; // false = top-level comment on the post
+}): Promise<void> {
+  if (opts.recipientId === opts.actorId) return; // never notify yourself
+  try {
+    const pref = await getPref(opts.recipientId);
+    const snippet = truncate(opts.bodyMd);
+    const what = opts.isReplyToComment ? '评论' : '帖子';
+    const link = `/zones/${opts.zoneSlug}/posts/${opts.postId}?focus=${opts.focusId}`;
+    if (pref.inAppCommentReply) {
+      await createInApp({
+        recipientId: opts.recipientId,
+        actorId: opts.actorId,
+        type: opts.isReplyToComment ? 'reply_reply' : 'comment_reply',
+        title: `${opts.actorName} 回复了你的${what}`,
+        body: snippet,
+        link,
+      });
+    }
+    if (pref.emailCommentReply) {
+      notifyZoneReplyEmail({
+        to: opts.recipientEmail,
+        actorName: opts.actorName,
+        postTitle: opts.postTitle,
+        link: appUrl(link),
+        snippet,
+        isReplyToComment: opts.isReplyToComment,
+      });
+    }
+  } catch (e) {
+    console.error('[notify] zone reply failed:', e);
+  }
+}
+
+export type ZoneMemberEvent = 'added' | 'approved' | 'rejected' | 'role_changed' | 'removed' | 'ownership';
+
+/**
+ * Membership changes inside a zone (you were added / approved / rejected /
+ * re-roled / removed / made 主版主). In-app ONLY and deliberately NOT gated by
+ * NotificationPreference — these are account-level facts a member must learn
+ * about, like an access decision. `actorId` null = system / self-service.
+ */
+export async function notifyZoneMember(opts: {
+  recipientId: string;
+  actorId: string | null;
+  zoneSlug: string;
+  zoneName: string;
+  event: ZoneMemberEvent;
+  roleName?: string | null;
+}): Promise<void> {
+  if (opts.actorId && opts.recipientId === opts.actorId) return; // never notify yourself
+  const zone = `「${truncate(opts.zoneName, 40)}」`;
+  const roleSuffix = opts.roleName ? `：${truncate(opts.roleName, 24)}` : '';
+  const titles: Record<ZoneMemberEvent, string> = {
+    added: `你已被加入版块${zone}${roleSuffix}`,
+    approved: `你加入${zone}的申请已通过`,
+    rejected: `你加入${zone}的申请未通过`,
+    role_changed: `你在${zone}的角色已更新${roleSuffix}`,
+    removed: `你已被移出版块${zone}`,
+    ownership: `你已成为${zone}的主版主`,
+  };
+  try {
+    await createInApp({
+      recipientId: opts.recipientId,
+      actorId: opts.actorId,
+      type: 'zone_member',
+      title: titles[opts.event],
+      body: null,
+      link: `/zones/${opts.zoneSlug}`,
+      payload: { event: opts.event, roleName: opts.roleName ?? null },
+    });
+  } catch (e) {
+    console.error('[notify] zone member failed:', e);
+  }
+}
+
+/**
+ * Someone applied to join a zone → every members-manager (owner + holders of
+ * the zone `members` permission, see lib/zones/notify.ts#managerIdsFor) gets
+ * one in-app row. Deep link opens the 待审核 tab. Not preference-gated:
+ * managing a zone is the opt-in.
+ */
+export async function notifyZoneJoinRequest(opts: {
+  recipientIds: string[];
+  actorId: string;
+  actorName: string;
+  zoneSlug: string;
+  zoneName: string;
+  message: string;
+}): Promise<void> {
+  const recipients = [...new Set(opts.recipientIds)].filter((id) => id && id !== opts.actorId);
+  if (recipients.length === 0) return;
+  const link = `/zones/${opts.zoneSlug}/members?tab=pending`;
+  const title = `${opts.actorName} 申请加入「${truncate(opts.zoneName, 40)}」`;
+  const body = opts.message.trim() ? truncate(opts.message) : null;
+  try {
+    await prisma.notification.createMany({
+      data: recipients.map((recipientId) => ({
+        recipientId,
+        actorId: opts.actorId,
+        type: 'zone_request' as const,
+        title,
+        body,
+        link,
+      })),
+    });
+  } catch (e) {
+    console.error('[notify] zone join request failed (is the migration applied?):', e);
   }
 }

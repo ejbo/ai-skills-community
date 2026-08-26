@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { requirePermission } from '@/lib/admin';
 import { prisma } from '@/lib/db';
-import { distinctDirectoryValues } from '@/lib/employee-directory';
+import { accountMatchKey, distinctDirectoryValues, linkedAccountKeys } from '@/lib/employee-directory';
 import { EmployeeManager, type EmployeeRow } from './EmployeeManager';
 
 export const dynamic = 'force-dynamic';
@@ -46,35 +46,24 @@ export default async function AdminEmployeesPage({
     distinctDirectoryValues('lab'),
   ]);
 
-  // 这一页里哪些工号已经有注册用户（按 huaweiW3Id 匹配，大小写不敏感 —
-  // 与 lib/employee-directory.ts 的同步匹配规则保持一致）。
-  const accounts = entries
-    .map((e) => (e.accountNumber ?? '').trim())
-    .filter(Boolean);
-  const linked = new Set<string>();
-  if (accounts.length) {
-    const users = await prisma.user.findMany({
-      where: { huaweiW3Id: { in: accounts, mode: 'insensitive' } },
-      select: { huaweiW3Id: true },
-    });
-    const keys = new Set<string>();
-    for (const u of users) {
-      if (u.huaweiW3Id) keys.add(u.huaweiW3Id.toLowerCase());
-    }
-    for (const a of accounts) if (keys.has(a.toLowerCase())) linked.add(a);
-  }
+  // 这一页里哪些工号已经有注册用户 — 与 lib/employee-directory.ts 的同步匹配规则
+  // 保持一致（按 accountMatchKey：只比较数字，z84412632 ≡ 84412632）。
+  const linked = await linkedAccountKeys(entries.map((e) => e.accountNumber));
 
-  const rows: EmployeeRow[] = entries.map((e) => ({
-    id: e.id,
-    name: e.name,
-    accountNumber: e.accountNumber ?? '',
-    department: e.department,
-    lab: e.lab,
-    avatarUrl: e.avatarUrl,
-    isActive: e.isActive,
-    updatedAt: e.updatedAt.toISOString(),
-    hasUser: !!e.accountNumber && linked.has(e.accountNumber.trim()),
-  }));
+  const rows: EmployeeRow[] = entries.map((e) => {
+    const key = accountMatchKey(e.accountNumber);
+    return {
+      id: e.id,
+      name: e.name,
+      accountNumber: e.accountNumber ?? '',
+      department: e.department,
+      lab: e.lab,
+      avatarUrl: e.avatarUrl,
+      isActive: e.isActive,
+      updatedAt: e.updatedAt.toISOString(),
+      hasUser: key !== null && linked.has(key),
+    };
+  });
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -84,7 +73,8 @@ export default async function AdminEmployeesPage({
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">员工名单</h2>
           <p className="mt-1 text-xs text-muted">
-            全公司员工的统一目录 — 部门/研究所按工号自动同步到用户（导入、编辑与该用户登录时）
+            全公司员工的统一目录 — 部门/研究所按工号自动同步到用户（导入、编辑与该用户登录时）。工号只比较数字部分：z84412632
+            与 84412632 视为同一人。
           </p>
         </div>
         <span className="text-xs text-muted">

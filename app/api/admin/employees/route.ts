@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 import { gateApi } from '@/lib/admin';
 import { logAdmin } from '@/lib/audit';
 import { employeeCreateSchema, normalizeAccountNumber } from '@/lib/employee-admin';
-import { syncEntryToUsers } from '@/lib/employee-directory';
+import { findDirectoryEntries, syncEntryToUsers } from '@/lib/employee-directory';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,11 +18,9 @@ export async function POST(req: Request) {
 
   const accountNumber = normalizeAccountNumber(parsed.data.accountNumber);
   if (accountNumber) {
-    const dup = await prisma.employeeDirectory.findFirst({
-      where: { accountNumber: { equals: accountNumber, mode: 'insensitive' } },
-      select: { id: true },
-    });
-    if (dup) return NextResponse.json({ error: 'account_exists' }, { status: 409 });
+    // Same 工号 under the digit key (`z84412632` vs `84412632`) counts as a duplicate.
+    const dup = await findDirectoryEntries(accountNumber);
+    if (dup.length) return NextResponse.json({ error: 'account_exists' }, { status: 409 });
   }
 
   let entry;

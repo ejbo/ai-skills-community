@@ -28,7 +28,7 @@ interface EditState {
 }
 
 function errorMessage(code: string | undefined, fallback: string): string {
-  if (code === 'account_exists') return '该工号已存在';
+  if (code === 'account_exists') return '该工号已存在（工号按数字匹配，字母前缀不区分）';
   if (code === 'invalid_input') return '输入有误，请检查后重试';
   if (code === 'not_found') return '记录不存在（可能已被删除）';
   return fallback;
@@ -438,7 +438,11 @@ function ImportPanel({
           直接复制粘贴也可以）。
         </li>
         <li>上传文件时 CSV/XLSX 首行为表头，可识别 姓名/工号/部门/研究所 等中文列名，列顺序任意。</li>
-        <li>工号填了的话同一工号会被去重并更新；未填工号则按「姓名+部门+研究所」组合判重。</li>
+        <li>
+          工号填了的话同一工号会被去重并更新；未填工号则按「姓名+部门+研究所」组合判重。工号只比较数字部分（
+          <code className="font-mono">z84412632</code> 与 <code className="font-mono">84412632</code>{' '}
+          视为同一人，登录账号里的工号通常只有数字），但原样保存你导入的写法。
+        </li>
         <li>导入后会自动按工号把部门/研究所同步到已注册用户；之后新注册/登录的用户也会自动带上。</li>
       </ul>
       <div>

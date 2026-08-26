@@ -570,14 +570,81 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   更换封面图 uploads immediately, crop saves via PATCH). The creator upload route's
   response entry must carry posterAspect/posterPos (a missing field seeds the editor with
   undefined → NaN frame geometry).
+- **技术专区 (Tech Zones, migration `20260826000000_add_tech_zones`)**: team boards at `/zones`
+  (`Zone`/`ZoneRole`/`ZoneMember`/`ZonePost`/`ZonePostAuthor`/`ZonePostAttachment`/`ZonePostLike`/
+  `ZonePostBookmark`/`ZonePostComment`/`ZonePostCommentLike`/`ZonePostView`/`ZoneWikiPage`/
+  `ZoneWikiRevision`/`ZoneLinkPreview`). **Login-walled by layout** (media is served by
+  `/api/zones/media/[...key]` with `auth()` + Range). Contract modules: `lib/zones/permissions.ts`
+  (import-free zone-level catalog `manage roles members post moderate wiki comment` +
+  `buildZoneAccess` — the ONLY policy function; every surface consumes the pre-decided
+  `ZoneAccess` booleans, never re-derives), `lib/zones/shared.ts` (slugs, limits, embed-token
+  contract, cursors, `excerptOf`, `extractHeadings`), `lib/zones/types.ts` (every view type crossing
+  the RSC/API → client boundary). **Roles**: 主版主 = `Zone.ownerId` (implicit `*`, only 转让 or a
+  site admin changes it); each zone seeds `moderator`/`author`/`member` system roles on create
+  (`ZONE_SYSTEM_ROLES`) and may add custom roles; `ZoneMember.roleId null ⇒ member role`;
+  a members-manager cannot hand out a role carrying `roles` (`canAssignZoneRole`). Site permission
+  `zones` = siteAdmin: bypasses visibility and every zone check (logAdmin on those actions);
+  creating a zone needs `can(user,'zones') || User.canCreateZones` (toggle at /manage/users/[id]).
+  Visibility `public` (any logged-in user) / `members`; join policy `open|approval|invite`
+  (pending rows = join requests → `zone_request` notification to owner + members-managers;
+  decisions → `zone_member`). Posts: types article/report/paper/slides/link/announcement
+  (`announcement` needs `moderate`), co-authors must be active members, attachments echo
+  upload keys re-validated (shape + on-disk + `@unique key` backstop) and are replaced wholesale on
+  edit (unreferenced files + preview files unlinked); office files get a best-effort LibreOffice→PDF
+  `preview/` rendition (`lib/zones/office-preview.ts`: `SOFFICE_BIN` → PATH → mac app path; in-process
+  FIFO; `unsupported`/`failed` never throw) with a per-slide HTML fallback via
+  `lib/library/extract-office`. Comments = the site-wide 2-level flat contract (copy of discussion);
+  likes/bookmarks/views = guarded tx + authoritative re-read. **Native embeds**: own-line
+  `[embed:<kind>:<ref>]` tokens (kinds `library short video skill pack event post file link`;
+  fence-aware splitter mirrors polls-shared) resolved SERVER-side in one pass by
+  `lib/zones/embeds.ts` — every kind goes through its SOURCE domain's own gate (`canReadDoc`,
+  `canViewVideo`, `DISCOVERABLE_SKILL_WHERE`, pack `isPublished`, event `deletedAt`, zone access for
+  post/file) — and rendered by `components/zones/ZoneMarkdown.tsx` → `EmbedCard` → the right-side
+  `PreviewDrawer` (`components/zones/preview/*`, hosted by `PreviewProvider` in `app/zones/layout.tsx`;
+  library chapters render inside `.reader-root/.reader-prose` with the MEMOIZED innerHTML object).
+  `link` refs are OG-scraped through `fetchPage` (SSRF-guarded) into `ZoneLinkPreview`. The editor
+  gets the picker via `RichTextEditor`'s optional `embedPicker` prop (`contentEmbed` atom node,
+  inserted at the top level like polls). Wiki: page tree per zone (slug unique per zone,
+  auto `page-<id>` for CJK titles), a `ZoneWikiRevision` snapshot on every save, restore = new
+  revision. **Motion kit** `components/motion/*` (SpotlightCard/BlurText/CountUp/Magnetic/
+  StaggerGrid+LiveList/GlareHover/TiltCard/TabBar/Stepper/HairlineGrid/DrawerShell/RollingNumber):
+  monochrome, SSR-visible (hidden start lives in `whileInView` keyframes, never `initial` on
+  server content), reduced-motion + fine-pointer gated. **Trap that tsc cannot catch**: a helper
+  exported from a `'use client'` module is only a client REFERENCE when an RSC page imports it —
+  calling it there throws "is not a function" at runtime (this bit `settingsTabsFor`; keep such
+  helpers in plain modules like `app/zones/_components/settings-tabs.ts`). **`Zone.slug` is
+  IMMUTABLE** after creation (notification links / bookmarks embed it): the PATCH route strips it
+  and `updateZone` throws `slug_immutable` as the lib-level backstop. Post publish is re-gated on
+  the draft→published TRANSITION (`canPost`, `canModerate` for announcements) — being the author is
+  not enough, since permissions can be revoked after the draft was written. i18n namespace `zones`
+  (+ `labels.zonePostType/zoneVisibility/zoneJoinPolicy/zoneRole`, `api_errors.zone_*`); merge
+  fragments with `scripts/zones-i18n-merge.mjs` (also `--check` for parity). Admin `/manage/zones`
+  (精选/转让/软删除/恢复/新建); search bucket `zones`; docs `/docs/zones`.
 - **员工名单 (Employee Directory)**: admin roster at `/manage/employees` (`EmployeeDirectory` model;
   bulk import via paste / CSV / XLSX — parsers in `lib/employee-import.ts`, merge rules in
   `lib/employee-admin.ts`; 工号 canonicalized to lowercase at write time — the DB unique index is
   case-sensitive, app lookups are not). Rows with 工号 push `User.department`/`lab` onto matching
   users on every create/update/import, via the manual 同步 button, AND at login (`signIn` callback,
-  best-effort). Match = `huaweiW3Id` ONLY (case-insensitive; `lib/employee-directory.ts`) — NEVER
+  best-effort). Match = `huaweiW3Id` ONLY (`lib/employee-directory.ts`) — NEVER
   the handle: it derives from the unverified email local part under open registration, so matching
   it would let `<工号>@any.tld` squatters inherit an employee's 部门/研究所 and harvest the roster.
+  **Matching is by DIGIT RUN** (`accountMatchKey`, 2026-08-25): rosters carry the W3 account
+  (`z84412632` — surname initial + number) while the SSO `uid` stored in `huaweiW3Id` is the bare
+  number (`84412632`), so a literal compare never matched anyone. Keys are compared as strings
+  (leading zeros significant, `00412632` ≠ `412632`); a digit-less value keys on its text. The
+  stored spelling keeps its letter prefix but is written through `canonicalAccountText` (NFKC —
+  fullwidth `ｚ８４４１２６３２` → `z84412632` — whitespace dropped, lowercased) because Prisma
+  can't express "digits of column": EVERY lookup is a `contains`/insensitive-`equals` PRE-FILTER +
+  exact `accountMatchKey` re-check in app code (`findDirectoryEntries`, `linkedAccountKeys`,
+  `buildUserAccountIndex`), and the prefilter only works when the stored digit run is ASCII and
+  contiguous — never trust the prefilter alone, never store an un-canonicalized 工号, and never add a
+  new literal `huaweiW3Id`/`accountNumber` equality (`/manage/users` search ORs in the key too).
+  Import and 全量同步 build ONE user index up front (import refreshes it every 5 s so a first SSO
+  login mid-import is still caught) so roster rows with no registered user cost no write; legacy
+  duplicates (`84412632` + `z84412632`) resolve MOST-RECENTLY-UPDATED on every path (login-time
+  sync takes `findDirectoryEntries()[0]`, 全量同步 writes oldest→newest so the same row wins — keep
+  them in agreement or a user's department flip-flops); admin create/update treat a same-key row as
+  `account_exists`.
   Deleting an entry never touches users; 停用 (isActive=false) entries are excluded from all sync.
 - **角色与权限 (RBAC, migration `20260824180000_add_roles`)**: `User.isAdmin` is no longer a
   decision — it is a DERIVED "staff" cache (any permission at all) written only by `lib/roles.ts`.
@@ -631,6 +698,18 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   private user's department/lab are stripped SERVER-side (never shipped-then-hidden); UI renders
   `<DeptTag/>` (`components/DeptTag.tsx`) next to names and hides the `@handle` TEXT when
   `isPrivate` (profile links keep working; handle stays in payloads for ownership checks).
+  `DeptTag` is a CLIENT component capped at `max-w-[12rem] min-w-0` (a full org path used to
+  dominate every comment/post author row; a plain length, NOT `min(100%,…)` — cyclic percentages
+  inside shrink-wrapped flex items size the row to the untruncated text) with the whole text in a
+  hover/tap tooltip that is PORTALED to `<body>` (or the fullscreen element) as `position: fixed
+  w-max` (auto width would shrink-fit into `viewport − left` near the right edge) — author rows
+  sit inside `overflow-hidden` cards and `card-hover` transforms that would clip an in-flow
+  tooltip — measured then flipped below the pill when there is no room above, and shown only
+  when text is actually ellipsized (touch: tap toggles; the post-tap `pointerleave` is ignored).
+  Pass `full` on identity headers (profile page: no cap, wraps instead of truncating); don't
+  reintroduce a bare `title=` (double tooltip) or an in-flow absolute bubble. A card whose whole
+  surface is a stretched `<Link className="absolute inset-0">` overlay must give the pill
+  `relative z-[1]` (EventCard does) or the tooltip can never open there.
   Full identity is unlocked by the `identity` PERMISSION only — a domain permission such as
   `discussion` does NOT imply it (the 隐私 badge in /manage reads the raw row). Any NEW surface
   that renders another user's identity must follow this select → trim → DeptTag pattern.
@@ -689,6 +768,24 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
     `textContent` — so no model output is ever parsed as markup, tables/figures/images survive, and
     `<pre>/<code>` is never sent to a translator. Partial coverage is fine: untranslated blocks keep
     the original. **译文 mode hides highlights** — marks anchor to the ORIGINAL character offsets.
+  - **共享批注 is a first-class surface** (`AnnotationsTab.tsx`, its own 批注 tab; migration
+    `20260825120000_library_annotation_social`). One list of every annotation whose owner turned on
+    公开我的笔记, with the three controls a discussion list needs: WHO (multi-select annotator rail —
+    empty selection means everyone), WHAT (free-text index over quote + note + author name) and
+    ORDER (原文顺序 / 最新 / 最热). **Sort and search run in SQL** (`getSharedNotes` filters) so they
+    stay correct under the 500-row cap; the annotator selection is CLIENT-side so toggling is
+    instant — and it feeds the in-text markers too (`filterByAnnotators(othersOnly(notes), …)`), so
+    the page and the list always show the same people. 最热 ranks `likeCount` then `replyCount`;
+    `LibraryNoteLike` + the denormalized `LibraryHighlight.likeCount` move together in ONE
+    transaction with guarded writes and the route answers from an authoritative re-read (the
+    like-route pattern). Comments follow the site-wide **2-level flat contract**: `parentId` is the
+    thread ROOT, replying to a child re-roots to that child's parent so a third level can never
+    appear, and the transient `replyToId` only routes the notification. 专家 badges are the EXISTING
+    role system — the notes API surfaces `authorRole` for any role that is not `member`, so a
+    deployment creates 专家 in 管理后台 → 角色与权限 and assigns it; `toPublicAuthor`/`PublicAuthor`
+    are deliberately NOT extended (the badge rides on the annotation payload, not the identity
+    contract). 我的笔记 keeps only the PERSONAL workspace (own highlights incl. unshared, composer,
+    settings) — the community half lives in 批注 and must not be duplicated back.
   - **Selection actions are a floating toolbar again** (`SelectionToolbar.tsx`): 高亮 / 笔记 / 翻译 /
     问 AI / 复制, all CLICKABLE — the `1`–`4` / `N` keys are a shortcut, never the only way in. It
     was deleted once after being blamed for unselectable text; the real cause was the

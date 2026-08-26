@@ -14,6 +14,7 @@ import {
   Lightbulb,
   CalendarDays,
   Vote as VoteIcon,
+  Layers,
   Loader2,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -31,6 +32,7 @@ type GroupKey =
   | 'videos'
   | 'library'
   | 'discussions'
+  | 'zones'
   | 'events'
   | 'votes'
   | 'packs'
@@ -45,6 +47,8 @@ interface Results {
   videos: { slug: string; title: string; author: string; date: string }[];
   library: { slug: string; title: string; author: string; date: string }[];
   discussions: { kind: 'topic' | 'post'; id: string; title: string; author: string; date: string }[];
+  // 技术专区：版块 (kind 'zone') 与版块帖子 (kind 'post')；href 由服务端给出。
+  zones: { kind: 'zone' | 'post'; id: string; slug: string; title: string; author: string; date: string; href: string }[];
   events: { id: string; title: string; author: string; date: string }[];
   votes: { id: string; title: string; author: string; date: string }[];
   packs: { slug: string; name: string; date: string }[];
@@ -59,6 +63,7 @@ const EMPTY: Results = {
   videos: [],
   library: [],
   discussions: [],
+  zones: [],
   events: [],
   votes: [],
   packs: [],
@@ -83,6 +88,7 @@ const GROUP_ICON: Record<GroupKey, typeof FileCode2> = {
   videos: VideoIcon,
   library: BookOpen,
   discussions: MessagesSquare,
+  zones: Layers,
   events: CalendarDays,
   votes: VoteIcon,
   packs: Boxes,
@@ -96,6 +102,7 @@ const GROUP_LABEL_KEY: Record<GroupKey, string> = {
   videos: 'search_videos',
   library: 'search_library',
   discussions: 'search_discussion',
+  zones: 'search_zones',
   events: 'search_events',
   votes: 'search_votes',
   packs: 'search_packs',
@@ -181,6 +188,7 @@ export function SearchTrigger() {
             videos: data.videos ?? [],
             library: data.library ?? [],
             discussions: data.discussions ?? [],
+            zones: data.zones ?? [],
             events: data.events ?? [],
             votes: data.votes ?? [],
             packs: data.packs ?? [],
@@ -257,6 +265,15 @@ export function SearchTrigger() {
         href: d.kind === 'topic' ? `/discussion/topics/${d.id}` : `/discussion/posts/${d.id}`,
         label: d.title || t('search_post_media'),
         meta: `${d.author} · ${reldate(d.date, locale)}`,
+      }),
+    );
+    results.zones.forEach((z) =>
+      items.push({
+        group: 'zones',
+        key: `z:${z.kind}:${z.id}`,
+        href: z.href,
+        label: z.title,
+        meta: `${z.author} · ${reldate(z.date, locale)}`,
       }),
     );
     results.events.forEach((e) =>

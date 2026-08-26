@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 import { gateApi } from '@/lib/admin';
 import { logAdmin } from '@/lib/audit';
 import { employeeUpdateSchema, normalizeAccountNumber } from '@/lib/employee-admin';
-import { syncEntryToUsers } from '@/lib/employee-directory';
+import { findDirectoryEntries, syncEntryToUsers } from '@/lib/employee-directory';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,11 +26,10 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 
   if (input.accountNumber !== undefined) {
     const next = normalizeAccountNumber(input.accountNumber);
-    if (next && next.toLowerCase() !== (entry.accountNumber ?? '').toLowerCase()) {
-      const dup = await prisma.employeeDirectory.findFirst({
-        where: { accountNumber: { equals: next, mode: 'insensitive' }, NOT: { id: entry.id } },
-        select: { id: true },
-      });
+    if (next && next !== entry.accountNumber) {
+      // Digit-key duplicate check (`z84412632` vs `84412632`); the row itself is exempt
+      // so re-spelling its own 工号 (adding/dropping the letter) is always allowed.
+      const dup = (await findDirectoryEntries(next)).some((d) => d.id !== entry.id);
       if (dup) return NextResponse.json({ error: 'account_exists' }, { status: 409 });
     }
     if (next !== entry.accountNumber) {

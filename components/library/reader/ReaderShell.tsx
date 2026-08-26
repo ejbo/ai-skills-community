@@ -9,11 +9,16 @@ import type { AiOverview } from '@/lib/library/types';
 import { ReaderChrome } from './ReaderChrome';
 import { ReaderContent } from './ReaderContent';
 import { TocPanel, type TocEntry } from './TocPanel';
-import { filterCommunityNotes, type HighlightItem, type NoteUserFilter } from './NotesPanel';
+import { type HighlightItem } from './NotesPanel';
 import { type Citation } from './ReaderChatPanel';
 import { ReaderRightPanel, type RightTab } from './ReaderRightPanel';
 import { MarginNotes } from './MarginNotes';
-import type { CommunityNote } from './community-types';
+import {
+  filterByAnnotators,
+  othersOnly,
+  type AnnotationSort,
+  type CommunityNote,
+} from './community-types';
 import {
   CommunityNotePopover,
   HIGHLIGHT_COLORS,
@@ -108,6 +113,7 @@ export function ReaderShell({
     tab: 'assistant',
   });
   const notesOpen = rightPanel.open && rightPanel.tab === 'notes';
+  const annotationsOpen = rightPanel.open && rightPanel.tab === 'annotations';
   const openTab = useCallback((tab: RightTab) => setRightPanel({ open: true, tab }), []);
   // ONE chrome button for the whole panel: it opens on whichever tab was last
   // used, so 助手 / 我的笔记 / 评论 / 相似 are a tab switch, not four entry points.
@@ -151,7 +157,13 @@ export function ReaderShell({
   const [shareNotes, setShareNotes] = useState(progress?.shareNotes ?? false);
   const [showOthers, setShowOthers] = useState(true);
   const [communityNotes, setCommunityNotes] = useState<CommunityNote[] | null>(null);
-  const [userFilter, setUserFilter] = useState<NoteUserFilter>({ hidden: [], only: [] });
+  // 批注 list controls. Sort + search run server-side (correct under the row
+  // cap); the annotator multi-select is client-side so toggling is instant.
+  const [annotationSort, setAnnotationSort] = useState<AnnotationSort>('position');
+  const [annotationQuery, setAnnotationQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [selectedAuthors, setSelectedAuthors] = useState<string[]>([]);
+  const [notesLoading, setNotesLoading] = useState(false);
   const [focusNoteId, setFocusNoteId] = useState<string | null>(null);
   const [communityRefresh, setCommunityRefresh] = useState(0);
   const [marksVersion, setMarksVersion] = useState(0);
@@ -196,9 +208,15 @@ export function ReaderShell({
   const repaintRef = useRef<() => void>(() => {});
 
   const showOriginalPdf = doc.format === 'pdf' && pdfView === 'original' && !!doc.fileUrl;
+  // In-text markers + gutter avatars: OTHER people's shared annotations,
+  // narrowed to whoever is selected in the 批注 rail so the page and the list
+  // always agree about who you are reading.
   const visibleCommunityNotes = useMemo(
-    () => (showOthers && communityNotes ? filterCommunityNotes(communityNotes, userFilter) : []),
-    [showOthers, communityNotes, userFilter],
+    () =>
+      showOthers && communityNotes
+        ? filterByAnnotators(othersOnly(communityNotes), selectedAuthors)
+        : [],
+    [showOthers, communityNotes, selectedAuthors],
   );
   const communitySig = visibleCommunityNotes.map((n) => n.id).join(',');
   const chaptersKey = chapters.map((c) => c.chapterIndex).join(',');
@@ -423,11 +441,12 @@ export function ReaderShell({
     const onScroll = () => {
       const top = el.scrollTop;
       const last = lastScrollTopRef.current;
-      // Do NOT collapse/expand the in-flow chrome while a selection drag is in
-      // progress: toggling it resizes this scroll container, and the resulting
-      // reflow shifts the text under the pointer and collapses the selection.
-      const sel = window.getSelection();
-      if (!sel || sel.isCollapsed) {
+      // Suppressed only while a drag is IN PROGRESS: toggling the in-flow
+      // chrome resizes this scroll container, and the reflow would shift the
+      // text under the pointer. Gating on "a selection exists" instead meant
+      // that once you had selected anything, scrolling up could never bring the
+      // navbar back.
+      if (!draggingRef.current) {
         if (top < 64) setChromeVisible(true);
         else if (top > last + 4) setChromeVisible(false);
         else if (top < last - 4) setChromeVisible(true);
@@ -550,11 +569,11 @@ export function ReaderShell({
     try {
       const raw = window.localStorage.getItem(SHOW_OTHERS_KEY);
       if (raw !== null) setShowOthers(raw === 'true');
-      const f = window.localStorage.getItem(`library:noteFilter:${doc.id}`);
-      if (f) {
-        const parsed = JSON.parse(f) as NoteUserFilter;
-        if (parsed && Array.isArray(parsed.hidden) && Array.isArray(parsed.only)) {
-          setUserFilter(parsed);
+      const picked = window.localStorage.getItem(`library:annotators:${doc.id}`);
+      if (picked) {
+        const parsed = JSON.parse(picked) as unknown;
+        if (Array.isArray(parsed) && parsed.every((h) => typeof h === 'string')) {
+          setSelectedAuthors(parsed as string[]);
         }
       }
     } catch {
@@ -571,11 +590,16 @@ export function ReaderShell({
     }
   }, []);
 
-  const changeUserFilter = useCallback(
-    (next: NoteUserFilter) => {
-      setUserFilter(next);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(annotationQuery.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [annotationQuery]);
+
+  const changeSelectedAuthors = useCallback(
+    (next: string[]) => {
+      setSelectedAuthors(next);
       try {
-        window.localStorage.setItem(`library:noteFilter:${doc.id}`, JSON.stringify(next));
+        window.localStorage.setItem(`library:annotators:${doc.id}`, JSON.stringify(next));
       } catch {
         /* ignore */
       }
@@ -584,22 +608,27 @@ export function ReaderShell({
   );
 
   useEffect(() => {
-    if (!showOthers && !notesOpen) return;
+    if (!showOthers && !annotationsOpen) return;
     let cancelled = false;
+    setNotesLoading(true);
     void (async () => {
       try {
-        const res = await fetch(`/api/library/docs/${doc.id}/notes`);
+        const params = new URLSearchParams({ sort: annotationSort });
+        if (debouncedQuery) params.set('q', debouncedQuery);
+        const res = await fetch(`/api/library/docs/${doc.id}/notes?${params}`);
         const data = await res.json().catch(() => null);
         if (!cancelled && res.ok && Array.isArray(data?.notes)) setCommunityNotes(data.notes);
         else if (!cancelled) setCommunityNotes((prev) => prev ?? []);
       } catch {
         if (!cancelled) setCommunityNotes((prev) => prev ?? []);
+      } finally {
+        if (!cancelled) setNotesLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [doc.id, showOthers, notesOpen, communityRefresh]);
+  }, [doc.id, showOthers, annotationsOpen, communityRefresh, annotationSort, debouncedQuery]);
 
   // Re-locate every mark and hand the Ranges to the browser. On the native path
   // this touches no DOM and computes no geometry, so it can run at ANY time —
@@ -627,9 +656,7 @@ export function ReaderShell({
       if (sel && !sel.isCollapsed) return;
       draggingRef.current = false;
     }
-    const community = (
-      showOthers && communityNotes ? filterCommunityNotes(communityNotes, userFilter) : []
-    ).map((n) => ({
+    const community = visibleCommunityNotes.map((n) => ({
       id: n.id,
       chapterIndex: n.chapterIndex,
       quote: n.quote,
@@ -639,7 +666,7 @@ export function ReaderShell({
     }));
     setBoxes(h.paint(chapterRootsRef.current, chapterHighlights, community, container));
     setMarksVersion((v) => v + 1);
-  }, [chapterHighlights, communityNotes, userFilter, showOthers, showOriginalPdf, showTranslated, nativeHl]);
+  }, [chapterHighlights, visibleCommunityNotes, showOriginalPdf, showTranslated, nativeHl]);
 
   // Kept in a ref (not read directly) so listeners that must outlive `repaint`'s
   // identity — the MutationObserver below — never need to be torn down.
@@ -1512,8 +1539,23 @@ export function ReaderShell({
             }}
             showOthers={showOthers}
             onShowOthersChange={changeShowOthers}
-            userFilter={userFilter}
-            onUserFilterChange={changeUserFilter}
+            annotations={{
+              notes: communityNotes,
+              loading: notesLoading,
+              sort: annotationSort,
+              onSortChange: setAnnotationSort,
+              query: annotationQuery,
+              onQueryChange: setAnnotationQuery,
+              selectedAuthors,
+              onSelectedAuthorsChange: changeSelectedAuthors,
+              onJump: handleCommunityJump,
+              onNotesChanged: () => setCommunityRefresh((n) => n + 1),
+              shareNotes,
+              onShareNotesChange: (v: boolean) => {
+                setShareNotes(v);
+                setCommunityRefresh((n) => n + 1);
+              },
+            }}
             focusNoteId={focusNoteId}
             onJumpCommunity={handleCommunityJump}
             onSaveSelectionNote={saveSelectionNote}
@@ -1525,6 +1567,18 @@ export function ReaderShell({
         )}
       </div>
 
+
+      {/* Selection actions, at the selection. Everything here is clickable —
+          the 1-4 / N keys are a shortcut, never the only way in. */}
+      {!showOriginalPdf && !showTranslated && (
+        <SelectionToolbar
+          capture={captureSelection}
+          onHighlight={(payload, color) => void createHighlight(payload, color, false)}
+          onNote={(payload) => void createHighlight(payload, 'yellow', true)}
+          onAskAi={handleAskAi}
+          onTranslate={translateText}
+        />
+      )}
 
       {markPopover &&
         (() => {
@@ -1579,17 +1633,23 @@ export function ReaderShell({
           role="dialog"
           aria-modal="true"
           aria-label={t('view_image')}
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 p-6"
+          // Click ANYWHERE — backdrop or the picture itself — to close, plus the
+          // explicit button and Escape. An enlarged image with no obvious way
+          // out is a trap.
+          className="fixed inset-0 z-[60] flex cursor-zoom-out items-center justify-center bg-black/85 p-6"
           onClick={() => setLightbox(null)}
         >
           <button
             type="button"
             aria-label={tc('dismiss')}
             onClick={() => setLightbox(null)}
-            className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-lg text-white/80 transition hover:bg-white/10 hover:text-white"
+            className="absolute right-4 top-4 z-10 grid h-10 w-10 place-items-center rounded-full bg-black/60 text-white ring-1 ring-white/25 backdrop-blur transition hover:bg-black/80 hover:ring-white/50"
           >
             <X className="h-5 w-5" />
           </button>
+          <span className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-xs text-white/70 backdrop-blur">
+            {t('lightbox_dismiss_hint')}
+          </span>
           {/* eslint-disable-next-line @next/next/no-img-element -- lightbox of an in-article image */}
           <img
             src={lightbox.src}

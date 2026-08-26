@@ -28,6 +28,7 @@ export async function NavBar({ session }: { session: Session | null }) {
           <NavLink href="/videos">{t('videos')}</NavLink>
           <NavLink href="/library">{t('library')}</NavLink>
           <NavLink href="/discussion">{t('discussion')}</NavLink>
+          <NavLink href="/zones">{t('zones')}</NavLink>
           <NavLink href="/events">{t('events')}</NavLink>
           <NavLink href="/votes">{t('votes')}</NavLink>
           <NavLink href="/docs">{t('docs')}</NavLink>

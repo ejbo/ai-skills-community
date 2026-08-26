@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { hasPermission, type PermissionHolder } from '@/lib/permissions';
 import { prisma } from '@/lib/db';
-import { AUTHOR_IDENTITY_SELECT } from '@/lib/user-identity';
+import { AUTHOR_IDENTITY_FIELDS, AUTHOR_IDENTITY_SELECT } from '@/lib/user-identity';
 import { isDocType, isLibraryCategory, type AiOverview } from '@/lib/library/types';
 import { asAiOverview, pickOverview, pickText } from '@/lib/library/i18n-content';
 
@@ -669,14 +669,70 @@ export async function getDocComments(docId: string) {
  * shareNotes toggle. Includes single-level reply threads. Authors carry the
  * full identity select — API routes MUST map through toPublicAuthor().
  */
-export async function getSharedNotes(docId: string, chapterIndex?: number) {
+export const ANNOTATION_SORTS = ['position', 'recent', 'hot'] as const;
+export type AnnotationSort = (typeof ANNOTATION_SORTS)[number];
+
+export function isAnnotationSort(v: unknown): v is AnnotationSort {
+  return typeof v === 'string' && (ANNOTATION_SORTS as readonly string[]).includes(v);
+}
+
+/** Author select for annotations — identity fields PLUS the role, which is what
+ *  marks an annotation as 专家/管理员 in the list. Kept local so the site-wide
+ *  PublicAuthor contract (lib/user-identity.ts) stays untouched. */
+const ANNOTATION_AUTHOR_SELECT = {
+  select: { ...AUTHOR_IDENTITY_FIELDS, role: { select: { key: true, name: true } } },
+} as const;
+
+const ANNOTATION_REPLY_SELECT = {
+  id: true,
+  parentId: true,
+  bodyMd: true,
+  createdAt: true,
+  replyCount: true,
+  author: ANNOTATION_AUTHOR_SELECT,
+} as const;
+
+export interface SharedNoteFilters {
+  chapterIndex?: number;
+  sort?: AnnotationSort;
+  /** Free-text index over the quoted passage, the note and the author name. */
+  q?: string;
+}
+
+/**
+ * 共享批注 for a document — every annotation whose owner turned on 公开我的笔记,
+ * with its 2-level comment thread, 有用 count and whether THIS viewer liked it.
+ *
+ * Sorting happens in SQL so it stays correct under the row cap: 'position' is
+ * reading order (the in-text markers), 'recent' is newest first, 'hot' ranks by
+ * 有用 then discussion. Author filtering is deliberately NOT done here — the
+ * panel toggles people client-side so it feels instant.
+ */
+export async function getSharedNotes(docId: string, filters: SharedNoteFilters = {}) {
+  const q = filters.q?.trim();
+  const orderBy: Prisma.LibraryHighlightOrderByWithRelationInput[] =
+    filters.sort === 'recent'
+      ? [{ createdAt: 'desc' }]
+      : filters.sort === 'hot'
+        ? [{ likeCount: 'desc' }, { replyCount: 'desc' }, { createdAt: 'desc' }]
+        : [{ chapterIndex: 'asc' }, { charStart: 'asc' }];
+
   return prisma.libraryHighlight.findMany({
     where: {
       docId,
-      ...(chapterIndex !== undefined ? { chapterIndex } : {}),
+      ...(filters.chapterIndex !== undefined ? { chapterIndex: filters.chapterIndex } : {}),
       user: { libraryProgress: { some: { docId, shareNotes: true } } },
+      ...(q
+        ? {
+            OR: [
+              { quote: { contains: q, mode: 'insensitive' } },
+              { noteText: { contains: q, mode: 'insensitive' } },
+              { user: { displayName: { contains: q, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
     },
-    orderBy: [{ chapterIndex: 'asc' }, { charStart: 'asc' }],
+    orderBy,
     take: 500,
     select: {
       id: true,
@@ -688,21 +744,36 @@ export async function getSharedNotes(docId: string, chapterIndex?: number) {
       color: true,
       noteText: true,
       replyCount: true,
+      likeCount: true,
       createdAt: true,
-      user: COMMENT_AUTHOR_SELECT,
+      user: ANNOTATION_AUTHOR_SELECT,
       replies: {
-        where: { status: 'visible' },
+        // Top-level comments only; their own replies ride along below.
+        where: { status: 'visible', parentId: null },
         orderBy: { createdAt: 'asc' },
         take: 50,
         select: {
-          id: true,
-          bodyMd: true,
-          createdAt: true,
-          author: COMMENT_AUTHOR_SELECT,
+          ...ANNOTATION_REPLY_SELECT,
+          children: {
+            where: { status: 'visible' },
+            orderBy: { createdAt: 'asc' },
+            take: 50,
+            select: ANNOTATION_REPLY_SELECT,
+          },
         },
       },
     },
   });
+}
+
+/** Which of these annotations the viewer has marked 有用. */
+export async function getMyNoteLikes(userId: string, highlightIds: string[]): Promise<Set<string>> {
+  if (highlightIds.length === 0) return new Set();
+  const rows = await prisma.libraryNoteLike.findMany({
+    where: { userId, highlightId: { in: highlightIds } },
+    select: { highlightId: true },
+  });
+  return new Set(rows.map((r) => r.highlightId));
 }
 
 // ── Dashboard（我的发布 / 我的互动）──────────────────────────────────────

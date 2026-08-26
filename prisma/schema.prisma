@@ -57,6 +57,8 @@ model User {
   canPublishSkills    Boolean    @default(true)
   canRemix            Boolean    @default(true)
   canUseCli           Boolean    @default(true)
+  // 技术专区：允许创建版块（普通成员默认关闭；持有 `zones` 权限的员工无需此开关）。
+  canCreateZones      Boolean    @default(false)
   dailyDownloadLimit  Int?
   dailyPublishLimit   Int?
   lastLoginAt         DateTime?
@@ -127,6 +129,7 @@ model User {
   libraryComments        LibraryComment[]
   libraryRatings         LibraryRating[]
   libraryNoteReplies     LibraryNoteReply[]
+  libraryNoteLikes       LibraryNoteLike[]
   libraryAccessRequests  LibraryAccessRequest[] @relation("LibraryAccessRequester")
   libraryAccessDecisions LibraryAccessRequest[] @relation("LibraryAccessDecider")
 
@@ -140,6 +143,20 @@ model User {
   voteBallots           VoteBallot[]
   voteSubmissions       VoteEntry[]    @relation("VoteSubmissions")
   voteComments          VoteComment[]  @relation("VoteComments")
+
+  // ── 技术专区 back-relations (virtual; no SQL columns on User) ──
+  ownedZones            Zone[]                @relation("OwnedZones")
+  zoneMemberships       ZoneMember[]          @relation("ZoneMemberships")
+  zoneInvitesSent       ZoneMember[]          @relation("ZoneInvitesSent")
+  zonePosts             ZonePost[]            @relation("AuthoredZonePosts")
+  zonePostCoauthorships ZonePostAuthor[]
+  zonePostLikes         ZonePostLike[]
+  zonePostBookmarks     ZonePostBookmark[]
+  zonePostComments      ZonePostComment[]
+  zonePostCommentLikes  ZonePostCommentLike[]
+  zoneWikiPagesCreated  ZoneWikiPage[]        @relation("CreatedZoneWikiPages")
+  zoneWikiPagesUpdated  ZoneWikiPage[]        @relation("UpdatedZoneWikiPages")
+  zoneWikiRevisions     ZoneWikiRevision[]    @relation("ZoneWikiRevisions")
 
   @@index([handle])
   @@index([email])
@@ -947,6 +964,8 @@ enum NotificationType {
   access_decision // your access request was approved / rejected / revoked
   announcement // admin-published update announcement
   event_reminder // an event you joined (我要参加) starts within ~30 minutes
+  zone_member // 技术专区：你被加入某版块 / 加入申请已通过（或被拒绝）
+  zone_request // 技术专区：有人申请加入你管理的版块
 }
 
 // One row per recipient. title/body/link are rendered at creation time so the
@@ -1527,11 +1546,13 @@ model LibraryHighlight {
   color        LibraryHighlightColor @default(yellow)
   noteText     String?
   replyCount   Int                   @default(0) // community replies (visible when the owner shares notes)
+  likeCount    Int                   @default(0) // 有用 — denormalized, drives the 最热 sort
   createdAt    DateTime              @default(now())
 
   doc     LibraryDoc         @relation(fields: [docId], references: [id], onDelete: Cascade)
   user    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   replies LibraryNoteReply[]
+  likes   LibraryNoteLike[]
 
   @@index([docId, userId, chapterIndex])
   @@index([userId, createdAt])
@@ -1635,19 +1656,41 @@ model LibraryChatMessage {
 }
 
 // Replies to a shared note in the reader's community sidebar (single level).
+/// 批注下的评论。Same 2-level flat thread contract as the feedback/discussion
+/// boards: `parentId` is the THREAD ROOT (never a grandchild), and a transient
+/// `replyToId` in the API only routes the notification.
 model LibraryNoteReply {
   id          String               @id @default(cuid())
   highlightId String
   authorId    String
+  parentId    String?
   bodyMd      String
   status      LibraryCommentStatus @default(visible)
+  replyCount  Int                  @default(0)
   createdAt   DateTime             @default(now())
 
-  highlight LibraryHighlight @relation(fields: [highlightId], references: [id], onDelete: Cascade)
-  author    User             @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  highlight LibraryHighlight   @relation(fields: [highlightId], references: [id], onDelete: Cascade)
+  author    User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent    LibraryNoteReply?  @relation("LibraryNoteThread", fields: [parentId], references: [id], onDelete: Cascade)
+  children  LibraryNoteReply[] @relation("LibraryNoteThread")
 
   @@index([highlightId, createdAt])
+  @@index([parentId])
   @@index([authorId])
+}
+
+/// 有用 on a shared 批注. One per user per annotation; `LibraryHighlight.likeCount`
+/// is the denormalized counter the 最热 sort reads.
+model LibraryNoteLike {
+  highlightId String
+  userId      String
+  createdAt   DateTime @default(now())
+
+  highlight LibraryHighlight @relation(fields: [highlightId], references: [id], onDelete: Cascade)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([highlightId, userId])
+  @@index([userId])
 }
 
 model LibraryView {
@@ -1972,42 +2015,42 @@ model VoteActivity {
 }
 
 model VoteEntry {
-  id           String          @id @default(cuid())
+  id           String           @id @default(cuid())
   activityId   String
   entryNo      Int // 编号 1..N，上传时分配；展示与搜索用（“搜 42 号投我”）
   kind         VoteEntryKind
   // Unique: the DB backstops racing publishes double-claiming one uploaded
   // file (Postgres unique ignores NULLs, so absent posters never conflict).
-  fileKey      String          @unique // "image/<nanoid>.jpg" | "video/<nanoid>.mp4" under vote-media/
+  fileKey      String           @unique // "image/<nanoid>.jpg" | "video/<nanoid>.mp4" under vote-media/
   fileUrl      String // root-relative /api/votes/media/<key>
-  posterKey    String?         @unique // 视频封面（客户端抓帧上传，best-effort；可换自定义图）
+  posterKey    String?          @unique // 视频封面（客户端抓帧上传，best-effort；可换自定义图）
   posterUrl    String?
   // 封面裁切（CoverEditor 家法）：aspect 决定网格卡片版式；pos '' = 居中裁切、
   // 'contain' = 完整显示（模糊铺底）、'50% 30%' = object-position 选区。
   posterAspect VotePosterAspect @default(landscape)
   posterPos    String           @default("")
-  originalName String          @default("") // 原始文件名 — 解析规则的输入，创建者可见
-  title        String          @default("") // 解析/手工填写的作品名
+  originalName String           @default("") // 原始文件名 — 解析规则的输入，创建者可见
+  title        String           @default("") // 解析/手工填写的作品名
   // 作品描述（成员投稿填写；灯箱详情面板展示，导出含此列）。
-  description  String          @default("")
+  description  String           @default("")
   // 自定义表单答案 {fieldId: answer}，字段定义在 activity.submissionFields。
   formData     Json?
-  authorName   String          @default("") // 解析出的作者
-  authorNo     String          @default("") // 解析出的工号（存小写，员工名单契约）
-  titleEdited  Boolean         @default(false) // 手工改过 — 重新应用规则时跳过
-  mimeType     String          @default("")
-  sizeBytes    Int             @default(0) // int32 clamp（同 Video）
-  durationSec  Int             @default(0)
-  hidden       Boolean         @default(false) // 停用/下架：前台隐藏，票数保留
+  authorName   String           @default("") // 解析出的作者
+  authorNo     String           @default("") // 解析出的工号（存小写，员工名单契约）
+  titleEdited  Boolean          @default(false) // 手工改过 — 重新应用规则时跳过
+  mimeType     String           @default("")
+  sizeBytes    Int              @default(0) // int32 clamp（同 Video）
+  durationSec  Int              @default(0)
+  hidden       Boolean          @default(false) // 停用/下架：前台隐藏，票数保留
   // 成员投稿：submitterId 记录投稿人（发起人代传为 null）；status 走审核流。
   // 画廊/榜单/计数一律只含 status=approved（服务端裁剪，同票数可见性契约）。
   submitterId  String?
-  status       VoteEntryStatus @default(approved)
-  reviewNote   String          @default("") // 驳回理由，仅投稿者可见
-  voteCount    Int             @default(0) // vote tx 内从 VoteBallot 重算
-  commentCount Int             @default(0) // guarded array tx（like-route pattern）
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  status       VoteEntryStatus  @default(approved)
+  reviewNote   String           @default("") // 驳回理由，仅投稿者可见
+  voteCount    Int              @default(0) // vote tx 内从 VoteBallot 重算
+  commentCount Int              @default(0) // guarded array tx（like-route pattern）
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
   activity  VoteActivity  @relation(fields: [activityId], references: [id], onDelete: Cascade)
   submitter User?         @relation("VoteSubmissions", fields: [submitterId], references: [id], onDelete: SetNull)
@@ -2059,4 +2102,371 @@ model VoteComment {
   @@index([entryId, createdAt])
   @@index([activityId])
   @@index([authorId])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 技术专区 (Tech Zones) — team boards with their own roles, research-grade
+// posts, wiki and comments. Contract: lib/zones/*. Migration
+// 20260826000000_add_tech_zones.
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum ZoneVisibility {
+  public // 任何登录用户可读（/zones 整体登录墙）
+  members // 仅版块成员（与持有站点 `zones` 权限的员工）可读帖子/Wiki/成员
+}
+
+enum ZoneJoinPolicy {
+  open // 任何登录用户点击即加入
+  approval // 申请后由成员管理者审核
+  invite // 仅管理者添加
+}
+
+enum ZoneMemberStatus {
+  active
+  pending // 加入申请待审核
+}
+
+enum ZonePostType {
+  article // 文章
+  report // 研究报告
+  paper // 论文
+  slides // 演示 / PPT
+  link // 链接分享
+  announcement // 版块公告（需 moderate 权限）
+}
+
+enum ZonePostStatus {
+  draft
+  published
+}
+
+enum ZoneAttachmentKind {
+  image
+  video
+  file // pdf / pptx / docx / xlsx / zip …
+}
+
+// Office → PDF preview (LibreOffice when present; slides also get a per-slide
+// HTML fallback via lib/library/extract-office). `unsupported` = nothing to do.
+enum ZonePreviewStatus {
+  none
+  pending
+  ready
+  failed
+  unsupported
+}
+
+enum ZoneCommentStatus {
+  visible
+  deleted // tombstone: kept to preserve thread shape, body wiped
+}
+
+// 版块。`ownerId` = 主版主（隐含全部版块权限）；其他权限走 ZoneRole。
+model Zone {
+  id                 String         @id @default(cuid())
+  slug               String         @unique
+  name               String
+  tagline            String         @default("")
+  descriptionMd      String         @default("")
+  // Root-relative /api/zones/media/<key>; withBasePath() at render time.
+  coverUrl           String?
+  coverKey           String?
+  iconUrl            String?
+  iconKey            String?
+  // 组织归属 — free text, prefilled from the creator's User.lab/department and
+  // the EmployeeDirectory distinct lists. Display only; never a join key.
+  lab                String         @default("")
+  department         String         @default("")
+  // [{ label: string, url: string }] — validated by lib/zones/shared.ts
+  links              Json           @default("[]")
+  visibility         ZoneVisibility @default(public)
+  joinPolicy         ZoneJoinPolicy @default(approval)
+  // public zones: non-members may comment on posts.
+  allowGuestComments Boolean        @default(true)
+  featured           Boolean        @default(false)
+  featuredAt         DateTime?
+  ownerId            String
+  // Denormalized (guarded transactions): active members / published posts.
+  memberCount        Int            @default(0)
+  postCount          Int            @default(0)
+  lastActivityAt     DateTime       @default(now())
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  deletedAt          DateTime?
+
+  owner     User           @relation("OwnedZones", fields: [ownerId], references: [id], onDelete: Cascade)
+  roles     ZoneRole[]
+  members   ZoneMember[]
+  posts     ZonePost[]
+  wikiPages ZoneWikiPage[]
+
+  @@index([deletedAt, lastActivityAt])
+  @@index([featured, featuredAt])
+  @@index([ownerId])
+  @@index([lab])
+  @@index([department])
+}
+
+// 版块内角色（每个版块一套；创建时播种 moderator/author/member 三个系统角色）。
+// permissions = lib/zones/permissions.ts 的 key 列表。
+model ZoneRole {
+  id          String   @id @default(cuid())
+  zoneId      String
+  key         String
+  name        String
+  description String?
+  isSystem    Boolean  @default(false)
+  permissions String[] @default([])
+  sortOrder   Int      @default(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  zone    Zone         @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  members ZoneMember[]
+
+  @@unique([zoneId, key])
+  @@index([zoneId, sortOrder])
+}
+
+// 成员。roleId null ⇒ 该版块的 `member` 系统角色。status=pending 是加入申请。
+model ZoneMember {
+  id          String           @id @default(cuid())
+  zoneId      String
+  userId      String
+  roleId      String?
+  status      ZoneMemberStatus @default(active)
+  // 成员在版块内的头衔（如「算法负责人」），管理者可编辑。
+  title       String           @default("")
+  // 加入申请附言。
+  message     String           @default("")
+  invitedById String?
+  joinedAt    DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  zone      Zone      @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  user      User      @relation("ZoneMemberships", fields: [userId], references: [id], onDelete: Cascade)
+  role      ZoneRole? @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  invitedBy User?     @relation("ZoneInvitesSent", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@unique([zoneId, userId])
+  @@index([userId, status])
+  @@index([zoneId, status, createdAt])
+  @@index([roleId])
+}
+
+// 帖子（研究报告 / 论文 / 文章 / 演示 / 链接 / 公告）。bodyMd 里可含
+// `[embed:<kind>:<ref>]` 原生嵌入 token（lib/zones/shared.ts）。
+model ZonePost {
+  id            String         @id @default(cuid())
+  zoneId        String
+  authorId      String
+  type          ZonePostType   @default(article)
+  title         String
+  // Plain-text summary shown on cards (author-written; falls back to excerpt).
+  summary       String         @default("")
+  bodyMd        String         @default("")
+  coverUrl      String?
+  coverKey      String?
+  // type=link: the shared URL.
+  linkUrl       String?
+  tags          String[]       @default([])
+  status        ZonePostStatus @default(draft)
+  publishedAt   DateTime?
+  pinned        Boolean        @default(false)
+  locked        Boolean        @default(false)
+  likeCount     Int            @default(0)
+  commentCount  Int            @default(0)
+  viewCount     Int            @default(0)
+  bookmarkCount Int            @default(0)
+  editedAt      DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
+
+  zone        Zone                 @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  author      User                 @relation("AuthoredZonePosts", fields: [authorId], references: [id], onDelete: Cascade)
+  coauthors   ZonePostAuthor[]
+  attachments ZonePostAttachment[]
+  likes       ZonePostLike[]
+  bookmarks   ZonePostBookmark[]
+  comments    ZonePostComment[]
+  views       ZonePostView[]
+
+  @@index([zoneId, status, deletedAt, pinned, publishedAt])
+  @@index([zoneId, status, deletedAt, publishedAt])
+  @@index([zoneId, type])
+  @@index([status, deletedAt, publishedAt])
+  @@index([authorId, status])
+}
+
+// 共同作者（必须是版块成员）；主作者 = ZonePost.authorId。
+model ZonePostAuthor {
+  postId    String
+  userId    String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  post ZonePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([postId, userId])
+  @@index([userId])
+}
+
+// 附件。key 全站唯一（DB 兜底防止一次上传被两个帖子认领）。
+model ZonePostAttachment {
+  id            String             @id @default(cuid())
+  postId        String
+  kind          ZoneAttachmentKind
+  key           String             @unique
+  url           String
+  name          String             @default("")
+  mimeType      String             @default("")
+  sizeBytes     Int                @default(0)
+  width         Int?
+  height        Int?
+  posterUrl     String?
+  previewStatus ZonePreviewStatus  @default(none)
+  previewKey    String?
+  previewUrl    String?
+  previewError  String?
+  sortOrder     Int                @default(0)
+  createdAt     DateTime           @default(now())
+
+  post ZonePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, sortOrder])
+}
+
+model ZonePostLike {
+  userId    String
+  postId    String
+  createdAt DateTime @default(now())
+
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post ZonePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId])
+  @@index([postId])
+}
+
+model ZonePostBookmark {
+  userId    String
+  postId    String
+  createdAt DateTime @default(now())
+
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post ZonePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId])
+  @@index([postId])
+  @@index([userId, createdAt])
+}
+
+// 评论 — 站内两级扁平线程契约（parentId 永远指向顶层评论）。
+model ZonePostComment {
+  id         String            @id @default(cuid())
+  postId     String
+  authorId   String
+  parentId   String?
+  bodyMd     String
+  status     ZoneCommentStatus @default(visible)
+  likeCount  Int               @default(0)
+  replyCount Int               @default(0)
+  editedAt   DateTime?
+  createdAt  DateTime          @default(now())
+
+  post    ZonePost              @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author  User                  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent  ZonePostComment?      @relation("ZoneCommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies ZonePostComment[]     @relation("ZoneCommentThread")
+  likes   ZonePostCommentLike[]
+
+  @@index([postId, createdAt])
+  @@index([postId, likeCount])
+  @@index([parentId])
+  @@index([authorId])
+}
+
+model ZonePostCommentLike {
+  userId    String
+  commentId String
+  createdAt DateTime @default(now())
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment ZonePostComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@id([userId, commentId])
+  @@index([commentId])
+}
+
+model ZonePostView {
+  id          String   @id @default(cuid())
+  postId      String
+  sessionHash String // sha256( (userId | ipHash) + postId + UTC-day ) — day-bucket dedupe
+  createdAt   DateTime @default(now())
+
+  post ZonePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, sessionHash])
+  @@index([postId])
+}
+
+// Wiki 页面树（每个版块一棵）。slug 版块内唯一。
+model ZoneWikiPage {
+  id            String    @id @default(cuid())
+  zoneId        String
+  slug          String
+  title         String
+  bodyMd        String    @default("")
+  parentId      String?
+  sortOrder     Int       @default(0)
+  createdById   String
+  updatedById   String
+  revisionCount Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  zone      Zone               @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  parent    ZoneWikiPage?      @relation("ZoneWikiTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  ZoneWikiPage[]     @relation("ZoneWikiTree")
+  createdBy User               @relation("CreatedZoneWikiPages", fields: [createdById], references: [id], onDelete: Cascade)
+  updatedBy User               @relation("UpdatedZoneWikiPages", fields: [updatedById], references: [id], onDelete: Cascade)
+  revisions ZoneWikiRevision[]
+
+  @@unique([zoneId, slug])
+  @@index([zoneId, deletedAt, parentId, sortOrder])
+  @@index([zoneId, updatedAt])
+}
+
+// Wiki 修订历史：每次保存一条快照；可从任一修订恢复（恢复本身也是一次修订）。
+model ZoneWikiRevision {
+  id        String   @id @default(cuid())
+  pageId    String
+  editorId  String
+  title     String
+  bodyMd    String
+  note      String   @default("")
+  createdAt DateTime @default(now())
+
+  page   ZoneWikiPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  editor User         @relation("ZoneWikiRevisions", fields: [editorId], references: [id], onDelete: Cascade)
+
+  @@index([pageId, createdAt])
+  @@index([editorId])
+}
+
+// `[embed:link:<url>]` 链接卡片的 OG 元数据缓存（best-effort；失败也记录，避免重复抓取）。
+model ZoneLinkPreview {
+  id          String   @id @default(cuid())
+  urlHash     String   @unique // sha256(normalized url)
+  url         String
+  title       String   @default("")
+  description String   @default("")
+  imageUrl    String?
+  siteName    String   @default("")
+  ok          Boolean  @default(false)
+  fetchedAt   DateTime @default(now())
 }

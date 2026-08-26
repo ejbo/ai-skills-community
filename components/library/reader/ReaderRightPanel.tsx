@@ -4,15 +4,16 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { X } from 'lucide-react';
 import { AssistantTab, type Citation } from './ReaderChatPanel';
-import { NotesTab, type HighlightItem, type NoteUserFilter } from './NotesPanel';
+import { NotesTab, type HighlightItem } from './NotesPanel';
+import { AnnotationsTab, type AnnotationsTabProps } from './AnnotationsTab';
 import { CommentsTab } from './CommentsTab';
 import { SimilarTab } from './SimilarTab';
 import type { TocEntry } from './TocPanel';
 import type { CommunityNote } from './community-types';
 
-export type RightTab = 'assistant' | 'notes' | 'comments' | 'similar';
+export type RightTab = 'assistant' | 'annotations' | 'notes' | 'comments' | 'similar';
 
-const TAB_ORDER: RightTab[] = ['assistant', 'notes', 'comments', 'similar'];
+const TAB_ORDER: RightTab[] = ['assistant', 'annotations', 'notes', 'comments', 'similar'];
 
 /**
  * alphaXiv-style right panel: ONE inline column (pushes the reading column
@@ -45,8 +46,7 @@ export function ReaderRightPanel(props: {
   onShareNotesChange: (v: boolean) => void;
   showOthers: boolean;
   onShowOthersChange: (v: boolean) => void;
-  userFilter: NoteUserFilter;
-  onUserFilterChange: (next: NoteUserFilter) => void;
+  annotations: Omit<AnnotationsTabProps, 'active' | 'docId' | 'toc' | 'version' | 'focusNoteId'>;
   focusNoteId: string | null;
   onJumpCommunity: (note: CommunityNote) => void;
   onSaveSelectionNote: (noteText: string) => boolean;
@@ -110,6 +110,18 @@ export function ReaderRightPanel(props: {
             />
           </div>
         )}
+        {visited.has('annotations') && (
+          <div className={bodyCls('annotations')}>
+            <AnnotationsTab
+              active={tab === 'annotations'}
+              docId={props.docId}
+              toc={props.toc}
+              version={props.notesVersion}
+              focusNoteId={props.focusNoteId}
+              {...props.annotations}
+            />
+          </div>
+        )}
         {visited.has('notes') && (
           <div className={bodyCls('notes')}>
             <NotesTab
@@ -126,8 +138,6 @@ export function ReaderRightPanel(props: {
               onShareNotesChange={props.onShareNotesChange}
               showOthers={props.showOthers}
               onShowOthersChange={props.onShowOthersChange}
-              userFilter={props.userFilter}
-              onUserFilterChange={props.onUserFilterChange}
               focusNoteId={props.focusNoteId}
               onJumpCommunity={props.onJumpCommunity}
               onSaveSelectionNote={props.onSaveSelectionNote}

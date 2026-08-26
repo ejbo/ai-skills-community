@@ -36,6 +36,7 @@ export const DOC_GROUPS: DocGroup[] = [
     labelKey: 'group_community',
     items: [
       { href: '/docs/discussion', labelKey: 'nav_discussion', descKey: 'desc_discussion' },
+      { href: '/docs/zones', labelKey: 'nav_zones', descKey: 'desc_zones' },
       { href: '/docs/library', labelKey: 'nav_library', descKey: 'desc_library' },
       { href: '/docs/events', labelKey: 'nav_events', descKey: 'desc_events' },
     ],

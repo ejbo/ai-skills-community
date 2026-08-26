@@ -10,7 +10,7 @@ import { isLastActiveSuperAdmin, isSerializationFailure } from '@/lib/roles';
 // derived cache of the role; roles are assigned via POST /api/admin/users/[id]/role
 // (super admin only). Staff accounts can only be touched by a super admin, so a
 // 用户管理 holder can never disable or restrict a peer/superior.
-const BOOL_FIELDS = ['isActive', 'canPublishSkills', 'canRemix', 'canUseCli'] as const;
+const BOOL_FIELDS = ['isActive', 'canPublishSkills', 'canRemix', 'canUseCli', 'canCreateZones'] as const;
 const NUM_FIELDS = ['dailyDownloadLimit', 'dailyPublishLimit'] as const;
 
 class LastSuperAdminError extends Error {}

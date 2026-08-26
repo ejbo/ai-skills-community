@@ -192,6 +192,7 @@ export default async function UserDetailPage({ params }: { params: { id: string 
               <ToggleRow userId={user.id} field="canPublishSkills" label="允许发布 Skill" current={user.canPublishSkills} disabledReason={switchesDisabled} />
               <ToggleRow userId={user.id} field="canRemix" label="允许 Remix" current={user.canRemix} disabledReason={switchesDisabled} />
               <ToggleRow userId={user.id} field="canUseCli" label="允许使用 CLI（关闭后其 CLI Token 立即失效）" current={user.canUseCli} disabledReason={switchesDisabled} />
+              <ToggleRow userId={user.id} field="canCreateZones" label="允许创建技术专区版块" current={user.canCreateZones} disabledReason={switchesDisabled} />
               <NumberRow userId={user.id} field="dailyDownloadLimit" label="每日下载上限（滚动 24 小时，留空不限）" current={user.dailyDownloadLimit} disabledReason={switchesDisabled} />
               <NumberRow userId={user.id} field="dailyPublishLimit" label="每日发布上限" current={user.dailyPublishLimit} disabledReason={switchesDisabled} />
             </div>

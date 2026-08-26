@@ -62,7 +62,8 @@ export async function EventCard({ event, showDate = false }: { event: PublicEven
           <span className="inline-flex items-center gap-1.5">
             <Avatar name={event.author.displayName} src={event.author.avatarUrl} size="xs" />
             <span className="max-w-[10rem] truncate">{event.author.displayName}</span>
-            <DeptTag department={event.author.department} lab={event.author.lab} />
+            {/* Above the title's stretched-link overlay (after:inset-0) so the truncated tag can still show its tooltip. */}
+            <DeptTag department={event.author.department} lab={event.author.lab} className="relative z-[1]" />
           </span>
           {event.speakers.length > 0 && (
             <span className="inline-flex items-center gap-1">

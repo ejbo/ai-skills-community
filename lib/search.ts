@@ -30,6 +30,8 @@ export interface SiteSearchResults {
   feedback: { id: string; title: string; author: string; date: Date }[];
   events: { id: string; title: string; author: string; date: Date }[];
   votes: { id: string; title: string; author: string; date: Date }[];
+  /** 技术专区: public zones (kind zone) + published posts of public zones (kind post), merged newest first. */
+  zones: { kind: 'zone' | 'post'; id: string; slug: string; title: string; author: string; date: Date; href: string }[];
 }
 
 export const EMPTY_SEARCH_RESULTS: SiteSearchResults = {
@@ -44,21 +46,36 @@ export const EMPTY_SEARCH_RESULTS: SiteSearchResults = {
   feedback: [],
   events: [],
   votes: [],
+  zones: [],
 };
 
 export async function searchSite(
   rawQ: string,
   opts: { viewerCanSeeIdentity: boolean; perType?: number },
 ): Promise<SiteSearchResults> {
-  // Cap the term: it feeds 10 parallel ILIKE scans (three over full bodyMd
+  // Cap the term: it feeds 14 parallel ILIKE scans (three over full bodyMd
   // columns) — an unbounded pasted blob would make every scan pathological.
   const q = rawQ.trim().slice(0, 64);
   if (!q) return EMPTY_SEARCH_RESULTS;
   const perType = Math.min(50, Math.max(1, opts.perType ?? 6));
   const contains = { contains: q, mode: 'insensitive' as const };
 
-  const [skills, users, categories, tags, videos, libraryDocs, topics, posts, packs, feedback, events, votes] =
-    await Promise.all([
+  const [
+    skills,
+    users,
+    categories,
+    tags,
+    videos,
+    libraryDocs,
+    topics,
+    posts,
+    packs,
+    feedback,
+    events,
+    votes,
+    zoneRows,
+    zonePosts,
+  ] = await Promise.all([
       prisma.skill.findMany({
         where: {
           status: 'published',
@@ -202,6 +219,43 @@ export async function searchSite(
         orderBy: { createdAt: 'desc' },
         take: perType,
       }),
+      // 技术专区 版块 — `members` zones stay out of global search (their cards
+      // are still browsable on the hub; content is gated there).
+      prisma.zone.findMany({
+        where: {
+          deletedAt: null,
+          visibility: 'public',
+          OR: [{ name: contains }, { tagline: contains }, { slug: contains }],
+        },
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          lastActivityAt: true,
+          owner: { select: { displayName: true } },
+        },
+        orderBy: { lastActivityAt: 'desc' },
+        take: perType,
+      }),
+      // 技术专区 帖子 — published, in a live public zone.
+      prisma.zonePost.findMany({
+        where: {
+          status: 'published',
+          deletedAt: null,
+          zone: { deletedAt: null, visibility: 'public' },
+          OR: [{ title: contains }, { summary: contains }],
+        },
+        select: {
+          id: true,
+          title: true,
+          publishedAt: true,
+          createdAt: true,
+          author: { select: { displayName: true } },
+          zone: { select: { slug: true } },
+        },
+        orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
+        take: perType,
+      }),
     ]);
 
   return {
@@ -265,5 +319,28 @@ export async function searchSite(
       author: v.creator.displayName,
       date: v.createdAt,
     })),
+    // 版块与帖子合并，按时间倒序，同组截断。
+    zones: [
+      ...zoneRows.map((z) => ({
+        kind: 'zone' as const,
+        id: z.id,
+        slug: z.slug,
+        title: z.name,
+        author: z.owner.displayName,
+        date: z.lastActivityAt,
+        href: `/zones/${z.slug}`,
+      })),
+      ...zonePosts.map((p) => ({
+        kind: 'post' as const,
+        id: p.id,
+        slug: p.zone.slug,
+        title: p.title,
+        author: p.author.displayName,
+        date: p.publishedAt ?? p.createdAt,
+        href: `/zones/${p.zone.slug}/posts/${p.id}`,
+      })),
+    ]
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
+      .slice(0, perType),
   };
 }

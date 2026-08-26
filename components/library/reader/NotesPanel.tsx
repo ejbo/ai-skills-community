@@ -33,24 +33,6 @@ export interface HighlightItem {
   createdAt: string;
 }
 
-export interface NoteUserFilter {
-  hidden: string[];
-  only: string[];
-}
-
-/** Apply the per-user filter to community notes (mine are never filtered). */
-export function filterCommunityNotes(
-  notes: CommunityNote[],
-  filter: NoteUserFilter,
-): CommunityNote[] {
-  return notes.filter((n) => {
-    if (n.isMine) return false; // own annotations render as real highlights
-    const h = n.author.handle;
-    if (filter.only.length > 0) return filter.only.includes(h);
-    return !filter.hidden.includes(h);
-  });
-}
-
 /** Shared shape for the notes body — everything except the panel chrome. */
 export interface NotesTabProps {
   /** Gate the highlights fetch (was `open` when this was a standalone panel). */
@@ -75,8 +57,6 @@ export interface NotesTabProps {
   onShareNotesChange: (v: boolean) => void;
   showOthers: boolean;
   onShowOthersChange: (v: boolean) => void;
-  userFilter: NoteUserFilter;
-  onUserFilterChange: (next: NoteUserFilter) => void;
   focusNoteId: string | null;
   onJumpCommunity: (note: CommunityNote) => void;
 }
@@ -105,8 +85,6 @@ export function NotesTab({
   onShareNotesChange,
   showOthers,
   onShowOthersChange,
-  userFilter,
-  onUserFilterChange,
   focusNoteId,
   onJumpCommunity,
 }: NotesTabProps) {
@@ -287,38 +265,6 @@ export function NotesTab({
   const chapterTitle = (n: number) =>
     toc.find((c) => c.chapterIndex === n)?.title || t('chapter_n', { n: n + 1 });
 
-  // ── community: authors + filter ───────────────────────────────────────
-  const others = (communityNotes ?? []).filter((n) => !n.isMine);
-  const authorStats = new Map<
-    string,
-    { author: CommunityNote['author']; count: number; chars: number }
-  >();
-  for (const n of others) {
-    const cur = authorStats.get(n.author.handle) ?? { author: n.author, count: 0, chars: 0 };
-    cur.count += 1;
-    cur.chars += n.quote.length + (n.noteText?.length ?? 0);
-    authorStats.set(n.author.handle, cur);
-  }
-  const visibleOthers = filterCommunityNotes(others, userFilter);
-  const filterActive = userFilter.only.length > 0 || userFilter.hidden.length > 0;
-
-  const isVisibleAuthor = (handle: string) =>
-    userFilter.only.length > 0 ? userFilter.only.includes(handle) : !userFilter.hidden.includes(handle);
-
-  const toggleAuthor = (handle: string) => {
-    if (userFilter.only.length > 0) {
-      const next = userFilter.only.includes(handle)
-        ? userFilter.only.filter((h) => h !== handle)
-        : [...userFilter.only, handle];
-      onUserFilterChange({ hidden: [], only: next });
-    } else {
-      const next = userFilter.hidden.includes(handle)
-        ? userFilter.hidden.filter((h) => h !== handle)
-        : [...userFilter.hidden, handle];
-      onUserFilterChange({ hidden: next, only: [] });
-    }
-  };
-
   const groupByChapter = (notes: CommunityNote[]) => {
     const m = new Map<number, CommunityNote[]>();
     for (const n of notes) {
@@ -398,7 +344,7 @@ export function NotesTab({
       {/* Display/sharing switches — folded away by default. They are settings,
           not content, and three always-open rows pushed the actual notes below
           the fold. */}
-      <details className="rborder group border-b">
+      <details open className="rborder group border-b">
         <summary className="r-muted flex cursor-pointer list-none items-center gap-1.5 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide transition hover:text-[var(--reader-fg)]">
           <Settings2 className="h-3.5 w-3.5" />
           {t('notes_display_settings')}
@@ -449,69 +395,6 @@ export function NotesTab({
           </label>
         </div>
       </details>
-
-      {/* per-user filter */}
-      {showOthers && authorStats.size > 0 && (
-        <section className="rborder border-b pb-2">
-          <div className="flex items-center justify-between px-4 pt-2">
-            <h3 className="r-muted text-[11px] font-semibold uppercase tracking-wide">
-              {t('annotating_users', { count: authorStats.size })}
-            </h3>
-            {filterActive && (
-              <button
-                type="button"
-                onClick={() => onUserFilterChange({ hidden: [], only: [] })}
-                className="text-[11px] text-[var(--reader-accent)] hover:underline"
-              >
-                {t('show_all')}
-              </button>
-            )}
-          </div>
-          <ul>
-            {[...authorStats.values()]
-              .sort((a, b) => b.count - a.count)
-              .map(({ author, count, chars }) => {
-                const visible = isVisibleAuthor(author.handle);
-                return (
-                  <li
-                    key={author.handle}
-                    className={`flex items-center gap-2 px-4 py-1.5 ${visible ? '' : 'opacity-45'}`}
-                  >
-                    <Avatar name={author.displayName} src={author.avatarUrl} size="xs" />
-                    <span className="min-w-0 flex-1 truncate text-xs font-medium">
-                      {author.displayName}
-                      <DeptTag department={author.department} lab={author.lab} />
-                    </span>
-                    <span className="r-muted shrink-0 font-mono text-[11px] tabular-nums">
-                      {t('notes_count_chars', { count, chars })}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => onUserFilterChange({ hidden: [], only: [author.handle] })}
-                      title={t('only_their_notes')}
-                      className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] transition ${
-                        userFilter.only.length === 1 && userFilter.only[0] === author.handle
-                          ? 'bg-accent-500/15 font-medium text-[var(--reader-accent)]'
-                          : 'r-muted hover:text-[var(--reader-accent)]'
-                      }`}
-                    >
-                      {t('only_show')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleAuthor(author.handle)}
-                      aria-label={visible ? t('hide_their_notes') : t('restore_their_notes')}
-                      title={visible ? t('hide_their_notes') : t('restore_show')}
-                      className="r-muted shrink-0 transition hover:text-[var(--reader-accent)]"
-                    >
-                      {visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-                    </button>
-                  </li>
-                );
-              })}
-          </ul>
-        </section>
-      )}
 
       {/* own highlights */}
       <h3 className={sectionHead}>{t('my_notes_count', { count: ownFiltered.length })}</h3>
@@ -611,112 +494,6 @@ export function NotesTab({
           ))
       )}
 
-      {/* community notes */}
-      {showOthers && (
-        <>
-          <h3 className={sectionHead}>{t('community_notes_count', { count: visibleOthers.length })}</h3>
-          {communityNotes === null ? (
-            <div className="r-muted flex items-center justify-center gap-2 py-8 text-sm">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              {tc('loading')}
-            </div>
-          ) : visibleOthers.length === 0 ? (
-            <p className="r-muted px-6 py-8 text-center text-sm">
-              {others.length > 0 ? t('hidden_by_filter') : t('no_community_notes')}
-            </p>
-          ) : (
-            groupByChapter(visibleOthers).map(([ci, list]) => (
-              <section key={ci}>
-                <p className="r-muted truncate px-4 pt-2 text-[11px]">{chapterTitle(ci)}</p>
-                <ul className="divide-y divide-[color:var(--reader-border)]">
-                  {list.map((note) => (
-                    <li
-                      key={note.id}
-                      data-note-id={note.id}
-                      className={`px-4 py-3 ${focusNoteId === note.id ? 'bg-accent-500/10' : ''}`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Avatar name={note.author.displayName} src={note.author.avatarUrl} size="xs" />
-                        <span className="min-w-0 truncate text-xs font-medium">
-                          {note.author.displayName}
-                        </span>
-                        <DeptTag department={note.author.department} lab={note.author.lab} />
-                        <span className="r-muted ml-auto shrink-0 text-[11px]">
-                          {relativeTime(note.createdAt, locale)}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => onJumpCommunity(note)}
-                        title={t('jump_to_source')}
-                        className={`mt-2 block w-full rounded-lg border-l-2 px-2.5 py-1.5 text-left text-xs leading-relaxed transition hover:bg-[var(--reader-hover)] hl-border-${note.color}`}
-                      >
-                        <span className="r-muted line-clamp-3">{note.quote}</span>
-                      </button>
-                      {note.noteText && <p className="mt-2 text-sm leading-relaxed">{note.noteText}</p>}
-                      {note.replies.length > 0 && (
-                        <ul className="mt-2 space-y-2 border-l-2 border-[var(--reader-border)] pl-3">
-                          {note.replies.map((r) => (
-                            <li key={r.id} className="text-xs">
-                              <span className="font-medium">{r.author.displayName}</span>
-                              <span className="r-muted ml-1.5">{relativeTime(r.createdAt, locale)}</span>
-                              <p className="mt-0.5 whitespace-pre-wrap leading-relaxed">{r.bodyMd}</p>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      {replyFor === note.id ? (
-                        <div className="mt-2 flex items-end gap-1.5">
-                          <textarea
-                            autoFocus
-                            value={replyText}
-                            onChange={(e) => setReplyText(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                                e.preventDefault();
-                                void sendReply(note);
-                              }
-                            }}
-                            rows={2}
-                            placeholder={t('reply_placeholder')}
-                            className="rborder min-h-[52px] flex-1 resize-none rounded-lg border bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-accent-500"
-                          />
-                          <button
-                            type="button"
-                            disabled={sending || !replyText.trim()}
-                            onClick={() => void sendReply(note)}
-                            aria-label={t('send_reply')}
-                            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-accent-500 text-white transition hover:bg-accent-600 disabled:opacity-50"
-                          >
-                            {sending ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Send className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setReplyFor(note.id);
-                            setReplyText('');
-                          }}
-                          className="r-muted mt-2 inline-flex items-center gap-1 text-xs transition hover:text-[var(--reader-accent)]"
-                        >
-                          <MessageCircle className="h-3.5 w-3.5" />
-                          {t('reply')}
-                          {note.replyCount > 0 ? ` ${note.replyCount}` : ''}
-                        </button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))
-          )}
-        </>
-      )}
     </div>
   );
 }

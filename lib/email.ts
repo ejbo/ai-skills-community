@@ -275,3 +275,24 @@ export function notifyEventReminderEmail(opts: {
       `<p><a href="${opts.link}">查看活动详情 →</a></p>`,
   });
 }
+
+/** Notify a user that their 技术专区 post / comment got a reply. `link` is absolute. */
+export function notifyZoneReplyEmail(opts: {
+  to: string;
+  actorName: string;
+  postTitle: string;
+  link: string;
+  snippet: string;
+  isReplyToComment: boolean;
+}): void {
+  const what = opts.isReplyToComment ? '评论' : '帖子';
+  sendMailAsync({
+    to: opts.to,
+    subject: `【技术专区】${opts.actorName} 回复了你的${what}`,
+    text: `${opts.actorName} 在「${opts.postTitle}」下回复了你的${what}：\n\n${opts.snippet}\n\n查看：${opts.link}`,
+    html:
+      `<p><strong>${esc(opts.actorName)}</strong> 在「${esc(opts.postTitle)}」下回复了你的${what}：</p>` +
+      `<blockquote>${esc(opts.snippet)}</blockquote>` +
+      `<p><a href="${opts.link}">查看对话 →</a></p>`,
+  });
+}

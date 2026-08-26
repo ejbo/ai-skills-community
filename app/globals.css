@@ -127,6 +127,12 @@
   .animate-rise {
     animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
+  /* 技术专区 HairlineGrid drift: one cell per minute — perceptible only if
+     you stare, never on a scroll frame. `--grid-size` is set inline by the
+     component so the drift is exactly one cell whatever the grid size. */
+  .animate-grid-drift {
+    animation: grid-drift 60s linear infinite;
+  }
 }
 
 @keyframes rise {
@@ -137,6 +143,13 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* Keyframes for `.animate-grid-drift` above (components/motion/HairlineGrid). */
+@keyframes grid-drift {
+  to {
+    background-position: var(--grid-size, 64px) var(--grid-size, 64px);
   }
 }
 

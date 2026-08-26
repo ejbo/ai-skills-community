@@ -93,6 +93,27 @@ export function SelectionToolbar({
     setPos(placeFor(sel.getRangeAt(0)));
   }, [capture]);
 
+  // Keep up with the text. The pill is `fixed`, so without this it stays at the
+  // viewport point where the selection USED to be — floating over unrelated
+  // paragraphs. Recomputed from the live selection on every scroll (capture
+  // phase, because the reader scrolls an inner container, not the window), and
+  // hidden once the selection leaves the viewport.
+  useEffect(() => {
+    if (!pos) return;
+    const reposition = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+      const next = placeFor(sel.getRangeAt(0));
+      setPos(next && next.top > 8 && next.top < window.innerHeight - 8 ? next : null);
+    };
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    return () => {
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
+    };
+  }, [pos]);
+
   useEffect(() => {
     const onUp = (e: Event) => {
       if (inSelf(e.target)) return;

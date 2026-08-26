@@ -85,7 +85,7 @@ const SAMPLE_SKILLS = [
 // until both are updated.
 const SYSTEM_ROLES = [
   { id: 'role_super_admin', key: 'super_admin', name: '超级管理员', description: '拥有全部权限；唯一可以配置角色与权限、指派角色的角色。', permissions: ['*'], sortOrder: 0 },
-  { id: 'role_admin', key: 'admin', name: '管理员', description: '默认管理员：拥有全部后台与站内治理权限，但不能配置角色。', permissions: ['dashboard','users','employees','skills','packs','videos','shorts','discussion','votes','library','categories','announcements','logs','feedback','events','polls','identity'], sortOrder: 10 },
+  { id: 'role_admin', key: 'admin', name: '管理员', description: '默认管理员：拥有全部后台与站内治理权限，但不能配置角色。', permissions: ['dashboard','users','employees','skills','packs','videos','shorts','discussion','zones','votes','library','categories','announcements','logs','feedback','events','polls','identity'], sortOrder: 10 },
   { id: 'role_member', key: 'member', name: '普通成员', description: '默认角色：没有任何后台或治理权限。', permissions: [] as string[], sortOrder: 1000 },
 ];
 

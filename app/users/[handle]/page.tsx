@@ -120,7 +120,7 @@ export default async function UserProfilePage({ params }: { params: { handle: st
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-semibold tracking-tight">{user.displayName}</h1>
             {!hideHandle && <p className="mt-0.5 text-sm text-muted">@{user.handle}</p>}
-            <DeptTag department={identity.department} lab={identity.lab} className="mt-1.5" />
+            <DeptTag department={identity.department} lab={identity.lab} className="mt-1.5" full />
             {user.bio && <p className="mt-3 text-sm">{user.bio}</p>}
             <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-muted">
               <span className="inline-flex items-center gap-1">

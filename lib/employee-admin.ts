@@ -8,7 +8,12 @@
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { syncEntryToUsers } from '@/lib/employee-directory';
+import {
+  buildUserAccountIndex,
+  canonicalAccountText,
+  findDirectoryEntries,
+  syncEntryToUsers,
+} from '@/lib/employee-directory';
 import type { ParsedEmployeeRow } from '@/lib/employee-import';
 
 const NAME_MAX = 128;
@@ -38,12 +43,24 @@ export const employeeUpdateSchema = z.object({
  * canonicalized to lowercase: the DB unique index is case-SENSITIVE while every
  * app-level lookup is case-insensitive — without canonicalization, concurrent
  * imports carrying "Z001" and "z001" would create two rows the app treats as
- * the same 工号 (and the P2002 backstop would never fire).
+ * the same 工号 (and the P2002 backstop would never fire). Fullwidth characters
+ * are NFKC-folded and whitespace dropped (`canonicalAccountText`) so the stored
+ * digit run is ASCII and contiguous — the `contains` prefilter in
+ * lib/employee-directory.ts depends on it. The letter prefix is kept as imported
+ * (`z84412632` stays `z84412632`); matching goes through `accountMatchKey`.
  */
 export function normalizeAccountNumber(v: string | undefined | null): string | null {
-  const trimmed = (v ?? '').trim().slice(0, ACCOUNT_MAX).toLowerCase();
-  return trimmed || null;
+  const text = canonicalAccountText(v).slice(0, ACCOUNT_MAX);
+  return text || null;
 }
+
+/**
+ * The import's prebuilt user index is refreshed on this cadence so a user whose
+ * FIRST SSO login lands mid-import (their row not yet in the roster at login
+ * time, so login-time sync found nothing) is still picked up by the rows that
+ * follow, instead of waiting for their next login or a manual 全量同步.
+ */
+const USER_INDEX_TTL_MS = 5_000;
 
 export interface ImportResult {
   parsedRows: number;
@@ -61,8 +78,17 @@ export async function importEmployeeRows(
   let skippedOrUpdated = 0;
   let syncedUsers = 0;
   const errors: string[] = [];
+  // One user index for the whole import (refreshed every USER_INDEX_TTL_MS): most
+  // roster rows have no registered user, and with the index those rows cost zero
+  // user queries.
+  let userIndex = await buildUserAccountIndex();
+  let userIndexAt = Date.now();
 
   for (const raw of rows) {
+    if (Date.now() - userIndexAt > USER_INDEX_TTL_MS) {
+      userIndex = await buildUserAccountIndex();
+      userIndexAt = Date.now();
+    }
     const name = raw.name.trim().slice(0, NAME_MAX);
     if (!name) {
       errors.push(`姓名必填: ${JSON.stringify(raw)}`);
@@ -77,9 +103,8 @@ export async function importEmployeeRows(
       let entry;
       let created = false;
       if (accountNumber) {
-        entry = await prisma.employeeDirectory.findFirst({
-          where: { accountNumber: { equals: accountNumber, mode: 'insensitive' } },
-        });
+        // Digit-key match: `z84412632` in this file upserts the existing `84412632` row.
+        entry = (await findDirectoryEntries(accountNumber))[0] ?? null;
       } else {
         entry = await prisma.employeeDirectory.findFirst({
           where: { accountNumber: null, name, department, lab },
@@ -94,9 +119,7 @@ export async function importEmployeeRows(
         } catch (err) {
           // Unique race on 工号 (concurrent import) → re-read and fall through to update.
           if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002' && accountNumber) {
-            entry = await prisma.employeeDirectory.findFirst({
-              where: { accountNumber: { equals: accountNumber, mode: 'insensitive' } },
-            });
+            entry = (await findDirectoryEntries(accountNumber))[0] ?? null;
           }
           if (!entry) throw err;
         }
@@ -114,7 +137,7 @@ export async function importEmployeeRows(
         }
         skippedOrUpdated += 1;
       }
-      syncedUsers += await syncEntryToUsers(entry);
+      syncedUsers += await syncEntryToUsers(entry, userIndex);
     } catch (err) {
       errors.push(`导入失败（${name}）: ${err instanceof Error ? err.message : String(err)}`);
     }

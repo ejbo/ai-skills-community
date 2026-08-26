@@ -2,9 +2,15 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
-import { can } from '@/lib/permissions';
+import { MEMBER_ROLE_KEY, can } from '@/lib/permissions';
 import { toPublicAuthor } from '@/lib/user-identity';
-import { canReadDoc, getSharedNotes, libraryViewerFromSession } from '@/lib/library-queries';
+import {
+  canReadDoc,
+  getMyNoteLikes,
+  getSharedNotes,
+  isAnnotationSort,
+  libraryViewerFromSession,
+} from '@/lib/library-queries';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,14 +32,47 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  const chapterRaw = new URL(req.url).searchParams.get('chapter');
+  const sp = new URL(req.url).searchParams;
+  const chapterRaw = sp.get('chapter');
   const chapter = chapterRaw === null ? undefined : Number.parseInt(chapterRaw, 10);
+  const sortRaw = sp.get('sort');
+  const q = (sp.get('q') ?? '').trim().slice(0, 80);
 
-  const rows = await getSharedNotes(
-    doc.id,
-    chapter !== undefined && Number.isFinite(chapter) ? chapter : undefined,
+  const rows = await getSharedNotes(doc.id, {
+    chapterIndex: chapter !== undefined && Number.isFinite(chapter) ? chapter : undefined,
+    sort: isAnnotationSort(sortRaw) ? sortRaw : 'position',
+    q: q || undefined,
+  });
+  const likedIds = await getMyNoteLikes(
+    session.user.id,
+    rows.map((r) => r.id),
   );
   const canSeeIdentity = can(session.user, 'identity');
+  const canModerate = can(session.user, 'library');
+
+  // The author's ROLE is what marks an annotation as coming from a 专家 (or an
+  // admin). `member` / no role carries no badge — only a named role does, so a
+  // deployment creates 专家 in 管理后台 → 角色与权限 and assigns it.
+  const roleOf = (u: { role: { key: string; name: string } | null }) =>
+    u.role && u.role.key !== MEMBER_ROLE_KEY ? { key: u.role.key, name: u.role.name } : null;
+
+  const mapReply = (r: {
+    id: string;
+    parentId: string | null;
+    bodyMd: string;
+    createdAt: Date;
+    replyCount: number;
+    author: Parameters<typeof toPublicAuthor>[0] & { role: { key: string; name: string } | null };
+  }) => ({
+    id: r.id,
+    parentId: r.parentId,
+    bodyMd: r.bodyMd,
+    createdAt: r.createdAt,
+    replyCount: r.replyCount,
+    author: toPublicAuthor(r.author, canSeeIdentity),
+    authorRole: roleOf(r.author),
+  });
+
   const notes = rows.map((n) => ({
     id: n.id,
     isMine: n.userId === session.user.id,
@@ -44,13 +83,15 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     color: n.color,
     noteText: n.noteText,
     replyCount: n.replyCount,
+    likeCount: n.likeCount,
+    likedByMe: likedIds.has(n.id),
+    canModerate,
     createdAt: n.createdAt,
     author: toPublicAuthor(n.user, canSeeIdentity),
+    authorRole: roleOf(n.user),
     replies: n.replies.map((r) => ({
-      id: r.id,
-      bodyMd: r.bodyMd,
-      createdAt: r.createdAt,
-      author: toPublicAuthor(r.author, canSeeIdentity),
+      ...mapReply(r),
+      children: r.children.map(mapReply),
     })),
   }));
   return NextResponse.json({ notes });

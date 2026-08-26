@@ -22,6 +22,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { Markdown } from 'tiptap-markdown';
 import {
   BarChart3,
+  Blocks,
   Bold,
   Italic,
   Strikethrough,
@@ -47,6 +48,10 @@ import { StickerPicker } from '@/components/stickers/StickerPicker';
 import { PollComposerDialog } from '@/components/polls/PollComposerDialog';
 import { PollEmbedBase } from '@/components/polls/poll-embed-extension';
 import { PollEmbedView } from '@/components/polls/PollEmbedView';
+import { ContentEmbedBase, insertContentEmbed } from '@/components/zones/embeds/embed-node-extension';
+import { EmbedNodeView } from '@/components/zones/embeds/EmbedNodeView';
+import { EmbedPickerDialog } from '@/components/zones/embeds/EmbedPickerDialog';
+import type { ZoneAttachmentView } from '@/lib/zones/types';
 
 export type RichTextVariant = 'full' | 'compact';
 
@@ -63,6 +68,12 @@ export interface RichTextEditorProps {
   className?: string;
   ariaLabel?: string;
   autoFocus?: boolean;
+  /**
+   * 技术专区 only: registers the `[embed:<kind>:<ref>]` node + a toolbar
+   * 插入引用 button opening EmbedPickerDialog. Decided at editor creation —
+   * extensions are wired once. Absent ⇒ every other editor is untouched.
+   */
+  embedPicker?: { zoneSlug: string; attachments?: ZoneAttachmentView[] };
 }
 
 // Image node with: (1) basePath applied to the DISPLAYED src only (stored attrs
@@ -244,6 +255,14 @@ const PollEmbedWithView = PollEmbedBase.extend({
   },
 });
 
+// 技术专区 embed node (components/zones/embeds/embed-node-extension.ts) +
+// its preview-card nodeview. Only registered when `embedPicker` is set.
+const ContentEmbedWithView = ContentEmbedBase.extend({
+  addNodeView() {
+    return ReactNodeViewRenderer(EmbedNodeView);
+  },
+});
+
 async function uploadImage(file: File): Promise<string | null> {
   try {
     const res = await fetch(withBasePath('/api/uploads/image'), {
@@ -306,6 +325,7 @@ function Toolbar({
   disabled,
   onPickImage,
   onOpenPoll,
+  onOpenEmbed,
 }: {
   editor: Editor;
   variant: RichTextVariant;
@@ -313,6 +333,8 @@ function Toolbar({
   disabled: boolean;
   onPickImage: () => void;
   onOpenPoll: () => void;
+  /** 技术专区 插入引用 — rendered only when provided. */
+  onOpenEmbed?: () => void;
 }) {
   const t = useTranslations('ui');
   const icon = 'h-4 w-4';
@@ -403,6 +425,11 @@ function Toolbar({
       <ToolbarButton title={t('rte_poll')} disabled={disabled} onClick={onOpenPoll}>
         <BarChart3 className={icon} />
       </ToolbarButton>
+      {onOpenEmbed && (
+        <ToolbarButton title={t('rte_embed')} disabled={disabled} onClick={onOpenEmbed}>
+          <Blocks className={icon} />
+        </ToolbarButton>
+      )}
 
       {variant === 'full' && (
         <ToolbarButton title={t('rte_divider')} onClick={() => editor.chain().focus().setHorizontalRule().run()}>
@@ -446,8 +473,13 @@ export function RichTextEditor({
   className,
   ariaLabel,
   autoFocus = false,
+  embedPicker,
 }: RichTextEditorProps) {
   const [uploading, setUploading] = useState(0);
+  // 技术专区 插入引用 dialog. Whether the node is registered is fixed at
+  // creation (extensions are wired once), so latch the prop's presence.
+  const [embedDialog, setEmbedDialog] = useState(false);
+  const embedEnabledRef = useRef(Boolean(embedPicker));
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 投票 dialog — hosted here (not in Toolbar) because the in-editor poll
@@ -490,6 +522,7 @@ export function RichTextEditor({
       BasePathImage,
       StickerImageNode,
       PollEmbedWithView.configure({ onEdit: (id: string) => openPollEditRef.current(id) }),
+      ...(embedEnabledRef.current ? [ContentEmbedWithView] : []),
       Placeholder.configure({ placeholder: placeholder ?? '' }),
       Markdown.configure({ html: true, transformPastedText: true, breaks: false }),
     ],
@@ -579,6 +612,7 @@ export function RichTextEditor({
         disabled={disabled}
         onPickImage={onPickImage}
         onOpenPoll={() => setPollDialog({ open: true, pollId: null })}
+        onOpenEmbed={embedPicker && embedEnabledRef.current ? () => setEmbedDialog(true) : undefined}
       />
       <EditorContent editor={editor} style={maxHeight ? { maxHeight, overflowY: 'auto' } : undefined} />
       <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={onFileChange} />
@@ -602,6 +636,16 @@ export function RichTextEditor({
             .run();
         }}
       />
+      {embedPicker && embedEnabledRef.current && (
+        <EmbedPickerDialog
+          open={embedDialog}
+          onClose={() => setEmbedDialog(false)}
+          zoneSlug={embedPicker.zoneSlug}
+          postAttachments={embedPicker.attachments}
+          // Same top-level insertion rule as the poll node (see insertContentEmbed).
+          onPick={(kind, ref) => insertContentEmbed(editor, kind, ref)}
+        />
+      )}
       {maxLength != null && (
         <div className={`px-3 pb-1.5 text-right text-[11px] ${over ? 'text-danger' : 'text-muted'}`}>
           {value.length} / {maxLength}
@@ -646,6 +690,11 @@ export function RichTextEditor({
         .rte [data-poll-embed].ProseMirror-selectednode .pe-card,
         .rte .ProseMirror-selectednode[data-poll-embed] {
           outline: 2px solid rgb(var(--accent));
+          border-radius: 0.875rem;
+        }
+        .rte .ProseMirror-selectednode[data-content-embed],
+        .rte [data-content-embed].ProseMirror-selectednode .ce-card {
+          outline: 2px solid rgb(var(--text) / 0.6);
           border-radius: 0.875rem;
         }
         .rte .rte-img-handle {

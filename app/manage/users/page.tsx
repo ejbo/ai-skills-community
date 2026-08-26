@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { accountMatchKey } from '@/lib/employee-directory';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { requirePermission } from '@/lib/admin';
 import { listRoles } from '@/lib/roles';
@@ -31,6 +32,8 @@ export default async function UsersListPage({
         { displayName: { contains: q, mode: 'insensitive' } },
         { handle: { contains: q, mode: 'insensitive' } },
         { huaweiW3Id: { contains: q, mode: 'insensitive' } },
+        // 工号按数字匹配：搜索名单里的写法 z84412632 也能找到 uid 为 84412632 的用户。
+        { huaweiW3Id: { contains: accountMatchKey(q) ?? q } },
         { huaweiW3Name: { contains: q, mode: 'insensitive' } },
       ],
     });

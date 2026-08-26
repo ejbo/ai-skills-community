@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import { pushToast } from '@/components/Toaster';
 
-type Field = 'isActive' | 'canPublishSkills' | 'canRemix' | 'canUseCli';
+type Field = 'isActive' | 'canPublishSkills' | 'canRemix' | 'canUseCli' | 'canCreateZones';
 
 type NumberField = 'dailyDownloadLimit' | 'dailyPublishLimit';
 

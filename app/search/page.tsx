@@ -11,6 +11,7 @@ import {
   Lightbulb,
   CalendarDays,
   Vote as VoteIcon,
+  Layers,
   SearchX,
 } from 'lucide-react';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -94,6 +95,17 @@ export default async function SearchPage({
               href: d.kind === 'topic' ? `/discussion/topics/${d.id}` : `/discussion/posts/${d.id}`,
               label: d.title || t('search_post_media'),
               meta: `${d.author} · ${reldate(d.date)}`,
+            })),
+          },
+          {
+            key: 'zones' as const,
+            label: t('search_zones'),
+            icon: Layers,
+            rows: results.zones.map((z) => ({
+              key: `${z.kind}:${z.id}`,
+              href: z.href,
+              label: z.title,
+              meta: `${z.author} · ${reldate(z.date)}`,
             })),
           },
           {

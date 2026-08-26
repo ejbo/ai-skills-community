@@ -50,6 +50,7 @@ export const PERMISSIONS = [
   { key: 'videos', label: '视频管理', group: 'manage', manageHref: '/manage/videos', description: '视频后台（新建/编辑/删除长视频），查看草稿与私有视频，治理视频评论。' },
   { key: 'shorts', label: '短视频', group: 'manage', manageHref: '/manage/shorts', description: '短视频精选、删除任意短视频、重跑字幕，治理短视频评论。' },
   { key: 'discussion', label: '讨论管理', group: 'manage', manageHref: '/manage/discussion', description: '置顶、锁定、删除任意动态、话题、评论与回复。' },
+  { key: 'zones', label: '技术专区', group: 'manage', manageHref: '/manage/zones', description: '技术专区后台：创建/精选/软删除任意版块、转让主版主；无视版块可见性与版块内角色，治理任意帖子、Wiki 与评论。' },
   { key: 'votes', label: '投票活动', group: 'manage', manageHref: '/manage/votes', description: '精选/删除任意投票活动，查看任意活动的数据、票数明细与导出，治理作品评论。' },
   { key: 'library', label: '知识库', group: 'manage', manageHref: '/manage/library', description: '知识库后台与 AI 模型设置，编辑/删除/重新索引任意文档，访问受限与私有文档，治理评论与笔记。' },
   { key: 'categories', label: '类别', group: 'manage', manageHref: '/manage/categories', description: '维护 Skill 类别。' },

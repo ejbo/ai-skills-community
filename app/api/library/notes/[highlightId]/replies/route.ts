@@ -12,6 +12,11 @@ const MINUTE_MS = 60 * 1000;
 
 const createSchema = z.object({
   bodyMd: z.string().trim().min(1, '回复不能为空').max(4000),
+  /** Thread root. A reply to a reply attaches to the SAME root — the board-wide
+   *  2-level flat contract; `replyToId` below only routes the notification. */
+  parentId: z.string().min(1).nullable().optional(),
+  /** Who is being answered inside the thread (transient — never stored). */
+  replyToId: z.string().min(1).nullable().optional(),
 });
 
 // POST /api/library/notes/[highlightId]/replies (login) — reply to a SHARED
@@ -64,17 +69,38 @@ export async function POST(req: Request, { params }: { params: { highlightId: st
     if (!shared?.shareNotes) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
+  // Resolve the thread root: replying to a CHILD attaches to that child's
+  // parent, so the tree can never grow a third level.
+  let rootId: string | null = null;
+  let notifyRecipientId = highlight.userId;
+  const targetId = parsed.data.replyToId ?? parsed.data.parentId ?? null;
+  if (targetId) {
+    const target = await prisma.libraryNoteReply.findUnique({
+      where: { id: targetId },
+      select: { id: true, parentId: true, highlightId: true, authorId: true, status: true },
+    });
+    // A parent from another annotation would silently move the comment.
+    if (!target || target.highlightId !== highlight.id || target.status !== 'visible') {
+      return NextResponse.json({ error: 'invalid_input', reason: '回复的对象不存在' }, { status: 400 });
+    }
+    rootId = target.parentId ?? target.id;
+    notifyRecipientId = target.authorId;
+  }
+
   const [reply] = await prisma.$transaction([
     prisma.libraryNoteReply.create({
       data: {
         highlightId: highlight.id,
         authorId: session.user.id,
+        parentId: rootId,
         bodyMd: parsed.data.bodyMd,
       },
       select: {
         id: true,
+        parentId: true,
         bodyMd: true,
         createdAt: true,
+        replyCount: true,
         author: AUTHOR_IDENTITY_SELECT,
       },
     }),
@@ -82,10 +108,19 @@ export async function POST(req: Request, { params }: { params: { highlightId: st
       where: { id: highlight.id },
       data: { replyCount: { increment: 1 } },
     }),
+    // Keep the root's own counter in step so a collapsed thread can show its size.
+    ...(rootId
+      ? [
+          prisma.libraryNoteReply.update({
+            where: { id: rootId },
+            data: { replyCount: { increment: 1 } },
+          }),
+        ]
+      : []),
   ]);
 
   void notifyLibraryNoteReply({
-    recipientId: highlight.userId,
+    recipientId: notifyRecipientId,
     actorId: session.user.id,
     actorName: session.user.displayName,
     docSlug: highlight.doc.slug,

@@ -1,0 +1,93 @@
+/* ==========================================================================
+   deck-editor — 让任意「一页一个 .slide」的 HTML 胶片变成可视化可编辑
+   纯原生，无依赖。打印时全部隐藏。
+   ========================================================================== */
+
+.dke-bar{
+  position:fixed; left:0; right:0; top:0; z-index:9999;
+  display:flex; flex-direction:column; gap:0;
+  font:12px/1.4 "Microsoft YaHei","PingFang SC",Arial,sans-serif;
+  background:#fff; border-bottom:1px solid #D8D8D8; box-shadow:0 2px 10px rgba(0,0,0,.14);
+  user-select:none;
+}
+.dke-row{display:flex; align-items:center; gap:5px; padding:6px 10px; flex-wrap:wrap}
+.dke-row + .dke-row{border-top:1px solid #EDEDED; background:#FAFAFA}
+.dke-row.hidden{display:none}
+.dke-sep{width:1px; height:20px; background:#DDD; margin:0 3px}
+.dke-lbl{font-size:11px; color:#777; margin-right:2px}
+
+.dke-btn{
+  font:600 12px/1 "Microsoft YaHei","PingFang SC",Arial,sans-serif;
+  padding:6px 10px; border:1px solid #CFCFCF; background:#fff; color:#333;
+  border-radius:2px; cursor:pointer; white-space:nowrap;
+}
+.dke-btn:hover{border-color:#C7000B; color:#C7000B}
+.dke-btn:active{background:#F6F6F6}
+.dke-btn.on{background:#C7000B; border-color:#C7000B; color:#fff}
+.dke-btn.primary{background:#C7000B; border-color:#C7000B; color:#fff}
+.dke-btn.primary:hover{background:#A80009}
+.dke-btn.icon{min-width:30px; text-align:center; padding:6px 8px}
+.dke-btn[disabled]{opacity:.4; cursor:default}
+.dke-sel,.dke-num{font:12px "Microsoft YaHei","PingFang SC",Arial,sans-serif;
+  padding:5px 6px; border:1px solid #CFCFCF; border-radius:2px; background:#fff}
+.dke-num{width:52px}
+
+.dke-swatches{display:flex; gap:3px; align-items:center}
+.dke-sw{width:18px; height:18px; border:1px solid rgba(0,0,0,.25); cursor:pointer; border-radius:2px}
+.dke-sw:hover{outline:2px solid #C7000B; outline-offset:1px}
+
+.dke-saved{font-size:11px; color:#2E6B33; font-weight:700; white-space:nowrap; margin-left:2px}
+.dke-saved.dirty{color:#B26A00}
+.dke-btn.need::after{content:"●"; color:#FFD34D; margin-left:5px; font-size:10px}
+
+.dke-hint{font-size:11px; color:#888; margin-left:auto; white-space:nowrap}
+.dke-hint b{color:#C7000B}
+
+/* 工具条是 fixed，任何时候都让出它的高度，避免盖住第一页 */
+body.dke-ready{padding-top:var(--dke-h,44px)}
+body.dke-on .slide{outline:1px dashed rgba(199,0,11,.35); outline-offset:-1px}
+body.dke-on .slide.dke-cur{outline:2px solid rgba(199,0,11,.55)}
+body.dke-on [contenteditable="true"]:focus{outline:2px solid #E60012; outline-offset:1px; background:rgba(255,248,248,.6)}
+
+/* 浮动元素（图片 / 文本框 / 标注） */
+.dke-el{position:absolute; z-index:20; box-sizing:border-box}
+.dke-el img{display:block; width:100%; height:100%; object-fit:fill; pointer-events:none}
+.dke-el.fitmode img{object-fit:contain}
+.dke-el.txt{padding:4px 6px; font-size:14px; line-height:1.5; color:#1F1F1F; min-width:40px}
+body.dke-on .dke-el{cursor:move}
+body.dke-on .dke-el:hover{outline:1px dashed #E60012; outline-offset:1px}
+.dke-el.sel{outline:2px solid #E60012 !important; outline-offset:1px}
+
+.dke-h{position:absolute; width:9px; height:9px; background:#fff; border:1.5px solid #E60012;
+  border-radius:1px; z-index:30}
+.dke-h.nw{left:-5px;top:-5px;cursor:nwse-resize}   .dke-h.n{left:50%;top:-5px;margin-left:-4.5px;cursor:ns-resize}
+.dke-h.ne{right:-5px;top:-5px;cursor:nesw-resize}  .dke-h.e{right:-5px;top:50%;margin-top:-4.5px;cursor:ew-resize}
+.dke-h.se{right:-5px;bottom:-5px;cursor:nwse-resize} .dke-h.s{left:50%;bottom:-5px;margin-left:-4.5px;cursor:ns-resize}
+.dke-h.sw{left:-5px;bottom:-5px;cursor:nesw-resize} .dke-h.w{left:-5px;top:50%;margin-top:-4.5px;cursor:ew-resize}
+
+/* 排版模式：点静态元素把它「脱离文档流」变成可拖动 */
+body.dke-layout .slide{cursor:crosshair}
+body.dke-layout .dke-hot{outline:2px solid #0A4A7A !important; outline-offset:1px;
+  background:rgba(10,74,122,.06)}
+body.dke-layout .dke-hot::after{content:attr(data-dke-tag); position:absolute; z-index:40;
+  transform:translateY(-100%); background:#0A4A7A; color:#fff; font:10px/1.6 Arial,sans-serif;
+  padding:1px 6px; white-space:nowrap; pointer-events:none}
+.dke-spacer{pointer-events:none}
+.dke-el.dke-freed{background:#fff}
+
+/* 拖放提示 */
+.slide.dke-drop{box-shadow:inset 0 0 0 3px #E60012}
+
+/* 浮层提示条 */
+.dke-toast{position:fixed; left:50%; bottom:26px; transform:translateX(-50%); z-index:10000;
+  background:rgba(30,30,30,.92); color:#fff; padding:9px 16px; border-radius:3px;
+  font:12px "Microsoft YaHei","PingFang SC",Arial,sans-serif; pointer-events:none; opacity:0;
+  transition:opacity .18s}
+.dke-toast.show{opacity:1}
+
+@media print{
+  .dke-bar,.dke-toast,.dke-h{display:none !important}
+  body.dke-ready,body.dke-on{padding-top:0 !important}
+  body.dke-on .slide,body.dke-on .slide.dke-cur{outline:none}
+  .dke-el.sel{outline:none !important}
+}
