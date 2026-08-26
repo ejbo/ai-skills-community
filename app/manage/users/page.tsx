@@ -121,7 +121,7 @@ export default async function UsersListPage({
           <option value="created">按注册时间</option>
           <option value="email">按邮箱字母</option>
         </select>
-        <button className="h-9 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white hover:bg-accent-600">
+        <button className="h-9 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-300">
           搜索
         </button>
       </form>
@@ -147,7 +147,7 @@ export default async function UsersListPage({
               <tr key={u.id}>
                 <td>
                   <Link href={`/manage/users/${u.id}`} className="flex items-center gap-2">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-500 text-xs font-semibold text-white">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-900 dark:bg-zinc-100 text-xs font-semibold text-white dark:text-zinc-900">
                       {u.displayName.charAt(0)}
                     </span>
                     <span className="font-medium">{u.displayName}</span>

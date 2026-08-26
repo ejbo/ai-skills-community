@@ -50,6 +50,17 @@ export function canonicalAccountText(value: string | null | undefined): string {
 }
 
 /**
+ * Canonical matching key for a person's NAME, used ONLY as the import's fallback
+ * identity when 工号 can't decide (the roster's pre-工号 rows). Same folding as
+ * `canonicalAccountText`: NFKC + whitespace-free + lowercase, so `李 明`/`李明`
+ * and `Li Wei`/`liwei` are one person. Never a substitute for 工号 — see
+ * lib/employee-match.ts for how ambiguity is refused rather than guessed.
+ */
+export function canonicalPersonName(value: string | null | undefined): string {
+  return canonicalAccountText(value);
+}
+
+/**
  * Canonical matching key for a 工号 / W3 uid: the digit run when the value has
  * any digit (`z84412632`, `Z84412632`, `84412632` → `84412632`), otherwise the
  * canonical text. `null` for blank input. Compare keys with `===` — never

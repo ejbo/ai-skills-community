@@ -1,9 +1,12 @@
 // Validation + import merge rules for the 员工名单 admin API
-// (app/api/admin/employees/*). Merge rules ported from ai4news:
-//   - 有工号 → 按工号 upsert（更新时：姓名不同则覆盖；部门/研究所仅在导入值非空时覆盖；
-//     头像从不更新已有行）
-//   - 无工号 → 按 (姓名, 部门, 研究所) 三元组判重
-//   - 每行处理后都同步到用户（无论新增还是更新）
+// (app/api/admin/employees/*).
+//
+// 匹配规则住在 lib/employee-match.ts（工号 → 姓名回填 → 拒绝猜测），这里只负责
+// 落库：字段覆盖、同名旧行合并、用户同步与计数。要点：
+//   - 重新上传同一批人 = 更新既有行（含把工号回填到早期无工号的旧行），不再新建重复行；
+//   - 非空值总是覆盖；空值只在 clearMissing 时清空；工号永不清空、永不被改写成另一个；
+//   - 停用行会被更新但不会被重新启用（用批量启用）；
+//   - 每行处理后都同步到用户（无论新增还是更新）。
 
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
@@ -11,9 +14,17 @@ import { prisma } from '@/lib/db';
 import {
   buildUserAccountIndex,
   canonicalAccountText,
-  findDirectoryEntries,
   syncEntryToUsers,
+  type UserAccountIndex,
 } from '@/lib/employee-directory';
+import {
+  DirectoryIndex,
+  applyImportFields,
+  classifyNameDuplicates,
+  resolveImportTarget,
+  type DirectoryRowLite,
+  type ImportRowLite,
+} from '@/lib/employee-match';
 import type { ParsedEmployeeRow } from '@/lib/employee-import';
 
 const NAME_MAX = 128;
@@ -62,27 +73,132 @@ export function normalizeAccountNumber(v: string | undefined | null): string | n
  */
 const USER_INDEX_TTL_MS = 5_000;
 
+/** Per-list caps so one bad file can't flood the response / audit log. */
+const MAX_REPORTED = 50;
+
+export interface ImportOptions {
+  /**
+   * 空值也覆盖：导入行留空的 部门/研究所/头像 会清空已有值。默认关闭 —— 从 Excel
+   * 粘贴时经常省略末尾列，默认清空会把整表的部门抹掉。工号不受影响（永不清空）。
+   */
+  clearMissing?: boolean;
+  /**
+   * 合并同名旧记录：某行匹配到已有记录、且该记录带工号后，删除同名且【无工号】、
+   * 且【部门/研究所不矛盾】的历史行（判定见 classifyNameDuplicates）。用于清理
+   * "工号匹配上线前，重复上传造出的重复行"。默认关闭 —— 它会删数据，而且每一条
+   * 删除都会在 mergedRows 里逐条列出。
+   */
+  mergeNameDuplicates?: boolean;
+}
+
 export interface ImportResult {
   parsedRows: number;
+  /** 新建的行 */
   added: number;
-  skippedOrUpdated: number;
+  /** 命中已有行并写入了改动 */
+  updated: number;
+  /** 命中已有行但字段完全相同 */
+  unchanged: number;
+  /** 其中：把工号补写到早期无工号的旧行 */
+  backfilledAccounts: number;
+  /** 合并同名旧记录时删除的行数 */
+  mergedDuplicates: number;
+  /** 被删掉的每一条（姓名 + 部门/研究所）—— 硬删除必须可追溯 */
+  mergedRows: string[];
+  /** 同名多条无法判定、且该行没有工号 ⇒ 跳过 */
+  skipped: number;
   syncedUsers: number;
+  /** 可疑但未失败的行（同名歧义、拒绝合并等），供管理员人工处理 */
+  warnings: string[];
   errors: string[];
+  /** warnings/errors 数组会被截断展示，这两个是真实总数 */
+  warningCount: number;
+  errorCount: number;
+}
+
+function toLite(row: {
+  id: string;
+  name: string;
+  accountNumber: string | null;
+  department: string;
+  lab: string;
+  avatarUrl: string;
+  isActive: boolean;
+}): DirectoryRowLite {
+  return {
+    id: row.id,
+    name: row.name,
+    accountNumber: row.accountNumber,
+    department: row.department,
+    lab: row.lab,
+    avatarUrl: row.avatarUrl,
+    isActive: row.isActive,
+  };
+}
+
+async function loadDirectoryIndex(): Promise<DirectoryIndex> {
+  const rows = await prisma.employeeDirectory.findMany({
+    select: {
+      id: true,
+      name: true,
+      accountNumber: true,
+      department: true,
+      lab: true,
+      avatarUrl: true,
+      isActive: true,
+    },
+    // Most-recently-updated first, matching `findDirectoryEntries` — so when legacy
+    // duplicates share a key both paths pick the same winner.
+    orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+  });
+  return new DirectoryIndex(rows.map(toLite));
 }
 
 export async function importEmployeeRows(
   rows: ParsedEmployeeRow[],
   createdById: string,
+  options: ImportOptions = {},
 ): Promise<ImportResult> {
+  const clearMissing = options.clearMissing === true;
+  const mergeNameDuplicates = options.mergeNameDuplicates === true;
+
   let added = 0;
-  let skippedOrUpdated = 0;
+  let updated = 0;
+  let unchanged = 0;
+  let backfilledAccounts = 0;
+  let mergedDuplicates = 0;
+  let skipped = 0;
   let syncedUsers = 0;
+  // 数组只留前 MAX_REPORTED 条展示，计数器才是真实总数（否则管理员看到 "50 条待确认"
+  // 却不知道其实有 500 条）。
+  let warningCount = 0;
+  let errorCount = 0;
+  const warnings: string[] = [];
+  const mergedRows: string[] = [];
   const errors: string[] = [];
-  // One user index for the whole import (refreshed every USER_INDEX_TTL_MS): most
-  // roster rows have no registered user, and with the index those rows cost zero
-  // user queries.
-  let userIndex = await buildUserAccountIndex();
+  const warn = (message: string) => {
+    warningCount += 1;
+    if (warnings.length < MAX_REPORTED) warnings.push(message);
+  };
+  const fail = (message: string) => {
+    errorCount += 1;
+    if (errors.length < MAX_REPORTED) errors.push(message);
+  };
+  const describe = (r: { name: string; department: string; lab: string }) =>
+    `${r.name}（${r.department || '—'}/${r.lab || '—'}）`;
+
+  // Two indexes, each built once. The roster index turns what used to be 1–2
+  // queries PER ROW into zero; the user index means roster rows with no
+  // registered user (the vast majority) cost no write either.
+  const index = await loadDirectoryIndex();
+  let userIndex: UserAccountIndex = await buildUserAccountIndex();
   let userIndexAt = Date.now();
+
+  const sync = async (entry: DirectoryRowLite) =>
+    syncEntryToUsers(
+      { accountNumber: entry.accountNumber, department: entry.department, lab: entry.lab, isActive: entry.isActive },
+      userIndex,
+    );
 
   for (const raw of rows) {
     if (Date.now() - userIndexAt > USER_INDEX_TTL_MS) {
@@ -91,63 +207,140 @@ export async function importEmployeeRows(
     }
     const name = raw.name.trim().slice(0, NAME_MAX);
     if (!name) {
-      errors.push(`姓名必填: ${JSON.stringify(raw)}`);
+      fail(`姓名必填: ${JSON.stringify(raw)}`);
       continue;
     }
     const accountNumber = normalizeAccountNumber(raw.accountNumber);
     const department = raw.department.trim().slice(0, FIELD_MAX);
     const lab = raw.lab.trim().slice(0, FIELD_MAX);
     const avatarUrl = raw.avatarUrl.trim().slice(0, AVATAR_MAX);
+    const lite: ImportRowLite & { avatarUrl: string } = { name, accountNumber, department, lab, avatarUrl };
 
     try {
-      let entry;
-      let created = false;
-      if (accountNumber) {
-        // Digit-key match: `z84412632` in this file upserts the existing `84412632` row.
-        entry = (await findDirectoryEntries(accountNumber))[0] ?? null;
-      } else {
-        entry = await prisma.employeeDirectory.findFirst({
-          where: { accountNumber: null, name, department, lab },
-        });
-      }
-      if (!entry) {
-        try {
-          entry = await prisma.employeeDirectory.create({
-            data: { name, accountNumber, department, lab, avatarUrl, createdById },
-          });
-          created = true;
-        } catch (err) {
-          // Unique race on 工号 (concurrent import) → re-read and fall through to update.
-          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002' && accountNumber) {
-            entry = (await findDirectoryEntries(accountNumber))[0] ?? null;
-          }
-          if (!entry) throw err;
+      let target = resolveImportTarget(lite, index);
+
+      if (target.kind === 'ambiguous') {
+        const where = target.candidates
+          .map((c) => `${c.department || '—'}/${c.lab || '—'}`)
+          .join('、');
+        if (accountNumber) {
+          // 有工号 ⇒ 这是一条可独立标识的记录，新建，但提醒管理员去合并。
+          warn(`「${name}」同名旧记录有 ${target.candidates.length} 条（${where}），已按工号新建，请人工核对合并`);
+          target = { kind: 'create', reason: 'new' };
+        } else {
+          // 无工号 ⇒ 没有任何东西能区分，再建一条只会加重重复。
+          warn(`「${name}」同名有 ${target.candidates.length} 条（${where}）且本行没有工号，已跳过`);
+          skipped += 1;
+          continue;
         }
       }
 
-      if (created) {
-        added += 1;
-      } else {
-        const data: Prisma.EmployeeDirectoryUpdateInput = {};
-        if (entry.name !== name) data.name = name;
-        if (department && entry.department !== department) data.department = department;
-        if (lab && entry.lab !== lab) data.lab = lab;
-        if (Object.keys(data).length) {
-          entry = await prisma.employeeDirectory.update({ where: { id: entry.id }, data });
+      let entry: DirectoryRowLite;
+
+      if (target.kind === 'create') {
+        let createdLite: DirectoryRowLite | null = null;
+        try {
+          const created = await prisma.employeeDirectory.create({
+            data: { name, accountNumber, department, lab, avatarUrl, createdById },
+          });
+          createdLite = toLite(created);
+        } catch (err) {
+          // Unique race on 工号 (concurrent import) → re-read that row and update it.
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002' && accountNumber) {
+            const existing = await prisma.employeeDirectory.findFirst({ where: { accountNumber } });
+            if (!existing) throw err;
+            createdLite = null;
+            const before = toLite(existing);
+            index.add(before);
+            target = { kind: 'update', entry: before, matchedBy: 'account', backfillAccount: false };
+          } else {
+            throw err;
+          }
         }
-        skippedOrUpdated += 1;
+        if (createdLite) {
+          index.add(createdLite);
+          added += 1;
+          entry = createdLite;
+          syncedUsers += await sync(entry);
+          continue;
+        }
       }
-      syncedUsers += await syncEntryToUsers(entry, userIndex);
+
+      // target is 'update' here (either matched, or demoted from a create race).
+      if (target.kind !== 'update') throw new Error('unreachable import target');
+      const before = target.entry;
+      const changes = applyImportFields(before, lite, {
+        backfillAccount: target.backfillAccount,
+        clearMissing,
+      });
+
+      if (Object.keys(changes).length) {
+        let after: DirectoryRowLite;
+        try {
+          after = toLite(await prisma.employeeDirectory.update({ where: { id: before.id }, data: changes }));
+        } catch (err) {
+          // Backfilling the 工号 collided with a row that already owns it (a duplicate
+          // created by an earlier upload). Keep the row, just skip the 工号 write.
+          if (
+            err instanceof Prisma.PrismaClientKnownRequestError &&
+            err.code === 'P2002' &&
+            changes.accountNumber
+          ) {
+            warn(`「${name}」的工号 ${changes.accountNumber} 已属于另一条记录，本行只更新了部门/研究所`);
+            const { accountNumber: _dropped, ...rest } = changes;
+            after = Object.keys(rest).length
+              ? toLite(await prisma.employeeDirectory.update({ where: { id: before.id }, data: rest }))
+              : before;
+          } else {
+            throw err;
+          }
+        }
+        index.replace(before, after);
+        if (after.accountNumber !== before.accountNumber) backfilledAccounts += 1;
+        // after === before ⇒ P2002 兜底后没有任何字段可写，不能算作 updated。
+        if (after === before) unchanged += 1;
+        else updated += 1;
+        entry = after;
+      } else {
+        unchanged += 1;
+        entry = before;
+      }
+
+      // 合并：把"工号匹配上线前"重复上传造出的同名无工号旧行删掉 —— 只删部门/研究所
+      // 不矛盾的那些；同名但部门对不上的另一个人绝不删，只上报（见 classifyNameDuplicates）。
+      if (mergeNameDuplicates && entry.accountNumber) {
+        const { merge, refused } = classifyNameDuplicates(lite, entry, before, index);
+        for (const dup of merge) {
+          await prisma.employeeDirectory.delete({ where: { id: dup.id } });
+          index.remove(dup);
+          mergedDuplicates += 1;
+          // 硬删除 —— 逐条留痕，否则管理员事后无法知道谁被删了、更无法恢复。
+          if (mergedRows.length < MAX_REPORTED) mergedRows.push(describe(dup));
+        }
+        for (const dup of refused) {
+          warn(`「${name}」有同名旧记录 ${describe(dup)} 与本次导入的部门/研究所不一致，未删除 —— 请在「仅看重名」里人工确认`);
+        }
+      }
+
+      syncedUsers += await sync(entry);
     } catch (err) {
-      errors.push(`导入失败（${name}）: ${err instanceof Error ? err.message : String(err)}`);
+      fail(`导入失败（${name}）: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
   return {
     parsedRows: rows.length,
     added,
-    skippedOrUpdated,
+    updated,
+    unchanged,
+    backfilledAccounts,
+    mergedDuplicates,
+    mergedRows,
+    skipped,
     syncedUsers,
-    errors: errors.slice(0, 50),
+    warnings,
+    errors,
+    warningCount,
+    errorCount,
   };
 }

@@ -1,13 +1,18 @@
 import { NextResponse } from 'next/server';
 import { gateApi } from '@/lib/admin';
 import { logAdmin } from '@/lib/audit';
-import { importEmployeeRows } from '@/lib/employee-admin';
+import { importEmployeeRows, type ImportOptions } from '@/lib/employee-admin';
 import { parsePastedText, parseUpload, type ParsedEmployeeRow } from '@/lib/employee-import';
 
 export const dynamic = 'force-dynamic';
 
 const MAX_ROWS = 20_000;
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
+
+/** FormData carries strings; only an explicit "true" turns a destructive option on. */
+function flag(form: FormData, key: string): boolean {
+  return form.get(key) === 'true';
+}
 
 export async function POST(req: Request) {
   const gate = await gateApi('employees');
@@ -51,7 +56,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'too_many_rows', message: `单次最多导入 ${MAX_ROWS} 行` }, { status: 400 });
   }
 
-  const result = await importEmployeeRows(rows, session.user.id);
+  const options: ImportOptions = {
+    clearMissing: flag(form, 'clearMissing'),
+    mergeNameDuplicates: flag(form, 'mergeNameDuplicates'),
+  };
+
+  const result = await importEmployeeRows(rows, session.user.id, options);
 
   await logAdmin({
     adminUserId: session.user.id,
@@ -60,10 +70,19 @@ export async function POST(req: Request) {
     details: {
       parsed: result.parsedRows,
       added: result.added,
-      skippedOrUpdated: result.skippedOrUpdated,
+      updated: result.updated,
+      unchanged: result.unchanged,
+      backfilledAccounts: result.backfilledAccounts,
+      // 合并是硬删除 —— 审计里必须能看出这次导入删了多少、删的是谁、开了什么开关。
+      mergedDuplicates: result.mergedDuplicates,
+      mergedRows: result.mergedRows,
+      skipped: result.skipped,
       syncedUsers: result.syncedUsers,
-      errorCount: result.errors.length,
-      // 保留逐行错误明细（已在 importEmployeeRows 截断到 50 条），否则失败行无从追查。
+      options,
+      warningCount: result.warningCount,
+      warnings: result.warnings,
+      errorCount: result.errorCount,
+      // 保留逐行错误明细（已在 importEmployeeRows 截断），否则失败行无从追查。
       errors: result.errors,
     },
   });
