@@ -31,6 +31,8 @@ model User {
   huaweiW3Name        String?
   authMethod          AuthMethod @default(password)
   avatarUrl           String?
+  // 用户卡片: banner behind the avatar; `bio` doubles as the 签名 shown on it.
+  bannerUrl           String?
   bio                 String?
   // 部门 / 研究所 — 引用自员工名单（/manage/employees），按工号自动同步；请勿手工维护。
   department          String?
@@ -134,9 +136,12 @@ model User {
   libraryAccessDecisions LibraryAccessRequest[] @relation("LibraryAccessDecider")
 
   // ── Stickers & Polls back-relations (virtual; no SQL columns on User) ──
-  stickers     UserSticker[]
-  createdPolls Poll[]        @relation("CreatedPolls")
-  pollVotes    PollVote[]
+  tagAssignments    UserTagAssignment[]
+  grantedTags       UserTagAssignment[] @relation("UserTagGrantedBy")
+  libraryCategories LibraryCategory[]   @relation("LibraryCategoryCreator")
+  stickers          UserSticker[]
+  createdPolls      Poll[]              @relation("CreatedPolls")
+  pollVotes         PollVote[]
 
   // ── 投票活动 back-relations (virtual; no SQL columns on User) ──
   createdVoteActivities VoteActivity[] @relation("CreatedVoteActivities")
@@ -157,6 +162,9 @@ model User {
   zoneWikiPagesCreated  ZoneWikiPage[]        @relation("CreatedZoneWikiPages")
   zoneWikiPagesUpdated  ZoneWikiPage[]        @relation("UpdatedZoneWikiPages")
   zoneWikiRevisions     ZoneWikiRevision[]    @relation("ZoneWikiRevisions")
+  zoneColumnsCreated    ZoneColumn[]          @relation("CreatedZoneColumns")
+  zonePostGrants        ZonePostViewer[]      @relation("ZonePostGrants")
+  zonePostGrantsIssued  ZonePostViewer[]      @relation("ZonePostGrantsIssued")
 
   @@index([handle])
   @@index([email])
@@ -241,6 +249,48 @@ model Role {
   users User[]
 
   @@index([sortOrder])
+}
+
+/// 用户标签 — the badges on a 用户卡片. `manual` tags are handed out by an admin
+/// (singly or in bulk); `auto` tags are reconciled from what the user actually
+/// is (e.g. 版主 of a 专区) and cannot be granted by hand. Either way the member
+/// decides which of their tags the card SHOWS (UserTagAssignment.hidden).
+model UserTag {
+  id          String      @id @default(cuid())
+  key         String      @unique
+  name        String
+  description String?
+  /// Palette token (zinc | blue | green | amber | rose | violet) — never raw CSS.
+  color       String      @default("zinc")
+  kind        UserTagKind @default(manual)
+  sortOrder   Int         @default(100)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  assignments UserTagAssignment[]
+
+  @@index([kind, sortOrder])
+}
+
+enum UserTagKind {
+  manual
+  auto
+}
+
+model UserTagAssignment {
+  userId      String
+  tagId       String
+  /// The member's own choice — hidden tags stay assigned but off the card.
+  hidden      Boolean  @default(false)
+  grantedById String?
+  createdAt   DateTime @default(now())
+
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tag       UserTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  grantedBy User?   @relation("UserTagGrantedBy", fields: [grantedById], references: [id], onDelete: SetNull)
+
+  @@id([userId, tagId])
+  @@index([tagId])
 }
 
 // ─── Taxonomy ────────────────────────────────────────────────────────────
@@ -1478,6 +1528,28 @@ model LibraryTranslation {
   @@index([docId, targetLang])
 }
 
+/// 知识库分类. `official` ones are curated in 管理后台 and lead the picker;
+/// anyone may add their own, which stay available to everyone but sort after.
+/// `slug` is the stored value on LibraryDoc.categories — renaming a category
+/// therefore never rewrites documents.
+model LibraryCategory {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  nameEn      String   @default("")
+  description String?
+  official    Boolean  @default(false)
+  sortOrder   Int      @default(100)
+  /// Null for the seeded built-ins.
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User? @relation("LibraryCategoryCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([official, sortOrder])
+}
+
 model LibraryChunk {
   id            String @id @default(cuid())
   docId         String
@@ -2140,6 +2212,20 @@ enum ZonePostStatus {
   published
 }
 
+// 帖子可见性 — NARROWS within the zone, never widens it: a post in a `members`
+// zone is never visible to non-members whatever this says.
+enum ZonePostVisibility {
+  zone // 版块可见范围内公开（公开版块 ⇒ 任何登录用户；仅成员版块 ⇒ 版块成员）
+  members // 仅版块成员
+  restricted // 仅指定成员 + 持访问密码者（作者/共同作者/版主始终可见）
+}
+
+// How a viewer earned access to a `restricted` post.
+enum ZonePostGrantVia {
+  designated // 作者指定
+  code // 用访问密码解锁
+}
+
 enum ZoneAttachmentKind {
   image
   video
@@ -2183,6 +2269,8 @@ model Zone {
   joinPolicy         ZoneJoinPolicy @default(approval)
   // public zones: non-members may comment on posts.
   allowGuestComments Boolean        @default(true)
+  // members may create their own 栏目 from the composer (版主 always can).
+  allowMemberColumns Boolean        @default(true)
   featured           Boolean        @default(false)
   featuredAt         DateTime?
   ownerId            String
@@ -2194,11 +2282,12 @@ model Zone {
   updatedAt          DateTime       @updatedAt
   deletedAt          DateTime?
 
-  owner     User           @relation("OwnedZones", fields: [ownerId], references: [id], onDelete: Cascade)
-  roles     ZoneRole[]
-  members   ZoneMember[]
-  posts     ZonePost[]
-  wikiPages ZoneWikiPage[]
+  owner      User           @relation("OwnedZones", fields: [ownerId], references: [id], onDelete: Cascade)
+  roles      ZoneRole[]
+  members    ZoneMember[]
+  posts      ZonePost[]
+  wikiPages  ZoneWikiPage[]
+  ZoneColumn ZoneColumn[]
 
   @@index([deletedAt, lastActivityAt])
   @@index([featured, featuredAt])
@@ -2258,34 +2347,44 @@ model ZoneMember {
 // 帖子（研究报告 / 论文 / 文章 / 演示 / 链接 / 公告）。bodyMd 里可含
 // `[embed:<kind>:<ref>]` 原生嵌入 token（lib/zones/shared.ts）。
 model ZonePost {
-  id            String         @id @default(cuid())
+  id            String             @id @default(cuid())
   zoneId        String
   authorId      String
-  type          ZonePostType   @default(article)
+  type          ZonePostType       @default(article)
   title         String
   // Plain-text summary shown on cards (author-written; falls back to excerpt).
-  summary       String         @default("")
-  bodyMd        String         @default("")
+  summary       String             @default("")
+  bodyMd        String             @default("")
   coverUrl      String?
   coverKey      String?
   // type=link: the shared URL.
   linkUrl       String?
-  tags          String[]       @default([])
-  status        ZonePostStatus @default(draft)
+  tags          String[]           @default([])
+  // 栏目 (ZoneColumn) — zone-scoped taxonomy: 版主 curates the official ones,
+  // members may add their own. Null ⇒ 未归栏.
+  columnId      String?
+  status        ZonePostStatus     @default(draft)
+  visibility    ZonePostVisibility @default(zone)
+  // Share code for `restricted` posts — a capability token the author reads and
+  // hands out (like a 提取码), NOT a credential; redeeming it writes a
+  // ZonePostViewer row so access checks stay uniform.
+  accessCode    String?
   publishedAt   DateTime?
-  pinned        Boolean        @default(false)
-  locked        Boolean        @default(false)
-  likeCount     Int            @default(0)
-  commentCount  Int            @default(0)
-  viewCount     Int            @default(0)
-  bookmarkCount Int            @default(0)
+  pinned        Boolean            @default(false)
+  locked        Boolean            @default(false)
+  likeCount     Int                @default(0)
+  commentCount  Int                @default(0)
+  viewCount     Int                @default(0)
+  bookmarkCount Int                @default(0)
   editedAt      DateTime?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
   deletedAt     DateTime?
 
   zone        Zone                 @relation(fields: [zoneId], references: [id], onDelete: Cascade)
   author      User                 @relation("AuthoredZonePosts", fields: [authorId], references: [id], onDelete: Cascade)
+  column      ZoneColumn?          @relation(fields: [columnId], references: [id], onDelete: SetNull)
+  viewers     ZonePostViewer[]
   coauthors   ZonePostAuthor[]
   attachments ZonePostAttachment[]
   likes       ZonePostLike[]
@@ -2296,6 +2395,8 @@ model ZonePost {
   @@index([zoneId, status, deletedAt, pinned, publishedAt])
   @@index([zoneId, status, deletedAt, publishedAt])
   @@index([zoneId, type])
+  @@index([zoneId, columnId, status, publishedAt])
+  @@index([status, deletedAt, visibility, publishedAt])
   @@index([status, deletedAt, publishedAt])
   @@index([authorId, status])
 }
@@ -2469,4 +2570,47 @@ model ZoneLinkPreview {
   siteName    String   @default("")
   ok          Boolean  @default(false)
   fetchedAt   DateTime @default(now())
+}
+
+// 栏目 — per-zone content taxonomy (orthogonal to ZonePostType, which is the
+// content FORMAT). `official` rows are curated by 版主 in 版块设置 → 栏目;
+// members may create their own from the composer when the zone allows it.
+model ZoneColumn {
+  id          String   @id @default(cuid())
+  zoneId      String
+  slug        String
+  name        String
+  description String   @default("")
+  official    Boolean  @default(false)
+  sortOrder   Int      @default(100)
+  postCount   Int      @default(0)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  zone      Zone       @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  createdBy User?      @relation("CreatedZoneColumns", fields: [createdById], references: [id], onDelete: SetNull)
+  posts     ZonePost[]
+
+  @@unique([zoneId, slug])
+  @@index([zoneId, official, sortOrder])
+  @@index([createdById])
+}
+
+// Access grants for `restricted` posts: either the author designated the member,
+// or the member redeemed the share code. One row per (post, user).
+model ZonePostViewer {
+  postId      String
+  userId      String
+  via         ZonePostGrantVia @default(designated)
+  grantedById String?
+  createdAt   DateTime         @default(now())
+
+  post      ZonePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation("ZonePostGrants", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy User?    @relation("ZonePostGrantsIssued", fields: [grantedById], references: [id], onDelete: SetNull)
+
+  @@id([postId, userId])
+  @@index([userId])
+  @@index([postId, via])
 }
