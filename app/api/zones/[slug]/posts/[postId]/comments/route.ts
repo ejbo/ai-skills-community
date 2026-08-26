@@ -7,7 +7,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { notifyZoneReply } from '@/lib/notifications';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
 import { zoneContext } from '@/lib/zones/access';
-import { listZoneComments } from '@/lib/zones/post-queries';
+import { canSeeZonePost, listZoneComments } from '@/lib/zones/post-queries';
 import { ZONE_LIMITS } from '@/lib/zones/shared';
 import type { ZoneCommentView } from '@/lib/zones/types';
 
@@ -26,6 +26,8 @@ const createSchema = z.object({
   replyToId: z.string().min(1).optional(),
 });
 
+// `visibility` + authorId/coauthors/status/deletedAt are what `canSeeZonePost`
+// needs: a 仅成员可见 / 未解锁的指定成员可见 post must not expose its comments.
 const POST_SELECT = {
   id: true,
   zoneId: true,
@@ -34,6 +36,7 @@ const POST_SELECT = {
   locked: true,
   deletedAt: true,
   authorId: true,
+  visibility: true,
   coauthors: { select: { userId: true } },
   author: { select: { id: true, email: true } },
 } as const;
@@ -54,9 +57,7 @@ export async function GET(req: Request, { params }: { params: { slug: string; po
   if (!post || post.zoneId !== ctx.zone.id || post.deletedAt) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
-  const uid = session.user.id;
-  const isAuthor = post.authorId === uid || post.coauthors.some((c) => c.userId === uid);
-  if (post.status !== 'published' && !isAuthor && !ctx.access.canModerate) {
+  if (!(await canSeeZonePost(post, ctx.access, ctx.viewer))) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
@@ -100,6 +101,9 @@ export async function POST(req: Request, { params }: { params: { slug: string; p
 
   const post = await prisma.zonePost.findUnique({ where: { id: params.postId }, select: POST_SELECT });
   if (!post || post.zoneId !== ctx.zone.id || post.deletedAt || post.status !== 'published') {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
+  if (!(await canSeeZonePost(post, ctx.access, ctx.viewer))) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
   if (post.locked && !ctx.access.canModerate) {

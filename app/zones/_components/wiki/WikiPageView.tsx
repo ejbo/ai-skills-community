@@ -108,7 +108,7 @@ export function WikiPageView({ zoneSlug, page, canWiki, body, ancestors, childPa
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted">
               <span>{t('wiki_last_edited_by')}</span>
-              <Avatar name={editor.displayName} src={editor.avatarUrl} size="xs" tone="neutral" />
+              <Avatar name={editor.displayName} src={editor.avatarUrl} size="xs" />
               <Link href={`/users/${editor.handle}`} className="truncate hover:underline">
                 {editor.displayName}
               </Link>

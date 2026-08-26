@@ -7,7 +7,7 @@
 
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Clock, ExternalLink, Eye, Lock, Pin } from 'lucide-react';
+import { Clock, ExternalLink, Eye, FolderOpen, Lock, Pin } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { GlareHover } from '@/components/motion';
@@ -17,12 +17,14 @@ import { relativeTime } from '@/lib/i18n-date';
 import { hostnameOf, zoneHref } from '@/lib/zones/shared';
 import type { ZonePostDetailView } from '@/lib/zones/types';
 import { POST_TYPE_ICONS } from './PostTypePicker';
+import { VISIBILITY_ICONS } from './VisibilityPicker';
 
 export function PostHeader({ post, zone }: { post: ZonePostDetailView; zone: { slug: string; name: string } }) {
   const t = useTranslations('zones');
   const tl = useTranslations('labels');
   const locale = useLocale();
   const TypeIcon = POST_TYPE_ICONS[post.type];
+  const VisibilityIcon = VISIBILITY_ICONS[post.visibility];
   const authors = [post.author, ...post.coauthors];
   const when = post.publishedAt ?? post.createdAt;
 
@@ -43,6 +45,22 @@ export function PostHeader({ post, zone }: { post: ZonePostDetailView; zone: { s
           <TypeIcon className="h-3 w-3" />
           {tl(`zonePostType.${post.type}`)}
         </span>
+        {post.column && (
+          <Link
+            href={`${zoneHref(zone.slug)}?column=${encodeURIComponent(post.column.slug)}`}
+            aria-label={t('post_column_aria', { name: post.column.name })}
+            className="inline-flex max-w-[14rem] items-center gap-1 rounded-full border border-zinc-300 px-2 py-px font-medium text-zinc-700 transition hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:text-zinc-100"
+          >
+            <FolderOpen className="h-3 w-3 shrink-0" aria-hidden />
+            <span className="truncate">{post.column.name}</span>
+          </Link>
+        )}
+        {post.visibility !== 'zone' && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-zinc-300 px-2 py-px text-muted dark:border-zinc-700">
+            <VisibilityIcon className="h-3 w-3" aria-hidden />
+            {tl(`zonePostVisibility.${post.visibility}`)}
+          </span>
+        )}
         {post.pinned && (
           <span className="inline-flex items-center gap-1 rounded-full border border-zinc-300 px-2 py-px text-muted dark:border-zinc-700">
             <Pin className="h-3 w-3" />
@@ -92,7 +110,7 @@ export function PostHeader({ post, zone }: { post: ZonePostDetailView; zone: { s
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <span className="flex -space-x-1.5">
             {authors.slice(0, 5).map((a) => (
-              <Avatar key={a.handle} name={a.displayName} src={a.avatarUrl} size="sm" tone="neutral" className="ring-2 ring-[rgb(var(--bg))]" />
+              <Avatar key={a.handle} name={a.displayName} src={a.avatarUrl} size="sm" className="ring-2 ring-[rgb(var(--bg))]" />
             ))}
           </span>
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">

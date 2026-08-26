@@ -38,6 +38,8 @@ const patchSchema = z
     visibility: z.enum(ZONE_VISIBILITIES).optional(),
     joinPolicy: z.enum(ZONE_JOIN_POLICIES).optional(),
     allowGuestComments: z.boolean().optional(),
+    // 栏目: members may create their own from the composer (版主 always can).
+    allowMemberColumns: z.boolean().optional(),
     links: z
       .array(z.unknown())
       .max(MAX_ZONE_LINKS)

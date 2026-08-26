@@ -7,7 +7,7 @@
 
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { FileText, Lock, Star, Users } from 'lucide-react';
+import { Building2, FileText, Lock, Star, Users } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { GlareHover, HairlineGrid, SpotlightCard } from '@/components/motion';
 import { withBasePath } from '@/lib/base-path';
@@ -90,13 +90,11 @@ export function ZoneCard({ zone, variant = 'grid' }: { zone: ZoneCardView; varia
         </p>
 
         {org.length > 0 && (
-          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-            {org.map((v) => (
-              <span key={v} className={`${PILL_MONO} max-w-[12rem] truncate normal-case tracking-normal`}>
-                {v}
-              </span>
-            ))}
-          </div>
+          <p className="mt-2.5 flex items-start gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+            <Building2 className="mt-[3px] h-3.5 w-3.5 shrink-0" />
+            {/* 研究所 · 部门 in full — the org path is the metadata people scan for (ask #3). */}
+            <span className="min-w-0 break-words">{org.join(' · ')}</span>
+          </p>
         )}
 
         <div className="mt-auto pt-4">
@@ -114,7 +112,7 @@ export function ZoneCard({ zone, variant = 'grid' }: { zone: ZoneCardView; varia
             <span className="flex -space-x-1.5">
               {zone.moderators.slice(0, 4).map((m) => (
                 <span key={m.handle} className="rounded-full ring-2 ring-white dark:ring-zinc-950" title={m.displayName}>
-                  <Avatar name={m.displayName} src={m.avatarUrl} size="xs" tone="neutral" />
+                  <Avatar name={m.displayName} src={m.avatarUrl} size="xs" />
                 </span>
               ))}
             </span>

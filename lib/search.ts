@@ -30,7 +30,7 @@ export interface SiteSearchResults {
   feedback: { id: string; title: string; author: string; date: Date }[];
   events: { id: string; title: string; author: string; date: Date }[];
   votes: { id: string; title: string; author: string; date: Date }[];
-  /** 技术专区: public zones (kind zone) + published posts of public zones (kind post), merged newest first. */
+  /** 技术专区: public zones (kind zone) + published, publicly-visible posts of public zones (kind post), merged newest first. */
   zones: { kind: 'zone' | 'post'; id: string; slug: string; title: string; author: string; date: Date; href: string }[];
 }
 
@@ -237,11 +237,16 @@ export async function searchSite(
         orderBy: { lastActivityAt: 'desc' },
         take: perType,
       }),
-      // 技术专区 帖子 — published, in a live public zone.
+      // 技术专区 帖子 — published, in a live public zone, and PUBLICLY visible.
+      // v2 gave posts their own visibility that NARROWS the zone's: 'members'
+      // needs zone membership and 'restricted' needs a ZonePostViewer grant, so
+      // neither is publicly listable. Site search has no viewer identity beyond
+      // `viewerCanSeeIdentity`, so it may only ever surface `visibility: 'zone'`.
       prisma.zonePost.findMany({
         where: {
           status: 'published',
           deletedAt: null,
+          visibility: 'zone',
           zone: { deletedAt: null, visibility: 'public' },
           OR: [{ title: contains }, { summary: contains }],
         },

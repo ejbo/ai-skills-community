@@ -5,9 +5,30 @@
 
 import type { PublicAuthor } from '@/lib/user-identity';
 import type { ZoneAccess, ZonePermissionKey } from './permissions';
-import type { EmbedKind, MdHeading, ZoneLink, ZonePostTypeValue } from './shared';
+import type {
+  EmbedKind,
+  MdHeading,
+  OrgLabNode,
+  ZoneLink,
+  ZonePostTypeValue,
+  ZonePostVisibilityValue,
+} from './shared';
 
 export type { ZoneAccess, ZonePermissionKey } from './permissions';
+export type { OrgLabNode, OrgDeptNode, ZonePostVisibilityValue } from './shared';
+
+/** 栏目 — zone-scoped taxonomy. `official` = curated by 版主. */
+export interface ZoneColumnView {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  official: boolean;
+  sortOrder: number;
+  postCount: number;
+  /** Display name of the member who created a non-official column (null for official). */
+  createdBy: string | null;
+}
 
 export type ZoneVisibilityView = 'public' | 'members';
 export type ZoneJoinPolicyView = 'open' | 'approval' | 'invite';
@@ -58,6 +79,10 @@ export interface ZoneDetailView extends ZoneCardView {
   /** Pending join requests — only filled for viewers with `members`; 0 otherwise. */
   pendingCount: number;
   roles: ZoneRoleView[];
+  /** 栏目 in display order (official first, then member-created by postCount). */
+  columns: ZoneColumnView[];
+  /** Members may create their own 栏目 from the composer. */
+  allowMemberColumns: boolean;
   /** Pre-decided viewer policy (lib/zones/permissions.ts). */
   access: ZoneAccess;
 }
@@ -110,6 +135,11 @@ export interface ZonePostCardView {
   coverUrl: string | null;
   linkUrl: string | null;
   tags: string[];
+  /** 栏目 (null ⇒ 未归栏). */
+  column: { id: string; slug: string; name: string; official: boolean } | null;
+  visibility: ZonePostVisibilityValue;
+  /** `restricted` post the viewer has NOT unlocked yet: render a locked stub, no body. */
+  accessLocked: boolean;
   status: 'draft' | 'published';
   publishedAt: string | null;
   createdAt: string;
@@ -134,6 +164,10 @@ export interface ZonePostCardView {
 
 export interface ZonePostDetailView extends ZonePostCardView {
   bodyMd: string;
+  /** Designated viewers of a `restricted` post — author/moderator only, else []. */
+  designatedViewers: PublicAuthor[];
+  /** The share code — ONLY ever sent to the author/co-authors/moderators. */
+  accessCode: string | null;
   attachments: ZoneAttachmentView[];
   headings: MdHeading[];
   /** Resolved `[embed:…]` tokens keyed by `embedKey(kind, ref)`. */
@@ -349,4 +383,20 @@ export interface ZoneCurrentUser {
   handle: string;
   displayName: string;
   avatarUrl: string | null;
+}
+
+// ── Hub feed (cross-zone) ────────────────────────────────────────────────────
+
+/** One page of the 技术专区 landing feed. */
+export interface ZoneFeedResult {
+  items: ZonePostCardView[];
+  hasMore: boolean;
+  nextCursor: string | null;
+  total: number;
+}
+
+/** 研究所 → 部门 filter tree + the 栏目 facet for the hub sidebar. */
+export interface ZoneHubFacets {
+  org: OrgLabNode[];
+  columns: { name: string; postCount: number }[];
 }

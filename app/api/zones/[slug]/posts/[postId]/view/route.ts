@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { apiReason } from '@/lib/api-errors';
 import { zoneContext } from '@/lib/zones/access';
-import { recordZonePostView } from '@/lib/zones/post-queries';
+import { ZONE_POST_ACCESS_SELECT, canSeeZonePost, recordZonePostView } from '@/lib/zones/post-queries';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,9 +22,14 @@ export async function POST(_req: Request, { params }: { params: { slug: string; 
 
   const post = await prisma.zonePost.findUnique({
     where: { id: params.postId },
-    select: { id: true, zoneId: true, status: true, deletedAt: true },
+    select: { ...ZONE_POST_ACCESS_SELECT, zoneId: true },
   });
   if (!post || post.zoneId !== ctx.zone.id || post.deletedAt || post.status !== 'published') {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
+  // The zone gate above is not enough: post visibility narrows within the zone,
+  // so a 仅成员可见 / 未解锁的指定成员可见 post is 404 here too.
+  if (!(await canSeeZonePost(post, ctx.access, ctx.viewer))) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 

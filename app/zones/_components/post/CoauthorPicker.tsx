@@ -82,7 +82,7 @@ export function CoauthorPicker({
       <div className="flex flex-wrap items-center gap-1.5">
         {value.map((c) => (
           <span key={c.userId} className="inline-flex items-center gap-1.5 rounded-full border border-zinc-300 py-0.5 pl-0.5 pr-2 text-xs dark:border-zinc-700">
-            <Avatar name={c.user.displayName} src={c.user.avatarUrl} size="xs" tone="neutral" />
+            <Avatar name={c.user.displayName} src={c.user.avatarUrl} size="xs" />
             <span>{c.user.displayName}</span>
             <DeptTag department={c.user.department} lab={c.user.lab} />
             {!disabled && (
@@ -138,7 +138,7 @@ export function CoauthorPicker({
                   }}
                   className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
                 >
-                  <Avatar name={m.user.displayName} src={m.user.avatarUrl} size="sm" tone="neutral" />
+                  <Avatar name={m.user.displayName} src={m.user.avatarUrl} size="sm" />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
                       <span className="truncate font-medium">{m.user.displayName}</span>

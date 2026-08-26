@@ -42,13 +42,28 @@ export async function ZoneSidebar({
           {t('sidebar_about_more')}
           <ArrowRight className="h-3 w-3 transition-transform duration-200 group-hover:translate-x-0.5" />
         </Link>
+        {/* 研究所 / 部门 first: ask #3 wants the org visible on the zone page, in
+            full — the grid's `minmax(0,1fr)` value column wraps, never truncates.
+            Labels reuse the wizard's field keys (they name these very fields). */}
         <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-t border-zinc-200 pt-3 text-xs dark:border-zinc-800">
+          {zone.lab && (
+            <>
+              <dt className="text-zinc-400">{t('create_lab')}</dt>
+              <dd className="min-w-0 break-words text-zinc-700 dark:text-zinc-300">{zone.lab}</dd>
+            </>
+          )}
+          {zone.department && (
+            <>
+              <dt className="text-zinc-400">{t('create_department')}</dt>
+              <dd className="min-w-0 break-words text-zinc-700 dark:text-zinc-300">{zone.department}</dd>
+            </>
+          )}
           <dt className="text-zinc-400">{t('sidebar_created')}</dt>
           <dd className="tabular-nums text-zinc-600 dark:text-zinc-400">{created}</dd>
           <dt className="text-zinc-400">{tl('zoneRole.owner')}</dt>
           <dd className="min-w-0">
             <Link href={`/users/${zone.owner.handle}`} className="inline-flex min-w-0 items-center gap-1.5 hover:underline">
-              <Avatar name={zone.owner.displayName} src={zone.owner.avatarUrl} size="xs" tone="neutral" />
+              <Avatar name={zone.owner.displayName} src={zone.owner.avatarUrl} size="xs" />
               <span className="truncate">{zone.owner.displayName}</span>
             </Link>
           </dd>
@@ -70,7 +85,7 @@ export async function ZoneSidebar({
           <Link href={`${base}/members`} className="mt-3 flex -space-x-2" aria-label={t('sidebar_members')}>
             {members.slice(0, 8).map((m) => (
               <span key={m.id} className="rounded-full ring-2 ring-white dark:ring-zinc-950" title={m.user.displayName}>
-                <Avatar name={m.user.displayName} src={m.user.avatarUrl} size="md" tone="neutral" />
+                <Avatar name={m.user.displayName} src={m.user.avatarUrl} size="md" />
               </span>
             ))}
             {zone.memberCount > 8 && (
@@ -84,7 +99,7 @@ export async function ZoneSidebar({
           <ul className="mt-3 space-y-2 border-t border-zinc-200 pt-3 dark:border-zinc-800">
             {leads.map((m) => (
               <li key={m.id} className="flex items-center gap-2 text-sm">
-                <Avatar name={m.user.displayName} src={m.user.avatarUrl} size="sm" tone="neutral" />
+                <Avatar name={m.user.displayName} src={m.user.avatarUrl} size="sm" />
                 <div className="min-w-0 flex-1">
                   <Link href={`/users/${m.user.handle}`} className="block truncate font-medium hover:underline">
                     {m.user.displayName}

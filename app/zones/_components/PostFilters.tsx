@@ -1,7 +1,8 @@
 'use client';
 
-// 技术专区 — post list controls on the zone home: type chips, sort, in-zone
-// search, active tag chip and the 发布 CTA (primary, Magnetic) when canPost.
+// 技术专区 — post list controls on the zone home: type chips, the 栏目 row
+// (ask #2, `?column=<slug>`), sort, in-zone search, active tag chip and the
+// 发布 CTA (primary, Magnetic) when canPost.
 
 import { useEffect, useState, useTransition } from 'react';
 import Link from 'next/link';
@@ -10,9 +11,19 @@ import { useTranslations } from 'next-intl';
 import { PenLine, Search, X } from 'lucide-react';
 import { Magnetic } from '@/components/motion';
 import { ZONE_POST_SORTS, ZONE_POST_TYPES, isZonePostType, parseZonePostSort, zoneHref } from '@/lib/zones/shared';
+import type { ZoneColumnView } from '@/lib/zones/types';
 import { BTN_PRIMARY, INPUT_CLS, chipCls } from './ui';
 
-export function PostFilters({ slug, canPost }: { slug: string; canPost: boolean }) {
+export function PostFilters({
+  slug,
+  canPost,
+  columns = [],
+}: {
+  slug: string;
+  canPost: boolean;
+  /** The zone's 栏目 (official first) — the row is hidden when there are none. */
+  columns?: ZoneColumnView[];
+}) {
   const t = useTranslations('zones');
   const tl = useTranslations('labels');
   const sp = useSearchParams();
@@ -26,6 +37,7 @@ export function PostFilters({ slug, canPost }: { slug: string; canPost: boolean 
   const type = isZonePostType(typeRaw) ? typeRaw : null;
   const sort = parseZonePostSort(sp.get('sort'));
   const tag = sp.get('tag') ?? '';
+  const columnSlug = sp.get('column') ?? '';
 
   function update(patch: Record<string, string | null>) {
     const next = new URLSearchParams(sp.toString());
@@ -66,6 +78,31 @@ export function PostFilters({ slug, canPost }: { slug: string; canPost: boolean 
           </Magnetic>
         )}
       </div>
+      {columns.length > 0 && (
+        <div
+          role="group"
+          aria-label={t('filters_column_label')}
+          className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          <button type="button" onClick={() => update({ column: null })} className={chipCls(!columnSlug)} aria-pressed={!columnSlug}>
+            {t('filters_column_all')}
+          </button>
+          {columns.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => update({ column: columnSlug === c.slug ? null : c.slug })}
+              className={`${chipCls(columnSlug === c.slug)} inline-flex max-w-[14rem] items-center gap-1.5`}
+              aria-pressed={columnSlug === c.slug}
+              title={c.description || c.name}
+            >
+              <span className="truncate">{c.name}</span>
+              <span className="font-mono text-[10px] tabular-nums opacity-70">{c.postCount}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
         <form
           onSubmit={(e) => {

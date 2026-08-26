@@ -141,7 +141,7 @@ export function CommentBlock({
     <div ref={ref} id={`zc-${comment.id}`} className={`rounded-xl transition-shadow ${flash ? 'ring-2 ring-zinc-900/40 dark:ring-zinc-100/40' : ''}`}>
       <div className="flex items-start gap-2.5">
         <Link href={`/users/${comment.author.handle}`} className="mt-0.5 shrink-0">
-          <Avatar name={comment.author.displayName} src={comment.author.avatarUrl} size={isRoot ? 'sm' : 'xs'} tone="neutral" />
+          <Avatar name={comment.author.displayName} src={comment.author.avatarUrl} size={isRoot ? 'sm' : 'xs'} />
         </Link>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2 text-xs">

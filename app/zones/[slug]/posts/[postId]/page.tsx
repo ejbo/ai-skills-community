@@ -67,11 +67,13 @@ export default async function ZonePostPage({
   const { session, viewer, zone, access, post } = data;
 
   // One view per viewer per UTC day (recordZonePostView day-buckets the key).
-  if (post.status === 'published' && session?.user) {
+  // A locked `restricted` post is NOT a read: neither the view nor the related
+  // band (which would query the zone on this viewer's behalf) may run for it.
+  if (post.status === 'published' && session?.user && !post.accessLocked) {
     await recordZonePostView(post.id, session.user.id);
   }
 
-  const related = post.status === 'published' ? await loadRelated(zone, access, viewer, post) : [];
+  const related = post.status === 'published' && !post.accessLocked ? await loadRelated(zone, access, viewer, post) : [];
   const currentUser: ZoneCurrentUser | null = session?.user
     ? { id: session.user.id, handle: session.user.handle, displayName: session.user.displayName, avatarUrl: session.user.avatarUrl ?? null }
     : null;

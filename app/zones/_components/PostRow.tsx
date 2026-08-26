@@ -8,7 +8,7 @@
 
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Clock, Eye, Heart, Lock, MessageCircle, Paperclip, Pin } from 'lucide-react';
+import { Clock, Eye, FolderOpen, Heart, Lock, MessageCircle, Paperclip, Pin } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { GlareHover } from '@/components/motion';
@@ -16,7 +16,12 @@ import { withBasePath } from '@/lib/base-path';
 import { relativeTime } from '@/lib/i18n-date';
 import { zoneHref, zonePostHref, type ZonePostTypeValue } from '@/lib/zones/shared';
 import type { ZonePostCardView } from '@/lib/zones/types';
+import { VISIBILITY_ICONS } from './post/VisibilityPicker';
 import { PILL_INK, PILL_MONO } from './ui';
+
+/** 栏目 chip — human text, so NOT the uppercase mono pill the taxonomy chips use. */
+const PILL_COLUMN =
+  'inline-flex max-w-[12rem] shrink-0 items-center gap-1 rounded-full border border-zinc-300 px-2 py-0.5 text-[11px] font-medium text-zinc-600 transition dark:border-zinc-700 dark:text-zinc-400';
 
 export function PostTypePill({ type, className = '' }: { type: ZonePostTypeValue; className?: string }) {
   const tl = useTranslations('labels');
@@ -42,7 +47,9 @@ export function PostRow({
   showZone?: boolean;
 }) {
   const t = useTranslations('zones');
+  const tl = useTranslations('labels');
   const locale = useLocale();
+  const VisibilityIcon = VISIBILITY_ICONS[post.visibility];
   const href =
     post.status === 'draft' ? `${zonePostHref(post.zone.slug, post.id)}/edit` : zonePostHref(post.zone.slug, post.id);
   const authors = [post.author, ...post.coauthors];
@@ -60,6 +67,22 @@ export function PostRow({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
           <PostTypePill type={post.type} />
+          {post.column && (
+            <Link
+              href={`${zoneHref(post.zone.slug)}?column=${encodeURIComponent(post.column.slug)}`}
+              aria-label={t('post_column_aria', { name: post.column.name })}
+              className={`${PILL_COLUMN} relative z-[1] hover:border-zinc-500 hover:text-zinc-900 dark:hover:border-zinc-500 dark:hover:text-zinc-100`}
+            >
+              <FolderOpen className="h-3 w-3 shrink-0" aria-hidden />
+              <span className="truncate">{post.column.name}</span>
+            </Link>
+          )}
+          {post.visibility !== 'zone' && (
+            <span className={PILL_MONO} title={tl(`zonePostVisibility.${post.visibility}`)}>
+              <VisibilityIcon className="h-3 w-3" aria-hidden />
+              {tl(`zonePostVisibility.${post.visibility}`)}
+            </span>
+          )}
           {post.pinned && (
             <span className={PILL_INK}>
               <Pin className="h-3 w-3" />
@@ -106,7 +129,7 @@ export function PostRow({
             <span className="flex -space-x-1.5">
               {shownAuthors.map((a) => (
                 <span key={a.handle} className="rounded-full ring-2 ring-white dark:ring-zinc-950">
-                  <Avatar name={a.displayName} src={a.avatarUrl} size="xs" tone="neutral" />
+                  <Avatar name={a.displayName} src={a.avatarUrl} size="xs" />
                 </span>
               ))}
             </span>

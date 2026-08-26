@@ -1,12 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ACCESS_CODE_ALPHABET,
+  ACCESS_CODE_LENGTH,
   EMBED_TOKEN_GLOBAL_RE,
   EMBED_TOKEN_RE,
   MAX_EMBEDS_PER_CONTENT,
+  MAX_ZONE_COLUMNS,
   MAX_ZONE_LINKS,
   MAX_ZONE_POST_TAGS,
   RESERVED_ZONE_SLUGS,
+  ZONE_LIMITS,
+  ZONE_POST_VISIBILITIES,
   collectEmbedRefs,
+  columnDedupeKey,
+  columnSlugFrom,
   decodeOffsetCursor,
   decodeTimeCursor,
   embedKey,
@@ -16,12 +23,20 @@ import {
   excerptOf,
   extractHeadings,
   headingSlug,
+  isValidAccessCode,
+  isValidColumnSlug,
   isValidWikiSlug,
+  isZonePostVisibility,
   isValidZoneSlug,
+  normalizeAccessCode,
+  normalizeColumnName,
   normalizeHttpUrl,
   normalizeTags,
   parseEmbedToken,
+  parseMultiParam,
+  parseZoneFeedSort,
   parseZoneLinks,
+  serializeMultiParam,
   slugifyAscii,
   splitEmbedSegments,
   zoneHref,
@@ -282,5 +297,102 @@ describe('hrefs', () => {
     expect(zonePostHref('llm', 'p1')).toBe('/zones/llm/posts/p1');
     expect(zoneWikiHref('llm')).toBe('/zones/llm/wiki');
     expect(zoneWikiHref('llm', 'faq')).toBe('/zones/llm/wiki/faq');
+  });
+});
+
+describe('栏目 (columns)', () => {
+  it('column slugs allow single chars and reject the edges', () => {
+    expect(isValidColumnSlug('a')).toBe(true);
+    expect(isValidColumnSlug('llm-infra')).toBe(true);
+    expect(isValidColumnSlug('a'.repeat(40))).toBe(true);
+    expect(isValidColumnSlug('a'.repeat(41))).toBe(false);
+    expect(isValidColumnSlug('-a')).toBe(false);
+    expect(isValidColumnSlug('a-')).toBe(false);
+    expect(isValidColumnSlug('Infra')).toBe(false);
+    expect(isValidColumnSlug('大模型')).toBe(false);
+    expect(isValidColumnSlug('')).toBe(false);
+  });
+
+  it('columnSlugFrom folds a latin name and gives up on a CJK-only one', () => {
+    expect(columnSlugFrom('Weekly Report')).toBe('weekly-report');
+    expect(columnSlugFrom('  Infra & Ops  ')).toBe('infra-ops');
+    // '' is the signal for the caller to fall back to `col-<nanoid>`.
+    expect(columnSlugFrom('每周简报')).toBe('');
+  });
+
+  it('normalizeColumnName collapses whitespace and caps at the shared limit', () => {
+    expect(normalizeColumnName('  大模型   推理  ')).toBe('大模型 推理');
+    expect(normalizeColumnName('a'.repeat(60))).toHaveLength(ZONE_LIMITS.columnNameMax);
+  });
+
+  it('columnDedupeKey ignores case and spacing so near-twins never both exist', () => {
+    expect(columnDedupeKey('大模型 推理')).toBe(columnDedupeKey('大模型推理'));
+    expect(columnDedupeKey('LLM Infra')).toBe(columnDedupeKey('  llm   infra '));
+    expect(columnDedupeKey('推理')).not.toBe(columnDedupeKey('训练'));
+  });
+
+  it('caps how many 栏目 a zone may hold', () => {
+    expect(MAX_ZONE_COLUMNS).toBeGreaterThan(0);
+  });
+});
+
+describe('帖子可见性 + 访问密码', () => {
+  it('knows the three visibility values and nothing else', () => {
+    expect([...ZONE_POST_VISIBILITIES]).toEqual(['zone', 'members', 'restricted']);
+    for (const v of ZONE_POST_VISIBILITIES) expect(isZonePostVisibility(v)).toBe(true);
+    expect(isZonePostVisibility('public')).toBe(false);
+    expect(isZonePostVisibility(null)).toBe(false);
+  });
+
+  it('normalizeAccessCode uppercases and drops separators', () => {
+    expect(normalizeAccessCode(' abc-234 ')).toBe('ABC234');
+    expect(normalizeAccessCode('a b c 2 3 4')).toBe('ABC234');
+    expect(normalizeAccessCode('')).toBe('');
+  });
+
+  it('validates a normalized code and rejects look-alike / wrong-length input', () => {
+    expect(isValidAccessCode('abc-234')).toBe(true);
+    expect(isValidAccessCode('ABC234')).toBe(true);
+    expect(isValidAccessCode('ABC23')).toBe(false);
+    expect(isValidAccessCode('ABC2345')).toBe(false);
+    // 0/1/O/I are not in the alphabet — a mistyped code fails fast.
+    expect(isValidAccessCode('ABC201')).toBe(false);
+    expect(isValidAccessCode('中文密码')).toBe(false);
+  });
+
+  it('every code the alphabet can produce passes isValidAccessCode', () => {
+    expect(ACCESS_CODE_ALPHABET).not.toMatch(/[01OIL]/);
+    for (let i = 0; i < ACCESS_CODE_ALPHABET.length; i++) {
+      const code = Array.from({ length: ACCESS_CODE_LENGTH }, (_, k) => ACCESS_CODE_ALPHABET[(i + k) % ACCESS_CODE_ALPHABET.length]).join('');
+      expect(isValidAccessCode(code)).toBe(true);
+    }
+  });
+});
+
+describe('hub filters', () => {
+  it('parseMultiParam trims, dedupes, drops empties and caps', () => {
+    expect(parseMultiParam('a,b,,a, c ')).toEqual(['a', 'b', 'c']);
+    expect(parseMultiParam('')).toEqual([]);
+    expect(parseMultiParam(null)).toEqual([]);
+    expect(parseMultiParam(undefined)).toEqual([]);
+    expect(parseMultiParam('中国研究所,加拿大研究所')).toEqual(['中国研究所', '加拿大研究所']);
+    expect(parseMultiParam(Array.from({ length: 30 }, (_, i) => `v${i}`).join(','))).toHaveLength(20);
+    expect(parseMultiParam('a,b,c', 2)).toEqual(['a', 'b']);
+  });
+
+  it('serializeMultiParam round-trips through parseMultiParam', () => {
+    const values = ['多模态研究所', '推理系统部'];
+    expect(serializeMultiParam(values)).toBe('多模态研究所,推理系统部');
+    expect(parseMultiParam(serializeMultiParam(values))).toEqual(values);
+    expect(serializeMultiParam(['a', '', 'b'])).toBe('a,b');
+    expect(serializeMultiParam([])).toBe('');
+  });
+
+  it('parseZoneFeedSort only ever answers new | hot', () => {
+    expect(parseZoneFeedSort('hot')).toBe('hot');
+    expect(parseZoneFeedSort('new')).toBe('new');
+    expect(parseZoneFeedSort('active')).toBe('new');
+    expect(parseZoneFeedSort(null)).toBe('new');
+    expect(parseZoneFeedSort(undefined)).toBe('new');
   });
 });

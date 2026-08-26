@@ -17,6 +17,8 @@ import { prisma } from '@/lib/db';
 import { distinctDirectoryValues } from '@/lib/employee-directory';
 import { AUTHOR_IDENTITY_FIELDS, AUTHOR_IDENTITY_SELECT, toPublicAuthor, type PublicAuthor } from '@/lib/user-identity';
 import { resolveZoneAccess, type ZoneAccessRow, type ZoneSiteViewer } from './access';
+import { listZoneColumns } from './columns';
+import { ZoneError } from './errors';
 import {
   ZONE_MEMBER_ROLE_KEY,
   ZONE_MODERATOR_ROLE_KEY,
@@ -32,6 +34,7 @@ import {
   ZONE_VISIBILITIES,
   isValidZoneSlug,
   parseZoneLinks,
+  type OrgLabNode,
   type ZoneLink,
   type ZoneSort,
 } from './shared';
@@ -49,16 +52,10 @@ const SYSTEM_ROLE_KEYS: ReadonlySet<string> = new Set([...ZONE_SYSTEM_ROLES.map(
 
 // ─── Errors ─────────────────────────────────────────────────────────────────
 
-export class ZoneError extends Error {
-  constructor(
-    public readonly code: string,
-    public readonly status = 400,
-    message?: string,
-  ) {
-    super(message ?? code);
-    this.name = 'ZoneError';
-  }
-}
+// The class itself lives in ./errors so post-queries.ts and columns.ts can
+// throw it without an import cycle; this re-export keeps every existing
+// `import { ZoneError } from '@/lib/zones/queries'` working.
+export { ZoneError } from './errors';
 
 function isUniqueViolation(e: unknown): boolean {
   return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
@@ -121,6 +118,7 @@ const ZONE_DETAIL_SELECT = {
   descriptionMd: true,
   links: true,
   allowGuestComments: true,
+  allowMemberColumns: true,
   deletedAt: true,
 } satisfies Prisma.ZoneSelect;
 
@@ -293,6 +291,25 @@ async function requireZone(zoneId: string, db: Db = prisma) {
   return zone;
 }
 
+/**
+ * Zones whose CONTENT the viewer may read (mirrors buildZoneAccess#canRead in
+ * SQL). Defined here — not in post-queries — so queries.ts stays free of an
+ * import back from the post layer; post-queries re-exports it for embeds.ts.
+ */
+export function readableZoneWhere(viewer: ZoneSiteViewer): Prisma.ZoneWhereInput {
+  if (viewer.siteAdmin) return { deletedAt: null };
+  // /zones is login-walled; an anonymous viewer reads nothing (buildZoneAccess agrees).
+  if (!viewer.id) return { id: { in: [] } };
+  return {
+    deletedAt: null,
+    OR: [
+      { visibility: 'public' },
+      { ownerId: viewer.id },
+      { members: { some: { userId: viewer.id, status: 'active' } } },
+    ],
+  };
+}
+
 // ─── Hub / lists ────────────────────────────────────────────────────────────
 
 export interface ListZonesFilters {
@@ -398,8 +415,9 @@ export async function getZoneDetail(slug: string, viewer: ZoneSiteViewer): Promi
     deletedAt: row.deletedAt,
   };
   const access = await resolveZoneAccess(accessRow, viewer);
-  const [roles, wikiCount, pendingCount] = await Promise.all([
+  const [roles, columns, wikiCount, pendingCount] = await Promise.all([
     listZoneRoles(row.id),
+    listZoneColumns(row.id),
     prisma.zoneWikiPage.count({ where: { zoneId: row.id, deletedAt: null } }),
     access.canManageMembers ? prisma.zoneMember.count({ where: { zoneId: row.id, status: 'pending' } }) : Promise.resolve(0),
   ]);
@@ -413,6 +431,8 @@ export async function getZoneDetail(slug: string, viewer: ZoneSiteViewer): Promi
     wikiCount,
     pendingCount,
     roles,
+    columns,
+    allowMemberColumns: row.allowMemberColumns,
     access,
   };
 }
@@ -441,6 +461,44 @@ export async function zoneFacets(): Promise<{ labs: string[]; departments: strin
   };
 }
 
+/**
+ * 研究所 → 部门 tree over the zones this viewer may read (ask #8 / the hub
+ * filter rail). One groupBy: a zone carries exactly one (lab, department) pair,
+ * so a lab's count is the sum of its departments' counts plus the rows that
+ * name no 部门. Empty strings are dropped; both levels sort by count desc, then
+ * name.
+ */
+export async function zoneOrgTree(viewer: ZoneSiteViewer): Promise<OrgLabNode[]> {
+  const rows = await prisma.zone.groupBy({
+    by: ['lab', 'department'],
+    where: readableZoneWhere(viewer),
+    _count: { _all: true },
+  });
+
+  const labs = new Map<string, { zoneCount: number; departments: Map<string, number> }>();
+  for (const r of rows) {
+    const lab = (r.lab ?? '').trim();
+    if (!lab) continue;
+    const n = r._count._all;
+    const entry = labs.get(lab) ?? { zoneCount: 0, departments: new Map<string, number>() };
+    entry.zoneCount += n;
+    const department = (r.department ?? '').trim();
+    if (department) entry.departments.set(department, (entry.departments.get(department) ?? 0) + n);
+    labs.set(lab, entry);
+  }
+
+  const collate = (a: string, b: string) => a.localeCompare(b, 'zh-CN');
+  return [...labs.entries()]
+    .map(([lab, entry]) => ({
+      lab,
+      zoneCount: entry.zoneCount,
+      departments: [...entry.departments.entries()]
+        .map(([department, zoneCount]) => ({ department, zoneCount }))
+        .sort((a, b) => b.zoneCount - a.zoneCount || collate(a.department, b.department)),
+    }))
+    .sort((a, b) => b.zoneCount - a.zoneCount || collate(a.lab, b.lab));
+}
+
 // ─── Zone CRUD ──────────────────────────────────────────────────────────────
 
 export interface ZoneInput {
@@ -453,6 +511,8 @@ export interface ZoneInput {
   visibility: 'public' | 'members';
   joinPolicy: 'open' | 'approval' | 'invite';
   allowGuestComments: boolean;
+  /** Members may create their own 栏目 from the composer (版主 always can). */
+  allowMemberColumns: boolean;
   links: ZoneLink[];
 }
 
@@ -471,6 +531,7 @@ export const zoneInputSchema = z.object({
   visibility: z.enum(ZONE_VISIBILITIES).default('public'),
   joinPolicy: z.enum(ZONE_JOIN_POLICIES).default('approval'),
   allowGuestComments: z.boolean().default(true),
+  allowMemberColumns: z.boolean().default(true),
   links: z.unknown().transform((v) => parseZoneLinks(v)).default([]),
 });
 
@@ -508,6 +569,7 @@ export async function createZone(input: ZoneInput, ownerId: string): Promise<{ i
           visibility: input.visibility,
           joinPolicy: input.joinPolicy,
           allowGuestComments: input.allowGuestComments,
+          allowMemberColumns: input.allowMemberColumns,
           links: linksJson(input.links),
           ownerId,
           memberCount: 1,
@@ -571,6 +633,7 @@ export async function updateZone(
   if (patch.visibility !== undefined) data.visibility = patch.visibility;
   if (patch.joinPolicy !== undefined) data.joinPolicy = patch.joinPolicy;
   if (patch.allowGuestComments !== undefined) data.allowGuestComments = patch.allowGuestComments;
+  if (patch.allowMemberColumns !== undefined) data.allowMemberColumns = patch.allowMemberColumns;
   if (patch.links !== undefined) data.links = linksJson(patch.links);
 
   const staleKeys: string[] = [];

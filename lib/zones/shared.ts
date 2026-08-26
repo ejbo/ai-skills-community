@@ -59,6 +59,12 @@ export function parseZonePostSort(v: unknown): ZonePostSort {
   return v === 'hot' ? 'hot' : 'new';
 }
 
+export const ZONE_FEED_SORTS = ['new', 'hot'] as const;
+export type ZoneFeedSort = (typeof ZONE_FEED_SORTS)[number];
+export function parseZoneFeedSort(v: unknown): ZoneFeedSort {
+  return v === 'hot' ? 'hot' : 'new';
+}
+
 export const ZONE_SORTS = ['active', 'new', 'members'] as const;
 export type ZoneSort = (typeof ZONE_SORTS)[number];
 export function parseZoneSort(v: unknown): ZoneSort {
@@ -129,6 +135,94 @@ export function normalizeTags(input: unknown): string[] {
     if (out.length >= MAX_ZONE_POST_TAGS) break;
   }
   return out;
+}
+
+// ── 栏目 (ZoneColumn) ────────────────────────────────────────────────────────
+//
+// Zone-scoped content taxonomy, ORTHOGONAL to ZonePostType (which is the content
+// FORMAT: 文章/研究报告/论文/…). 版主 curates `official` columns in 版块设置 → 栏目;
+// members may create their own from the composer when `allowMemberColumns`.
+
+export const COLUMN_SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
+export const MAX_ZONE_COLUMNS = 60;
+
+export function isValidColumnSlug(slug: string): boolean {
+  return COLUMN_SLUG_RE.test(slug);
+}
+
+/** Column slug from a (possibly CJK) name; '' when nothing ascii survives — caller falls back. */
+export function columnSlugFrom(name: string): string {
+  return slugifyAscii(name, 40);
+}
+
+/** Display-normalized column name (collapse whitespace, cap length). */
+export function normalizeColumnName(raw: string): string {
+  return raw.trim().replace(/\s+/g, ' ').slice(0, ZONE_LIMITS.columnNameMax);
+}
+
+/** Case/space-insensitive key so "大模型 推理" and "大模型推理" don't both exist. */
+export function columnDedupeKey(name: string): string {
+  return normalizeColumnName(name).toLowerCase().replace(/\s+/g, '');
+}
+
+// ── 帖子可见性 ───────────────────────────────────────────────────────────────
+//
+// NARROWS within the zone, never widens it: a post in a `members` zone is never
+// visible to non-members whatever this says.
+
+export const ZONE_POST_VISIBILITIES = ['zone', 'members', 'restricted'] as const;
+export type ZonePostVisibilityValue = (typeof ZONE_POST_VISIBILITIES)[number];
+export function isZonePostVisibility(v: unknown): v is ZonePostVisibilityValue {
+  return typeof v === 'string' && (ZONE_POST_VISIBILITIES as readonly string[]).includes(v);
+}
+
+/** Share code for `restricted` posts: 6 chars, no look-alikes (0/O/1/I/l). */
+export const ACCESS_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export const ACCESS_CODE_LENGTH = 6;
+export const ACCESS_CODE_RE = /^[A-HJ-NP-Z2-9]{6}$/;
+
+/** Uppercase + strip separators so "abc-123" and "ABC123" are the same code. */
+export function normalizeAccessCode(raw: string): string {
+  return raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+export function isValidAccessCode(raw: string): boolean {
+  return ACCESS_CODE_RE.test(normalizeAccessCode(raw));
+}
+
+// ── 组织筛选 (研究所 → 部门) ─────────────────────────────────────────────────
+//
+// The hub filters zones/posts by 研究所 (top level) → 部门 (its children), both
+// MULTI-select. Values are the free-text Zone.lab / Zone.department strings, so
+// the tree is derived from live rows (lib/zones/queries.ts#zoneOrgTree).
+
+export interface OrgDeptNode {
+  department: string;
+  zoneCount: number;
+}
+export interface OrgLabNode {
+  lab: string;
+  zoneCount: number;
+  departments: OrgDeptNode[];
+}
+
+/** searchParams `?lab=a,b` → clean list (deduped, capped, empties dropped). */
+export function parseMultiParam(raw: string | null | undefined, max = 20): string[] {
+  if (!raw) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(',')) {
+    const v = part.trim();
+    if (!v || seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+export function serializeMultiParam(values: readonly string[]): string {
+  return values.filter(Boolean).join(',');
 }
 
 // ── Attachments ──────────────────────────────────────────────────────────────
@@ -436,4 +530,6 @@ export const ZONE_LIMITS = {
   maxCoauthors: 12,
   maxPinnedPosts: 5,
   maxCustomRoles: 12,
+  columnNameMax: 24,
+  columnDescriptionMax: 120,
 } as const;

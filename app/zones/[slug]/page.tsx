@@ -31,6 +31,7 @@ interface SearchParams {
   tag?: string | string[];
   q?: string | string[];
   sort?: string | string[];
+  column?: string | string[];
 }
 
 function firstParam(v: string | string[] | undefined): string {
@@ -68,6 +69,7 @@ export default async function ZoneHomePage({
   const type = isZonePostType(typeRaw) ? typeRaw : undefined;
   const tag = firstParam(searchParams.tag) || undefined;
   const q = firstParam(searchParams.q) || undefined;
+  const column = firstParam(searchParams.column) || undefined;
   const sort = parseZonePostSort(firstParam(searchParams.sort));
   const locked = !access.canRead;
 
@@ -81,7 +83,7 @@ export default async function ZoneHomePage({
   if (!locked) {
     [posts, drafts, members] = await Promise.all([
       tab === 'posts'
-        ? listZonePosts({ zone: row, access, viewer, type, tag, q, sort, limit: 20 })
+        ? listZonePosts({ zone: row, access, viewer, type, tag, q, column, sort, limit: 20 })
         : Promise.resolve(posts),
       // Gated on READ inside listMyDrafts, NOT on `post`: an author who lost the
       // permission must still see and clean up their own drafts (the API agrees).
@@ -94,7 +96,7 @@ export default async function ZoneHomePage({
 
   const leads = members.filter((m) => m.isOwner || m.roleKey === ZONE_MODERATOR_ROLE_KEY);
   const created = new Intl.DateTimeFormat(locale, { dateStyle: 'long' }).format(new Date(zone.createdAt));
-  const streamKey = `${type ?? ''}|${tag ?? ''}|${q ?? ''}|${sort}`;
+  const streamKey = `${type ?? ''}|${tag ?? ''}|${q ?? ''}|${column ?? ''}|${sort}`;
 
   return (
     <div className="container max-w-6xl py-6">
@@ -127,7 +129,7 @@ export default async function ZoneHomePage({
           <div className="min-w-0">
             {tab === 'posts' ? (
               <>
-                <PostFilters slug={zone.slug} canPost={access.canPost} />
+                <PostFilters slug={zone.slug} canPost={access.canPost} columns={zone.columns} />
                 <div className="mt-4">
                   <PostList
                     key={streamKey}
@@ -135,10 +137,10 @@ export default async function ZoneHomePage({
                     initialItems={posts.items}
                     initialHasMore={posts.hasMore}
                     initialCursor={posts.nextCursor}
-                    query={{ type: type ?? null, tag: tag ?? null, q: q ?? null, sort }}
-                    emptyTitle={q || type || tag ? t('post_list_empty_filtered_title') : undefined}
+                    query={{ type: type ?? null, tag: tag ?? null, column: column ?? null, q: q ?? null, sort }}
+                    emptyTitle={q || type || tag || column ? t('post_list_empty_filtered_title') : undefined}
                     emptyDescription={
-                      q || type || tag
+                      q || type || tag || column
                         ? t('post_list_empty_filtered_desc')
                         : access.canPost
                           ? t('post_list_empty_can_post_desc')
@@ -186,7 +188,7 @@ export default async function ZoneHomePage({
                     <ul className="mt-3 grid gap-3 sm:grid-cols-2">
                       {leads.map((m) => (
                         <li key={m.id} className="flex items-center gap-3">
-                          <Avatar name={m.user.displayName} src={m.user.avatarUrl} size="lg" tone="neutral" />
+                          <Avatar name={m.user.displayName} src={m.user.avatarUrl} size="lg" />
                           <div className="min-w-0 flex-1">
                             <Link href={`/users/${m.user.handle}`} className="block truncate text-sm font-medium hover:underline">
                               {m.user.displayName}

@@ -83,7 +83,7 @@ export function CommentBox({
 
   return (
     <div className="flex items-start gap-2.5">
-      {!editing && <Avatar name={currentUser.displayName} src={currentUser.avatarUrl} size="sm" tone="neutral" className="mt-1" />}
+      {!editing && <Avatar name={currentUser.displayName} src={currentUser.avatarUrl} size="sm" className="mt-1" />}
       <div className="min-w-0 flex-1 space-y-2">
         <RichTextEditor
           value={bodyMd}

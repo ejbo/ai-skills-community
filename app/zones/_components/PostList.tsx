@@ -15,6 +15,8 @@ import { BTN_SECONDARY, readError } from './ui';
 export interface PostListQuery {
   type?: string | null;
   tag?: string | null;
+  /** 栏目 slug or id — page 1 is filtered server-side, so 加载更多 must carry it too. */
+  column?: string | null;
   q?: string | null;
   sort?: string | null;
 }
@@ -53,6 +55,7 @@ export function PostList({
       const sp = new URLSearchParams();
       if (query.type) sp.set('type', query.type);
       if (query.tag) sp.set('tag', query.tag);
+      if (query.column) sp.set('column', query.column);
       if (query.q) sp.set('q', query.q);
       if (query.sort) sp.set('sort', query.sort);
       sp.set('cursor', cursor);

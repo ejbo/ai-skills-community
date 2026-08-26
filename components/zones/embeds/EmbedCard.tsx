@@ -416,7 +416,7 @@ export function EmbedCard({
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
             {model.author && (
               <span className="inline-flex min-w-0 items-center gap-1.5">
-                <Avatar name={model.author.displayName} src={model.author.avatarUrl} size="xs" tone="neutral" />
+                <Avatar name={model.author.displayName} src={model.author.avatarUrl} size="xs" />
                 <span className="truncate text-zinc-700 dark:text-zinc-300">{model.author.displayName}</span>
                 <DeptTag department={model.author.department} lab={model.author.lab} className="relative z-[1]" />
               </span>

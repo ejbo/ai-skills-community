@@ -6,7 +6,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { zoneContext } from '@/lib/zones/access';
 import { ZoneError } from '@/lib/zones/queries';
 import { createZonePost, listMyDrafts, listZonePosts, zonePostInputSchema } from '@/lib/zones/post-queries';
-import { ZONE_LIMITS, isZonePostType, parseZonePostSort } from '@/lib/zones/shared';
+import { MAX_ZONE_COLUMNS, ZONE_LIMITS, isZonePostType, parseZonePostSort } from '@/lib/zones/shared';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,12 +24,22 @@ const REASONED_CODES: ReadonlySet<string> = new Set([
   'not_published',
   'too_many_pinned',
   'invalid_input',
+  // 栏目 (ask #2) + 可见性 (ask #4)
+  'column_name_required',
+  'column_create_forbidden',
+  'columns_full',
+  'column_not_found',
+  'column_exists',
+  'designated_not_member',
+  'designated_too_many',
 ]);
 
 async function zoneErrorResponse(e: unknown): Promise<NextResponse | null> {
   if (e instanceof ZoneError) {
+    // `{max}` = 置顶上限, `{limit}` = 栏目上限 — distinct placeholders, so one
+    // values object serves every reasoned code.
     const reason = REASONED_CODES.has(e.code)
-      ? await apiReason(`zone_${e.code}`, { max: ZONE_LIMITS.maxPinnedPosts })
+      ? await apiReason(`zone_${e.code}`, { max: ZONE_LIMITS.maxPinnedPosts, limit: MAX_ZONE_COLUMNS })
       : undefined;
     return NextResponse.json({ error: e.code, ...(reason ? { reason } : {}) }, { status: e.status });
   }
@@ -39,7 +49,7 @@ async function zoneErrorResponse(e: unknown): Promise<NextResponse | null> {
   return null;
 }
 
-// GET /api/zones/[slug]/posts?type&tag&q&sort&cursor&limit&author&drafts=1
+// GET /api/zones/[slug]/posts?type&tag&q&sort&cursor&limit&author&column&drafts=1
 //   → { items, hasMore, nextCursor }  (drafts=1 → { items } of the viewer's own drafts)
 export async function GET(req: Request, { params }: { params: { slug: string } }) {
   const session = await auth();
@@ -73,6 +83,8 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
   const limitRaw = Number.parseInt(sp.get('limit') ?? '', 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(50, Math.max(1, limitRaw)) : undefined;
   const authorHandle = (sp.get('author') ?? '').trim().slice(0, 64) || undefined;
+  // 栏目 filter — `?column=<slug>` (an id also resolves, for the picker).
+  const column = (sp.get('column') ?? '').trim().slice(0, 64) || undefined;
 
   const result = await listZonePosts({
     zone: ctx.zone,
@@ -85,6 +97,7 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
     cursor,
     limit,
     authorHandle,
+    column,
   });
   return NextResponse.json(result);
 }
@@ -128,7 +141,12 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
   }
 
   try {
-    const created = await createZonePost(ctx.zone, session.user.id, input);
+    // `canModerate` is the policy half of 栏目 creation on the fly
+    // (`allowCreate = canModerate || Zone.allowMemberColumns`) — the lib never
+    // re-derives it. 可见性 / 指定成员 / 访问密码 ride the same validated input.
+    const created = await createZonePost(ctx.zone, session.user.id, input, {
+      canModerate: ctx.access.canModerate,
+    });
     return NextResponse.json({ id: created.id }, { status: 201 });
   } catch (e) {
     const res = await zoneErrorResponse(e);

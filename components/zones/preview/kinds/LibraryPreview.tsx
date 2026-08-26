@@ -94,7 +94,7 @@ export function LibraryPreview({ data }: { data: EmbedLibraryData }) {
             <span>{t('embed_meta_minutes', { count: data.estReadMinutes })}</span>
           </p>
           <p className="mt-2 flex items-center gap-1.5 text-xs text-muted">
-            <Avatar name={data.uploader.displayName} src={data.uploader.avatarUrl} size="xs" tone="neutral" />
+            <Avatar name={data.uploader.displayName} src={data.uploader.avatarUrl} size="xs" />
             <span>{t('preview_uploaded_by', { name: data.uploader.displayName })}</span>
           </p>
           <Link

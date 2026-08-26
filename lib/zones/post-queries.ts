@@ -15,23 +15,34 @@
 // wholesale and unlink the files (plus their PDF previews / posters) that no
 // row references any more.
 
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import type { Session } from 'next-auth';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
+import { AUTHOR_IDENTITY_SELECT, toPublicAuthor, type PublicAuthor } from '@/lib/user-identity';
 import type { ZoneAccessRow, ZoneSiteViewer } from './access';
+import { getOrCreateColumn, recountZoneColumns } from './columns';
 import { resolveEmbeds } from './embeds';
+import { ZoneError } from './errors';
 import { scheduleOfficePreview } from './office-preview';
 import type { ZoneAccess } from './permissions';
-import { ZoneError } from './queries';
 import {
+  decideZonePostAccess,
+  isZonePostAuthor,
+  zonePostAccessContext,
+  type ZonePostAccessDecision,
+} from './post-access';
+import { readableZoneWhere, zoneOrgTree } from './queries';
+import {
+  ACCESS_CODE_ALPHABET,
+  ACCESS_CODE_LENGTH,
   MAX_ZONE_ATTACHMENTS,
   MAX_ZONE_POST_TAGS,
   ZONE_ATTACHMENT_LIMITS,
   ZONE_LIMITS,
   ZONE_POST_TYPES,
+  ZONE_POST_VISIBILITIES,
   collectEmbedRefs,
   decodeOffsetCursor,
   decodeTimeCursor,
@@ -41,10 +52,14 @@ import {
   extOfName,
   extractHeadings,
   isOfficePreviewable,
+  isValidAccessCode,
+  normalizeAccessCode,
   normalizeHttpUrl,
   normalizeTags,
+  type ZoneFeedSort,
   type ZonePostSort,
   type ZonePostTypeValue,
+  type ZonePostVisibilityValue,
 } from './shared';
 import {
   deleteZoneMediaFile,
@@ -54,14 +69,21 @@ import {
   zoneMediaPublicUrl,
 } from './storage';
 import type {
+  EmbedData,
   ZoneAttachmentKindView,
   ZoneAttachmentView,
   ZoneCommentView,
+  ZoneFeedResult,
+  ZoneHubFacets,
   ZonePostCardView,
   ZonePostDetailView,
   ZonePreviewStatusView,
   ZoneThreadView,
 } from './types';
+
+// `readableZoneWhere` lives in ./queries (so that module needs no import back
+// from here); re-exported because lib/zones/embeds.ts imports it from this one.
+export { readableZoneWhere };
 
 const INT32_MAX = 2_147_483_647;
 const DEFAULT_PAGE = 20;
@@ -97,6 +119,9 @@ export const ZONE_POST_CARD_SELECT = {
   bookmarkCount: true,
   // Only for readMinutes — cards never ship the body.
   bodyMd: true,
+  visibility: true,
+  columnId: true,
+  column: { select: { id: true, slug: true, name: true, official: true } },
   authorId: true,
   author: AUTHOR_IDENTITY_SELECT,
   coauthors: {
@@ -134,22 +159,77 @@ export type ZoneAttachmentRow = Prisma.ZonePostAttachmentGetPayload<{ select: ty
 const ZONE_POST_DETAIL_SELECT = {
   ...ZONE_POST_CARD_SELECT,
   deletedAt: true,
+  // Privileged-only in the payload (see toZonePostDetailView) — never mapped
+  // into a view for a viewer who is not the author / a co-author / 版主.
+  accessCode: true,
   attachments: { orderBy: { sortOrder: 'asc' as const }, select: ZONE_ATTACHMENT_SELECT },
 } satisfies Prisma.ZonePostSelect;
 
 const PUBLISHED_WHERE = { status: 'published', deletedAt: null } satisfies Prisma.ZonePostWhereInput;
 
-/** Zones whose CONTENT the viewer may read (mirrors buildZoneAccess#canRead in SQL). */
-export function readableZoneWhere(viewer: ZoneSiteViewer): Prisma.ZoneWhereInput {
-  if (viewer.siteAdmin) return { deletedAt: null };
-  // /zones is login-walled; an anonymous viewer reads nothing (buildZoneAccess agrees).
-  if (!viewer.id) return { id: { in: [] } };
+// ── 帖子可见性 (the SQL half of lib/zones/post-access.ts) ─────────────────────
+//
+// LIST surfaces must EXCLUDE what a viewer may not see instead of fetching and
+// filtering afterwards — a post dropped after the query breaks `hasMore`, the
+// keyset cursor and every count. `decideZonePostAccess` is the same policy for
+// a single row; keep the two in step.
+
+/** Zones where the viewer is the owner or an active member. */
+function viewerZoneMemberWhere(userId: string): Prisma.ZoneWhereInput {
+  return { OR: [{ ownerId: userId }, { members: { some: { userId, status: 'active' } } }] };
+}
+
+/** Zones the viewer moderates: 主版主 (implicit `*`) or a role carrying `moderate`. */
+function viewerZoneModeratorWhere(userId: string): Prisma.ZoneWhereInput {
   return {
-    deletedAt: null,
     OR: [
-      { visibility: 'public' },
-      { ownerId: viewer.id },
-      { members: { some: { userId: viewer.id, status: 'active' } } },
+      { ownerId: userId },
+      { members: { some: { userId, status: 'active', role: { is: { permissions: { has: 'moderate' } } } } } },
+    ],
+  };
+}
+
+/**
+ * Narrows a post query to what this viewer may see.
+ *
+ * - `zoneAccess` given (single-zone surfaces): the zone gate was already decided,
+ *   so a moderator/site admin gets `{}` (they see drafts too) and a viewer
+ *   without `canRead` gets an impossible clause.
+ * - `zoneAccess` null (cross-zone surfaces: the hub feed, bookmarks, profiles):
+ *   membership and moderation are resolved per zone IN SQL. Pair it with
+ *   `zone: readableZoneWhere(viewer)` — this half never widens the zone gate.
+ */
+export function zonePostVisibilityWhere(
+  zoneAccess: ZoneAccess | null,
+  viewer: ZoneSiteViewer,
+): Prisma.ZonePostWhereInput {
+  if (viewer.siteAdmin) return {};
+  const uid = viewer.id;
+
+  if (zoneAccess) {
+    if (zoneAccess.canModerate) return {};
+    if (!zoneAccess.canRead || !uid) return { id: { in: [] } };
+    const or: Prisma.ZonePostWhereInput[] = [
+      { visibility: 'zone' },
+      // Own rows stay visible whatever the visibility says.
+      { authorId: uid },
+      { coauthors: { some: { userId: uid } } },
+      { visibility: 'restricted', viewers: { some: { userId: uid } } },
+    ];
+    if (zoneAccess.isMember) or.push({ visibility: 'members' });
+    return { OR: or };
+  }
+
+  if (!uid) return { id: { in: [] } };
+  return {
+    OR: [
+      { visibility: 'zone' },
+      { authorId: uid },
+      { coauthors: { some: { userId: uid } } },
+      { visibility: 'restricted', viewers: { some: { userId: uid } } },
+      { visibility: 'members', zone: viewerZoneMemberWhere(uid) },
+      // 版主 of that zone: privileged on every post inside it.
+      { zone: viewerZoneModeratorWhere(uid) },
     ],
   };
 }
@@ -235,20 +315,34 @@ export interface PostCardContext {
   canSeeIdentity: boolean;
   liked: Set<string>;
   bookmarked: Set<string>;
+  /**
+   * Post ids rendered as a LOCKED stub (`restricted`, viewer holds no grant).
+   * List queries exclude those rows outright, so this is only ever filled on
+   * the detail / direct-link path.
+   */
+  lockedIds?: ReadonlySet<string>;
 }
 
 export function toZonePostCardView(row: ZonePostCardRow, ctx: PostCardContext): ZonePostCardView {
   const viewerId = ctx.viewerId;
   const isAuthor = !!viewerId && (viewerId === row.authorId || row.coauthors.some((c) => c.userId === viewerId));
+  const accessLocked = ctx.lockedIds?.has(row.id) ?? false;
   return {
     id: row.id,
     zone: { id: row.zone.id, slug: row.zone.slug, name: row.zone.name },
     type: row.type,
     title: row.title,
-    summary: row.summary,
-    coverUrl: row.coverUrl,
-    linkUrl: row.linkUrl,
+    // A locked stub never carries content: the summary is an excerpt of the
+    // body when the author wrote none, and a `link` post IS its URL.
+    summary: accessLocked ? '' : row.summary,
+    coverUrl: accessLocked ? null : row.coverUrl,
+    linkUrl: accessLocked ? null : row.linkUrl,
     tags: row.tags,
+    column: row.column
+      ? { id: row.column.id, slug: row.column.slug, name: row.column.name, official: row.column.official }
+      : null,
+    visibility: row.visibility,
+    accessLocked,
     status: row.status,
     publishedAt: iso(row.publishedAt),
     createdAt: iso(row.createdAt),
@@ -260,11 +354,11 @@ export function toZonePostCardView(row: ZonePostCardRow, ctx: PostCardContext): 
     commentCount: row.commentCount,
     viewCount: row.viewCount,
     bookmarkCount: row.bookmarkCount,
-    readMinutes: estimateReadMinutes(row.bodyMd),
+    readMinutes: accessLocked ? 0 : estimateReadMinutes(row.bodyMd),
     author: toPublicAuthor(row.author, ctx.canSeeIdentity),
     coauthors: row.coauthors.map((c) => toPublicAuthor(c.user, ctx.canSeeIdentity)),
-    attachmentCount: row.attachments.length,
-    attachmentKinds: [...new Set(row.attachments.map((a) => a.kind))],
+    attachmentCount: accessLocked ? 0 : row.attachments.length,
+    attachmentKinds: accessLocked ? [] : [...new Set(row.attachments.map((a) => a.kind))],
     likedByMe: ctx.liked.has(row.id),
     bookmarkedByMe: ctx.bookmarked.has(row.id),
     isAuthor,
@@ -308,6 +402,8 @@ export interface ListZonePostsOptions {
   limit?: number;
   /** Primary author OR co-author handle. */
   authorHandle?: string;
+  /** 栏目 filter — the column's slug (what `?column=` carries) or its id. */
+  column?: string;
 }
 
 function clampLimit(raw: number | undefined, def = DEFAULT_PAGE, max = MAX_PAGE): number {
@@ -324,6 +420,7 @@ export async function listZonePosts(
   const q = (o.q ?? '').trim().slice(0, 64);
   const tag = (o.tag ?? '').trim().slice(0, 24);
   const authorHandle = (o.authorHandle ?? '').trim();
+  const column = (o.column ?? '').trim().slice(0, 64);
 
   const cursor = sort === 'new' ? decodeTimeCursor(o.cursor) : null;
   const offset = sort === 'hot' ? decodeOffsetCursor(o.cursor) : 0;
@@ -332,9 +429,15 @@ export async function listZonePosts(
   // unless a search is active — search results are a flat ranking.
   const pinnedMode = !q;
 
-  const and: Prisma.ZonePostWhereInput[] = [{ zoneId: o.zone.id, ...PUBLISHED_WHERE }];
+  const and: Prisma.ZonePostWhereInput[] = [
+    { zoneId: o.zone.id, ...PUBLISHED_WHERE },
+    // Exclude, never post-filter: a row dropped after the query would break
+    // `hasMore`, the cursor and the pinned/normal split below.
+    zonePostVisibilityWhere(o.access, o.viewer),
+  ];
   if (o.type) and.push({ type: o.type });
   if (tag) and.push({ tags: { has: tag } });
+  if (column) and.push({ OR: [{ column: { is: { slug: column } } }, { columnId: column }] });
   if (authorHandle) {
     and.push({ OR: [{ author: { handle: authorHandle } }, { coauthors: { some: { user: { handle: authorHandle } } } }] });
   }
@@ -421,6 +524,14 @@ export async function listMyDrafts(zoneId: string, viewer: ZoneSiteViewer, acces
   return toCardViews(rows, viewer);
 }
 
+/**
+ * The post detail payload. Three outcomes, decided by `decideZonePostAccess`:
+ * `hidden` ⇒ null (404 upstream), `locked` ⇒ the stub a `restricted` post shows
+ * to someone who has not unlocked it (title + author only — never the body,
+ * attachments or embeds; comments are fetched separately and the caller must
+ * skip them), otherwise the full view. `accessCode` / `designatedViewers` are
+ * shipped ONLY to the author, a co-author, 版主 or site staff.
+ */
 export async function getZonePostDetail(
   postId: string,
   zone: ZoneAccessRow,
@@ -435,22 +546,314 @@ export async function getZonePostDetail(
   if (!row) return null;
   // A soft-deleted post is gone for everyone but site staff (restore path).
   if (row.deletedAt && !viewer.siteAdmin) return null;
-  const isAuthor = !!viewer.id && (viewer.id === row.authorId || row.coauthors.some((c) => c.userId === viewer.id));
-  const published = row.status === 'published' && !row.deletedAt;
-  if (!((published && access.canRead) || isAuthor || access.canModerate)) return null;
 
-  const [sets, embeds] = await Promise.all([
+  const decision = await resolveZonePostDecision(row, access, viewer);
+  if (decision === 'hidden') return null;
+  const locked = decision === 'locked';
+  const privileged = decision === 'privileged';
+  const restricted = row.visibility === 'restricted';
+
+  const [sets, embeds, designatedViewers] = await Promise.all([
     viewerPostSets(viewer.id, [row.id]),
-    resolveEmbeds(collectEmbedRefs(row.bodyMd), { viewer, session: opts.session ?? null, locale: opts.locale }),
+    locked
+      ? Promise.resolve<Record<string, EmbedData>>({})
+      : resolveEmbeds(collectEmbedRefs(row.bodyMd), { viewer, session: opts.session ?? null, locale: opts.locale }),
+    privileged && restricted ? listDesignatedViewers(row.id, viewer.canSeeIdentity) : Promise.resolve<PublicAuthor[]>([]),
   ]);
-  const card = toZonePostCardView(row, { viewerId: viewer.id, canSeeIdentity: viewer.canSeeIdentity, ...sets });
+  const card = toZonePostCardView(row, {
+    viewerId: viewer.id,
+    canSeeIdentity: viewer.canSeeIdentity,
+    ...sets,
+    ...(locked ? { lockedIds: new Set([row.id]) } : {}),
+  });
   return {
     ...card,
-    bodyMd: row.bodyMd,
-    attachments: row.attachments.map(toAttachmentView),
-    headings: extractHeadings(row.bodyMd),
+    bodyMd: locked ? '' : row.bodyMd,
+    designatedViewers,
+    accessCode: privileged && restricted ? (row.accessCode ?? null) : null,
+    attachments: locked ? [] : row.attachments.map(toAttachmentView),
+    headings: locked ? [] : extractHeadings(row.bodyMd),
     embeds,
   };
+}
+
+/**
+ * The minimum a caller must select to run the post gate. Every route that
+ * already loads a post row can widen its select to this shape and call
+ * `canSeeZonePost` / `assertCanSeeZonePost`.
+ */
+export type ZonePostAccessSource = {
+  id: string;
+  authorId: string;
+  status: 'draft' | 'published';
+  deletedAt?: Date | null;
+  visibility: ZonePostVisibilityValue;
+  coauthors: { userId: string }[];
+};
+
+/** Select fragment matching `ZonePostAccessSource` (spread it into an existing select). */
+export const ZONE_POST_ACCESS_SELECT = {
+  id: true,
+  authorId: true,
+  status: true,
+  deletedAt: true,
+  visibility: true,
+  coauthors: { select: { userId: true } },
+} satisfies Prisma.ZonePostSelect;
+
+/** `decideZonePostAccess` + the single grant lookup it needs (only for `restricted`). */
+async function resolveZonePostDecision(
+  row: ZonePostAccessSource,
+  access: ZoneAccess,
+  viewer: ZoneSiteViewer,
+): Promise<ZonePostAccessDecision> {
+  const post = {
+    authorId: row.authorId,
+    coauthorIds: row.coauthors.map((c) => c.userId),
+    status: row.status,
+    deletedAt: row.deletedAt ?? null,
+    visibility: row.visibility,
+  };
+  const first = decideZonePostAccess(post, zonePostAccessContext(access, false));
+  // Only a `restricted` post the viewer has not otherwise earned can flip on a grant.
+  if (first !== 'locked' || !viewer.id) return first;
+  const granted = await hasZonePostGrant(row.id, viewer.id);
+  return granted ? decideZonePostAccess(post, zonePostAccessContext(access, true)) : first;
+}
+
+/**
+ * Single-row gate for anything hanging off a post (comments, likes, bookmarks,
+ * attachments, embeds). `true` means READABLE — a locked `restricted` post
+ * answers `false`, because a viewer who only sees the stub must not reach its
+ * comments. `assertCanSeeZonePost` throws the house 404 instead.
+ */
+export async function canSeeZonePost(
+  post: ZonePostAccessSource,
+  access: ZoneAccess,
+  viewer: ZoneSiteViewer,
+): Promise<boolean> {
+  const decision = await resolveZonePostDecision(post, access, viewer);
+  return decision === 'privileged' || decision === 'visible';
+}
+
+export async function assertCanSeeZonePost(
+  post: ZonePostAccessSource,
+  access: ZoneAccess,
+  viewer: ZoneSiteViewer,
+): Promise<void> {
+  if (!(await canSeeZonePost(post, access, viewer))) throw new ZoneError('not_found', 404);
+}
+
+/** The full decision (including `locked`) for a post id inside a zone; null when the row is gone. */
+export async function zonePostAccessFor(
+  postId: string,
+  zone: ZoneAccessRow,
+  access: ZoneAccess,
+  viewer: ZoneSiteViewer,
+): Promise<ZonePostAccessDecision | null> {
+  const row = await prisma.zonePost.findFirst({
+    where: { id: postId, zoneId: zone.id },
+    select: ZONE_POST_ACCESS_SELECT,
+  });
+  if (!row) return null;
+  if (row.deletedAt && !viewer.siteAdmin) return null;
+  return resolveZonePostDecision(row, access, viewer);
+}
+
+// ── 访问授权 (restricted posts) ───────────────────────────────────────────────
+//
+// A `restricted` post is opened by exactly one thing: a ZonePostViewer row.
+// The author designates members directly, or hands out the 访问密码 — redeeming
+// it WRITES that same row (`via: 'code'`), so every later check is uniform and
+// the author can see who came in through the code.
+
+export type ZonePostGrantViaValue = 'designated' | 'code';
+
+/** Designated viewers a single post may carry (the picker caps the UI at the same number). */
+export const MAX_DESIGNATED_VIEWERS = 50;
+
+const GRANT_SELECT = {
+  userId: true,
+  via: true,
+  createdAt: true,
+  user: AUTHOR_IDENTITY_SELECT,
+} satisfies Prisma.ZonePostViewerSelect;
+
+export interface ZonePostGrantView {
+  userId: string;
+  user: PublicAuthor;
+  via: ZonePostGrantViaValue;
+  createdAt: string;
+}
+
+async function hasZonePostGrant(postId: string, userId: string): Promise<boolean> {
+  const row = await prisma.zonePostViewer.findUnique({
+    where: { postId_userId: { postId, userId } },
+    select: { postId: true },
+  });
+  return !!row;
+}
+
+async function listDesignatedViewers(postId: string, canSeeIdentity: boolean): Promise<PublicAuthor[]> {
+  const rows = await prisma.zonePostViewer.findMany({
+    where: { postId, via: 'designated' },
+    orderBy: { createdAt: 'asc' },
+    take: MAX_DESIGNATED_VIEWERS,
+    select: GRANT_SELECT,
+  });
+  return rows.map((r) => toPublicAuthor(r.user, canSeeIdentity));
+}
+
+/** Everyone who may open the post — designated AND code-redeemed (privileged surfaces only). */
+export async function listZonePostGrants(postId: string, canSeeIdentity: boolean): Promise<ZonePostGrantView[]> {
+  const rows = await prisma.zonePostViewer.findMany({
+    where: { postId },
+    orderBy: [{ via: 'asc' }, { createdAt: 'asc' }],
+    take: 500,
+    select: GRANT_SELECT,
+  });
+  return rows.map((r) => ({
+    userId: r.userId,
+    user: toPublicAuthor(r.user, canSeeIdentity),
+    via: r.via,
+    createdAt: iso(r.createdAt),
+  }));
+}
+
+/** Idempotent (composite PK + skipDuplicates): granting twice is a no-op, never an error. */
+export async function grantZonePostAccess(
+  postId: string,
+  userId: string,
+  via: ZonePostGrantViaValue = 'designated',
+  grantedById: string | null = null,
+): Promise<{ ok: boolean }> {
+  if (!postId || !userId) return { ok: false };
+  try {
+    await prisma.zonePostViewer.createMany({
+      data: [{ postId, userId, via, grantedById }],
+      skipDuplicates: true,
+    });
+    return { ok: true };
+  } catch (e) {
+    // The post or the user vanished under us — nothing was granted.
+    if (isForeignKeyViolation(e)) return { ok: false };
+    throw e;
+  }
+}
+
+export async function revokeZonePostAccess(postId: string, userId: string): Promise<{ ok: boolean }> {
+  const r = await prisma.zonePostViewer.deleteMany({ where: { postId, userId } });
+  return { ok: r.count > 0 };
+}
+
+/** 6 chars over ACCESS_CODE_ALPHABET, rejection-sampled so every letter is equally likely. */
+function generateAccessCode(): string {
+  const n = ACCESS_CODE_ALPHABET.length;
+  const limit = Math.floor(256 / n) * n; // 248 for the 31-char alphabet
+  let out = '';
+  while (out.length < ACCESS_CODE_LENGTH) {
+    for (const b of randomBytes(ACCESS_CODE_LENGTH * 2)) {
+      if (b >= limit) continue;
+      out += ACCESS_CODE_ALPHABET[b % n];
+      if (out.length === ACCESS_CODE_LENGTH) break;
+    }
+  }
+  return out;
+}
+
+function codesMatch(stored: string, given: string): boolean {
+  const a = Buffer.from(stored, 'utf8');
+  const b = Buffer.from(given, 'utf8');
+  if (a.length !== b.length || a.length === 0) return false;
+  return timingSafeEqual(a, b);
+}
+
+/**
+ * 访问密码 → a `via: 'code'` grant. Neutral `{ ok: false }` on every failure
+ * (unknown post, wrong code, post no longer restricted) so the route can answer
+ * one error and never confirm that a code exists. The ZONE gate is the caller's
+ * job — `access.canRead` must already be true, exactly as for any other read.
+ */
+export async function redeemAccessCode(postId: string, userId: string, code: string): Promise<{ ok: boolean }> {
+  const given = normalizeAccessCode(code ?? '');
+  if (!userId || !isValidAccessCode(given)) return { ok: false };
+  const post = await prisma.zonePost.findFirst({
+    where: { id: postId, deletedAt: null, status: 'published', visibility: 'restricted' },
+    select: { id: true, accessCode: true },
+  });
+  if (!post?.accessCode || !codesMatch(post.accessCode, given)) return { ok: false };
+  return grantZonePostAccess(post.id, userId, 'code');
+}
+
+/**
+ * The 访问 panel's write path (`PUT …/access`, privileged callers only).
+ * Designated viewers are replaced WHOLESALE, but code-redeemed grants survive —
+ * they are a different relationship. Returns the authoritative state.
+ */
+export async function setZonePostAccess(
+  postId: string,
+  patch: { designatedUserIds?: string[]; regenerateAccessCode?: boolean; clearAccessCode?: boolean },
+  actorId: string,
+  canSeeIdentity = false,
+): Promise<{ accessCode: string | null; designatedViewers: PublicAuthor[] }> {
+  const post = await prisma.zonePost.findUnique({
+    where: { id: postId },
+    select: { id: true, zoneId: true, visibility: true, accessCode: true, deletedAt: true, zone: { select: { ownerId: true } } },
+  });
+  if (!post || post.deletedAt) throw new ZoneError('not_found', 404);
+  if (post.visibility !== 'restricted') throw new ZoneError('post_not_restricted', 400);
+
+  const designated =
+    patch.designatedUserIds !== undefined
+      ? await validateDesignatedViewers({ id: post.zoneId, ownerId: post.zone.ownerId }, patch.designatedUserIds)
+      : null;
+
+  let accessCode: string | null = post.accessCode ?? null;
+  if (patch.clearAccessCode) accessCode = null;
+  else if (patch.regenerateAccessCode || !accessCode) accessCode = generateAccessCode();
+
+  await prisma.$transaction(async (tx) => {
+    if (accessCode !== (post.accessCode ?? null)) {
+      await tx.zonePost.update({ where: { id: post.id }, data: { accessCode } });
+      // A rotated (or cleared) code must not leave the people who used the old
+      // one inside — designated grants are untouched.
+      await tx.zonePostViewer.deleteMany({ where: { postId: post.id, via: 'code' } });
+    }
+    if (designated) await replaceDesignatedViewers(tx, post.id, designated, actorId);
+  });
+
+  return { accessCode, designatedViewers: await listDesignatedViewers(post.id, canSeeIdentity) };
+}
+
+/** Designated viewers must be active members of the zone (the owner always is). */
+async function validateDesignatedViewers(zone: { id: string; ownerId: string }, ids: string[]): Promise<string[]> {
+  const unique = [...new Set((ids ?? []).map((s) => (s ?? '').trim()).filter(Boolean))];
+  if (unique.length === 0) return [];
+  if (unique.length > MAX_DESIGNATED_VIEWERS) throw new ZoneError('designated_too_many', 400);
+  const needMembership = unique.filter((id) => id !== zone.ownerId);
+  if (needMembership.length > 0) {
+    const n = await prisma.zoneMember.count({
+      where: { zoneId: zone.id, status: 'active', userId: { in: needMembership } },
+    });
+    if (n !== needMembership.length) throw new ZoneError('designated_not_member', 400);
+  }
+  return unique;
+}
+
+async function replaceDesignatedViewers(
+  tx: Prisma.TransactionClient,
+  postId: string,
+  userIds: string[],
+  grantedById: string | null,
+): Promise<void> {
+  await tx.zonePostViewer.deleteMany({
+    where: { postId, via: 'designated', ...(userIds.length > 0 ? { userId: { notIn: userIds } } : {}) },
+  });
+  if (userIds.length === 0) return;
+  await tx.zonePostViewer.createMany({
+    data: userIds.map((userId) => ({ postId, userId, via: 'designated' as const, grantedById })),
+    skipDuplicates: true,
+  });
 }
 
 // ── Input schemas ────────────────────────────────────────────────────────────
@@ -486,6 +889,15 @@ export interface ZonePostInput {
   coauthorIds: string[];
   attachments: AttachmentInput[];
   status: 'draft' | 'published';
+  /** 栏目: an existing column id, or null for 未归栏. */
+  columnId: string | null;
+  /** …or a name typed in the composer — created on the fly when allowed (wins over `columnId`). */
+  columnName: string | null;
+  visibility: ZonePostVisibilityValue;
+  /** `restricted` only: the members who may open it (replaced wholesale). */
+  designatedUserIds: string[];
+  /** `restricted` only: rotate the 访问密码 on this save. */
+  regenerateAccessCode: boolean;
 }
 
 export const zonePostInputSchema = z.object({
@@ -499,6 +911,11 @@ export const zonePostInputSchema = z.object({
   coauthorIds: z.array(z.string().min(1).max(64)).max(ZONE_LIMITS.maxCoauthors).default([]),
   attachments: z.array(attachmentInputSchema).max(MAX_ZONE_ATTACHMENTS).default([]),
   status: z.enum(['draft', 'published']).default('draft'),
+  columnId: z.string().trim().max(64).nullable().default(null),
+  columnName: z.string().trim().max(ZONE_LIMITS.columnNameMax * 2).nullable().default(null),
+  visibility: z.enum(ZONE_POST_VISIBILITIES).default('zone'),
+  designatedUserIds: z.array(z.string().min(1).max(64)).max(MAX_DESIGNATED_VIEWERS).default([]),
+  regenerateAccessCode: z.boolean().default(false),
 }) satisfies z.ZodType<ZonePostInput, z.ZodTypeDef, unknown>;
 
 // ── Attachments ──────────────────────────────────────────────────────────────
@@ -670,19 +1087,57 @@ function resolveLinkUrl(type: ZonePostTypeValue, raw: string | null): string | n
   return url;
 }
 
-export async function createZonePost(zone: ZoneAccessRow, authorId: string, input: ZonePostInput): Promise<{ id: string }> {
+/**
+ * 栏目 for a create/update. A typed `columnName` wins over `columnId` (the
+ * composer sends one or the other) and is created on the fly when the zone
+ * allows it — `allowCreate` is policy decided by the caller (`canModerate`)
+ * plus `Zone.allowMemberColumns`, never re-derived inside the column service.
+ * `undefined` ⇒ the patch does not touch the post's 栏目; `null` ⇒ 未归栏.
+ */
+async function resolvePostColumn(
+  zone: ZoneAccessRow,
+  input: { columnId?: string | null; columnName?: string | null },
+  opts: { userId: string; canModerate?: boolean },
+): Promise<string | null | undefined> {
+  const name = (input.columnName ?? '').trim();
+  if (name) {
+    const row = await prisma.zone.findUnique({ where: { id: zone.id }, select: { allowMemberColumns: true } });
+    const allowCreate = !!opts.canModerate || !!row?.allowMemberColumns;
+    const { id } = await getOrCreateColumn(zone.id, name, { userId: opts.userId, allowCreate });
+    return id;
+  }
+  if (input.columnId === undefined) return undefined;
+  const id = (input.columnId ?? '').trim();
+  if (!id) return null;
+  const column = await prisma.zoneColumn.findFirst({ where: { id, zoneId: zone.id }, select: { id: true } });
+  if (!column) throw new ZoneError('column_not_found', 400);
+  return column.id;
+}
+
+export async function createZonePost(
+  zone: ZoneAccessRow,
+  authorId: string,
+  input: ZonePostInput,
+  opts: { canModerate?: boolean } = {},
+): Promise<{ id: string }> {
   const title = input.title.trim();
   if (title.length < ZONE_LIMITS.postTitleMin) throw new ZoneError('title_required', 400);
   const bodyMd = input.bodyMd ?? '';
-  const [coauthorIds, attachments, cover] = await Promise.all([
+  const visibility: ZonePostVisibilityValue = input.visibility ?? 'zone';
+  const [coauthorIds, attachments, cover, columnId] = await Promise.all([
     validateCoauthors(zone, authorId, input.coauthorIds ?? []),
     resolveAttachmentInputs(input.attachments ?? []),
     validateCover(input.coverKey),
+    resolvePostColumn(zone, input, { userId: authorId, canModerate: opts.canModerate }),
   ]);
   if (!attachments) throw new ZoneError('attachments_invalid', 400);
   const linkUrl = resolveLinkUrl(input.type, input.linkUrl);
   const publish = input.status === 'published';
   const now = new Date();
+  // 指定成员可见: the grants and the share code are born with the post.
+  const designated =
+    visibility === 'restricted' ? await validateDesignatedViewers(zone, input.designatedUserIds ?? []) : [];
+  const accessCode = visibility === 'restricted' ? generateAccessCode() : null;
 
   const created = await prisma.$transaction(async (tx) => {
     const post = await tx.zonePost.create({
@@ -697,6 +1152,9 @@ export async function createZonePost(zone: ZoneAccessRow, authorId: string, inpu
         coverUrl: cover.coverUrl,
         linkUrl,
         tags: normalizeTags(input.tags),
+        columnId: columnId ?? null,
+        visibility,
+        accessCode,
         status: publish ? 'published' : 'draft',
         publishedAt: publish ? now : null,
         coauthors: { create: coauthorIds.map((userId, i) => ({ userId, sortOrder: i })) },
@@ -718,8 +1176,16 @@ export async function createZonePost(zone: ZoneAccessRow, authorId: string, inpu
       },
       select: { id: true, attachments: { select: { id: true, previewStatus: true } } },
     });
+    if (designated.length > 0) {
+      await tx.zonePostViewer.createMany({
+        data: designated.map((userId) => ({ postId: post.id, userId, via: 'designated' as const, grantedById: authorId })),
+        skipDuplicates: true,
+      });
+    }
     if (publish) {
       await tx.zone.update({ where: { id: zone.id }, data: { postCount: { increment: 1 }, lastActivityAt: now } });
+      // postCount moves WITH the post, inside the same transaction.
+      await recountZoneColumns(zone.id, tx, [columnId]);
     }
     return post;
   });
@@ -728,7 +1194,11 @@ export async function createZonePost(zone: ZoneAccessRow, authorId: string, inpu
   return { id: created.id };
 }
 
-export async function updateZonePost(postId: string, patch: Partial<ZonePostInput>): Promise<void> {
+export async function updateZonePost(
+  postId: string,
+  patch: Partial<ZonePostInput>,
+  opts: { canModerate?: boolean; actorId?: string } = {},
+): Promise<void> {
   const existing = await prisma.zonePost.findUnique({
     where: { id: postId },
     select: {
@@ -741,6 +1211,9 @@ export async function updateZonePost(postId: string, patch: Partial<ZonePostInpu
       bodyMd: true,
       coverKey: true,
       linkUrl: true,
+      columnId: true,
+      visibility: true,
+      accessCode: true,
       status: true,
       publishedAt: true,
       deletedAt: true,
@@ -760,20 +1233,37 @@ export async function updateZonePost(postId: string, patch: Partial<ZonePostInpu
     },
   });
   if (!existing || existing.deletedAt) throw new ZoneError('not_found', 404);
+  const actorId = opts.actorId ?? existing.authorId;
 
   const type = patch.type ?? existing.type;
   const title = patch.title !== undefined ? patch.title.trim() : existing.title;
   if (title.length < ZONE_LIMITS.postTitleMin) throw new ZoneError('title_required', 400);
   const bodyMd = patch.bodyMd !== undefined ? patch.bodyMd : existing.bodyMd;
 
-  const [coauthorIds, attachments, cover] = await Promise.all([
+  const [coauthorIds, attachments, cover, nextColumnId] = await Promise.all([
     patch.coauthorIds !== undefined ? validateCoauthors(existing.zone, existing.authorId, patch.coauthorIds) : Promise.resolve(null),
     patch.attachments !== undefined
       ? resolveAttachmentInputs(patch.attachments, { excludePostId: existing.id })
       : Promise.resolve(undefined),
     patch.coverKey !== undefined ? validateCover(patch.coverKey) : Promise.resolve(null),
+    resolvePostColumn(existing.zone, patch, { userId: actorId, canModerate: opts.canModerate }),
   ]);
   if (attachments === null) throw new ZoneError('attachments_invalid', 400);
+
+  // 可见性: switching AWAY from `restricted` drops the code AND every grant —
+  // a post that later comes back to 指定成员可见 starts from a clean sheet.
+  const nextVisibility: ZonePostVisibilityValue = patch.visibility ?? existing.visibility;
+  const restricted = nextVisibility === 'restricted';
+  const designated =
+    restricted && patch.designatedUserIds !== undefined
+      ? await validateDesignatedViewers(existing.zone, patch.designatedUserIds)
+      : null;
+  const accessCode = restricted
+    ? patch.regenerateAccessCode || !existing.accessCode
+      ? generateAccessCode()
+      : existing.accessCode
+    : null;
+  const codeChanged = accessCode !== (existing.accessCode ?? null);
   // Re-validate the link whenever it or the type is part of the patch (a
   // switch TO `link` must bring a URL along); otherwise the stored one stays.
   const linkUrl =
@@ -802,11 +1292,27 @@ export async function updateZonePost(postId: string, patch: Partial<ZonePostInpu
     ...(patch.tags !== undefined ? { tags: normalizeTags(patch.tags) } : {}),
     ...(linkUrl !== undefined ? { linkUrl } : {}),
     ...(cover ? { coverKey: cover.coverKey, coverUrl: cover.coverUrl } : {}),
+    ...(nextColumnId !== undefined ? { column: nextColumnId ? { connect: { id: nextColumnId } } : { disconnect: true } } : {}),
+    ...(patch.visibility !== undefined ? { visibility: nextVisibility } : {}),
+    ...(codeChanged ? { accessCode } : {}),
     ...(contentChanged && existing.status === 'published' ? { editedAt: now } : {}),
   };
 
   await prisma.$transaction(async (tx) => {
     await tx.zonePost.update({ where: { id: existing.id }, data });
+
+    // 指定成员可见 bookkeeping. Leaving `restricted` clears every grant; rotating
+    // the code evicts whoever came in through the OLD one (designated members
+    // are a different relationship and survive); a designated list that was sent
+    // replaces the previous one wholesale.
+    if (existing.visibility === 'restricted' && !restricted) {
+      await tx.zonePostViewer.deleteMany({ where: { postId: existing.id } });
+    } else if (restricted) {
+      if (codeChanged && existing.accessCode) {
+        await tx.zonePostViewer.deleteMany({ where: { postId: existing.id, via: 'code' } });
+      }
+      if (designated) await replaceDesignatedViewers(tx, existing.id, designated, actorId);
+    }
 
     if (coauthorIds) {
       await tx.zonePostAuthor.deleteMany({ where: { postId: existing.id } });
@@ -886,6 +1392,12 @@ export async function updateZonePost(postId: string, patch: Partial<ZonePostInpu
         await tx.zone.updateMany({ where: { id: existing.zoneId, postCount: { gt: 0 } }, data: { postCount: { decrement: 1 } } });
       }
     }
+
+    // 栏目 counts move with the post: the column it left AND the one it joined,
+    // in the same transaction as the write that moved it.
+    if (nextColumnId !== undefined || publishing || unpublishing) {
+      await recountZoneColumns(existing.zoneId, tx, [existing.columnId, nextColumnId ?? existing.columnId]);
+    }
   });
 
   // Files no row references any more: removed attachments (+ their PDF
@@ -907,6 +1419,10 @@ export async function updateZonePost(postId: string, patch: Partial<ZonePostInpu
 
 function isUniqueViolation(e: unknown): boolean {
   return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
+}
+
+function isForeignKeyViolation(e: unknown): boolean {
+  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2003';
 }
 
 function isSerializationFailure(e: unknown): boolean {
@@ -956,7 +1472,7 @@ export async function softDeleteZonePost(postId: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
     const post = await tx.zonePost.findUnique({
       where: { id: postId },
-      select: { id: true, zoneId: true, deletedAt: true },
+      select: { id: true, zoneId: true, columnId: true, deletedAt: true },
     });
     if (!post || post.deletedAt) return;
     const now = new Date();
@@ -969,6 +1485,7 @@ export async function softDeleteZonePost(postId: string): Promise<void> {
     });
     if (wasPublished.count > 0) {
       await tx.zone.updateMany({ where: { id: post.zoneId, postCount: { gt: 0 } }, data: { postCount: { decrement: 1 } } });
+      await recountZoneColumns(post.zoneId, tx, [post.columnId]);
       return;
     }
     // Draft (or already deleted) — delete it without touching the counter.
@@ -1104,7 +1621,12 @@ export async function getZoneCommentThread(commentId: string, viewer: ZoneSiteVi
 export async function listBookmarkedPosts(viewer: ZoneSiteViewer, take = 50): Promise<ZonePostCardView[]> {
   if (!viewer.id) return [];
   const rows = await prisma.zonePostBookmark.findMany({
-    where: { userId: viewer.id, post: { ...PUBLISHED_WHERE, zone: readableZoneWhere(viewer) } },
+    where: {
+      userId: viewer.id,
+      post: {
+        AND: [{ ...PUBLISHED_WHERE, zone: readableZoneWhere(viewer) }, zonePostVisibilityWhere(null, viewer)],
+      },
+    },
     orderBy: [{ createdAt: 'desc' }, { postId: 'desc' }],
     take: clampLimit(take, 50, 200),
     select: { post: { select: ZONE_POST_CARD_SELECT } },
@@ -1118,7 +1640,7 @@ export async function listBookmarkedPosts(viewer: ZoneSiteViewer, take = 50): Pr
 /** Hub band: newest published posts across public zones + the viewer's zones. */
 export async function listRecentPostsAcrossZones(viewer: ZoneSiteViewer, take = 8): Promise<ZonePostCardView[]> {
   const rows = await prisma.zonePost.findMany({
-    where: { ...PUBLISHED_WHERE, zone: readableZoneWhere(viewer) },
+    where: { AND: [{ ...PUBLISHED_WHERE, zone: readableZoneWhere(viewer) }, zonePostVisibilityWhere(null, viewer)] },
     orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
     take: clampLimit(take, 8, 50),
     select: ZONE_POST_CARD_SELECT,
@@ -1130,13 +1652,157 @@ export async function listRecentPostsAcrossZones(viewer: ZoneSiteViewer, take = 
 export async function listPostsByAuthorAcrossZones(userId: string, viewer: ZoneSiteViewer, take = 20): Promise<ZonePostCardView[]> {
   const rows = await prisma.zonePost.findMany({
     where: {
-      ...PUBLISHED_WHERE,
-      OR: [{ authorId: userId }, { coauthors: { some: { userId } } }],
-      zone: readableZoneWhere(viewer),
+      AND: [
+        { ...PUBLISHED_WHERE, zone: readableZoneWhere(viewer) },
+        { OR: [{ authorId: userId }, { coauthors: { some: { userId } } }] },
+        zonePostVisibilityWhere(null, viewer),
+      ],
     },
     orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
     take: clampLimit(take, 20, 100),
     select: ZONE_POST_CARD_SELECT,
   });
   return toCardViews(rows, viewer);
+}
+
+// ── 技术专区首页动态 (cross-zone feed, asks 6 + 7) ─────────────────────────────
+//
+// The /zones landing feed: every post the viewer may see, across every zone
+// they may read, filtered by the zone's 研究所 / 部门, by 栏目, by type and by a
+// free-text query. Two orderings, two cursor shapes — the house pattern:
+// `new` is a keyset on `publishedAt|id` (stable under inserts), `hot` is an
+// engagement ordering paged by the `o:<n>` offset cursor (its ranking shifts
+// under new likes, so a keyset would skip rows).
+
+export interface ZoneFeedFilters {
+  viewer: ZoneSiteViewer;
+  sort?: ZoneFeedSort;
+  /** 研究所 (multi-select) — matches the ZONE's lab. */
+  labs?: string[];
+  /** 部门 (multi-select) — matches the ZONE's department. */
+  departments?: string[];
+  /** 栏目 names or slugs. */
+  columns?: string[];
+  types?: ZonePostTypeValue[];
+  q?: string;
+  cursor?: string | null;
+  limit?: number;
+  /** Narrow to one 版块 (its slug). */
+  zoneSlug?: string | null;
+}
+
+const FEED_MAX_FILTER_VALUES = 20;
+
+function cleanList(values: string[] | undefined, max = 64): string[] {
+  return [...new Set((values ?? []).map((v) => (v ?? '').trim()).filter(Boolean))]
+    .slice(0, FEED_MAX_FILTER_VALUES)
+    .map((v) => v.slice(0, max));
+}
+
+export async function listZoneFeed(f: ZoneFeedFilters): Promise<ZoneFeedResult> {
+  const limit = clampLimit(f.limit);
+  const sort: ZoneFeedSort = f.sort === 'hot' ? 'hot' : 'new';
+  const q = (f.q ?? '').trim().slice(0, 100);
+  const labs = cleanList(f.labs, ZONE_LIMITS.labMax);
+  const departments = cleanList(f.departments, ZONE_LIMITS.departmentMax);
+  const columns = cleanList(f.columns, ZONE_LIMITS.columnNameMax * 2);
+  const types = [...new Set(f.types ?? [])];
+  const zoneSlug = (f.zoneSlug ?? '').trim().toLowerCase().slice(0, 64);
+
+  // AND of independent OR-groups — never assign `where.OR` twice.
+  const and: Prisma.ZonePostWhereInput[] = [
+    { ...PUBLISHED_WHERE, zone: readableZoneWhere(f.viewer) },
+    zonePostVisibilityWhere(null, f.viewer),
+  ];
+  if (zoneSlug) and.push({ zone: { slug: zoneSlug } });
+  if (labs.length > 0) and.push({ zone: { lab: { in: labs } } });
+  if (departments.length > 0) and.push({ zone: { department: { in: departments } } });
+  if (columns.length > 0) {
+    and.push({ OR: [{ column: { is: { name: { in: columns } } } }, { column: { is: { slug: { in: columns } } } }] });
+  }
+  if (types.length > 0) and.push({ type: { in: types } });
+  if (q) {
+    and.push({
+      OR: [
+        { title: { contains: q, mode: 'insensitive' } },
+        { summary: { contains: q, mode: 'insensitive' } },
+        // tags is a String[]: `has` is an exact member match, not a substring.
+        { tags: { has: q } },
+      ],
+    });
+  }
+
+  const cursor = sort === 'new' ? decodeTimeCursor(f.cursor) : null;
+  const offset = sort === 'hot' ? decodeOffsetCursor(f.cursor) : 0;
+  const where: Prisma.ZonePostWhereInput = {
+    AND: [
+      ...and,
+      ...(cursor
+        ? [
+            {
+              OR: [
+                { publishedAt: { lt: cursor.at } },
+                { publishedAt: cursor.at, id: { lt: cursor.id } },
+              ],
+            } satisfies Prisma.ZonePostWhereInput,
+          ]
+        : []),
+    ],
+  };
+
+  const orderBy: Prisma.ZonePostOrderByWithRelationInput[] =
+    sort === 'hot'
+      ? [{ likeCount: 'desc' }, { commentCount: 'desc' }, { viewCount: 'desc' }, { publishedAt: 'desc' }, { id: 'desc' }]
+      : [{ publishedAt: 'desc' }, { id: 'desc' }];
+
+  const [total, rows] = await Promise.all([
+    prisma.zonePost.count({ where: { AND: and } }),
+    prisma.zonePost.findMany({
+      where,
+      orderBy,
+      ...(sort === 'hot' ? { skip: offset } : {}),
+      take: limit + 1,
+      select: ZONE_POST_CARD_SELECT,
+    }),
+  ]);
+
+  const hasMore = rows.length > limit;
+  const page = rows.slice(0, limit);
+  const items = await toCardViews(page, f.viewer);
+  const last = page[page.length - 1];
+  return {
+    items,
+    hasMore,
+    nextCursor:
+      hasMore && last
+        ? sort === 'hot'
+          ? `o:${offset + limit}`
+          : encodeTimeCursor({ at: last.publishedAt ?? last.createdAt, id: last.id })
+        : null,
+    total,
+  };
+}
+
+/**
+ * The hub filter panel's facets: the 研究所 → 部门 tree over readable zones plus
+ * the busiest 栏目 names. Column names repeat across zones on purpose — the
+ * hub filters by NAME, so "推理优化" in three 版块 is one filter chip.
+ */
+export async function zoneHubFacets(viewer: ZoneSiteViewer): Promise<ZoneHubFacets> {
+  const [org, columns] = await Promise.all([
+    zoneOrgTree(viewer),
+    prisma.zoneColumn.groupBy({
+      by: ['name'],
+      where: { zone: readableZoneWhere(viewer) },
+      _sum: { postCount: true },
+      orderBy: { _sum: { postCount: 'desc' } },
+      take: 20,
+    }),
+  ]);
+  return {
+    org,
+    columns: columns
+      .map((c) => ({ name: c.name, postCount: c._sum.postCount ?? 0 }))
+      .filter((c) => c.postCount > 0),
+  };
 }

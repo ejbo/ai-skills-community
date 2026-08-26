@@ -9,6 +9,7 @@ import { logAdmin } from '@/lib/audit';
 import { zoneContext } from '@/lib/zones/access';
 import { ZoneError } from '@/lib/zones/queries';
 import {
+  MAX_DESIGNATED_VIEWERS,
   getZonePostDetail,
   setZonePostFlags,
   softDeleteZonePost,
@@ -17,9 +18,11 @@ import {
 } from '@/lib/zones/post-queries';
 import {
   MAX_ZONE_ATTACHMENTS,
+  MAX_ZONE_COLUMNS,
   ZONE_LIMITS,
   ZONE_MEDIA_KEY_RE,
   ZONE_POST_TYPES,
+  ZONE_POST_VISIBILITIES,
   normalizeHttpUrl,
   normalizeTags,
 } from '@/lib/zones/shared';
@@ -36,12 +39,22 @@ const REASONED_CODES: ReadonlySet<string> = new Set([
   'not_published',
   'too_many_pinned',
   'invalid_input',
+  // 栏目 (ask #2) + 可见性 (ask #4)
+  'column_name_required',
+  'column_create_forbidden',
+  'columns_full',
+  'column_not_found',
+  'column_exists',
+  'designated_not_member',
+  'designated_too_many',
 ]);
 
 async function zoneErrorResponse(e: unknown): Promise<NextResponse | null> {
   if (e instanceof ZoneError) {
+    // `{max}` = 置顶上限, `{limit}` = 栏目上限 — distinct placeholders, so one
+    // values object serves every reasoned code.
     const reason = REASONED_CODES.has(e.code)
-      ? await apiReason(`zone_${e.code}`, { max: ZONE_LIMITS.maxPinnedPosts })
+      ? await apiReason(`zone_${e.code}`, { max: ZONE_LIMITS.maxPinnedPosts, limit: MAX_ZONE_COLUMNS })
       : undefined;
     return NextResponse.json({ error: e.code, ...(reason ? { reason } : {}) }, { status: e.status });
   }
@@ -77,6 +90,14 @@ const patchSchema = z
     coauthorIds: z.array(z.string().min(1).max(64)).max(ZONE_LIMITS.maxCoauthors).optional(),
     attachments: z.array(attachmentSchema).max(MAX_ZONE_ATTACHMENTS).optional(),
     status: z.enum(['draft', 'published']).optional(),
+    // 栏目 (ask #2): an existing id, null for 未归栏, or a typed name that is
+    // created on the fly (`columnName` wins over `columnId` — the lib decides).
+    columnId: z.string().trim().max(64).nullable().optional(),
+    columnName: z.string().trim().max(ZONE_LIMITS.columnNameMax * 2).nullable().optional(),
+    // 可见性 (ask #4): NARROWS inside the zone, never widens it.
+    visibility: z.enum(ZONE_POST_VISIBILITIES).optional(),
+    designatedUserIds: z.array(z.string().trim().min(1).max(64)).max(MAX_DESIGNATED_VIEWERS).optional(),
+    regenerateAccessCode: z.boolean().optional(),
     pinned: z.boolean().optional(),
     locked: z.boolean().optional(),
   })
@@ -204,9 +225,21 @@ export async function PATCH(req: Request, { params }: { params: { slug: string; 
     }));
   }
   if (content.status !== undefined) patch.status = content.status;
+  // 栏目 / 可见性 are content fields: the same author-or-moderator gate above
+  // already covers them, and the lib owns every rule (column creation policy,
+  // designated members must be zone members, code rotation, grant cleanup).
+  if (content.columnId !== undefined) patch.columnId = content.columnId;
+  if (content.columnName !== undefined) patch.columnName = content.columnName;
+  if (content.visibility !== undefined) patch.visibility = content.visibility;
+  if (content.designatedUserIds !== undefined) {
+    patch.designatedUserIds = [...new Set(content.designatedUserIds)];
+  }
+  if (content.regenerateAccessCode !== undefined) patch.regenerateAccessCode = content.regenerateAccessCode;
 
   try {
-    if (editsContent) await updateZonePost(post.id, patch);
+    if (editsContent) {
+      await updateZonePost(post.id, patch, { canModerate: ctx.access.canModerate, actorId: uid });
+    }
     if (moderates) {
       await setZonePostFlags(post.id, {
         ...(pinned !== undefined ? { pinned } : {}),

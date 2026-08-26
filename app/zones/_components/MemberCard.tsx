@@ -129,7 +129,7 @@ export function MemberCard({
     <article className={`${CARD_CLS} card-hover flex h-full flex-col p-4`}>
       <div className="flex items-start gap-3">
         <Link href={`/users/${member.user.handle}`} className="shrink-0">
-          <Avatar name={member.user.displayName} src={member.user.avatarUrl} size="lg" tone="neutral" />
+          <Avatar name={member.user.displayName} src={member.user.avatarUrl} size="lg" />
         </Link>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">

@@ -22,7 +22,13 @@ import { SHORT_FEED_SELECT, annotateShortsViewer, toShortView } from '@/lib/vide
 import { ZONE_ACCESS_SELECT, resolveZoneAccess, type ZoneAccessRow, type ZoneSiteViewer } from './access';
 import { getLinkPreview } from './link-preview';
 import type { ZoneAccess } from './permissions';
-import { readableZoneWhere, toAttachmentView } from './post-queries';
+import {
+  ZONE_POST_ACCESS_SELECT,
+  canSeeZonePost,
+  readableZoneWhere,
+  toAttachmentView,
+  zonePostVisibilityWhere,
+} from './post-queries';
 import { embedKey, normalizeEmbedRef, zonePostHref, type EmbedKind, type EmbedRef } from './shared';
 import type {
   EmbedCandidate,
@@ -307,7 +313,7 @@ async function resolvePost(refs: string[], ctx: EmbedContext): Promise<Resolved>
   const rows = await prisma.zonePost.findMany({
     where: { id: { in: refs }, status: 'published', deletedAt: null },
     select: {
-      id: true,
+      ...ZONE_POST_ACCESS_SELECT,
       title: true,
       summary: true,
       type: true,
@@ -323,7 +329,10 @@ async function resolvePost(refs: string[], ctx: EmbedContext): Promise<Resolved>
     rows.map(async (p) => {
       if (p.zone.deletedAt && !ctx.viewer.siteAdmin) return;
       const access = await accessCache.get(p.zone);
-      if (!access.canRead) {
+      // The zone gate AND the post's own visibility (v2): an embed must never be
+      // a side door around 仅成员可见 / 指定成员可见 — a locked post answers false
+      // here and the token renders as 无权访问, not as a title + summary.
+      if (!access.canRead || !(await canSeeZonePost(p, access, ctx.viewer))) {
         out.set(p.id, fail('post', p.id, 'forbidden'));
         return;
       }
@@ -368,11 +377,7 @@ async function resolveFile(refs: string[], ctx: EmbedContext): Promise<Resolved>
       previewUrl: true,
       post: {
         select: {
-          id: true,
-          status: true,
-          deletedAt: true,
-          authorId: true,
-          coauthors: { select: { userId: true } },
+          ...ZONE_POST_ACCESS_SELECT,
           zone: { select: ZONE_ACCESS_SELECT },
         },
       },
@@ -384,10 +389,10 @@ async function resolveFile(refs: string[], ctx: EmbedContext): Promise<Resolved>
       const post = a.post;
       if (post.zone.deletedAt && !ctx.viewer.siteAdmin) return;
       const access = await accessCache.get(post.zone);
-      const viewerId = ctx.viewer.id;
-      const isAuthor = !!viewerId && (post.authorId === viewerId || post.coauthors.some((c) => c.userId === viewerId));
-      const published = post.status === 'published' && !post.deletedAt;
-      if (!((published && access.canRead) || isAuthor || access.canModerate)) {
+      // Same gate as the post itself — attachments of a 仅成员可见 / 指定成员可见
+      // post are exactly as private as its body. `canSeeZonePost` already lets the
+      // author / co-authors / 版主 through on an unpublished row.
+      if (!(await canSeeZonePost(post, access, ctx.viewer))) {
         out.set(a.id, fail('file', a.id, 'forbidden'));
         return;
       }
@@ -601,11 +606,16 @@ export async function searchEmbedCandidates(
       }
       case 'post': {
         const rows = await prisma.zonePost.findMany({
+          // AND-of-OR-groups: the visibility half carries its own `OR`, so the
+          // keyword match can never overwrite it. Without it the picker would
+          // list the TITLES of 仅成员可见 / 指定成员可见 posts to anyone who can
+          // read the 版块.
           where: {
-            status: 'published',
-            deletedAt: null,
-            zone: readableZoneWhere(ctx.viewer),
-            ...(query ? { OR: [{ title: contains }, { summary: contains }] } : {}),
+            AND: [
+              { status: 'published', deletedAt: null, zone: readableZoneWhere(ctx.viewer) },
+              zonePostVisibilityWhere(null, ctx.viewer),
+              ...(query ? [{ OR: [{ title: contains }, { summary: contains }] }] : []),
+            ],
           },
           orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
           take: limit,

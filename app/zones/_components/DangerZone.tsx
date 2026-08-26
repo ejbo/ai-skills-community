@@ -94,7 +94,7 @@ export function DangerZone({
           <div className="flex flex-col justify-between rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
             {picked ? (
               <div className="flex items-center gap-3">
-                <Avatar name={picked.user.displayName} src={picked.user.avatarUrl} size="lg" tone="neutral" />
+                <Avatar name={picked.user.displayName} src={picked.user.avatarUrl} size="lg" />
                 <div className="min-w-0">
                   <div className="truncate text-sm font-medium">{picked.user.displayName}</div>
                   <DeptTag department={picked.user.department} lab={picked.user.lab} />

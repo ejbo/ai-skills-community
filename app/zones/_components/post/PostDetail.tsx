@@ -20,6 +20,7 @@ import { PostToc } from './PostToc';
 import { PostActionBar } from './PostActionBar';
 import { PostAttachmentsPanel } from './PostAttachmentsPanel';
 import { PostComments } from './PostComments';
+import { PostUnlock } from './PostUnlock';
 import { RelatedPosts } from './RelatedPosts';
 
 const HEADING_SCROLL_MARGIN = '[&_h1]:scroll-mt-28 [&_h2]:scroll-mt-28 [&_h3]:scroll-mt-28 [&_h4]:scroll-mt-28';
@@ -48,6 +49,12 @@ export function PostDetail({
   const canEdit = post.isAuthor || access.canModerate;
 
   const jumpToComments = () => commentsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // 指定成员可见 (ask #4): the RSC already handed us a stub — no body, cover,
+  // attachments, headings or embeds — so nothing below this line may render.
+  // Comments, likes and the related band stay unmounted too: they would each
+  // fetch a surface this viewer has not unlocked.
+  if (post.accessLocked) return <PostUnlock post={post} zone={zone} />;
 
   return (
     <div className="grid gap-10 xl:grid-cols-[minmax(0,1fr)_240px]">
@@ -119,7 +126,7 @@ export function PostDetail({
               {authors.map((a) => (
                 <li key={a.handle}>
                   <Link href={`/users/${a.handle}`} className="flex items-center gap-2.5 rounded-lg p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-900">
-                    <Avatar name={a.displayName} src={a.avatarUrl} size="md" tone="neutral" />
+                    <Avatar name={a.displayName} src={a.avatarUrl} size="md" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">{a.displayName}</span>
                       <DeptTag department={a.department} lab={a.lab} className="relative z-[1]" />

@@ -24,12 +24,15 @@ import {
   ZONE_LIMITS,
   estimateReadMinutes,
   formatBytes,
+  isZonePostVisibility,
+  normalizeColumnName,
   normalizeHttpUrl,
   zoneHref,
   zonePostHref,
   type ZonePostTypeValue,
+  type ZonePostVisibilityValue,
 } from '@/lib/zones/shared';
-import type { ZoneAccess, ZoneCurrentUser, ZonePostDetailView } from '@/lib/zones/types';
+import type { ZoneAccess, ZoneColumnView, ZoneCurrentUser, ZonePostDetailView } from '@/lib/zones/types';
 import {
   AttachmentUploader,
   attachmentPayload,
@@ -43,6 +46,9 @@ import {
 import { PostTypePicker } from './PostTypePicker';
 import { TagInput } from './TagInput';
 import { CoauthorPicker, type CoauthorPick } from './CoauthorPicker';
+import { ColumnPicker, type ColumnPick } from './ColumnPicker';
+import { VisibilityPicker } from './VisibilityPicker';
+import { PostAccessPanel, type DesignatedPick } from './PostAccessPanel';
 
 interface DraftState {
   type: ZonePostTypeValue;
@@ -54,25 +60,49 @@ interface DraftState {
   tags: string[];
   coauthors: CoauthorPick[];
   attachments: AttachmentDraft[];
+  // v2 (技术专区 v2): 栏目 + 可见范围.
+  columnId: string | null;
+  columnName: string | null;
+  visibility: ZonePostVisibilityValue;
+  designated: DesignatedPick[];
 }
 
+/** Bumped when DraftState gains fields; `readStored` migrates v1 instead of dropping it. */
+const DRAFT_VERSION = 2;
+
 interface StoredDraft {
-  v: 1;
+  v: typeof DRAFT_VERSION;
   savedAt: string;
   draft: DraftState;
 }
 
 const AUTOSAVE_MS = 800;
-// Stable default — a fresh `[]` per render would re-derive `initial` (and re-arm the autosave) on every render.
+// Stable defaults — a fresh `[]` per render would re-derive `initial` (and re-arm the autosave) on every render.
 const EMPTY_COAUTHORS: CoauthorPick[] = [];
+const EMPTY_DESIGNATED: DesignatedPick[] = [];
+const EMPTY_COLUMNS: ZoneColumnView[] = [];
 
 function draftStorageKey(zoneSlug: string, postId: string | null): string {
   return `zones:draft:${zoneSlug}:${postId ?? 'new'}`;
 }
 
-function initialDraft(post: ZonePostDetailView | undefined, coauthors: CoauthorPick[]): DraftState {
+function initialDraft(post: ZonePostDetailView | undefined, coauthors: CoauthorPick[], designated: DesignatedPick[]): DraftState {
   if (!post) {
-    return { type: 'article', title: '', summary: '', bodyMd: '', cover: null, linkUrl: '', tags: [], coauthors: [], attachments: [] };
+    return {
+      type: 'article',
+      title: '',
+      summary: '',
+      bodyMd: '',
+      cover: null,
+      linkUrl: '',
+      tags: [],
+      coauthors: [],
+      attachments: [],
+      columnId: null,
+      columnName: null,
+      visibility: 'zone',
+      designated: [],
+    };
   }
   const coverKey = zoneMediaKeyFromPublicUrl(post.coverUrl);
   return {
@@ -85,6 +115,10 @@ function initialDraft(post: ZonePostDetailView | undefined, coauthors: CoauthorP
     tags: post.tags,
     coauthors,
     attachments: post.attachments.map(draftFromView).filter((a): a is AttachmentDraft => a !== null),
+    columnId: post.column?.id ?? null,
+    columnName: null,
+    visibility: post.visibility,
+    designated,
   };
 }
 
@@ -92,9 +126,22 @@ function readStored(key: string): StoredDraft | null {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as StoredDraft;
-    if (!parsed || parsed.v !== 1 || !parsed.draft) return null;
-    return parsed;
+    const parsed = JSON.parse(raw) as { v?: unknown; savedAt?: unknown; draft?: Partial<DraftState> } | null;
+    const d = parsed?.draft;
+    if (!d || (parsed?.v !== 1 && parsed?.v !== DRAFT_VERSION)) return null;
+    // A v1 draft predates 栏目 / 可见范围: fill the new fields with their defaults
+    // (key order stays DraftState's, so the "unchanged" comparison below still works).
+    return {
+      v: DRAFT_VERSION,
+      savedAt: typeof parsed.savedAt === 'string' ? parsed.savedAt : new Date().toISOString(),
+      draft: {
+        ...(d as DraftState),
+        columnId: typeof d.columnId === 'string' ? d.columnId : null,
+        columnName: typeof d.columnName === 'string' ? d.columnName : null,
+        visibility: isZonePostVisibility(d.visibility) ? d.visibility : 'zone',
+        designated: Array.isArray(d.designated) ? d.designated : [],
+      },
+    };
   } catch {
     return null;
   }
@@ -106,6 +153,9 @@ export function PostComposer({
   currentUser,
   post,
   initialCoauthors = EMPTY_COAUTHORS,
+  columns = EMPTY_COLUMNS,
+  allowMemberColumns = true,
+  initialDesignated = EMPTY_DESIGNATED,
 }: {
   zone: { id: string; slug: string; name: string };
   access: ZoneAccess;
@@ -113,6 +163,12 @@ export function PostComposer({
   /** Editing an existing post (draft or published). */
   post?: ZonePostDetailView;
   initialCoauthors?: CoauthorPick[];
+  /** The zone's 栏目 in display order (official first). */
+  columns?: ZoneColumnView[];
+  /** `Zone.allowMemberColumns` — 版主 may always create one. */
+  allowMemberColumns?: boolean;
+  /** Current designated readers of a `restricted` post (the RSC reads the ids). */
+  initialDesignated?: DesignatedPick[];
 }) {
   const t = useTranslations('zones');
   const tc = useTranslations('common');
@@ -120,7 +176,10 @@ export function PostComposer({
   const router = useRouter();
   const pathname = usePathname();
 
-  const initial = useMemo(() => initialDraft(post, initialCoauthors), [post, initialCoauthors]);
+  const initial = useMemo(
+    () => initialDraft(post, initialCoauthors, initialDesignated),
+    [post, initialCoauthors, initialDesignated],
+  );
   const initialJson = useMemo(() => JSON.stringify(initial), [initial]);
   const storageKey = draftStorageKey(zone.slug, post?.id ?? null);
 
@@ -130,6 +189,10 @@ export function PostComposer({
   const [uploading, setUploading] = useState(0);
   const [coverBusy, setCoverBusy] = useState(false);
   const [busy, setBusy] = useState<'draft' | 'publish' | null>(null);
+  // 访问密码 is a live server secret, never draft content: it is never autosaved
+  // and never restored — it only ever comes back from the server.
+  const [accessCode, setAccessCode] = useState<string | null>(post?.accessCode ?? null);
+  const [regenerateCode, setRegenerateCode] = useState(false);
   const coverInput = useRef<HTMLInputElement>(null);
   const restoreChecked = useRef(false);
 
@@ -155,7 +218,7 @@ export function PostComposer({
     const timer = setTimeout(() => {
       try {
         const savedAt = new Date().toISOString();
-        localStorage.setItem(storageKey, JSON.stringify({ v: 1, savedAt, draft } satisfies StoredDraft));
+        localStorage.setItem(storageKey, JSON.stringify({ v: DRAFT_VERSION, savedAt, draft } satisfies StoredDraft));
         setAutosavedAt(savedAt);
       } catch {
         /* quota / private mode — the server draft is the real safety net */
@@ -175,8 +238,13 @@ export function PostComposer({
   const readMinutes = estimateReadMinutes(draft.bodyMd);
   const isPublished = post?.status === 'published';
   const titleLen = [...draft.title.trim()].length;
+  // 版主 may always add a 栏目; members only when the zone allows it.
+  const canCreateColumn = access.canModerate || allowMemberColumns;
 
   function validate(): string | null {
+    if (draft.columnName && [...normalizeColumnName(draft.columnName)].length > ZONE_LIMITS.columnNameMax) {
+      return t('composer_column_too_long', { max: ZONE_LIMITS.columnNameMax });
+    }
     if (titleLen < ZONE_LIMITS.postTitleMin) return t('composer_err_title_min', { min: ZONE_LIMITS.postTitleMin });
     if (titleLen > ZONE_LIMITS.postTitleMax) return t('composer_err_title_max', { max: ZONE_LIMITS.postTitleMax });
     if ([...draft.summary].length > ZONE_LIMITS.postSummaryMax) return t('composer_err_summary_max', { max: ZONE_LIMITS.postSummaryMax });
@@ -216,6 +284,12 @@ export function PostComposer({
     }
     setBusy(status === 'draft' ? 'draft' : 'publish');
     const link = normalizeHttpUrl(draft.linkUrl);
+    const restricted = draft.visibility === 'restricted';
+    // A 栏目 deleted while the composer was open would make the whole save fail
+    // with `column_not_found`; drop the stale id instead (the picker already
+    // renders it as 未归栏). Only when we positively know the zone's list.
+    const columnId =
+      draft.columnName || (columns.length > 0 && !columns.some((c) => c.id === draft.columnId)) ? null : draft.columnId;
     const body = {
       type: draft.type,
       title: draft.title.trim(),
@@ -227,6 +301,12 @@ export function PostComposer({
       coauthorIds: draft.coauthors.map((c) => c.userId),
       attachments: attachmentPayload(draft.attachments),
       status,
+      // 栏目: a typed name wins server-side, so never send both.
+      columnId,
+      columnName: draft.columnName ? normalizeColumnName(draft.columnName) : null,
+      visibility: draft.visibility,
+      designatedUserIds: restricted ? draft.designated.map((d) => d.userId) : [],
+      regenerateAccessCode: restricted && regenerateCode,
     };
     try {
       const res = await fetch(
@@ -263,7 +343,9 @@ export function PostComposer({
         router.refresh();
         return;
       }
-      // Existing post: pull the saved shape back (attachment ids, cover url).
+      // Existing post: pull the saved shape back (attachment ids, cover url,
+      // the resolved 栏目 and the freshly issued 访问密码).
+      setRegenerateCode(false);
       try {
         const fresh = await fetch(`/api/zones/${encodeURIComponent(zone.slug)}/posts/${encodeURIComponent(id)}`);
         const json = (await fresh.json().catch(() => null)) as { post?: ZonePostDetailView } | null;
@@ -274,9 +356,15 @@ export function PostComposer({
             const d = draftFromView(a);
             if (d) byKey.set(d.key, d);
           }
+          setAccessCode(saved.accessCode ?? null);
           setDraft((d) => ({
             ...d,
             attachments: d.attachments.map((a) => byKey.get(a.key) ?? a),
+            // A `columnName` has become a real column — carry its id so the next
+            // save does not go through the create path again.
+            columnId: saved.column?.id ?? null,
+            columnName: null,
+            visibility: saved.visibility,
           }));
         }
       } catch {
@@ -346,6 +434,25 @@ export function PostComposer({
       <section>
         <div className={label}>{t('composer_type_label')}</div>
         <PostTypePicker value={draft.type} onChange={(type) => patch({ type })} canAnnounce={access.canModerate} disabled={disabled} />
+      </section>
+
+      <section>
+        <div className={label}>
+          <span>
+            {t('composer_column_label')}
+            <span className="ml-1 font-normal text-muted">{t('composer_optional')}</span>
+          </span>
+        </div>
+        <ColumnPicker
+          columns={columns}
+          value={{ columnId: draft.columnId, columnName: draft.columnName }}
+          onChange={(pick: ColumnPick) => patch({ columnId: pick.columnId, columnName: pick.columnName })}
+          allowCreate={canCreateColumn}
+          disabled={disabled}
+        />
+        <p className="mt-1.5 text-[11px] text-muted">
+          {t('composer_column_hint')} {canCreateColumn ? t('composer_column_hint_create') : t('composer_column_hint_locked')}
+        </p>
       </section>
 
       <section>
@@ -485,6 +592,26 @@ export function PostComposer({
         <CoauthorPicker zoneSlug={zone.slug} value={draft.coauthors} onChange={(coauthors) => patch({ coauthors })} selfHandle={currentUser.handle} disabled={disabled} />
       </section>
 
+      <section className="space-y-3">
+        <div className={label}>{t('composer_visibility_label')}</div>
+        <VisibilityPicker value={draft.visibility} onChange={(visibility) => patch({ visibility })} disabled={disabled} />
+        {draft.visibility === 'restricted' && (
+          <PostAccessPanel
+            zoneSlug={zone.slug}
+            postId={post?.id ?? null}
+            serverRestricted={post?.visibility === 'restricted'}
+            designated={draft.designated}
+            onDesignatedChange={(designated) => patch({ designated })}
+            accessCode={accessCode}
+            onAccessCodeChange={setAccessCode}
+            regenerate={regenerateCode}
+            onRegenerateChange={setRegenerateCode}
+            selfUserId={currentUser.id}
+            disabled={disabled}
+          />
+        )}
+      </section>
+
       <footer className="sticky bottom-0 z-20 -mx-1 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-200 bg-[rgb(var(--bg))] px-1 py-3 dark:border-zinc-800">
         <div className="text-xs text-muted">
           {uploading > 0 ? (
@@ -498,6 +625,7 @@ export function PostComposer({
               onClick={() => {
                 if (JSON.stringify(draft) === initialJson || confirm(t('composer_reset_confirm'))) {
                   setDraft(initial);
+                  setRegenerateCode(false);
                   clearStored();
                 }
               }}

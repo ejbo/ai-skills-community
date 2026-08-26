@@ -8,7 +8,6 @@ import { ChevronLeft } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { canUserCreateZone } from '@/lib/zones/access';
 import { zoneFacets } from '@/lib/zones/queries';
-import { BlurText } from '@/components/motion';
 import { CreateZoneWizard } from '../_components/CreateZoneWizard';
 import { loginHref } from '../_components/ui';
 
@@ -35,7 +34,8 @@ export default async function NewZonePage() {
         {t('hub_title')}
       </Link>
       <div className="mt-4 mb-8">
-        <BlurText text={t('create_title')} as="h1" by="chars" stagger={0.03} className="text-2xl font-semibold tracking-tight sm:text-3xl" />
+        {/* Ask #5: 版块 titles are PLAIN TEXT — no BlurText / per-char reveal anywhere under /zones. */}
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{t('create_title')}</h1>
         <p className="mt-2 max-w-xl text-sm text-zinc-600 dark:text-zinc-400">{t('create_subtitle')}</p>
       </div>
       <CreateZoneWizard facets={facets} />

@@ -1,10 +1,15 @@
 'use client';
 
 // 技术专区 — 加入 / 申请加入 / 已加入(退出) control for the zone header and the
-// locked-state card. Policy is pre-decided by ZoneAccess (never re-derived here);
-// the approval dialog is a body portal (the header band is overflow-hidden).
+// locked-state card. Policy is pre-decided by ZoneAccess (never re-derived here).
+//
+// BOTH overlays are body portals, for the same reason (ask #1): the header band
+// is `relative overflow-hidden`, so anything absolutely positioned inside it is
+// clipped at any z-index. The approval dialog portals itself; the 已加入 menu
+// rides `useAnchoredPanel` — the same anchoring ZoneManageMenu uses, so the two
+// header dropdowns can never drift apart.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -15,6 +20,10 @@ import { Magnetic } from '@/components/motion';
 import { ZONE_LIMITS } from '@/lib/zones/shared';
 import type { ZoneAccess, ZoneJoinPolicyView } from '@/lib/zones/types';
 import { BTN_PRIMARY, BTN_SECONDARY, PILL_INK, PILL_MONO, TEXTAREA_CLS, loginHref, readError } from './ui';
+import { useAnchoredPanel } from './useAnchoredPanel';
+
+/** w-56, in px — the first-paint estimate; the real box is measured on open. */
+const MENU_W = 224;
 
 export function JoinButton({
   slug,
@@ -34,23 +43,30 @@ export function JoinButton({
   const tl = useTranslations('labels');
   const router = useRouter();
   const pathname = usePathname();
+  const menuId = useId();
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState(false);
-  const [menu, setMenu] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  // The confirm step grows the panel, so it feeds the height estimate and a
+  // re-measure runs when it flips (the panel may need to flip above instead).
+  const {
+    open: menu,
+    openPanel,
+    close: closeMenu,
+    pos,
+    triggerRef,
+    panelRef,
+    host,
+    place,
+  } = useAnchoredPanel<HTMLButtonElement>({
+    width: MENU_W,
+    height: confirmLeave ? 132 : 40 + (access.roleName ? 34 : 0) + 8,
+    onClose: () => setConfirmLeave(false),
+  });
 
   useEffect(() => {
-    if (!menu) return;
-    function close(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenu(false);
-        setConfirmLeave(false);
-      }
-    }
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [menu]);
+    if (menu) place();
+  }, [confirmLeave, menu, place]);
 
   async function join(message: string) {
     if (busy) return;
@@ -98,8 +114,7 @@ export function JoinButton({
         return;
       }
       pushToast('success', t('leave_done', { name }));
-      setMenu(false);
-      setConfirmLeave(false);
+      closeMenu();
       router.refresh();
     } catch {
       pushToast('error', t('action_failed'));
@@ -115,62 +130,82 @@ export function JoinButton({
   if (access.isMember) {
     if (!access.canLeave) return <span className={PILL_MONO}>{t('join_member_pill')}</span>;
     return (
-      <div ref={menuRef} className="relative">
+      <>
         <button
+          ref={triggerRef}
           type="button"
-          onClick={() => setMenu((o) => !o)}
+          onClick={() => (menu ? closeMenu() : openPanel())}
           aria-haspopup="menu"
           aria-expanded={menu}
+          aria-controls={menu ? menuId : undefined}
           className={BTN_SECONDARY}
         >
           <Check className="h-4 w-4" />
           {t('join_member_pill')}
-          <ChevronDown className="h-3.5 w-3.5 text-zinc-400" />
+          <ChevronDown
+            className={`h-3.5 w-3.5 text-zinc-400 transition-transform duration-200 ${menu ? 'rotate-180' : ''}`}
+          />
         </button>
-        <AnimatePresence>
-          {menu && (
-            <motion.div
-              role="menu"
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{ duration: 0.15 }}
-              className="surface absolute right-0 top-full z-30 mt-2 w-56 rounded-xl p-1 shadow-lg"
-            >
-              {access.roleName && (
-                <div className="px-3 py-2 text-xs text-muted">{t('join_role_hint', { role: access.roleName })}</div>
-              )}
-              {confirmLeave ? (
-                <div className="px-3 py-2">
-                  <p className="text-xs text-zinc-600 dark:text-zinc-400">{t('leave_confirm', { name })}</p>
-                  <div className="mt-2 flex gap-2">
-                    <button type="button" onClick={leave} disabled={busy} className={`${BTN_PRIMARY} h-8 px-3 text-xs`}>
-                      {t('leave_action')}
-                    </button>
+        {host &&
+          createPortal(
+            <AnimatePresence>
+              {menu && pos && (
+                <motion.div
+                  ref={panelRef}
+                  id={menuId}
+                  role="menu"
+                  aria-label={t('join_member_pill')}
+                  initial={{ opacity: 0, y: pos.up ? 4 : -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: pos.up ? 4 : -4 }}
+                  transition={{ duration: 0.15 }}
+                  // z-[70]: matches ZoneManageMenu — above the sticky NavBar
+                  // (z-40), below dialogs (z-[80]+) and the PreviewDrawer.
+                  className="surface fixed z-[70] w-56 overflow-y-auto overscroll-contain rounded-xl p-1 shadow-lg"
+                  style={{ left: pos.left, top: pos.top, maxHeight: pos.maxHeight }}
+                >
+                  {access.roleName && (
+                    <div className="px-3 py-2 text-xs text-muted">{t('join_role_hint', { role: access.roleName })}</div>
+                  )}
+                  {confirmLeave ? (
+                    <div className="px-3 py-2">
+                      <p className="text-xs text-zinc-600 dark:text-zinc-400">{t('leave_confirm', { name })}</p>
+                      <div className="mt-2 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={leave}
+                          disabled={busy}
+                          className={`${BTN_PRIMARY} h-8 px-3 text-xs`}
+                        >
+                          {t('leave_action')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmLeave(false)}
+                          className={`${BTN_SECONDARY} h-8 px-3 text-xs`}
+                        >
+                          {t('cancel')}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
                     <button
                       type="button"
-                      onClick={() => setConfirmLeave(false)}
-                      className={`${BTN_SECONDARY} h-8 px-3 text-xs`}
+                      role="menuitem"
+                      autoFocus
+                      onClick={() => setConfirmLeave(true)}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-700 outline-none transition hover:bg-zinc-100 focus-visible:bg-zinc-100 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-zinc-400 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:focus-visible:bg-zinc-800 dark:focus-visible:ring-zinc-500"
                     >
-                      {t('cancel')}
+                      <LogOut className="h-4 w-4" />
+                      {t('leave_action')}
                     </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => setConfirmLeave(true)}
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                >
-                  <LogOut className="h-4 w-4" />
-                  {t('leave_action')}
-                </button>
+                  )}
+                </motion.div>
               )}
-            </motion.div>
+            </AnimatePresence>,
+            host,
           )}
-        </AnimatePresence>
-      </div>
+      </>
     );
   }
 

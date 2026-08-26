@@ -62,7 +62,7 @@ export function PostPreview({ data }: { data: EmbedPostData }) {
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted">
         <Link href={`/users/${data.author.handle}`} className="inline-flex items-center gap-1.5 hover:underline">
-          <Avatar name={data.author.displayName} src={data.author.avatarUrl} size="xs" tone="neutral" />
+          <Avatar name={data.author.displayName} src={data.author.avatarUrl} size="xs" />
           <span className="text-zinc-800 dark:text-zinc-200">{data.author.displayName}</span>
         </Link>
         <DeptTag department={data.author.department} lab={data.author.lab} />

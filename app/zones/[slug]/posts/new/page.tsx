@@ -2,8 +2,10 @@ import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
+import { prisma } from '@/lib/db';
 import { BackButton } from '@/components/BackButton';
 import { loadZoneBySlug, resolveZoneAccess, zoneSiteViewer } from '@/lib/zones/access';
+import { listZoneColumns } from '@/lib/zones/columns';
 import { zoneHref } from '@/lib/zones/shared';
 import type { ZoneCurrentUser } from '@/lib/zones/types';
 import { PostComposer } from '@/app/zones/_components/post/PostComposer';
@@ -23,7 +25,13 @@ export default async function NewZonePostPage({ params }: { params: { slug: stri
   if (!zone) notFound();
   const access = await resolveZoneAccess(zone, viewer);
   if (!access.canPost) redirect(zoneHref(zone.slug));
-  const t = await getTranslations('zones');
+  // 栏目 (ask #2): the composer needs the zone's columns and whether members may
+  // add one — neither rides on ZONE_ACCESS_SELECT.
+  const [t, columns, options] = await Promise.all([
+    getTranslations('zones'),
+    listZoneColumns(zone.id),
+    prisma.zone.findUnique({ where: { id: zone.id }, select: { allowMemberColumns: true } }),
+  ]);
 
   const currentUser: ZoneCurrentUser = {
     id: session.user.id,
@@ -40,7 +48,13 @@ export default async function NewZonePostPage({ params }: { params: { slug: stri
       <h1 className="text-2xl font-semibold tracking-tight">{t('composer_new_title')}</h1>
       <p className="mt-1 text-sm text-muted">{t('composer_new_subtitle', { zone: zone.name })}</p>
       <div className="mt-6">
-        <PostComposer zone={{ id: zone.id, slug: zone.slug, name: zone.name }} access={access} currentUser={currentUser} />
+        <PostComposer
+          zone={{ id: zone.id, slug: zone.slug, name: zone.name }}
+          access={access}
+          currentUser={currentUser}
+          columns={columns}
+          allowMemberColumns={options?.allowMemberColumns ?? true}
+        />
       </div>
     </div>
   );
