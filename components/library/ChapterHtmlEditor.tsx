@@ -126,7 +126,7 @@ export function ChapterHtmlEditor({ value, onChange, mode }: Props) {
         onChange={(e) => onChange(e.target.value)}
         spellCheck={false}
         aria-label={t('chapter_html_label')}
-        className="min-h-[320px] flex-1 resize-y rounded-lg border border-zinc-200 bg-white p-3 font-mono text-xs leading-relaxed outline-none focus:border-accent-500 dark:border-zinc-800 dark:bg-zinc-900"
+        className="min-h-[320px] flex-1 resize-y rounded-lg border border-zinc-200 bg-white p-3 font-mono text-xs leading-relaxed outline-none focus:border-zinc-900 dark:focus:border-zinc-100 dark:border-zinc-800 dark:bg-zinc-900"
       />
     );
   }
@@ -234,7 +234,7 @@ function ToolButton({
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className={`grid h-7 w-7 place-items-center rounded-md transition hover:bg-zinc-200/70 dark:hover:bg-zinc-700/60 ${
-        on ? 'bg-accent-500/15 text-accent-600 dark:text-accent-300' : 'text-muted'
+        on ? 'bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50' : 'text-muted'
       }`}
     >
       {children}

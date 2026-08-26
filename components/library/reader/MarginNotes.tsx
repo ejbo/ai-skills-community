@@ -140,7 +140,7 @@ export function MarginNotes({
             onClick={() => setOpen(active ? null : { key: c.key, top: c.top })}
             aria-label={t('margin_annotators', { count: authors.length })}
             className={`reader-panel rborder fixed z-30 flex items-center rounded-full border py-0.5 pl-1 pr-1.5 shadow-md transition ${
-              active ? 'ring-2 ring-accent-500/60' : 'hover:shadow-lg'
+              active ? 'ring-2 ring-zinc-900/25 dark:ring-zinc-100/25' : 'hover:shadow-lg'
             }`}
             style={{ top: c.top, left: gutterX - 8, transform: 'translateX(-100%)' }}
           >

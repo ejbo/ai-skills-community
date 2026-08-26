@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
 import { createDocFromUrl, IngestError } from '@/lib/library/ingest';
-import { cleanCategories } from '@/lib/library/types';
+import { cleanCategoriesFromDb } from '@/lib/library/categories';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
       url: parsed.data.url,
       uploaderId: session.user.id,
       docType: parsed.data.docType,
-      categories: cleanCategories(parsed.data.categories),
+      categories: await cleanCategoriesFromDb(parsed.data.categories),
     });
     return NextResponse.json({
       ok: true,

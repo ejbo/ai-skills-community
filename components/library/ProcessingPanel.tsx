@@ -31,7 +31,7 @@ export function ProcessingPanel({ docId, status }: { docId: string; status: stri
   return (
     <div className="surface rounded-2xl p-6">
       <div className="flex items-center gap-2 text-sm font-medium">
-        <Loader2 className="h-4 w-4 animate-spin text-accent-500" />
+        <Loader2 className="h-4 w-4 animate-spin text-zinc-900 dark:text-zinc-50" />
         {status === 'pending' ? t('status_queued') : t('status_extracting')}
       </div>
       <p className="mt-1 text-xs text-muted">{t('processing_hint')}</p>

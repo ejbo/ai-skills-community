@@ -142,7 +142,7 @@ export function AiSettingsCard() {
   return (
     <div className="surface rounded-xl p-4">
       <div className="flex items-center gap-2">
-        <Sparkles className="h-4 w-4 text-accent-500" />
+        <Sparkles className="h-4 w-4 text-zinc-900 dark:text-zinc-50" />
         <h3 className="text-sm font-semibold">知识库 AI 模型</h3>
         <span className="badge" style={{ background: overrideActive ? '#dcfce7' : '#f4f4f5', color: overrideActive ? '#166534' : '#52525b' }}>
           {overrideActive ? '使用自定义配置' : '使用环境配置'}
@@ -226,7 +226,7 @@ export function AiSettingsCard() {
           type="button"
           disabled={saving}
           onClick={() => void save()}
-          className="flex h-8 items-center gap-1.5 rounded-lg bg-accent-500 px-3.5 text-[13px] font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+          className="flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-3.5 text-[13px] font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
         >
           {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           保存配置

@@ -137,7 +137,7 @@ export function MarkPopover({
             aria-label={t('recolor_to', { color })}
             onClick={() => onRecolor(color)}
             className={`hl-dot-${color} h-5 w-5 rounded-full transition hover:scale-110 ${
-              currentColor === color ? 'ring-2 ring-accent-500/60 ring-offset-1' : ''
+              currentColor === color ? 'ring-2 ring-zinc-900/25 dark:ring-zinc-100/25 ring-offset-1' : ''
             }`}
           />
         ))}
@@ -161,7 +161,7 @@ export function MarkPopover({
             // Matches the API cap (highlights/[highlightId] PATCH: noteText max 2000).
             maxLength={2000}
             placeholder={t('note_placeholder')}
-            className="reader-panel rborder w-full resize-y rounded-lg border px-2 py-1.5 text-xs leading-relaxed outline-none focus:border-accent-500"
+            className="reader-panel rborder w-full resize-y rounded-lg border px-2 py-1.5 text-xs leading-relaxed outline-none focus:border-zinc-900 dark:focus:border-zinc-100"
           />
           <div className="mt-1.5 flex justify-end gap-1.5">
             <button
@@ -185,7 +185,7 @@ export function MarkPopover({
                   if (ok) setEditing(false);
                 });
               }}
-              className="flex h-7 items-center gap-1 rounded-lg bg-accent-500 px-2.5 text-xs font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+              className="flex h-7 items-center gap-1 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-2.5 text-xs font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
             >
               {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
               {tc('save')}

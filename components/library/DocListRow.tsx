@@ -49,13 +49,13 @@ export function DocListRow(props: DocListRowProps) {
           {props.categories.slice(0, 3).map((cat) => (
             <span
               key={cat}
-              className="rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-600 dark:text-accent-300"
+              className="rounded-full bg-zinc-900/[0.06] dark:bg-white/10 px-2 py-0.5 text-[11px] font-medium text-zinc-900 dark:text-zinc-50"
             >
               {cat in CATEGORY_NAME_BY_SLUG ? tl(`libCategory.${cat}`) : cat}
             </span>
           ))}
           {props.featured && (
-            <span className="inline-flex items-center gap-0.5 rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-600 dark:text-accent-300">
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-zinc-900/[0.06] dark:bg-white/10 px-2 py-0.5 text-[11px] font-medium text-zinc-900 dark:text-zinc-50">
               <Star className="h-3 w-3" />
               {t('featured_badge')}
             </span>
@@ -65,7 +65,7 @@ export function DocListRow(props: DocListRowProps) {
           </span>
         </div>
 
-        <h3 className="mt-1.5 truncate text-[15px] font-semibold tracking-tight group-hover:text-accent-600">
+        <h3 className="mt-1.5 truncate text-[15px] font-semibold tracking-tight group-hover:text-zinc-900">
           {props.title}
         </h3>
         {summary && (

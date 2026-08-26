@@ -3,7 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { ChevronLeft, ChevronRight, LayoutGrid, List as ListIcon } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { browseDocs, getCategoryCounts, getFeaturedDocs } from '@/lib/library-queries';
-import { LIBRARY_CATEGORIES } from '@/lib/library/types';
+import { listLibraryCategories } from '@/lib/library/categories';
 import { SearchBar } from '@/components/SearchBar';
 import { EmptyState } from '@/components/EmptyState';
 import { DocCard } from '@/components/library/DocCard';
@@ -141,6 +141,7 @@ async function CategorySidebar({
 }) {
   const t = await getTranslations('library');
   const tl = await getTranslations('labels');
+  const categories = await listLibraryCategories();
   const catHref = (slug: string | null) => {
     const sp = new URLSearchParams();
     for (const [k, v] of Object.entries(searchParams)) {
@@ -154,7 +155,7 @@ async function CategorySidebar({
   const rowCls = (on: boolean) =>
     `flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-sm transition ${
       on
-        ? 'bg-accent-500/10 font-medium text-accent-600 dark:text-accent-300'
+        ? 'bg-zinc-900/[0.06] dark:bg-white/10 font-medium text-zinc-900 dark:text-zinc-50'
         : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800/60'
     }`;
 
@@ -168,9 +169,9 @@ async function CategorySidebar({
         <Link href={catHref(null)} className={rowCls(!active)}>
           <span>{t('all_categories')}</span>
         </Link>
-        {LIBRARY_CATEGORIES.map((c) => (
+        {categories.map((c) => (
           <Link key={c.slug} href={catHref(c.slug)} className={rowCls(active === c.slug)}>
-            <span>{tl(`libCategory.${c.slug}`)}</span>
+            <span>{c.official ? tl(`libCategory.${c.slug}`) : c.name}</span>
             {counts[c.slug] ? (
               <span className="font-mono text-[11px] tabular-nums text-muted">{counts[c.slug]}</span>
             ) : null}
@@ -239,7 +240,7 @@ async function Pagination({
   const tBrowse = await getTranslations('browse');
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const btn =
-    'inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 transition hover:border-accent-500 hover:text-accent-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-accent-400 dark:hover:text-accent-300';
+    'inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:text-zinc-50';
   const disabled =
     'inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 px-3 text-sm font-medium text-muted opacity-40 dark:border-zinc-800';
 

@@ -82,7 +82,7 @@ export function DocPeople({
   }
 
   const chip =
-    'inline-flex items-center gap-1 rounded-full border border-zinc-200 px-2.5 py-1 text-xs text-muted transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700';
+    'inline-flex items-center gap-1 rounded-full border border-zinc-200 px-2.5 py-1 text-xs text-muted transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700';
 
   return (
     <div ref={ref} className="relative flex flex-wrap items-center gap-2">
@@ -112,7 +112,7 @@ export function DocPeople({
             <p className="py-4 text-center text-xs text-muted">{t('login_to_see_people')}</p>
           ) : loading || !data ? (
             <div className="flex justify-center py-4">
-              <Loader2 className="h-4 w-4 animate-spin text-accent-500" />
+              <Loader2 className="h-4 w-4 animate-spin text-zinc-900 dark:text-zinc-50" />
             </div>
           ) : open === 'readers' ? (
             <>

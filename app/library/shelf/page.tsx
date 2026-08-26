@@ -57,7 +57,7 @@ export default async function ShelfPage({ searchParams }: { searchParams: Search
         </div>
         <Link
           href="/library"
-          className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-4 text-sm font-medium transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
+          className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-4 text-sm font-medium transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700"
         >
           {t('go_library')}
         </Link>
@@ -79,8 +79,8 @@ export default async function ShelfPage({ searchParams }: { searchParams: Search
                 href={shelfHref(searchParams, { type: chip.key })}
                 className={`rounded-full border px-3 py-1 text-xs transition ${
                   active
-                    ? 'border-accent-500 bg-accent-500/10 font-medium text-accent-600 dark:text-accent-300'
-                    : 'border-zinc-200 text-muted hover:border-accent-400 hover:text-accent-600 dark:border-zinc-700'
+                    ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10 font-medium text-zinc-900 dark:text-zinc-50'
+                    : 'border-zinc-200 text-muted hover:border-zinc-400 hover:text-zinc-900 dark:border-zinc-700'
                 }`}
               >
                 {chip.label}

@@ -44,7 +44,7 @@ export function DocCard(props: DocCardProps) {
         />
         {progress !== null && (
           <span className="absolute inset-x-0 bottom-0 h-1 bg-black/25">
-            <span className="block h-full bg-accent-500" style={{ width: `${progress}%` }} />
+            <span className="block h-full bg-zinc-900 dark:bg-zinc-100" style={{ width: `${progress}%` }} />
           </span>
         )}
       </div>
@@ -55,13 +55,13 @@ export function DocCard(props: DocCardProps) {
             {typeLabel}
           </span>
           {props.featured && (
-            <span className="inline-flex items-center gap-0.5 rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-600 dark:text-accent-300">
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-zinc-900/[0.06] dark:bg-white/10 px-2 py-0.5 text-[11px] font-medium text-zinc-900 dark:text-zinc-50">
               <Star className="h-3 w-3" />
               {t('featured_badge')}
             </span>
           )}
         </div>
-        <h3 className="line-clamp-2 text-sm font-semibold tracking-tight group-hover:text-accent-600">
+        <h3 className="line-clamp-2 text-sm font-semibold tracking-tight group-hover:text-zinc-900">
           {props.title}
         </h3>
         {summary && <p className="line-clamp-2 text-xs text-muted">{summary}</p>}

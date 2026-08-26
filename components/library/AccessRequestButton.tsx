@@ -69,13 +69,13 @@ export function AccessRequestButton({
             rows={2}
             maxLength={500}
             placeholder={t('access_reason_placeholder')}
-            className="w-full resize-none rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-accent-500 dark:border-zinc-700 dark:bg-zinc-900"
+            className="w-full resize-none rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900 dark:focus:border-zinc-100 dark:border-zinc-700 dark:bg-zinc-900"
           />
           <button
             type="button"
             disabled={busy}
             onClick={() => void submit()}
-            className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+            className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
           >
             {t('access_submit')}
           </button>
@@ -84,7 +84,7 @@ export function AccessRequestButton({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600"
+          className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
         >
           <Lock className="h-4 w-4" />
           {status === 'rejected' ? t('access_reapply') : t('access_request')}

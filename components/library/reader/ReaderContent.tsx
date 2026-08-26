@@ -74,7 +74,7 @@ export function ReaderContent({
             <h1 className="text-3xl font-semibold leading-snug tracking-tight">{docTitle}</h1>
             {byline && <p className="r-muted text-sm">{byline}</p>}
             {chapterCount > 1 && chapterTitle && (
-              <p className="r-muted border-l-2 border-accent-500/50 pl-3 text-sm">{chapterTitle}</p>
+              <p className="r-muted border-l-2 border-zinc-900/40 dark:border-zinc-100/40 pl-3 text-sm">{chapterTitle}</p>
             )}
           </>
         ) : (

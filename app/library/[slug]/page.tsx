@@ -9,6 +9,7 @@ import { getDocBySlug, libraryViewerFromSession } from '@/lib/library-queries';
 import { can } from '@/lib/permissions';
 import { CATEGORY_NAME_BY_SLUG, isDocType } from '@/lib/library/types';
 import { pickOverview, pickText } from '@/lib/library/i18n-content';
+import { listLibraryCategories } from '@/lib/library/categories';
 import { withBasePath } from '@/lib/base-path';
 import { BackButton } from '@/components/BackButton';
 import { Avatar } from '@/components/Avatar';
@@ -21,7 +22,8 @@ import { AdminDocActions } from '@/components/library/AdminDocActions';
 import { DocViewPing } from '@/components/library/DocViewPing';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { RatingStars } from '@/components/library/RatingStars';
-import { DocPeople } from '@/components/library/DocPeople';
+import { DocStats } from '@/components/library/DocStats';
+import { UserHoverCard } from '@/components/user/UserHoverCard';
 import { DocComments } from '@/components/library/DocComments';
 import { AccessRequestButton } from '@/components/library/AccessRequestButton';
 import { AccessRequestsPanel } from '@/components/library/AccessRequestsPanel';
@@ -88,6 +90,13 @@ export default async function DocDetailPage({
   const localizedSummary = pickText(locale, doc.summary, doc.summaryEn);
   const localizedAbstract = pickText(locale, doc.abstractMd, doc.abstractMdEn);
   const localizedOverview = pickOverview(locale, doc.aiOverview, doc.aiOverviewEn);
+  // Member-created categories have no message key — show their stored name.
+  const categoryNames = Object.fromEntries(
+    (await listLibraryCategories()).map((c) => [
+      c.slug,
+      locale.startsWith('zh') ? c.name : c.nameEn || c.name,
+    ]),
+  );
 
   return (
     <div className="container max-w-5xl py-8">
@@ -110,7 +119,7 @@ export default async function DocDetailPage({
                 <>
                   <Link
                     href={`/library/${doc.slug}/read`}
-                    className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600"
+                    className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
                   >
                     <BookOpen className="h-4 w-4" />
                     {doc.progressPercent > 0 ? t('continue_reading') : t('start_reading')}
@@ -142,7 +151,7 @@ export default async function DocDetailPage({
                 <a
                   href={withBasePath(doc.fileUrl!)}
                   download
-                  className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-200 px-4 text-sm font-medium transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
+                  className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-200 px-4 text-sm font-medium transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700"
                 >
                   <Download className="h-4 w-4" />
                   {t('download_original')}
@@ -151,7 +160,7 @@ export default async function DocDetailPage({
               {(isUploader || canManage) && (
                 <Link
                   href={`/library/${doc.slug}/edit`}
-                  className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-200 px-4 text-sm font-medium transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
+                  className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-200 px-4 text-sm font-medium transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700"
                 >
                   <Pencil className="h-4 w-4" />
                   {t('edit_doc_link')}
@@ -174,9 +183,9 @@ export default async function DocDetailPage({
                 <Link
                   key={cat}
                   href={`/library?cat=${cat}`}
-                  className="rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-600 transition hover:bg-accent-500/20 dark:text-accent-300"
+                  className="rounded-full bg-zinc-900/[0.06] dark:bg-white/10 px-2 py-0.5 text-[11px] font-medium text-zinc-900 dark:text-zinc-50 transition hover:bg-zinc-900/10 dark:hover:bg-white/[0.14]"
                 >
-                  {CATEGORY_NAME_BY_SLUG[cat] ? tl(`libCategory.${cat}`) : cat}
+                  {CATEGORY_NAME_BY_SLUG[cat] ? tl(`libCategory.${cat}`) : (categoryNames[cat] ?? cat)}
                 </Link>
               ))}
               {doc.visibility === 'restricted' && (
@@ -192,7 +201,7 @@ export default async function DocDetailPage({
                 </span>
               )}
               {doc.featured && (
-                <span className="inline-flex items-center gap-0.5 rounded-full bg-accent-500/10 px-2 py-0.5 text-[11px] font-medium text-accent-600 dark:text-accent-300">
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-zinc-900/[0.06] dark:bg-white/10 px-2 py-0.5 text-[11px] font-medium text-zinc-900 dark:text-zinc-50">
                   <Star className="h-3 w-3" />
                   {t('featured_badge')}
                 </span>
@@ -229,23 +238,26 @@ export default async function DocDetailPage({
                 href={doc.sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer nofollow"
-                className="inline-flex max-w-full items-center gap-1.5 text-sm font-medium text-accent-600 transition hover:text-accent-700 dark:text-accent-300 dark:hover:text-accent-200"
+                className="inline-flex max-w-full items-center gap-1.5 text-sm font-medium text-zinc-900 dark:text-zinc-50 transition hover:text-zinc-900 dark:hover:text-zinc-50"
               >
                 <ExternalLink className="h-4 w-4 shrink-0" />
                 <span className="truncate">{t('view_source', { host: hostOf(doc.sourceUrl) })}</span>
               </a>
             )}
 
+            {/* Byline stays a sentence; the FIGURES move into their own block
+                so the eye lands on numbers in fixed positions. */}
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-muted">
-              <span className="flex items-center gap-1.5">
-                <Avatar
-                  name={doc.uploader.displayName}
-                  src={doc.uploader.avatarUrl}
-                  size="xs"
-                  tone="subtle"
-                />
-                {doc.uploader.displayName}
-              </span>
+              <UserHoverCard handle={doc.uploader.handle}>
+                <span className="flex items-center gap-1.5">
+                  <Avatar
+                    name={doc.uploader.displayName}
+                    src={doc.uploader.avatarUrl}
+                    size="xs"
+                  />
+                  {doc.uploader.displayName}
+                </span>
+              </UserHoverCard>
               <span>·</span>
               <span>{t('added_at', { time: relativeTime(doc.createdAt, locale) })}</span>
               {doc.publishedAt && (
@@ -254,32 +266,22 @@ export default async function DocDetailPage({
                   <span>{t('published_at', { date: format(doc.publishedAt, 'yyyy-MM-dd') })}</span>
                 </>
               )}
-              {doc.wordCount > 0 && (
-                <>
-                  <span>·</span>
-                  <span>{t('word_count', { value: wordCountValue(doc.wordCount, locale) })}</span>
-                </>
-              )}
-              {doc.estReadMinutes > 0 && (
-                <>
-                  <span>·</span>
-                  <span>{t('read_minutes', { count: doc.estReadMinutes })}</span>
-                </>
-              )}
-              <span>·</span>
-              <span className="font-mono tabular-nums">{tp('n_views', { count: doc.viewCount })}</span>
-              <span>·</span>
-              <span className="font-mono tabular-nums">{tp('n_shelved', { count: doc.shelfCount })}</span>
-              <span>·</span>
-              <span className="font-mono tabular-nums">{tp('n_comments', { count: doc.commentCount })}</span>
             </div>
 
             {ready && (
-              <DocPeople
+              <DocStats
                 docId={doc.id}
-                shelfCount={doc.shelfCount}
-                sharedNoteCount={doc.sharedNoteCount}
                 loggedIn={Boolean(viewer)}
+                wordCountLabel={
+                  doc.wordCount > 0
+                    ? t('word_count', { value: wordCountValue(doc.wordCount, locale) })
+                    : null
+                }
+                readMinutes={doc.estReadMinutes}
+                viewCount={doc.viewCount}
+                shelfCount={doc.shelfCount}
+                commentCount={doc.commentCount}
+                sharedNoteCount={doc.sharedNoteCount}
               />
             )}
 
@@ -354,7 +356,7 @@ export default async function DocDetailPage({
                     </ul>
                     {doc.chapters.length > TOC_VISIBLE && (
                       <details>
-                        <summary className="cursor-pointer border-t border-zinc-100 px-4 py-2.5 text-center text-xs text-accent-600 transition hover:bg-zinc-50 dark:border-zinc-800/60 dark:hover:bg-zinc-900/60">
+                        <summary className="cursor-pointer border-t border-zinc-100 px-4 py-2.5 text-center text-xs text-zinc-900 dark:text-zinc-50 transition hover:bg-zinc-50 dark:border-zinc-800/60 dark:hover:bg-zinc-900/60">
                           {t('expand_all_chapters', { count: doc.chapters.length })}
                         </summary>
                         <ul className="divide-y divide-zinc-100 border-t border-zinc-100 dark:divide-zinc-800/60 dark:border-zinc-800/60">

@@ -62,8 +62,8 @@ export function DocLikeButton({
       aria-pressed={liked}
       className={`flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border px-4 text-sm font-medium transition disabled:opacity-60 ${
         liked
-          ? 'border-accent-500 bg-accent-500/10 text-accent-600 dark:text-accent-300'
-          : 'border-zinc-200 hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700'
+          ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50'
+          : 'border-zinc-200 hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700'
       }`}
     >
       <Heart className={`h-4 w-4 ${liked ? 'fill-current' : ''}`} />

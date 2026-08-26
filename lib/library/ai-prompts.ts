@@ -5,9 +5,8 @@
 
 import { extractJsonObject } from '@/lib/skill-assist';
 import { estimateTokens } from './chunker';
+import { cleanCategorySlugs } from './categories';
 import {
-  LIBRARY_CATEGORIES,
-  cleanCategories,
   isDocType,
   type AiOverview,
   type LibraryDocTypeValue,
@@ -73,9 +72,12 @@ export function overviewPrompt(input: {
   author: string | null;
   tocLine: string;
   chapterSummaries: string[];
+  /** Live taxonomy (lib/library/categories.ts) — official rows only, so the AI
+   *  never files a document under someone's private experiment. */
+  categories: { slug: string; name: string }[];
 }): { system: string; user: string; maxTokens?: number } {
   const numbered = input.chapterSummaries.map((s, i) => `${i + 1}. ${s}`).join('\n');
-  const catTable = LIBRARY_CATEGORIES.map((c) => `${c.slug}（${c.name}）`).join('、');
+  const catTable = input.categories.map((c) => `${c.slug}（${c.name}）`).join('、');
   return {
     system:
       '你是知识库的导读编辑。根据整篇文档的章节摘要，为读者撰写 AI 导读，并判断文档类型与主题分类。' +
@@ -289,6 +291,7 @@ export function parseChapterSummary(text: string): { summary: string; keywords: 
 
 export function parseOverview(
   text: string,
+  knownCategories: Set<string>,
 ): (AiOverview & { docType: LibraryDocTypeValue | null; categories: string[] }) | null {
   const obj = extractJsonObject(text);
   if (!obj) return null;
@@ -300,7 +303,7 @@ export function parseOverview(
     keyPoints: asStrList(obj.keyPoints, 10, 300),
     questions: asStrList(obj.questions, 6, 200),
     docType: isDocType(obj.docType) ? obj.docType : null,
-    categories: cleanCategories(obj.categories),
+    categories: cleanCategorySlugs(obj.categories, knownCategories),
   };
 }
 

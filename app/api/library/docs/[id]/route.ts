@@ -4,7 +4,8 @@ import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { logAdmin } from '@/lib/audit';
-import { cleanCategories, isDocType } from '@/lib/library/types';
+import { isDocType } from '@/lib/library/types';
+import { cleanCategoriesFromDb } from '@/lib/library/categories';
 
 export const dynamic = 'force-dynamic';
 
@@ -103,7 +104,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       ...(metaTouched ? { metaPinned: true } : {}),
       ...(docType !== undefined && isDocType(docType) ? { docType, docTypePinned: true } : {}),
       ...(categories !== undefined
-        ? { categories: cleanCategories(categories), categoriesPinned: true }
+        ? { categories: await cleanCategoriesFromDb(categories), categoriesPinned: true }
         : {}),
       ...(visibility !== undefined ? { visibility } : {}),
     },

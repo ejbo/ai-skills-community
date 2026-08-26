@@ -9,7 +9,8 @@ import { pushToast } from '@/components/Toaster';
 import { withBasePath } from '@/lib/base-path';
 import { DocCover } from '@/components/library/DocCover';
 import { ChapterHtmlEditor, type ChapterEditorMode } from '@/components/library/ChapterHtmlEditor';
-import { DOC_TYPES, LIBRARY_CATEGORIES } from '@/lib/library/types';
+import { DOC_TYPES } from '@/lib/library/types';
+import { CategoryPicker } from '@/components/library/CategoryPicker';
 
 interface EditableDoc {
   id: string;
@@ -34,7 +35,7 @@ interface EditableDoc {
 const VISIBILITY_OPTIONS = ['public', 'restricted', 'private'] as const;
 
 const inputCls =
-  'h-9 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-accent-500 dark:border-zinc-800 dark:bg-zinc-900';
+  'h-9 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-zinc-900 dark:focus:border-zinc-100 dark:border-zinc-800 dark:bg-zinc-900';
 const labelCls = 'mb-1.5 block text-xs font-medium text-muted';
 
 export function DocEditor({ doc }: { doc: EditableDoc }) {
@@ -152,6 +153,29 @@ export function DocEditor({ doc }: { doc: EditableDoc }) {
     xhr.send(file);
   }
 
+  /** Drop a chapter the extractor got wrong (an ad block, a nav column). */
+  async function deleteChapter(chapterIndex: number) {
+    if (busyAction) return;
+    if (!window.confirm(t('delete_chapter_confirm'))) return;
+    setBusyAction(`chapter-${chapterIndex}`);
+    try {
+      const res = await fetch(`/api/library/docs/${doc.id}/chapters/${chapterIndex}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        pushToast('error', data?.reason ?? t('action_failed_retry'));
+        return;
+      }
+      pushToast('success', t('chapter_deleted'));
+      router.refresh();
+    } catch {
+      pushToast('error', t('network_error_retry'));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function removeDoc() {
     if (busyAction) return;
     if (!window.confirm(t('delete_doc_confirm'))) return;
@@ -235,7 +259,7 @@ export function DocEditor({ doc }: { doc: EditableDoc }) {
                   type="button"
                   disabled={busyAction !== null}
                   onClick={() => coverInputRef.current?.click()}
-                  className="flex h-8 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-xs font-medium transition hover:border-accent-500 hover:text-accent-600 disabled:opacity-60 dark:border-zinc-700"
+                  className="flex h-8 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-xs font-medium transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-700"
                 >
                   {busyAction === 'cover' ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -299,8 +323,8 @@ export function DocEditor({ doc }: { doc: EditableDoc }) {
                     onClick={() => setContentLang(lang)}
                     className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
                       contentLang === lang
-                        ? 'bg-accent-500 text-white'
-                        : 'text-muted hover:text-accent-600'
+                        ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900'
+                        : 'text-muted hover:text-zinc-900'
                     }`}
                   >
                     {lang === 'zh' ? t('lang_zh') : t('lang_en')}
@@ -319,7 +343,7 @@ export function DocEditor({ doc }: { doc: EditableDoc }) {
               rows={2}
               maxLength={1000}
               placeholder={contentLang === 'en' ? t('summary_en_placeholder') : undefined}
-              className="w-full resize-y rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-accent-500 dark:border-zinc-800 dark:bg-zinc-900"
+              className="w-full resize-y rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900 dark:focus:border-zinc-100 dark:border-zinc-800 dark:bg-zinc-900"
             />
           </div>
           <div className="md:col-span-2">
@@ -335,31 +359,12 @@ export function DocEditor({ doc }: { doc: EditableDoc }) {
               placeholder={
                 contentLang === 'en' ? t('abstract_en_placeholder') : t('abstract_placeholder')
               }
-              className="w-full resize-y rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-accent-500 dark:border-zinc-800 dark:bg-zinc-900"
+              className="w-full resize-y rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900 dark:focus:border-zinc-100 dark:border-zinc-800 dark:bg-zinc-900"
             />
           </div>
           <div className="md:col-span-2">
             <label className={labelCls}>{t('categories_label')}</label>
-            <div className="flex flex-wrap gap-1.5">
-              {LIBRARY_CATEGORIES.map((c) => {
-                const on = categories.includes(c.slug);
-                return (
-                  <button
-                    key={c.slug}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => toggleCategory(c.slug)}
-                    className={`rounded-full px-2.5 py-1 text-xs transition ${
-                      on
-                        ? 'bg-accent-500 font-medium text-white'
-                        : 'border border-zinc-200 text-muted hover:border-accent-400 hover:text-accent-600 dark:border-zinc-700'
-                    }`}
-                  >
-                    {tl(`libCategory.${c.slug}`)}
-                  </button>
-                );
-              })}
-            </div>
+            <CategoryPicker selected={categories} onChange={setCategories} />
           </div>
           <div className="md:col-span-2">
             <label className={labelCls}>{t('visibility_label')}</label>
@@ -372,8 +377,8 @@ export function DocEditor({ doc }: { doc: EditableDoc }) {
                   onClick={() => setVisibility(v)}
                   className={`rounded-xl border p-3 text-left transition ${
                     visibility === v
-                      ? 'border-accent-500 bg-accent-500/5'
-                      : 'border-zinc-200 hover:border-accent-400 dark:border-zinc-700'
+                      ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10'
+                      : 'border-zinc-200 hover:border-zinc-400 dark:border-zinc-700'
                   }`}
                 >
                   <span className="block text-sm font-medium">{tl(`visibility.${v}`)}</span>
@@ -388,7 +393,7 @@ export function DocEditor({ doc }: { doc: EditableDoc }) {
             type="button"
             disabled={saving || !title.trim()}
             onClick={() => void saveMeta()}
-            className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+            className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             {t('save_info')}
@@ -417,11 +422,27 @@ export function DocEditor({ doc }: { doc: EditableDoc }) {
                 <button
                   type="button"
                   onClick={() => setEditingChapter(ch.chapterIndex)}
-                  className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-zinc-200 px-2 text-xs transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
+                  className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-zinc-200 px-2 text-xs transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700"
                 >
                   <Pencil className="h-3 w-3" />
                   {tc('edit')}
                 </button>
+                {doc.chapters.length > 1 && (
+                  <button
+                    type="button"
+                    disabled={busyAction === `chapter-${ch.chapterIndex}`}
+                    onClick={() => void deleteChapter(ch.chapterIndex)}
+                    aria-label={t('delete_chapter')}
+                    title={t('delete_chapter')}
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-zinc-200 text-muted transition hover:border-danger/50 hover:text-danger disabled:opacity-60 dark:border-zinc-700"
+                  >
+                    {busyAction === `chapter-${ch.chapterIndex}` ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3 w-3" />
+                    )}
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -436,7 +457,7 @@ export function DocEditor({ doc }: { doc: EditableDoc }) {
               type="button"
               disabled={busyAction !== null}
               onClick={() => void reprocess()}
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-4 text-sm font-medium transition hover:border-accent-500 hover:text-accent-600 disabled:opacity-60 dark:border-zinc-700"
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-4 text-sm font-medium transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-700"
             >
               {busyAction === 'reprocess' ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -451,7 +472,7 @@ export function DocEditor({ doc }: { doc: EditableDoc }) {
                 type="button"
                 disabled={busyAction !== null}
                 onClick={() => fileInputRef.current?.click()}
-                className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-4 text-sm font-medium transition hover:border-accent-500 hover:text-accent-600 disabled:opacity-60 dark:border-zinc-700"
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-4 text-sm font-medium transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-700"
               >
                 {busyAction === 'replace' ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -464,7 +485,7 @@ export function DocEditor({ doc }: { doc: EditableDoc }) {
                 type="button"
                 disabled={busyAction !== null}
                 onClick={() => void reprocess()}
-                className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-4 text-sm font-medium transition hover:border-accent-500 hover:text-accent-600 disabled:opacity-60 dark:border-zinc-700"
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-4 text-sm font-medium transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-700"
               >
                 {busyAction === 'reprocess' ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -618,7 +639,7 @@ function ChapterEditModal({
         </div>
         {html === null ? (
           <div className="flex justify-center py-16">
-            <Loader2 className="h-5 w-5 animate-spin text-accent-500" />
+            <Loader2 className="h-5 w-5 animate-spin text-zinc-900 dark:text-zinc-50" />
           </div>
         ) : (
           <>
@@ -638,8 +659,8 @@ function ChapterEditModal({
                       onClick={() => setEditorMode(m)}
                       className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
                         editorMode === m
-                          ? 'bg-accent-500 text-white'
-                          : 'text-muted hover:text-accent-600'
+                          ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900'
+                          : 'text-muted hover:text-zinc-900'
                       }`}
                     >
                       {m === 'rich' ? t('chapter_mode_rich') : t('chapter_mode_source')}
@@ -662,7 +683,7 @@ function ChapterEditModal({
                 type="button"
                 disabled={saving || !html.trim()}
                 onClick={() => void save()}
-                className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+                className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
               >
                 {saving && <Loader2 className="h-4 w-4 animate-spin" />}
                 {t('save_chapter')}

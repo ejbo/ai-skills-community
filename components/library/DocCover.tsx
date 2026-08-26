@@ -24,33 +24,28 @@ function fnv1a(str: string): number {
   return h >>> 0;
 }
 
+/**
+ * A spine is a coloured object in the real world, and the hashed hue is what
+ * lets you find the same book again in a shelf, a list row and a homepage
+ * panel. It is therefore rendered in colour on EVERY surface — there is no
+ * grayscale variant. (There used to be a `mono` opt-in for the homepage; it
+ * turned the one genuinely colourful thing on that page into grey rectangles.)
+ */
 export function DocCover({
   title,
   coverUrl,
   docType,
   className = '',
-  mono = false,
 }: {
   title: string;
   coverUrl: string | null;
   docType: string;
   className?: string;
-  /**
-   * Grey out the spine. The hashed hue is real identity on the 知识库 surfaces
-   * (a shelf of coloured spines is how you find a book again), but on the
-   * homepage those thumbnails are 8px wide and were the only rainbow on an
-   * otherwise monochrome page. Opt-in so the library keeps its colour.
-   */
-  mono?: boolean;
 }) {
   if (coverUrl) {
     // eslint-disable-next-line @next/next/no-img-element -- stored root-relative upload, basePath applied here
     return (
-      <img
-        src={withBasePath(coverUrl)}
-        alt=""
-        className={`overflow-hidden object-cover ${mono ? 'grayscale' : ''} ${className}`}
-      />
+      <img src={withBasePath(coverUrl)} alt="" className={`overflow-hidden object-cover ${className}`} />
     );
   }
 
@@ -59,11 +54,9 @@ export function DocCover({
   const h2 = (h1 + 40 + ((hash >>> 9) % 80)) % 360;
   const Icon = TYPE_ICONS[docType] ?? File;
   const initial = (Array.from(title.trim())[0] ?? '#').toUpperCase();
-  // Same hash, read as lightness instead of hue: the spines stay distinguishable
-  // from each other without introducing a palette.
-  const backgroundImage = mono
-    ? `linear-gradient(160deg, hsl(0 0% ${70 - (hash % 12)}%), hsl(0 0% ${42 - ((hash >>> 9) % 14)}%))`
-    : `linear-gradient(135deg, hsl(${h1} 60% 42%), hsl(${h2} 65% 28%))`;
+  // Saturation is held under 60% and lightness under 45% so a wall of spines
+  // reads as a bookshelf, not as a highlighter set.
+  const backgroundImage = `linear-gradient(135deg, hsl(${h1} 52% 42%), hsl(${h2} 56% 28%))`;
 
   return (
     <div

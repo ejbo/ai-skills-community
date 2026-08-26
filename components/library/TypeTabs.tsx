@@ -44,7 +44,7 @@ export function TypeTabs() {
           >
             {tab.label}
             {isActive && (
-              <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-accent-500" />
+              <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-zinc-900 dark:bg-zinc-100" />
             )}
           </Link>
         );

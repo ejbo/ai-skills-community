@@ -79,6 +79,11 @@ export function ReaderChrome({
         >
           <ArrowLeft className="h-4 w-4" />
         </button>
+        {/* 目录 opens the LEFT panel, so its button lives on the left — the
+            right cluster is for things that open the right panel. */}
+        <ChromeButton label={t('toc')} active={tocOpen} onClick={onToggleToc}>
+          <List className="h-4 w-4" />
+        </ChromeButton>
 
         <div className="min-w-0 flex-1 text-center md:invisible">
           <p className="truncate text-sm font-medium">{title}</p>
@@ -99,7 +104,7 @@ export function ReaderChrome({
                 onClick={() => pdfMode.onChange('original')}
                 className={`px-2.5 py-1 transition ${
                   pdfMode.view === 'original'
-                    ? 'bg-accent-500 font-medium text-white'
+                    ? 'bg-zinc-900 dark:bg-zinc-100 font-medium text-white dark:text-zinc-900'
                     : 'r-muted hover:bg-[var(--reader-hover)]'
                 }`}
               >
@@ -113,7 +118,7 @@ export function ReaderChrome({
                 title={t('pdf_annotate_hint')}
                 className={`px-2.5 py-1 transition ${
                   pdfMode.view === 'text'
-                    ? 'bg-accent-500 font-medium text-white'
+                    ? 'bg-zinc-900 dark:bg-zinc-100 font-medium text-white dark:text-zinc-900'
                     : 'r-muted hover:bg-[var(--reader-hover)]'
                 }`}
               >
@@ -122,9 +127,6 @@ export function ReaderChrome({
             </div>
           )}
 
-          <ChromeButton label={t('toc')} active={tocOpen} onClick={onToggleToc}>
-            <List className="h-4 w-4" />
-          </ChromeButton>
           <div className="relative">
             <button
               type="button"

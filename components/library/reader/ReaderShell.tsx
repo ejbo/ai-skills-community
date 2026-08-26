@@ -108,9 +108,11 @@ export function ReaderShell({
 
   const [tocOpen, setTocOpen] = useState(false);
   // alphaXiv-style single right panel with tabs (助手/我的笔记/评论/相似).
+  // The side panel is where 批注 / 助手 / 评论 live — open it on arrival so the
+  // community layer is visible without hunting for a button.
   const [rightPanel, setRightPanel] = useState<{ open: boolean; tab: RightTab }>({
-    open: Boolean(initialChat),
-    tab: 'assistant',
+    open: true,
+    tab: initialChat ? 'assistant' : 'annotations',
   });
   const notesOpen = rightPanel.open && rightPanel.tab === 'notes';
   const annotationsOpen = rightPanel.open && rightPanel.tab === 'annotations';
@@ -1376,7 +1378,7 @@ export function ReaderShell({
           of the collapsible chrome, tracking every scroll frame. */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-40 h-0.5">
         <div
-          className="h-full bg-accent-500"
+          className="h-full bg-zinc-900 dark:bg-zinc-100"
           style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
         />
       </div>

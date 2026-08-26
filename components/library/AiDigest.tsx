@@ -79,7 +79,7 @@ export function AiDigest({
     return (
       <section className="surface rounded-2xl p-5">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-accent-500" />
+          <Sparkles className="h-4 w-4 text-zinc-900 dark:text-zinc-50" />
           <h2 className="text-sm font-semibold">{t('ai_digest')}</h2>
         </div>
         {overview.summary && <p className="mt-3 text-sm leading-relaxed">{overview.summary}</p>}
@@ -111,7 +111,7 @@ export function AiDigest({
                 <Link
                   key={i}
                   href={`/library/${slug}/read?chat=${encodeURIComponent(q)}`}
-                  className="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-200 px-2.5 py-1 text-xs text-muted transition hover:border-accent-500 hover:text-accent-600 dark:border-zinc-700"
+                  className="inline-flex max-w-full items-center gap-1 rounded-full border border-zinc-200 px-2.5 py-1 text-xs text-muted transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700"
                 >
                   <MessageCircleQuestion className="h-3 w-3 shrink-0" />
                   <span className="truncate">{q}</span>
@@ -128,7 +128,7 @@ export function AiDigest({
     return (
       <section className="surface rounded-2xl p-5">
         <div className="flex items-center gap-2 text-sm font-medium">
-          <Loader2 className="h-4 w-4 animate-spin text-accent-500" />
+          <Loader2 className="h-4 w-4 animate-spin text-zinc-900 dark:text-zinc-50" />
           {t('ai_reading')}
         </div>
         <div className="mt-4 space-y-2">
@@ -143,7 +143,7 @@ export function AiDigest({
   return (
     <section className="surface rounded-2xl p-5">
       <div className="flex items-center gap-2">
-        <Sparkles className="h-4 w-4 text-accent-500" />
+        <Sparkles className="h-4 w-4 text-zinc-900 dark:text-zinc-50" />
         <h2 className="text-sm font-semibold">{t('ai_digest')}</h2>
       </div>
       {state === 'failed' && aiError && <p className="mt-2 text-xs text-danger">{aiError}</p>}
@@ -151,7 +151,7 @@ export function AiDigest({
         <button
           onClick={trigger}
           disabled={busy}
-          className="mt-3 flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+          className="mt-3 flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
         >
           {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           {state === 'failed' ? t('regenerate_digest') : t('generate_digest')}

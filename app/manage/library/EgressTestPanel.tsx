@@ -85,7 +85,7 @@ export function EgressTestPanel() {
   }
 
   const chip =
-    'rounded-full border border-zinc-300 px-2.5 py-1 text-[11px] transition hover:border-accent-500 disabled:opacity-60 dark:border-zinc-700';
+    'rounded-full border border-zinc-300 px-2.5 py-1 text-[11px] transition hover:border-zinc-400 dark:hover:border-zinc-500 disabled:opacity-60 dark:border-zinc-700';
 
   return (
     <div className="surface space-y-3 rounded-2xl p-4">
@@ -138,7 +138,7 @@ export function EgressTestPanel() {
               title={r.url}
             >
               {r.label}
-              <span className={`ml-1 ${r.via === 'proxy' ? 'text-accent-600' : 'text-muted'}`}>
+              <span className={`ml-1 ${r.via === 'proxy' ? 'text-zinc-900 dark:text-zinc-50' : 'text-muted'}`}>
                 {r.via === 'proxy' ? '走代理' : r.via === 'direct-insecure' ? '直连(免校验)' : '直连'}
               </span>
             </button>
@@ -158,7 +158,7 @@ export function EgressTestPanel() {
         <button
           onClick={() => void probe(url)}
           disabled={probing || !url.trim()}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-4 text-sm font-medium transition hover:border-accent-500 disabled:opacity-60 dark:border-zinc-700"
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-4 text-sm font-medium transition hover:border-zinc-400 dark:hover:border-zinc-500 disabled:opacity-60 dark:border-zinc-700"
         >
           {probing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Globe className="h-3.5 w-3.5" />}
           探测

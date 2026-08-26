@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
-import { cleanCategories, isDocType } from '@/lib/library/types';
+import { isDocType } from '@/lib/library/types';
+import { cleanCategoriesFromDb } from '@/lib/library/categories';
 import {
   detectLibraryFormat,
   deleteLibraryFile,
@@ -65,7 +66,7 @@ export async function POST(req: Request) {
   const docType = isDocType(docTypeHeader) ? docTypeHeader : 'auto';
   let categories: string[] = [];
   try {
-    categories = cleanCategories(JSON.parse(req.headers.get('x-categories') ?? '[]'));
+    categories = await cleanCategoriesFromDb(JSON.parse(req.headers.get('x-categories') ?? '[]'));
   } catch {
     categories = [];
   }

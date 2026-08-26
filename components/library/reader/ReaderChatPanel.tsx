@@ -314,7 +314,7 @@ export function AssistantTab({
       <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 px-8 text-center">
         {indexState === 'running' ? (
           <>
-            <Loader2 className="h-6 w-6 animate-spin text-accent-500" />
+            <Loader2 className="h-6 w-6 animate-spin text-zinc-900 dark:text-zinc-50" />
             <p className="text-sm font-medium">{t('ai_reading_doc')}</p>
           </>
         ) : (
@@ -326,7 +326,7 @@ export function AssistantTab({
               type="button"
               disabled={triggering}
               onClick={() => void triggerIndexing()}
-              className="mt-1 inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+              className="mt-1 inline-flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
             >
               {triggering && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               {t('generate_ai_guide')}
@@ -363,14 +363,14 @@ export function AssistantTab({
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
               <div className="reader-assist-card">
-                <Highlighter className="h-4 w-4 text-accent-500" />
+                <Highlighter className="h-4 w-4 text-zinc-900 dark:text-zinc-50" />
                 <p className="mt-1.5 text-sm font-semibold">{t('assist_card_highlight_title')}</p>
                 <p className="r-muted mt-0.5 text-xs leading-relaxed">
                   {t('assist_card_highlight_desc')}
                 </p>
               </div>
               <div className="reader-assist-card">
-                <AtSign className="h-4 w-4 text-accent-500" />
+                <AtSign className="h-4 w-4 text-zinc-900 dark:text-zinc-50" />
                 <p className="mt-1.5 text-sm font-semibold">{t('assist_card_context_title')}</p>
                 <p className="r-muted mt-0.5 text-xs leading-relaxed">
                   {t('assist_card_context_desc')}
@@ -402,7 +402,7 @@ export function AssistantTab({
               <div
                 className={`max-w-[88%] rounded-2xl px-3 py-2 text-sm ${
                   msg.role === 'user'
-                    ? 'bg-accent-500 text-white'
+                    ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900'
                     : 'rborder border bg-[var(--reader-hover)]'
                 }`}
               >
@@ -433,7 +433,7 @@ export function AssistantTab({
       {/* 引用选中段落 — the 问 AI entry point, next to the thing it feeds. */}
       {selectionQuote && (
         <div className="rborder flex items-start gap-2 border-t px-3 py-2">
-          <p className="r-muted line-clamp-2 min-w-0 flex-1 border-l-2 border-accent-500/60 pl-2 text-xs leading-relaxed">
+          <p className="r-muted line-clamp-2 min-w-0 flex-1 border-l-2 border-zinc-900/40 dark:border-zinc-100/40 pl-2 text-xs leading-relaxed">
             {selectionQuote}
           </p>
           <button
@@ -460,14 +460,14 @@ export function AssistantTab({
           }}
           rows={1}
           placeholder={t('chat_composer_placeholder')}
-          className="rborder h-9 flex-1 resize-none rounded-lg border bg-transparent px-3 py-1.5 text-sm leading-6 focus:border-accent-500 focus:outline-none"
+          className="rborder h-9 flex-1 resize-none rounded-lg border bg-transparent px-3 py-1.5 text-sm leading-6 focus:border-zinc-900 dark:focus:border-zinc-100 focus:outline-none"
         />
         <button
           type="button"
           onClick={() => void send(input)}
           disabled={pending || !input.trim()}
           aria-label={t('send')}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-500 text-white transition hover:bg-accent-600 disabled:opacity-60"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
         >
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </button>

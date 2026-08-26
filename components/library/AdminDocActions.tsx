@@ -49,7 +49,7 @@ export function AdminDocActions({
   }
 
   const btn =
-    'rounded border border-zinc-200 px-2 py-1 text-[11px] transition hover:border-accent-500 hover:text-accent-600 disabled:opacity-60 dark:border-zinc-700';
+    'rounded border border-zinc-200 px-2 py-1 text-[11px] transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-700';
 
   return (
     <div className="flex flex-wrap items-center gap-2">

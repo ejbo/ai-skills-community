@@ -226,7 +226,7 @@ export function TypographyPopover({
               <span
                 className={`h-6 w-6 rounded-full border ${
                   prefs.theme === theme.value
-                    ? 'border-accent-500 ring-2 ring-accent-500/40'
+                    ? 'border-zinc-900 dark:border-zinc-100 ring-2 ring-zinc-900/25 dark:ring-zinc-100/25'
                     : 'border-[var(--reader-border)]'
                 }`}
                 style={{ background: theme.swatch }}

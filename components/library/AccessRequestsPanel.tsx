@@ -74,7 +74,7 @@ export function AccessRequestsPanel({ docId }: { docId: string }) {
   if (rows === null) {
     return (
       <div className="surface flex justify-center rounded-2xl p-5">
-        <Loader2 className="h-4 w-4 animate-spin text-accent-500" />
+        <Loader2 className="h-4 w-4 animate-spin text-zinc-900 dark:text-zinc-50" />
       </div>
     );
   }
@@ -105,7 +105,7 @@ export function AccessRequestsPanel({ docId }: { docId: string }) {
                   type="button"
                   disabled={busyId === r.id}
                   onClick={() => void decide(r.id, 'approved')}
-                  className={`${btn} border-accent-500/50 text-accent-600 hover:bg-accent-500/10 dark:text-accent-300`}
+                  className={`${btn} border-zinc-900/40 dark:border-zinc-100/40 text-zinc-900 dark:text-zinc-50 hover:bg-zinc-900/10 dark:hover:bg-white/[0.14] dark:text-zinc-50`}
                 >
                   {t('access_approve')}
                 </button>

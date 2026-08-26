@@ -6,10 +6,10 @@ import { useTranslations } from 'next-intl';
 import { AnimatePresence, motion } from 'framer-motion';
 import { FileUp, Link2, Loader2, Plus, UploadCloud, X } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
+import { CategoryPicker } from '@/components/library/CategoryPicker';
 import { withBasePath } from '@/lib/base-path';
 import {
   DOC_TYPES,
-  LIBRARY_CATEGORIES,
   type LibraryDocTypeValue,
 } from '@/lib/library/types';
 
@@ -209,35 +209,7 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
         <label className="mb-1.5 block text-xs font-medium text-muted">
           {t('category_label')}
         </label>
-        <div className="flex flex-wrap gap-1.5">
-          {LIBRARY_CATEGORIES.map((c) => {
-            const on = categories.includes(c.slug);
-            return (
-              <button
-                key={c.slug}
-                type="button"
-                aria-pressed={on}
-                disabled={Boolean(stage)}
-                onClick={() =>
-                  setCategories((prev) =>
-                    on
-                      ? prev.filter((s) => s !== c.slug)
-                      : prev.length >= 4
-                        ? (pushToast('info', t('max_categories')), prev)
-                        : [...prev, c.slug],
-                  )
-                }
-                className={`rounded-full px-2.5 py-1 text-xs transition ${
-                  on
-                    ? 'bg-accent-500 font-medium text-white'
-                    : 'border border-zinc-200 text-muted hover:border-accent-400 hover:text-accent-600 dark:border-zinc-700'
-                }`}
-              >
-                {tl(`libCategory.${c.slug}`)}
-              </button>
-            );
-          })}
-        </div>
+        <CategoryPicker selected={categories} onChange={setCategories} disabled={Boolean(stage)} />
       </div>
     </div>
   );
@@ -246,7 +218,7 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
     <>
       <button
         onClick={openModal}
-        className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600"
+        className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
       >
         <Plus className="h-4 w-4" />
         {t('add_content')}
@@ -291,14 +263,14 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
                   <Link2 className="h-4 w-4" />
                   {t('tab_url')}
                   {tab === 'url' && (
-                    <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-accent-500" />
+                    <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-zinc-900 dark:bg-zinc-100" />
                   )}
                 </button>
                 <button onClick={() => !stage && setTab('file')} className={tabCls(tab === 'file')}>
                   <FileUp className="h-4 w-4" />
                   {t('tab_file')}
                   {tab === 'file' && (
-                    <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-accent-500" />
+                    <span className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-zinc-900 dark:bg-zinc-100" />
                   )}
                 </button>
               </div>
@@ -332,7 +304,7 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
                     <button
                       onClick={submitUrl}
                       disabled={Boolean(stage)}
-                      className="flex h-9 items-center gap-1.5 rounded-lg bg-accent-500 px-4 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+                      className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
                     >
                       {t('submit')}
                     </button>
@@ -355,13 +327,13 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
                     onClick={() => !stage && fileInputRef.current?.click()}
                     className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-10 text-center transition ${
                       dragOver
-                        ? 'border-accent-500 bg-accent-500/5'
-                        : 'border-zinc-200 hover:border-accent-400 dark:border-zinc-700'
+                        ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10'
+                        : 'border-zinc-200 hover:border-zinc-400 dark:border-zinc-700'
                     }`}
                   >
                     {stage ? (
                       <>
-                        <Loader2 className="h-6 w-6 animate-spin text-accent-500" />
+                        <Loader2 className="h-6 w-6 animate-spin text-zinc-900 dark:text-zinc-50" />
                         <p className="text-sm font-medium">{stage}</p>
                       </>
                     ) : (

@@ -81,8 +81,8 @@ export function DocComments({
       const el = listRef.current?.querySelector(`[data-comment-id="${focusId.replace(/"/g, '')}"]`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        el.classList.add('ring-2', 'ring-accent-500/60', 'rounded-xl');
-        window.setTimeout(() => el.classList.remove('ring-2', 'ring-accent-500/60', 'rounded-xl'), 2600);
+        el.classList.add('ring-2', 'ring-zinc-900/25 dark:ring-zinc-100/25', 'rounded-xl');
+        window.setTimeout(() => el.classList.remove('ring-2', 'ring-zinc-900/25 dark:ring-zinc-100/25', 'rounded-xl'), 2600);
       }
     }, 250);
     return () => window.clearTimeout(timer);
@@ -169,7 +169,7 @@ export function DocComments({
                     name: c.author.displayName,
                   })
                 }
-                className="text-[11px] text-muted transition hover:text-accent-600"
+                className="text-[11px] text-muted transition hover:text-zinc-900"
               >
                 {tvc('reply')}
               </button>
@@ -217,7 +217,7 @@ export function DocComments({
             <button
               type="button"
               onClick={() => setReplyTo(null)}
-              className="text-accent-600 hover:underline"
+              className="text-zinc-900 dark:text-zinc-50 hover:underline"
             >
               {tc('cancel')}
             </button>
@@ -238,7 +238,7 @@ export function DocComments({
             type="button"
             disabled={sending || !text.trim()}
             onClick={() => void submit()}
-            className="flex h-8 items-center gap-1.5 rounded-lg bg-accent-500 px-3.5 text-sm font-medium text-white transition hover:bg-accent-600 disabled:opacity-50"
+            className="flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-3.5 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-50"
           >
             {sending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             {t('post_comment')}
@@ -249,7 +249,7 @@ export function DocComments({
       <div ref={listRef} className="surface rounded-2xl px-4">
         {threads === null ? (
           <div className="flex justify-center py-8">
-            <Loader2 className="h-4 w-4 animate-spin text-accent-500" />
+            <Loader2 className="h-4 w-4 animate-spin text-zinc-900 dark:text-zinc-50" />
           </div>
         ) : threads.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted">{t('comments_empty')}</p>

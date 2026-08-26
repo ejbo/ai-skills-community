@@ -132,7 +132,7 @@ export function LibraryManager({ docs }: { docs: DocRow[] }) {
                       <Link
                         href={`/library/${d.slug}`}
                         target="_blank"
-                        className={`truncate font-medium hover:text-accent-600 ${deleted ? 'line-through' : ''}`}
+                        className={`truncate font-medium hover:text-zinc-900 ${deleted ? 'line-through' : ''}`}
                         title={d.title}
                       >
                         {d.title}
@@ -209,7 +209,7 @@ export function LibraryManager({ docs }: { docs: DocRow[] }) {
                             }
                             disabled={pending}
                             title={d.featured ? '取消推荐' : '推荐'}
-                            className="flex h-6 w-6 items-center justify-center rounded border border-zinc-200 hover:border-accent-500 disabled:opacity-60 dark:border-zinc-700"
+                            className="flex h-6 w-6 items-center justify-center rounded border border-zinc-200 hover:border-zinc-400 dark:hover:border-zinc-500 disabled:opacity-60 dark:border-zinc-700"
                           >
                             <Star
                               className={`h-3.5 w-3.5 ${d.featured ? 'fill-amber-400 text-amber-400' : 'text-muted'}`}
@@ -226,7 +226,7 @@ export function LibraryManager({ docs }: { docs: DocRow[] }) {
                               }
                               disabled={pending}
                               title="重新抓取并提取内容"
-                              className="flex h-6 items-center gap-1 rounded border border-zinc-200 px-2 text-[11px] hover:border-accent-500 hover:text-accent-600 disabled:opacity-60 dark:border-zinc-700"
+                              className="flex h-6 items-center gap-1 rounded border border-zinc-200 px-2 text-[11px] hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-700"
                             >
                               <RefreshCw className="h-3 w-3" />
                               重新处理
@@ -243,7 +243,7 @@ export function LibraryManager({ docs }: { docs: DocRow[] }) {
                               }
                               disabled={pending || d.aiIndexState === 'running'}
                               title="重新生成 AI 导读与章节摘要"
-                              className="flex h-6 items-center gap-1 rounded border border-zinc-200 px-2 text-[11px] hover:border-accent-500 hover:text-accent-600 disabled:opacity-60 dark:border-zinc-700"
+                              className="flex h-6 items-center gap-1 rounded border border-zinc-200 px-2 text-[11px] hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-700"
                             >
                               <Sparkles className="h-3 w-3" />
                               AI 重建
@@ -278,7 +278,7 @@ export function LibraryManager({ docs }: { docs: DocRow[] }) {
                             });
                           }}
                           disabled={pending}
-                          className="flex h-6 items-center gap-1 rounded border border-zinc-200 px-2 text-[11px] hover:border-accent-500 hover:text-accent-600 disabled:opacity-60 dark:border-zinc-700"
+                          className="flex h-6 items-center gap-1 rounded border border-zinc-200 px-2 text-[11px] hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-700"
                         >
                           <RotateCcw className="h-3 w-3" />
                           恢复

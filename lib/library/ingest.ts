@@ -538,6 +538,76 @@ export async function updateChapterContent(
 }
 
 /**
+ * Delete a chapter — the escape hatch for an extraction that swallowed an ad
+ * block or a nav column as if it were content.
+ *
+ * Chapters are addressed by a DENSE index (`chapterIndex`, unique per doc), and
+ * highlights/chunks/notes all carry it, so removing one means renumbering
+ * everything after it. All of it happens in ONE transaction:
+ *   • chunks for the removed chapter go away, later chunks shift down;
+ *   • highlights shift down too — their character offsets inside the chapter
+ *     are untouched, so annotations survive the renumber intact;
+ *   • the doc's word/read stats are recomputed and the AI index marked stale.
+ * Refuses to delete the last chapter: a doc with no readable text is a broken
+ * doc, and 重新处理 is the right tool for that.
+ */
+export async function removeChapter(docId: string, chapterIndex: number): Promise<'ok' | 'not_found' | 'last_chapter'> {
+  const chapters = await prisma.libraryChapter.findMany({
+    where: { docId },
+    orderBy: { chapterIndex: 'asc' },
+    select: { id: true, chapterIndex: true },
+  });
+  const target = chapters.find((c) => c.chapterIndex === chapterIndex);
+  if (!target) return 'not_found';
+  if (chapters.length <= 1) return 'last_chapter';
+
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.libraryChapter.delete({ where: { id: target.id } });
+      await tx.libraryChunk.deleteMany({ where: { docId, chapterIndex } });
+      await tx.libraryHighlight.deleteMany({ where: { docId, chapterIndex } });
+
+      // Renumber ASCENDING one row at a time: chapterIndex is uniquely indexed
+      // per doc, so a bulk `decrement` would collide with the row it is about
+      // to overwrite.
+      for (const c of chapters.filter((c) => c.chapterIndex > chapterIndex)) {
+        await tx.libraryChapter.update({
+          where: { id: c.id },
+          data: { chapterIndex: c.chapterIndex - 1 },
+        });
+        await tx.libraryChunk.updateMany({
+          where: { docId, chapterIndex: c.chapterIndex },
+          data: { chapterIndex: c.chapterIndex - 1 },
+        });
+        await tx.libraryHighlight.updateMany({
+          where: { docId, chapterIndex: c.chapterIndex },
+          data: { chapterIndex: c.chapterIndex - 1 },
+        });
+      }
+
+      const texts = await tx.libraryChunk.findMany({ where: { docId }, select: { text: true } });
+      const allText = texts.map((t) => t.text).join('\n\n');
+      await tx.libraryDoc.update({
+        where: { id: docId },
+        data: {
+          chapterCount: chapters.length - 1,
+          // Stats are chunk-derived. A doc with no chunks left (nothing was ever
+          // chunked, or chunking failed) must keep its old figures rather than
+          // silently reporting 0 字 — deleting one chapter is not evidence that
+          // the document is empty.
+          ...(texts.length > 0
+            ? { wordCount: countWords(allText), estReadMinutes: estReadMinutesForText(allText) }
+            : {}),
+          aiSourceHash: null,
+        },
+      });
+    },
+    { timeout: 60_000, maxWait: 10_000 },
+  );
+  return 'ok';
+}
+
+/**
  * Point the doc at a freshly uploaded replacement file, then re-extract.
  * The old original is deleted best-effort. Never throws after the row update —
  * extraction failures land on the row like reprocessDoc.

@@ -28,6 +28,7 @@ import {
   X,
 } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
+import { UserHoverCard } from '@/components/user/UserHoverCard';
 import { DeptTag } from '@/components/DeptTag';
 import { pushToast } from '@/components/Toaster';
 import { relativeTime } from '@/lib/i18n-date';
@@ -146,7 +147,7 @@ export function AnnotationsTab({
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             placeholder={t('annotations_search_placeholder')}
-            className="rborder h-8 w-full rounded-lg border bg-transparent pl-8 pr-7 text-xs outline-none focus:border-accent-500"
+            className="rborder h-8 w-full rounded-lg border bg-transparent pl-8 pr-7 text-xs outline-none focus:border-zinc-900 dark:focus:border-zinc-100"
           />
           {query && (
             <button
@@ -170,7 +171,7 @@ export function AnnotationsTab({
                 onClick={() => onSortChange(s)}
                 className={`px-2 py-1 transition ${
                   sort === s
-                    ? 'bg-accent-500 font-medium text-white'
+                    ? 'bg-zinc-900 dark:bg-zinc-100 font-medium text-white dark:text-zinc-900'
                     : 'r-muted hover:bg-[var(--reader-hover)]'
                 }`}
               >
@@ -182,7 +183,7 @@ export function AnnotationsTab({
             type="button"
             onClick={() => setPeopleOpen((v) => !v)}
             aria-expanded={peopleOpen}
-            className={`rborder ml-auto inline-flex h-7 items-center gap-1 rounded-lg border px-2 text-[11px] transition hover:border-accent-500 ${
+            className={`rborder ml-auto inline-flex h-7 items-center gap-1 rounded-lg border px-2 text-[11px] transition hover:border-zinc-400 dark:hover:border-zinc-500 ${
               selectedAuthors.length > 0 ? 'text-[var(--reader-accent)]' : 'r-muted'
             }`}
           >
@@ -219,15 +220,19 @@ export function AnnotationsTab({
                   onClick={() => toggleAuthor(p.handle)}
                   aria-pressed={on}
                   className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition ${
-                    on ? 'bg-accent-500/12' : 'hover:bg-[var(--reader-hover)]'
+                    on ? 'bg-zinc-900/[0.06] dark:bg-white/10' : 'hover:bg-[var(--reader-hover)]'
                   }`}
                 >
-                  <Avatar name={p.author.displayName} src={p.author.avatarUrl} size="xs" />
-                  <span className="min-w-0 flex-1 truncate">
-                    <span className="font-medium">{p.author.displayName}</span>
-                    {p.isMine && <span className="r-muted ml-1">{t('annotator_me')}</span>}
-                    {p.role && <RoleBadge name={p.role.name} />}
-                  </span>
+                  <UserHoverCard handle={p.handle}>
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <Avatar name={p.author.displayName} src={p.author.avatarUrl} size="xs" />
+                      <span className="min-w-0 truncate">
+                        <span className="font-medium">{p.author.displayName}</span>
+                        {p.isMine && <span className="r-muted ml-1">{t('annotator_me')}</span>}
+                        {p.role && <RoleBadge name={p.role.name} />}
+                      </span>
+                    </span>
+                  </UserHoverCard>
                   <span className="r-muted shrink-0 font-mono tabular-nums">{p.count}</span>
                 </button>
               );
@@ -247,7 +252,7 @@ export function AnnotationsTab({
             disabled={savingShare}
             onClick={() => void toggleShare(!shareNotes)}
             className={`relative h-4 w-7 shrink-0 rounded-full transition ${
-              shareNotes ? 'bg-accent-500' : 'bg-zinc-300 dark:bg-zinc-600'
+              shareNotes ? 'bg-zinc-900 dark:bg-zinc-100' : 'bg-zinc-300 dark:bg-zinc-600'
             }`}
           >
             <span
@@ -400,11 +405,15 @@ function AnnotationCard({
   return (
     <li
       data-note-id={note.id}
-      className={`px-3 py-3 transition-colors ${focused ? 'bg-accent-500/10' : ''}`}
+      className={`px-3 py-3 transition-colors ${focused ? 'bg-zinc-900/[0.06] dark:bg-white/10' : ''}`}
     >
       <div className="flex items-center gap-2">
-        <Avatar name={note.author.displayName} src={note.author.avatarUrl} size="xs" />
-        <span className="min-w-0 truncate text-xs font-medium">{note.author.displayName}</span>
+        <UserHoverCard handle={note.author.handle}>
+          <span className="flex items-center gap-2">
+            <Avatar name={note.author.displayName} src={note.author.avatarUrl} size="xs" />
+            <span className="min-w-0 truncate text-xs font-medium">{note.author.displayName}</span>
+          </span>
+        </UserHoverCard>
         {note.authorRole && <RoleBadge name={note.authorRole.name} />}
         {note.isMine && <span className="r-muted text-[10px]">{t('annotator_me')}</span>}
         <DeptTag department={note.author.department} lab={note.author.lab} />
@@ -489,14 +498,14 @@ function AnnotationCard({
               }}
               rows={2}
               placeholder={t('reply_placeholder')}
-              className="rborder min-h-[48px] flex-1 resize-none rounded-lg border bg-transparent px-2.5 py-1.5 text-xs outline-none focus:border-accent-500"
+              className="rborder min-h-[48px] flex-1 resize-none rounded-lg border bg-transparent px-2.5 py-1.5 text-xs outline-none focus:border-zinc-900 dark:focus:border-zinc-100"
             />
             <button
               type="button"
               disabled={sending || !draft.trim()}
               onClick={() => void send()}
               aria-label={t('send_reply')}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-accent-500 text-white transition hover:bg-accent-600 disabled:opacity-50"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-50"
             >
               {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
             </button>
@@ -522,8 +531,12 @@ function ReplyRow({
   return (
     <div className={nested ? 'pl-3' : ''}>
       <div className="flex items-center gap-1.5 text-[11px]">
-        <Avatar name={reply.author.displayName} src={reply.author.avatarUrl} size="xs" />
-        <span className="font-medium">{reply.author.displayName}</span>
+        <UserHoverCard handle={reply.author.handle}>
+          <span className="flex items-center gap-1.5">
+            <Avatar name={reply.author.displayName} src={reply.author.avatarUrl} size="xs" />
+            <span className="font-medium">{reply.author.displayName}</span>
+          </span>
+        </UserHoverCard>
         {reply.authorRole && <RoleBadge name={reply.authorRole.name} />}
         <time className="r-muted ml-auto">{relativeTime(reply.createdAt, locale)}</time>
       </div>

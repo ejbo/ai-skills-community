@@ -11,7 +11,8 @@
      Tailwind dark: variants key on the site's data-theme and go invisible when
      the two disagree (site dark + forced 浅色/护眼, or the reverse). */
   --reader-hover: rgba(0, 0, 0, 0.05);
-  --reader-accent: #4a46db; /* accent-600 */
+  --reader-accent: #2a5c8a; /* deep book-blue: links/citations on paper + sepia */
+  --reader-accent-rgb: 42 92 138; /* same colour as a triple, for /alpha tints */
   /* Highlight palette — consumed by BOTH the native ::highlight() rules and
      the overlay fallback, so the two can never drift. Light alphas: the browser
      paints these behind the glyphs, so anything heavier fogs the text. */
@@ -56,7 +57,8 @@
 [data-theme='dark'] .reader-root[data-reader-theme='auto'],
 .reader-root[data-reader-theme='dark'] {
   --reader-hover: rgba(255, 255, 255, 0.1);
-  --reader-accent: #9499ff; /* accent-300 */
+  --reader-accent: #8ab6e0; /* lifted for the dark page */
+  --reader-accent-rgb: 138 182 224;
   --hl-yellow: rgba(202, 138, 4, 0.5);
   --hl-green: rgba(22, 163, 74, 0.45);
   --hl-blue: rgba(37, 99, 235, 0.48);
@@ -97,7 +99,7 @@
 }
 .reader-prose ::selection,
 .reader-prose::selection {
-  background-color: rgb(var(--accent) / 0.25);
+  background-color: rgb(var(--reader-accent-rgb) / 0.25);
 }
 .reader-prose h1,
 .reader-prose h2,
@@ -144,7 +146,7 @@
 .reader-prose blockquote {
   margin: 1.2em 0;
   padding: 0.2em 1em;
-  border-left: 3px solid rgb(var(--accent) / 0.5);
+  border-left: 3px solid rgb(var(--reader-accent-rgb) / 0.5);
   color: var(--reader-muted);
 }
 .reader-prose pre {
@@ -214,13 +216,13 @@
   margin: 2em 0;
 }
 .reader-prose a {
-  color: rgb(var(--accent));
+  color: var(--reader-accent);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: rgb(var(--accent) / 0.4);
+  text-decoration-color: rgb(var(--reader-accent-rgb) / 0.4);
 }
 .reader-prose a:hover {
-  text-decoration-color: rgb(var(--accent));
+  text-decoration-color: var(--reader-accent);
 }
 
 /* ── highlights (painted by the BROWSER) ────────────────────────────────── */
@@ -370,15 +372,15 @@
   font-size: 10px;
   line-height: 1;
   font-weight: 600;
-  background: rgb(var(--accent) / 0.12);
-  color: rgb(var(--accent));
+  background: rgb(var(--reader-accent-rgb) / 0.12);
+  color: var(--reader-accent);
   text-decoration: none;
   cursor: pointer;
   transition: background 150ms ease;
 }
 .citation-chip:hover,
 .reader-chat-md a[href^='#cite-']:hover {
-  background: rgb(var(--accent) / 0.22);
+  background: rgb(var(--reader-accent-rgb) / 0.22);
 }
 
 /* ── right panel: alphaXiv-style tabbed header ──────────────────────────── */

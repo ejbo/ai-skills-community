@@ -5,7 +5,7 @@ import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import { logAdmin } from '@/lib/audit';
-import { updateChapterContent } from '@/lib/library/ingest';
+import { removeChapter, updateChapterContent } from '@/lib/library/ingest';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -97,6 +97,52 @@ export async function PATCH(
     await logAdmin({
       adminUserId: session.user.id,
       action: 'edit_library_chapter',
+      targetType: 'library_doc',
+      targetId: doc.id,
+      details: { chapterIndex: idx },
+    });
+  }
+  return NextResponse.json({ ok: true });
+}
+
+// DELETE (uploader/admin) — drop a chapter the extractor got wrong (an ad
+// block, a nav column). Later chapters renumber; annotations inside them move
+// with their chapter and survive.
+export async function DELETE(
+  _req: Request,
+  { params }: { params: { id: string; chapterIndex: string } },
+) {
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+
+  const gate = rateLimit(`library:chapter-delete:${session.user.id}`, 20, MINUTE_MS);
+  if (!gate.allowed) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
+
+  const doc = await prisma.libraryDoc.findUnique({
+    where: { id: params.id },
+    select: { id: true, uploaderId: true, deletedAt: true },
+  });
+  if (!doc || doc.deletedAt) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  const isUploader = doc.uploaderId === session.user.id;
+  if (!isUploader && !can(session.user, 'library')) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
+
+  const idx = Number.parseInt(params.chapterIndex, 10);
+  if (!Number.isFinite(idx) || idx < 0) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
+
+  const result = await removeChapter(doc.id, idx);
+  if (result === 'not_found') return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  if (result === 'last_chapter') {
+    return NextResponse.json({ error: 'last_chapter', reason: '至少保留一个章节' }, { status: 409 });
+  }
+
+  if (!isUploader) {
+    await logAdmin({
+      adminUserId: session.user.id,
+      action: 'delete_library_chapter',
       targetType: 'library_doc',
       targetId: doc.id,
       details: { chapterIndex: idx },

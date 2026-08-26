@@ -285,7 +285,7 @@ export function NotesTab({
   }
 
   const toggleCls = (on: boolean) =>
-    `relative h-5 w-9 shrink-0 rounded-full transition ${on ? 'bg-accent-500' : 'bg-zinc-300 dark:bg-zinc-600'}`;
+    `relative h-5 w-9 shrink-0 rounded-full transition ${on ? 'bg-zinc-900 dark:bg-zinc-100' : 'bg-zinc-300 dark:bg-zinc-600'}`;
   const knobCls = (on: boolean) =>
     `absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${on ? 'left-[18px]' : 'left-0.5'}`;
   const sectionHead =
@@ -301,7 +301,7 @@ export function NotesTab({
       <div className="rborder border-b px-4 py-3">
         {selectionQuote ? (
           <div className="mb-2.5">
-            <p className="r-muted mb-2 line-clamp-2 border-l-2 border-accent-500/60 pl-2 text-xs leading-relaxed">
+            <p className="r-muted mb-2 line-clamp-2 border-l-2 border-zinc-900/40 dark:border-zinc-100/40 pl-2 text-xs leading-relaxed">
               {selectionQuote}
             </p>
             <div className="flex items-center gap-1.5">
@@ -326,7 +326,7 @@ export function NotesTab({
           onChange={(e) => setDraft(e.target.value.slice(0, 1000))}
           rows={3}
           placeholder={t('notes_composer_placeholder')}
-          className="rborder w-full resize-none rounded-lg border bg-transparent px-3 py-2 text-sm leading-relaxed focus:border-accent-500 focus:outline-none"
+          className="rborder w-full resize-none rounded-lg border bg-transparent px-3 py-2 text-sm leading-relaxed focus:border-zinc-900 dark:focus:border-zinc-100 focus:outline-none"
         />
         <div className="mt-2 flex items-center justify-between gap-2">
           <span className="r-muted text-[11px] leading-tight">{t('notes_composer_needs_selection')}</span>
@@ -334,7 +334,7 @@ export function NotesTab({
             type="button"
             disabled={!draft.trim()}
             onClick={saveSelectionNote}
-            className="h-7 shrink-0 rounded-lg bg-accent-500 px-3 text-xs font-medium text-white transition hover:bg-accent-600 disabled:opacity-50"
+            className="h-7 shrink-0 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-3 text-xs font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-50"
           >
             {t('save_note')}
           </button>
@@ -438,14 +438,14 @@ export function NotesTab({
                           rows={3}
                           autoFocus
                           placeholder={t('note_placeholder')}
-                          className="rborder w-full resize-none rounded-lg border bg-transparent px-3 py-2 text-sm focus:border-accent-500 focus:outline-none"
+                          className="rborder w-full resize-none rounded-lg border bg-transparent px-3 py-2 text-sm focus:border-zinc-900 dark:focus:border-zinc-100 focus:outline-none"
                         />
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
                             disabled={saving}
                             onClick={() => void saveNote(hl)}
-                            className="h-7 rounded-lg bg-accent-500 px-3 text-xs font-medium text-white transition hover:bg-accent-600 disabled:opacity-60"
+                            className="h-7 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-3 text-xs font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
                           >
                             {tc('save')}
                           </button>
@@ -460,7 +460,7 @@ export function NotesTab({
                       </div>
                     ) : (
                       hl.noteText && (
-                        <p className="r-muted line-clamp-2 border-l-2 border-accent-500/40 pl-2.5 text-xs leading-relaxed">
+                        <p className="r-muted line-clamp-2 border-l-2 border-zinc-900/40 dark:border-zinc-100/40 pl-2.5 text-xs leading-relaxed">
                           {hl.noteText}
                         </p>
                       )

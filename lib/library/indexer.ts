@@ -10,6 +10,7 @@ import { env } from '@/lib/env';
 import { LLMConfigError, type LLMProvider } from '@/lib/llm';
 import { explainParseFailure, type ReplyShape } from '@/lib/llm/explain';
 import { getLibraryProvider } from './llm';
+import { listLibraryCategories } from './categories';
 import {
   chapterSummaryPrompt,
   overviewPrompt,
@@ -213,11 +214,13 @@ export async function runDocIndexing(docId: string, opts?: { force?: boolean }):
       .slice(0, 30)
       .join(' / ');
 
+    const official = (await listLibraryCategories()).filter((c) => c.official);
     const prompt = overviewPrompt({
       title: doc.title,
       author: doc.author,
       tocLine,
       chapterSummaries,
+      categories: official,
     });
     let reply: ReplyShape;
     try {
@@ -237,7 +240,7 @@ export async function runDocIndexing(docId: string, opts?: { force?: boolean }):
       return;
     }
 
-    const parsed = parseOverview(reply.text);
+    const parsed = parseOverview(reply.text, new Set(official.map((c) => c.slug)));
     if (!parsed) {
       await fail(explainParseFailure('AI 导读解析失败', reply));
       return;
