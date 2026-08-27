@@ -55,7 +55,7 @@ export function SkillPreview({ data }: { data: EmbedSkillData }) {
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted">
         <Link href={`/users/${data.author.handle}`} className="inline-flex items-center gap-1.5 hover:underline">
-          <Avatar name={data.author.displayName} src={data.author.avatarUrl} size="xs" />
+          <Avatar name={data.author.displayName} src={data.author.avatarUrl} size="xs" handle={data.author.handle} />
           <span className="text-zinc-800 dark:text-zinc-200">{data.author.displayName}</span>
         </Link>
         <span className="font-mono tabular-nums">{t('embed_meta_downloads', { count: fmtCount(data.downloads) })}</span>

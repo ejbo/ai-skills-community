@@ -6,7 +6,6 @@ import { useTranslations } from 'next-intl';
 import { ExternalLink, Lock, LockOpen, Pin, PinOff, Trash2 } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 import { withBasePath } from '@/lib/base-path';
-import { CATEGORY_META, categoryLabelKey } from '@/app/discussion/_components/badges';
 
 interface PostRow {
   id: string;
@@ -22,7 +21,7 @@ interface PostRow {
 interface TopicRow {
   id: string;
   title: string;
-  categories: (keyof typeof CATEGORY_META)[];
+  categoryNames: string[];
   pinned: boolean;
   locked: boolean;
   upvoteCount: number;
@@ -197,7 +196,7 @@ export function DiscussionManager({ posts, topics }: { posts: PostRow[]; topics:
                     </span>
                   </td>
                   <td className="px-3 py-2.5 text-muted">
-                    {row.categories.map((c) => tl(categoryLabelKey(c))).join(' / ')}
+                    {row.categoryNames.join(' / ')}
                   </td>
                   <td className="px-3 py-2.5 text-muted">{row.author.displayName}</td>
                   <td className="px-3 py-2.5 text-muted">

@@ -20,7 +20,7 @@ import { Magnetic } from '@/components/motion';
 import { ZONE_LIMITS } from '@/lib/zones/shared';
 import type { ZoneAccess, ZoneJoinPolicyView } from '@/lib/zones/types';
 import { BTN_PRIMARY, BTN_SECONDARY, PILL_INK, PILL_MONO, TEXTAREA_CLS, loginHref, readError } from './ui';
-import { useAnchoredPanel } from './useAnchoredPanel';
+import { useAnchoredPanel } from '@/components/useAnchoredPanel';
 
 /** w-56, in px — the first-paint estimate; the real box is measured on open. */
 const MENU_W = 224;

@@ -254,7 +254,8 @@ export default async function DocDetailPage({
                     name={doc.uploader.displayName}
                     src={doc.uploader.avatarUrl}
                     size="xs"
-                  />
+              handle={doc.uploader.handle}
+            />
                   {doc.uploader.displayName}
                 </span>
               </UserHoverCard>

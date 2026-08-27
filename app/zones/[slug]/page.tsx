@@ -188,7 +188,7 @@ export default async function ZoneHomePage({
                     <ul className="mt-3 grid gap-3 sm:grid-cols-2">
                       {leads.map((m) => (
                         <li key={m.id} className="flex items-center gap-3">
-                          <Avatar name={m.user.displayName} src={m.user.avatarUrl} size="lg" />
+                          <Avatar name={m.user.displayName} src={m.user.avatarUrl} size="lg" handle={m.user.handle} />
                           <div className="min-w-0 flex-1">
                             <Link href={`/users/${m.user.handle}`} className="block truncate text-sm font-medium hover:underline">
                               {m.user.displayName}

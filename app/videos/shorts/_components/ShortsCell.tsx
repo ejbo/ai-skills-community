@@ -475,7 +475,7 @@ export function ShortsCell({
             className="mb-0.5 rounded-full ring-2 ring-white/90 drop-shadow-lg transition hover:scale-105 hover:ring-white active:scale-95"
             aria-label={item.uploader.displayName}
           >
-            <Avatar name={item.uploader.displayName} src={item.uploader.avatarUrl} size={embed ? 'md' : 'lg'} />
+            <Avatar name={item.uploader.displayName} src={item.uploader.avatarUrl} size={embed ? 'md' : 'lg'} handle={item.uploader.handle} />
           </button>
         ) : (
           <Link
@@ -483,7 +483,7 @@ export function ShortsCell({
             className="mb-0.5 rounded-full ring-2 ring-white/90 drop-shadow-lg transition hover:ring-white"
             aria-label={item.uploader.displayName}
           >
-            <Avatar name={item.uploader.displayName} src={item.uploader.avatarUrl} size={embed ? 'md' : 'lg'} />
+            <Avatar name={item.uploader.displayName} src={item.uploader.avatarUrl} size={embed ? 'md' : 'lg'} handle={item.uploader.handle} />
           </Link>
         )}
         <RailButton

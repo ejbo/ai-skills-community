@@ -27,6 +27,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Clock,
   Download,
   Link as LinkIcon,
   Loader2,
@@ -44,7 +45,7 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
@@ -55,8 +56,10 @@ import { holdNavBarHidden } from '@/lib/nav-chrome';
 import type { VoteActivityView, VoteEntryView } from '@/lib/vote-queries';
 import {
   MAX_BALLOT_CHANGES,
+  formatVoteInstant,
   reconcileDraft,
   stepDraftCount,
+  voteTimezoneKey,
   type BallotChange,
   type BallotDraft,
   type BallotRules,
@@ -234,6 +237,8 @@ function EntryMedia({ entry, alt, eager = false }: { entry: VoteEntryView; alt: 
 interface CardCtx {
   open: boolean;
   over: boolean;
+  /** 已发布但还没到开始时间 —— 作品可浏览，投票按钮置灰而不是消失。 */
+  notStarted: boolean;
   loggedIn: boolean;
   canVote: boolean;
   resultsVisible: boolean;
@@ -278,12 +283,29 @@ function VoteButton({ entry, draftCount, ctx, pop, size = 'sm', onStep }: VoteBu
   const base = size === 'lg' ? 'h-10 px-5 text-sm rounded-full' : 'h-8 px-3 text-xs rounded-full';
 
   if (!ctx.open) {
-    // Ended / not started: state only, no action.
-    return committed > 0 ? (
-      <span className={`inline-flex items-center gap-1 ${base} ${BTN_COMMITTED} font-medium`}>
-        <Check className="h-3.5 w-3.5" />
-        {t('my_votes_n', { count: committed })}
-      </span>
+    if (committed > 0) {
+      // Ended / not started: state only, no action.
+      return (
+        <span className={`inline-flex items-center gap-1 ${base} ${BTN_COMMITTED} font-medium`}>
+          <Check className="h-3.5 w-3.5" />
+          {t('my_votes_n', { count: committed })}
+        </span>
+      );
+    }
+    // 未开始：留一个置灰的按钮位，让人看得出“到点就能投”，而不是以为这个活动
+    // 根本不能投票。已结束则什么都不显示（名次/票数已经说明一切）。
+    return ctx.notStarted ? (
+      <button
+        type="button"
+        disabled
+        title={t('not_started_hint')}
+        // 自己的一套 class，不复用 BTN_NONE —— 那上面挂了 hover: 变体，禁用态跟着
+        // 亮一下会让人以为还能点。
+        className={`inline-flex cursor-not-allowed items-center gap-1.5 ${base} border border-dashed border-zinc-300 font-medium text-zinc-400 dark:border-zinc-700 dark:text-zinc-500`}
+      >
+        <Clock className="h-3.5 w-3.5" />
+        {t('vote_not_started')}
+      </button>
     ) : null;
   }
 
@@ -480,6 +502,7 @@ const EntryCard = memo(function EntryCard({ entry, draftCount, ctx, pop, onOpen,
 
 export function VoteGallery({ initial }: { initial: VoteActivityView }) {
   const t = useTranslations('votes');
+  const locale = useLocale();
   const router = useRouter();
   const [view, setView] = useState<VoteActivityView>(initial);
   const [q, setQ] = useState('');
@@ -534,6 +557,43 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
       /* transient — next poll wins */
     }
   }, []);
+
+  // 到点自动切状态：守着 10:00 开投的人不该还要手动刷新页面。
+  // 必须是**自愈**的，不能只排一发 setTimeout：客户端时钟快几秒、那一次请求
+  // 429/离线、或标签页在后台被节流，服务端都会回 started:false —— 依赖项没变，
+  // effect 不会重跑，页面就永远卡在「未开始」。所以过点之后改成轮询，直到服务端
+  // 自己承认状态翻转；标签页重新可见时也补一次。
+  const [boundaryTick, setBoundaryTick] = useState(0);
+  useEffect(() => {
+    const target = !view.started && view.startAt ? view.startAt : !view.over && view.endAt ? view.endAt : null;
+    if (!target) return;
+    const ms = new Date(target).getTime() - Date.now();
+    if (!Number.isFinite(ms)) return;
+    const rearm = () => setBoundaryTick((n) => n + 1);
+    // 边界还远（>24h）：只挂 visibilitychange，等下次回到页面再看。
+    if (ms > 86_400_000) {
+      const onVisible = () => {
+        if (document.visibilityState === 'visible') rearm();
+      };
+      document.addEventListener('visibilitychange', onVisible);
+      return () => document.removeEventListener('visibilitychange', onVisible);
+    }
+    const timer = setTimeout(
+      () => {
+        void refresh().finally(rearm); // 没翻转就再排一轮
+      },
+      // 过点之后按 15s 复查，避免时钟偏差/瞬时失败导致一次定音。
+      ms > 0 ? ms + 1_200 : 15_000,
+    );
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') rearm();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [view.started, view.startAt, view.over, view.endAt, refresh, boundaryTick]);
 
   useEffect(() => {
     if (!(view.resultsMode === 'realtime' && view.open)) return;
@@ -889,6 +949,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
     () => ({
       open: view.open,
       over: view.over,
+      notStarted: !view.over && !view.started,
       loggedIn: view.viewer.loggedIn,
       canVote: view.viewer.canVote,
       resultsVisible,
@@ -902,6 +963,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
     [
       view.open,
       view.over,
+      view.started,
       view.viewer.loggedIn,
       view.viewer.canVote,
       resultsVisible,
@@ -927,6 +989,16 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
     [view.descriptionMd],
   );
 
+  // 绝对时间用活动自己的时区渲染（显式 timeZone ⇒ 服务端/客户端同串，无水合
+  // 不一致），后面接时区短名才完整。
+  const startsAtLabel =
+    !view.over && !view.started && view.startAt
+      ? `${formatVoteInstant(view.startAt, view.timezone ?? '', locale)} ${t(voteTimezoneKey(view.timezone))}`
+      : null;
+  const endsAtLabel = view.endAt
+    ? `${formatVoteInstant(view.endAt, view.timezone ?? '', locale)} ${t(voteTimezoneKey(view.timezone))}`
+    : null;
+
   // ── chips ──
   const ruleChips: string[] = [
     view.budgetPeriod === 'daily'
@@ -940,6 +1012,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
         ? t('rule_results_after_end')
         : t('rule_results_creator_only'),
     ...(view.allowRevoke ? [] : [t('rule_no_revoke')]),
+    ...(endsAtLabel && !view.over ? [t('rule_ends_at', { time: endsAtLabel })] : []),
   ];
 
   return (
@@ -958,7 +1031,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight">{view.title}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted">
-            <Avatar name={view.creator.displayName} src={view.creator.avatarUrl} size="xs" />
+            <Avatar name={view.creator.displayName} src={view.creator.avatarUrl} size="xs" handle={view.creator.handle} />
             <Link href={`/users/${view.creator.handle}`} className="hover:underline">
               {view.creator.displayName}
             </Link>
@@ -1019,6 +1092,17 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
         <div className="mt-4 flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm dark:border-zinc-800 dark:bg-zinc-900">
           <Megaphone className="h-4 w-4 shrink-0 text-zinc-500" />
           <span className="min-w-0 truncate">{view.announcement}</span>
+        </div>
+      )}
+
+      {/* 未开始：作品可浏览、投票未开放 —— 说清楚“什么时候能投”，绝对时间带
+          时区（发起人所在时区），倒计时给观众自己的相对感。 */}
+      {startsAtLabel && (
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <Clock className="h-4 w-4 shrink-0 text-zinc-500" />
+          {/* 相对倒计时归下面那颗状态药丸管 —— 同一个「距开始 1天2小时」渲染两遍
+              （还各跑一个 1s interval）纯属噪音。这里只给绝对时间。 */}
+          <span className="min-w-0 font-medium">{t('not_started_banner', { time: startsAtLabel })}</span>
         </div>
       )}
 

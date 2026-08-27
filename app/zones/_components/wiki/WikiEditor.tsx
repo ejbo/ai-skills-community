@@ -250,7 +250,7 @@ export function WikiEditor({ zoneSlug, tree, page = null, initialParentId = null
             placeholder={t('wiki_body_placeholder')}
             maxLength={ZONE_LIMITS.wikiBodyMax}
             ariaLabel={t('wiki_field_body')}
-            embedPicker={{ zoneSlug }}
+            embedPicker={{}}
           />
           {bodyError && <p className="mt-1 text-[11px] text-danger">{bodyError}</p>}
         </div>

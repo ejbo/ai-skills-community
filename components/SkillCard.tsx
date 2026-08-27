@@ -53,7 +53,8 @@ export function SkillCard(props: SkillCardProps) {
             name={props.author.displayName}
             src={props.author.avatarUrl}
             size="xs"
-          />
+              handle={props.author.handle}
+            />
           <span className="truncate">{props.author.displayName}</span>
           <span>·</span>
           {/* Bare formatDistanceToNowStrict is English-only — it leaked

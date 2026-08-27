@@ -31,6 +31,7 @@ import {
   getProfileEvents,
 } from '@/lib/profile-queries';
 import { relativeTime } from '@/lib/i18n-date';
+import { discussionTagLabel } from '@/lib/discussion-tags';
 import { DEFAULT_EVENT_TIMEZONE } from '@/lib/events/types';
 import { withBasePath } from '@/lib/base-path';
 import { SkillCard } from '@/components/SkillCard';
@@ -116,7 +117,7 @@ export default async function UserProfilePage({ params }: { params: { handle: st
     <div className="container py-8">
       <header className="surface rounded-2xl p-6">
         <div className="flex flex-wrap items-start gap-5">
-          <Avatar name={user.displayName} src={user.avatarUrl} size="xl" />
+          <Avatar name={user.displayName} src={user.avatarUrl} size="xl" handle={user.handle} />
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-semibold tracking-tight">{user.displayName}</h1>
             {!hideHandle && <p className="mt-0.5 text-sm text-muted">@{user.handle}</p>}
@@ -287,7 +288,6 @@ export default async function UserProfilePage({ params }: { params: { handle: st
             ) : (
               <div className="surface mt-3 divide-y divide-zinc-100 rounded-2xl dark:divide-zinc-800/60">
                 {topics.map((topic) => {
-                  const cats = topic.categories.length > 0 ? topic.categories : [topic.category];
                   return (
                     <Link
                       key={topic.id}
@@ -298,7 +298,13 @@ export default async function UserProfilePage({ params }: { params: { handle: st
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{topic.title}</p>
                         <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] text-muted">
-                          <span>{cats.map((c) => tl(`discussionCategory.${c}`)).join(' · ')}</span>
+                          <span>
+                            {topic.tags
+                              .map((tag) =>
+                                discussionTagLabel(tag, locale, tl as (key: string) => string),
+                              )
+                              .join(' · ')}
+                          </span>
                           <span className="font-mono tabular-nums">
                             · {t('n_replies', { count: topic.replyCount })} ·{' '}
                             {t('n_views', { count: topic.viewCount })}

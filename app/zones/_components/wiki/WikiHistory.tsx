@@ -202,7 +202,7 @@ export function WikiHistory({ zoneSlug, page, revisions, canWiki, initialRevisio
                       </span>
                     )}
                     <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
-                      <Avatar name={r.editor.displayName} src={r.editor.avatarUrl} size="xs" />
+                      <Avatar name={r.editor.displayName} src={r.editor.avatarUrl} size="xs" handle={r.editor.handle} />
                       <span className="truncate">{r.editor.displayName}</span>
                       <DeptTag department={r.editor.department} lab={r.editor.lab} />
                       <span>·</span>

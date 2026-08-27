@@ -139,6 +139,7 @@ model User {
   tagAssignments    UserTagAssignment[]
   grantedTags       UserTagAssignment[] @relation("UserTagGrantedBy")
   libraryCategories LibraryCategory[]   @relation("LibraryCategoryCreator")
+  discussionTags    DiscussionTag[]     @relation("DiscussionTagCreator")
   stickers          UserSticker[]
   createdPolls      Poll[]              @relation("CreatedPolls")
   pollVotes         PollVote[]
@@ -1177,21 +1178,34 @@ model PostCommentLike {
   @@index([commentId])
 }
 
-enum DiscussionCategory {
-  tech // 技术交流
-  qa // 问答求助
-  share // 经验分享
-  showcase // 成果展示
-  general // 综合讨论（历史值，发帖入口已隐藏 — 分类聚焦 AI 技术）
-  models // 模型与算法
-  agents // Agent 与工具
-  skills // Skill 开发
-  research // 前沿研究
-}
-
 enum DiscussionReplyStatus {
   visible
   deleted // tombstone: kept to preserve thread shape, body wiped
+}
+
+/// 讨论区主题分类. `official` ones are the left-rail categories: filterable,
+/// counted, and every topic must lead with one. Member-created tags are chips
+/// on the topic only — never in the rail — so the rail can't be flooded.
+///
+/// `slug` is what DiscussionTopic.categories stores, so renaming a tag never
+/// rewrites topics. The 9 built-ins keep their old enum values as slugs and
+/// still render through the `labels.discussionCategory.*` messages; anything
+/// created later has no message key and renders its stored name.
+model DiscussionTag {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  nameEn      String   @default("")
+  official    Boolean  @default(false)
+  sortOrder   Int      @default(100)
+  /// Null for the seeded built-ins.
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User? @relation("DiscussionTagCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([official, sortOrder])
 }
 
 model DiscussionTopic {
@@ -1199,11 +1213,13 @@ model DiscussionTopic {
   authorId       String
   title          String
   bodyMd         String               @default("")
-  // Legacy single category — kept in sync with categories[0] so existing
-  // indexes/sorts stay valid. New reads/filters use `categories`.
-  category       DiscussionCategory   @default(general)
-  // Multi-select主题 (1..3 picked in the composer).
-  categories     DiscussionCategory[] @default([])
+  // Primary主题 — always categories[0], i.e. the first OFFICIAL (侧栏) tag.
+  // Kept as its own column so [category, lastActivityAt] stays a usable index.
+  category       String               @default("general")
+  // DiscussionTag slugs in picked order: 1..3 official (侧栏分类) first, then
+  // 0..3 member-created ones. Slugs, not ids — renaming a tag never rewrites
+  // topics (same contract as LibraryDoc.categories).
+  categories     String[]             @default([])
   pinned         Boolean              @default(false)
   locked         Boolean              @default(false)
   upvoteCount    Int                  @default(0)
@@ -2033,8 +2049,12 @@ model VoteActivity {
   coverUrl              String? // root-relative; withBasePath at render. null ⇒ first entry thumb
   status                VoteActivityStatus  @default(draft)
   publishedAt           DateTime?
-  startAt               DateTime? // 定时开始；null = 发布即开始
+  startAt               DateTime? // 定时开始（真实 UTC 瞬时）；null = 发布即开始
   endAt                 DateTime? // 截止 UTC instant；null = 手动结束
+  // 发起人填写 startAt/endAt 时所用的 IANA 时区（加东/加西）。瞬时已是 UTC，
+  // 这里只为回填编辑器输入框 + 前台标注“东部时间 10:00”。null = 老数据，按
+  // DEFAULT_VOTE_TIMEZONE 解释。
+  timezone              String?
   closedAt              DateTime? // 提前结束
   votesPerUser          Int                 @default(10)
   budgetPeriod          VoteBudgetPeriod    @default(total)

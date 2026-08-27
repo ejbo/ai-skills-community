@@ -258,7 +258,7 @@ export function PollWidget({ id }: { id: string }) {
                   <div className="flex -space-x-1">
                     {o.voters.slice(0, VOTER_AVATARS_SHOWN).map((v) => (
                       <span key={v.handle} title={v.displayName}>
-                        <Avatar name={v.displayName} src={v.avatarUrl} size="xs" className="ring-1 ring-[rgb(var(--surface))]" />
+                        <Avatar name={v.displayName} src={v.avatarUrl} size="xs" className="ring-1 ring-[rgb(var(--surface))]" handle={v.handle} />
                       </span>
                     ))}
                   </div>

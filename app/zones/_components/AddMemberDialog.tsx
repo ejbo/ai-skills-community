@@ -108,7 +108,7 @@ export function AddMemberDialog({
         <div className="mt-4">
           {picked ? (
             <div className="flex items-center gap-3 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
-              <Avatar name={picked.user.displayName} src={picked.user.avatarUrl} size="lg" />
+              <Avatar name={picked.user.displayName} src={picked.user.avatarUrl} size="lg" handle={picked.user.handle} />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium">{picked.user.displayName}</div>
                 <DeptTag department={picked.user.department} lab={picked.user.lab} />

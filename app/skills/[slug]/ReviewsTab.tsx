@@ -116,7 +116,7 @@ export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: str
               <li key={r.id} className="surface rounded-xl p-4">
                 <div className="flex items-center justify-between">
                   <Link href={`/users/${author.handle}`} className="flex items-center gap-2 hover:text-zinc-900">
-                    <Avatar name={author.displayName} src={author.avatarUrl} size="sm" />
+                    <Avatar name={author.displayName} src={author.avatarUrl} size="sm" handle={author.handle} />
                     <span className="text-sm font-medium">{author.displayName}</span>
                     <DeptTag department={author.department} lab={author.lab} />
                   </Link>

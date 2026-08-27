@@ -5,6 +5,13 @@ import { apiReason } from '@/lib/api-errors';
 import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { logAdmin } from '@/lib/audit';
+import { discussionTagMap } from '@/lib/discussion-queries';
+import {
+  MAX_CUSTOM_TAGS,
+  MAX_OFFICIAL_TAGS,
+  sanitizeTopicTags,
+  tagErrorReason,
+} from '@/lib/discussion-tags';
 import {
   deleteUnreferencedMediaFiles,
   mediaArraySchema,
@@ -14,22 +21,17 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-const CATEGORY_ENUM = z.enum([
-  'tech',
-  'models',
-  'agents',
-  'skills',
-  'research',
-  'qa',
-  'share',
-  'showcase',
-]);
+// 形状校验；存在性/配额由 sanitizeTopicTags 判（与 POST 同一处规则）。
+const categoriesSchema = z
+  .array(z.string().trim().min(1).max(64))
+  .min(1, '请至少选择一个主题')
+  .max(MAX_OFFICIAL_TAGS + MAX_CUSTOM_TAGS);
 
 const patchSchema = z
   .object({
     title: z.string().trim().min(4, '标题至少 4 个字').max(120).optional(),
     bodyMd: z.string().max(20000).optional(),
-    categories: z.array(CATEGORY_ENUM).min(1, '请至少选择一个主题').max(3, '最多选择 3 个主题').optional(),
+    categories: categoriesSchema.optional(),
     media: mediaArraySchema.optional(),
     pinned: z.boolean().optional(),
     locked: z.boolean().optional(),
@@ -103,15 +105,24 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       .map((m) => m.key);
   }
 
-  const uniqueCategories = categories ? [...new Set(categories)] : undefined;
+  let nextTags: { categories: string[]; official: string[] } | undefined;
+  if (categories !== undefined) {
+    const parsedTags = sanitizeTopicTags(categories, await discussionTagMap());
+    if (!parsedTags.ok) {
+      return NextResponse.json(
+        { error: 'invalid_input', reason: tagErrorReason(parsedTags.error) },
+        { status: 400 },
+      );
+    }
+    nextTags = parsedTags.value;
+  }
+
   const updated = await prisma.discussionTopic.update({
     where: { id: topic.id },
     data: {
       ...(title !== undefined ? { title } : {}),
       ...(bodyMd !== undefined ? { bodyMd } : {}),
-      ...(uniqueCategories
-        ? { categories: uniqueCategories, category: uniqueCategories[0] }
-        : {}),
+      ...(nextTags ? { categories: nextTags.categories, category: nextTags.official[0] } : {}),
       ...(resolved ? { media: { deleteMany: {}, create: resolved } } : {}),
       ...(pinned !== undefined ? { pinned } : {}),
       ...(locked !== undefined ? { locked } : {}),

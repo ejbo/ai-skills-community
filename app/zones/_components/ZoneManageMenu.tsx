@@ -25,7 +25,7 @@ import { AlertTriangle, ChevronDown, Settings, ShieldCheck, Users } from 'lucide
 import { zoneHref } from '@/lib/zones/shared';
 import type { ZoneAccess } from '@/lib/zones/types';
 import { BTN_SECONDARY } from './ui';
-import { useAnchoredPanel } from './useAnchoredPanel';
+import { useAnchoredPanel } from '@/components/useAnchoredPanel';
 
 /** w-56, in px — the estimate used for the very first paint, refined after measuring. */
 const MENU_W = 224;

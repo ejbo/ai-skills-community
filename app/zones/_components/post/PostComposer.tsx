@@ -566,7 +566,7 @@ export function PostComposer({
           placeholder={t('composer_body_placeholder')}
           ariaLabel={t('composer_body_label')}
           disabled={disabled}
-          embedPicker={{ zoneSlug: zone.slug, attachments: savedAttachments }}
+          embedPicker={{ attachments: savedAttachments }}
         />
       </section>
 

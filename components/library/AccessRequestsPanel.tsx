@@ -89,7 +89,7 @@ export function AccessRequestsPanel({ docId }: { docId: string }) {
       <ul className="mt-3 divide-y divide-zinc-100 dark:divide-zinc-800/60">
         {rows.map((r) => (
           <li key={r.id} className="flex items-center gap-2.5 py-2.5">
-            <Avatar name={r.user.displayName} src={r.user.avatarUrl} size="xs" />
+            <Avatar name={r.user.displayName} src={r.user.avatarUrl} size="xs" handle={r.user.handle} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm">
                 {r.user.displayName}

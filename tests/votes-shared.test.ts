@@ -406,3 +406,98 @@ describe('reconcileDraft', () => {
     });
   });
 });
+
+// ─── 时区（开始/截止时间的显示与回填） ──────────────────────────────────────
+import {
+  DEFAULT_VOTE_TIMEZONE,
+  VOTE_TIMEZONES,
+  formatVoteInstant,
+  isVoteTimezone,
+  resolveWallToInstant,
+  voteTimezoneKey,
+  voteTimezoneOf,
+} from '@/lib/votes/shared';
+import { toWallDate, zonedWallToUtc } from '@/lib/events/time';
+
+describe('vote timezones', () => {
+  it('offers exactly 加东/加西 and defaults to Toronto', () => {
+    expect(VOTE_TIMEZONES.map((tz) => tz.value)).toEqual(['America/Toronto', 'America/Vancouver']);
+    expect(DEFAULT_VOTE_TIMEZONE).toBe('America/Toronto');
+  });
+
+  it('rejects zones outside the fixed set and falls back for legacy rows', () => {
+    expect(isVoteTimezone('America/Toronto')).toBe(true);
+    expect(isVoteTimezone('Asia/Shanghai')).toBe(false);
+    expect(isVoteTimezone(null)).toBe(false);
+    expect(voteTimezoneOf(null)).toBe(DEFAULT_VOTE_TIMEZONE);
+    expect(voteTimezoneOf('Europe/Paris')).toBe(DEFAULT_VOTE_TIMEZONE);
+    expect(voteTimezoneOf('America/Vancouver')).toBe('America/Vancouver');
+    expect(voteTimezoneKey(null)).toBe('tz_eastern');
+    expect(voteTimezoneKey('America/Vancouver')).toBe('tz_western');
+  });
+
+  it('round-trips a wall time through the picked zone (DST-aware)', () => {
+    // 2026-08-30 10:00 in Toronto (EDT, UTC-4) === 14:00Z
+    const summer = zonedWallToUtc('2026-08-30', '10:00', 'America/Toronto');
+    expect(summer?.toISOString()).toBe('2026-08-30T14:00:00.000Z');
+    // The same wall time in Vancouver (PDT, UTC-7) === 17:00Z
+    const west = zonedWallToUtc('2026-08-30', '10:00', 'America/Vancouver');
+    expect(west?.toISOString()).toBe('2026-08-30T17:00:00.000Z');
+    // Winter: Toronto is EST (UTC-5).
+    const winter = zonedWallToUtc('2026-01-15', '10:00', 'America/Toronto');
+    expect(winter?.toISOString()).toBe('2026-01-15T15:00:00.000Z');
+    // And back: the editor refills exactly what the organizer typed.
+    const wall = toWallDate(new Date('2026-08-30T14:00:00.000Z'), 'America/Toronto');
+    expect(wall.getUTCHours()).toBe(10);
+    expect(wall.getUTCDate()).toBe(30);
+  });
+
+  it('renders an instant in the activity zone, not the runner-machine zone', () => {
+    const iso = '2026-08-30T14:00:00.000Z';
+    expect(formatVoteInstant(iso, 'America/Toronto', 'en')).toContain('10:00');
+    expect(formatVoteInstant(iso, 'America/Vancouver', 'en')).toContain('07:00');
+    // Legacy null zone reads as the default zone rather than blowing up.
+    expect(formatVoteInstant(iso, '', 'en')).toContain('10:00');
+    expect(formatVoteInstant('not-a-date', 'America/Toronto', 'en')).toBe('');
+  });
+});
+
+describe('resolveWallToInstant (夏令时缺口)', () => {
+  it('pushes a nonexistent spring-forward wall time FORWARD instead of silently falling back an hour', () => {
+    // 2026-03-08 Toronto: 02:00 EST jumps straight to 03:00 EDT, so 02:30 does
+    // not exist. The raw converter collapses it onto 01:30's instant.
+    const raw = zonedWallToUtc('2026-03-08', '02:30', 'America/Toronto');
+    expect(toWallDate(raw!, 'America/Toronto').getUTCHours()).toBe(1); // the bug
+    const fixed = resolveWallToInstant('2026-03-08', '02:30', 'America/Toronto', zonedWallToUtc, toWallDate);
+    expect(toWallDate(fixed!, 'America/Toronto').getUTCHours()).toBe(3);
+    expect(toWallDate(fixed!, 'America/Toronto').getUTCMinutes()).toBe(30);
+  });
+
+  it('keeps 开始 < 截止 distinct across the gap (the bogus end_before_start case)', () => {
+    const start = resolveWallToInstant('2026-03-08', '01:30', 'America/Toronto', zonedWallToUtc, toWallDate)!;
+    const end = resolveWallToInstant('2026-03-08', '02:30', 'America/Toronto', zonedWallToUtc, toWallDate)!;
+    expect(zonedWallToUtc('2026-03-08', '01:30', 'America/Toronto')!.getTime()).toBe(
+      zonedWallToUtc('2026-03-08', '02:30', 'America/Toronto')!.getTime(),
+    ); // raw converter folds them together
+    expect(end.getTime()).toBeGreaterThan(start.getTime());
+  });
+
+  it('leaves ordinary and fall-back times untouched', () => {
+    const normal = resolveWallToInstant('2026-08-30', '10:00', 'America/Toronto', zonedWallToUtc, toWallDate);
+    expect(normal?.toISOString()).toBe('2026-08-30T14:00:00.000Z');
+    // 2026-11-01 01:30 happens twice; the first (EDT) occurrence is fine.
+    const repeated = resolveWallToInstant('2026-11-01', '01:30', 'America/Toronto', zonedWallToUtc, toWallDate);
+    expect(repeated?.toISOString()).toBe('2026-11-01T05:30:00.000Z');
+    expect(resolveWallToInstant('bad', '10:00', 'America/Toronto', zonedWallToUtc, toWallDate)).toBeNull();
+  });
+});
+
+describe('isVoteTimezone prototype safety', () => {
+  it('does not accept Object.prototype keys as a timezone', () => {
+    for (const k of ['toString', 'constructor', 'valueOf', '__proto__', 'hasOwnProperty']) {
+      expect(isVoteTimezone(k)).toBe(false);
+      expect(voteTimezoneOf(k)).toBe(DEFAULT_VOTE_TIMEZONE);
+      expect(voteTimezoneKey(k)).toBe('tz_eastern');
+    }
+  });
+});

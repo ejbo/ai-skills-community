@@ -12,12 +12,13 @@ import { relativeTime } from '@/lib/i18n-date';
 import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import {
-  countTopicsByCategory,
-  isDiscussionCategory,
+  discussionTagMap,
   listPosts,
+  listSidebarTags,
   listTopics,
   type TopicSort,
 } from '@/lib/discussion-queries';
+import { discussionTagLabel } from '@/lib/discussion-tags';
 import { EmptyState } from '@/components/EmptyState';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
@@ -26,7 +27,7 @@ import { SearchBar } from '@/components/SearchBar';
 import { DiscussionTabs } from './_components/DiscussionTabs';
 import { PostFeed } from './_components/PostFeed';
 import { TopicUpvoteButton } from './_components/TopicUpvoteButton';
-import { CATEGORY_META, CategoryChip, VISIBLE_CATEGORIES } from './_components/badges';
+import { CategoryChipStatic, tagDotClass } from './_components/badges';
 import type { CurrentUser } from './_components/types';
 
 export const dynamic = 'force-dynamic';
@@ -210,7 +211,7 @@ async function PostsTab({
                       {topic.title}
                     </span>
                     <span className="mt-0.5 flex items-center gap-2 text-[11px] text-muted">
-                      <CategoryChip category={topic.categories[0]} />
+                      {topic.tags[0] && <CategoryChipStatic tag={topic.tags[0]} />}
                       <span>{tp('n_replies', { count: topic.replyCount })}</span>
                       <span>{t('views_compact', { count: formatViews(topic.viewCount) })}</span>
                     </span>
@@ -253,12 +254,16 @@ async function ForumTab({
   const tn = await getTranslations('nav');
   const locale = await getLocale();
   const categoryRaw = firstParam(searchParams.category);
-  const category = isDiscussionCategory(categoryRaw) ? categoryRaw : undefined;
   const sortRaw = firstParam(searchParams.sort);
   const sort: TopicSort = sortRaw === 'top' ? 'top' : sortRaw === 'new' ? 'new' : 'latest';
   const q = firstParam(searchParams.q);
 
-  const [{ items, page, pageSize, total, hasMore }, catStats] = await Promise.all([
+  // 侧栏 = official 分类（成员自建的从不进来，见 lib/discussion-tags.ts）。
+  // 但筛选允许任何已存在的 slug —— 自建分类不在导航里，帖子上的 chip 仍可点。
+  const tagMap = await discussionTagMap();
+  const category = tagMap.has(categoryRaw) ? categoryRaw : undefined;
+
+  const [{ items, page, pageSize, total, hasMore }, sidebar] = await Promise.all([
     listTopics({
       category,
       sort,
@@ -266,23 +271,24 @@ async function ForumTab({
       viewerId,
       q: q || undefined,
     }),
-    countTopicsByCategory(),
+    listSidebarTags(),
   ]);
 
-  // Discourse-style sidebar set: the AI-focused categories, plus the legacy
-  // 综合讨论 row only while old topics still live there.
-  const categoryCounts = catStats.counts;
-  const sidebarCategories = [
-    ...VISIBLE_CATEGORIES,
-    ...((categoryCounts.general ?? 0) > 0 ? (['general'] as const) : []),
-  ];
   // Distinct topics — summing per-category membership would double-count
-  // multi-主题 topics.
-  const allCount = catStats.total;
+  // multi-分类 topics.
+  const allCount = sidebar.total;
+  const activeTag = category ? tagMap.get(category) : undefined;
+  const labelOf = (tag: { slug: string; name: string; nameEn: string; official: boolean }) =>
+    discussionTagLabel(tag, locale, tl as (key: string) => string);
 
   const chips = [
     { key: 'all', label: tb('all') },
-    ...sidebarCategories.map((key) => ({ key, label: tl(`discussionCategory.${key}`) })),
+    ...sidebar.tags.map((tag) => ({ key: tag.slug, label: labelOf(tag) })),
+    // 正在筛一个不在侧栏里的自建分类：给它一个 chip，否则「当前在筛什么」
+    // 在移动端完全没有提示。
+    ...(activeTag && !activeTag.official
+      ? [{ key: activeTag.slug, label: `#${labelOf(activeTag)}` }]
+      : []),
   ];
 
   return (
@@ -305,8 +311,8 @@ async function ForumTab({
           <div className="px-3 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wider text-muted">
             {tn('categories')}
           </div>
-          {sidebarCategories.map((key) => {
-            const meta = CATEGORY_META[key];
+          {sidebar.tags.map((tag) => {
+            const key = tag.slug;
             const active = category === key;
             return (
               <Link
@@ -319,12 +325,10 @@ async function ForumTab({
                 }`}
               >
                 <span className="flex items-center gap-2">
-                  <span className={`h-2.5 w-2.5 rounded-sm ${meta.dot}`} />
-                  {tl(`discussionCategory.${key}`)}
+                  <span className={`h-2.5 w-2.5 rounded-sm ${tagDotClass(tag)}`} />
+                  {labelOf(tag)}
                 </span>
-                <span className="text-xs text-muted tabular-nums">
-                  {categoryCounts[key] ?? 0}
-                </span>
+                <span className="text-xs text-muted tabular-nums">{tag.count}</span>
               </Link>
             );
           })}
@@ -391,7 +395,7 @@ async function ForumTab({
                 q
                   ? t('empty_search_topics', { q })
                   : category
-                    ? t('empty_category_topics', { category: tl(`discussionCategory.${category}`) })
+                    ? t('empty_category_topics', { category: activeTag ? labelOf(activeTag) : category })
                     : t('empty_topics')
               }
               description={q ? t('try_other_keywords') : t('start_first_topic')}
@@ -426,8 +430,8 @@ async function ForumTab({
                           {topic.pinned && <Pin className="h-3.5 w-3.5 shrink-0 text-zinc-900 dark:text-zinc-50" />}
                           {topic.locked && <Lock className="h-3.5 w-3.5 shrink-0 text-muted" />}
                           <span className="truncate text-sm font-medium">{topic.title}</span>
-                          {topic.categories.map((c) => (
-                            <CategoryChip key={c} category={c} />
+                          {topic.tags.map((tag) => (
+                            <CategoryChipStatic key={tag.slug} tag={tag} />
                           ))}
                         </div>
                         {topic.excerpt && (
@@ -440,7 +444,8 @@ async function ForumTab({
                             name={author.displayName}
                             src={author.avatarUrl}
                             size="xs"
-                          />
+              handle={author.handle}
+            />
                           <span className="truncate">{author.displayName}</span>
                           <DeptTag department={author.department} lab={author.lab} />
                           <span>·</span>
@@ -465,7 +470,8 @@ async function ForumTab({
                                 src={p.avatarUrl}
                                 size="xs"
                                 className="ring-2 ring-white dark:ring-zinc-900"
-                              />
+              handle={p.handle}
+            />
                             ))}
                           </span>
                         )}

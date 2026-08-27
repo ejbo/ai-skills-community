@@ -6,7 +6,10 @@ import { Eye, MessageSquare } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { getTopicDetail, recordTopicView } from '@/lib/discussion-queries';
-import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { ZoneMarkdown } from '@/components/zones/ZoneMarkdown';
+import { zoneSiteViewer } from '@/lib/zones/access';
+import { resolveEmbeds } from '@/lib/zones/embeds';
+import { collectEmbedRefs } from '@/lib/zones/shared';
 import { BackButton } from '@/components/BackButton';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
@@ -51,6 +54,17 @@ export default async function TopicDetailPage({
   const viewerKey = session?.user?.id ?? `ip:${clientIp}`;
   await recordTopicView(topic.id, viewerKey);
 
+  // 正文里的 [embed:kind:ref] —— 与技术专区同一套解析，每种 kind 都过它自己
+  // 领域的可见性闸门。匿名访客不解析：/api/zones/embed 要求登录，卡片会自己
+  // 退化成不可用状态，而不是在服务端泄露一份未鉴权的数据。
+  const embeds = session?.user
+    ? await resolveEmbeds(collectEmbedRefs(topic.bodyMd), {
+        viewer: zoneSiteViewer(session.user),
+        session,
+        locale,
+      })
+    : undefined;
+
   const viewer = session?.user
     ? { handle: session.user.handle, canModerate: can(session.user, 'discussion') }
     : null;
@@ -91,8 +105,8 @@ export default async function TopicDetailPage({
           />
           <div className="min-w-0 flex-1 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              {topic.categories.map((c) => (
-                <CategoryChip key={c} category={c} />
+              {topic.tags.map((tag) => (
+                <CategoryChip key={tag.slug} tag={tag} />
               ))}
               {topic.pinned && <PinnedBadge />}
               {topic.locked && <LockedBadge />}
@@ -101,7 +115,7 @@ export default async function TopicDetailPage({
               {topic.title}
             </h1>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-              <Avatar name={author.displayName} src={author.avatarUrl} size="xs" />
+              <Avatar name={author.displayName} src={author.avatarUrl} size="xs" handle={author.handle} />
               <Link href={`/users/${author.handle}`} className="hover:underline">
                 {author.displayName}
               </Link>
@@ -130,7 +144,7 @@ export default async function TopicDetailPage({
 
         {(topic.bodyMd || topic.media.length > 0) && (
           <div className="surface rounded-2xl p-5">
-            {topic.bodyMd && <MarkdownRenderer content={topic.bodyMd} />}
+            {topic.bodyMd && <ZoneMarkdown content={topic.bodyMd} embeds={embeds} headingIds={false} />}
             {/* 附件：上传视频内嵌播放、外链视频卡片、PDF 预览 / PPT·Word 下载 */}
             <PostMediaGallery media={topic.media} />
           </div>

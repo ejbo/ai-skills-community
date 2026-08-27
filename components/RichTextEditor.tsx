@@ -51,6 +51,7 @@ import { PollEmbedView } from '@/components/polls/PollEmbedView';
 import { ContentEmbedBase, insertContentEmbed } from '@/components/zones/embeds/embed-node-extension';
 import { EmbedNodeView } from '@/components/zones/embeds/EmbedNodeView';
 import { EmbedPickerDialog } from '@/components/zones/embeds/EmbedPickerDialog';
+import type { EmbedKind } from '@/lib/zones/shared';
 import type { ZoneAttachmentView } from '@/lib/zones/types';
 
 export type RichTextVariant = 'full' | 'compact';
@@ -69,11 +70,21 @@ export interface RichTextEditorProps {
   ariaLabel?: string;
   autoFocus?: boolean;
   /**
-   * 技术专区 only: registers the `[embed:<kind>:<ref>]` node + a toolbar
-   * 插入引用 button opening EmbedPickerDialog. Decided at editor creation —
-   * extensions are wired once. Absent ⇒ every other editor is untouched.
+   * Registers the `[embed:<kind>:<ref>]` node + a toolbar 插入引用 button
+   * opening EmbedPickerDialog. Decided at editor creation — extensions are
+   * wired once. Absent ⇒ every other editor is untouched.
+   *
+   * 技术专区 passes the zone + the post's saved attachments (the `file` kind
+   * needs a ZonePostAttachment row id); 讨论区 passes neither and narrows
+   * `kinds` instead. The候选 search itself is SITE-WIDE and viewer-gated
+   * (/api/zones/embed/search → searchEmbedCandidates), so no zone context is
+   * required to offer it elsewhere.
    */
-  embedPicker?: { zoneSlug: string; attachments?: ZoneAttachmentView[] };
+  embedPicker?: {
+    attachments?: ZoneAttachmentView[];
+    /** Tabs to offer; defaults to every kind. */
+    kinds?: readonly EmbedKind[];
+  };
 }
 
 // Image node with: (1) basePath applied to the DISPLAYED src only (stored attrs
@@ -640,7 +651,7 @@ export function RichTextEditor({
         <EmbedPickerDialog
           open={embedDialog}
           onClose={() => setEmbedDialog(false)}
-          zoneSlug={embedPicker.zoneSlug}
+          kinds={embedPicker.kinds}
           postAttachments={embedPicker.attachments}
           // Same top-level insertion rule as the poll node (see insertContentEmbed).
           onPick={(kind, ref) => insertContentEmbed(editor, kind, ref)}

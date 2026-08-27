@@ -152,6 +152,103 @@ export function votingOpen(status: string, w: VoteWindow, now: Date = new Date()
   return status === 'published' && voteStarted(w, now) && !voteOver(w, now);
 }
 
+// ─── 时区 ───────────────────────────────────────────────────────────────────
+// 开始/截止时间存的是真实 UTC 瞬时；`VoteActivity.timezone` 记录发起人填写时
+// 用的 IANA 时区，所以编辑器能把瞬时还原成他当初输入的墙上时间，前台也能标
+// 「东部时间 10:00」而不是让每个观众自己换算。选项刻意只有加东/加西（团队所在
+// 地）——固定集合意味着展示文案走 i18n key，入库值永远是 IANA 名。
+// 注意：daily 预算桶（voteDayKey）仍按北京时间刷新，与这里无关。
+
+export const VOTE_TIMEZONES = [
+  { value: 'America/Toronto', key: 'tz_eastern' },
+  { value: 'America/Vancouver', key: 'tz_western' },
+] as const;
+
+export type VoteTimezoneValue = (typeof VOTE_TIMEZONES)[number]['value'];
+
+export const DEFAULT_VOTE_TIMEZONE: VoteTimezoneValue = 'America/Toronto';
+
+const VOTE_TZ_KEY: Record<string, string> = Object.fromEntries(
+  VOTE_TIMEZONES.map((tz) => [tz.value, tz.key]),
+);
+
+export function isVoteTimezone(v: unknown): v is VoteTimezoneValue {
+  // hasOwnProperty, NOT `in` — Object.fromEntries inherits Object.prototype, so
+  // `'toString' in VOTE_TZ_KEY` is true and a PATCH could store it as a zone.
+  return typeof v === 'string' && Object.prototype.hasOwnProperty.call(VOTE_TZ_KEY, v);
+}
+
+/** i18n key for a zone's short label. Unknown/legacy zones fall back to the default. */
+export function voteTimezoneKey(zone: string | null | undefined): string {
+  return isVoteTimezone(zone) ? VOTE_TZ_KEY[zone] : VOTE_TZ_KEY[DEFAULT_VOTE_TIMEZONE];
+}
+
+/** The zone a row's times are expressed in (legacy null rows = the default). */
+export function voteTimezoneOf(zone: string | null | undefined): VoteTimezoneValue {
+  return isVoteTimezone(zone) ? zone : DEFAULT_VOTE_TIMEZONE;
+}
+
+/**
+ * 夏令时"春季跳变"当天，02:00–03:00 这一小时在墙上时钟里根本不存在。裸的
+ * zonedWallToUtc 会把 02:30 解析成和 01:30 完全相同的瞬时 —— 于是"截止 02:30"
+ * 悄悄提前一小时，而"开始 01:30 / 截止 02:30"两个不同的钟面折叠成同一瞬时，
+ * 服务端的成对校验会莫名其妙报"截止时间必须晚于开始时间"。
+ *
+ * 这里做一次回投影校验：如果换算回去得到的不是用户输入的钟面，说明落在缺口里，
+ * 就按差值**向后推**到跳变之后的瞬时（02:30 → 03:30），与 java.time 等主流实现
+ * 一致。传入的 convert/project 就是 lib/events/time.ts 的那两个函数（保持本文件
+ * import-free）。
+ */
+export function resolveWallToInstant(
+  date: string,
+  time: string,
+  zone: string,
+  convert: (date: string, time: string, zone: string) => Date | null,
+  project: (instant: Date, zone: string) => Date,
+): Date | null {
+  const instant = convert(date, time, zone);
+  if (!instant) return null;
+  const wall = project(instant, zone);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const got = `${wall.getUTCFullYear()}-${pad(wall.getUTCMonth() + 1)}-${pad(wall.getUTCDate())} ${pad(wall.getUTCHours())}:${pad(wall.getUTCMinutes())}`;
+  const want = `${date} ${time}`;
+  if (got === want) return instant;
+  // 缺口：把"想要的钟面 − 实际落到的钟面"补回去。
+  const wantMs = convert(date, time, 'UTC')?.getTime();
+  const gotMs = Date.UTC(
+    wall.getUTCFullYear(),
+    wall.getUTCMonth(),
+    wall.getUTCDate(),
+    wall.getUTCHours(),
+    wall.getUTCMinutes(),
+  );
+  if (wantMs === undefined) return instant;
+  return new Date(instant.getTime() + (wantMs - gotMs));
+}
+
+/**
+ * 把 UTC 瞬时按活动自己的时区渲染成「2026年8月30日 10:00」。显式传 timeZone，
+ * 所以服务端和客户端算出来的是同一个字符串（不会 hydration mismatch），也不需要
+ * 客户端叶子组件。展示时在后面接上时区短名（东部/西部）才完整。
+ */
+export function formatVoteInstant(iso: string, zone: string, locale: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  try {
+    return new Intl.DateTimeFormat(locale, {
+      timeZone: voteTimezoneOf(zone),
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).format(d);
+  } catch {
+    return d.toISOString().slice(0, 16).replace('T', ' ');
+  }
+}
+
 // ─── 每日票数桶 ─────────────────────────────────────────────────────────────
 // daily 预算按固定的北京时间刷新（确定性、可解释：“每日票数按北京时间 0 点刷新”）。
 // total 模式的 ballots 存 day='' — the composite PK scopes budgets per bucket.

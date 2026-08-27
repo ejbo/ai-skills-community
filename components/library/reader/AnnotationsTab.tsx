@@ -225,7 +225,7 @@ export function AnnotationsTab({
                 >
                   <UserHoverCard handle={p.handle}>
                     <span className="flex min-w-0 flex-1 items-center gap-2">
-                      <Avatar name={p.author.displayName} src={p.author.avatarUrl} size="xs" />
+                      <Avatar name={p.author.displayName} src={p.author.avatarUrl} size="xs" handle={p.author.handle} />
                       <span className="min-w-0 truncate">
                         <span className="font-medium">{p.author.displayName}</span>
                         {p.isMine && <span className="r-muted ml-1">{t('annotator_me')}</span>}
@@ -410,7 +410,7 @@ function AnnotationCard({
       <div className="flex items-center gap-2">
         <UserHoverCard handle={note.author.handle}>
           <span className="flex items-center gap-2">
-            <Avatar name={note.author.displayName} src={note.author.avatarUrl} size="xs" />
+            <Avatar name={note.author.displayName} src={note.author.avatarUrl} size="xs" handle={note.author.handle} />
             <span className="min-w-0 truncate text-xs font-medium">{note.author.displayName}</span>
           </span>
         </UserHoverCard>
@@ -533,7 +533,7 @@ function ReplyRow({
       <div className="flex items-center gap-1.5 text-[11px]">
         <UserHoverCard handle={reply.author.handle}>
           <span className="flex items-center gap-1.5">
-            <Avatar name={reply.author.displayName} src={reply.author.avatarUrl} size="xs" />
+            <Avatar name={reply.author.displayName} src={reply.author.avatarUrl} size="xs" handle={reply.author.handle} />
             <span className="font-medium">{reply.author.displayName}</span>
           </span>
         </UserHoverCard>

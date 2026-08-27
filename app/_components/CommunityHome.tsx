@@ -28,6 +28,7 @@ import { browseDocs } from '@/lib/library-queries';
 import { EventTimeCard } from '@/app/events/_components/EventTime';
 import { DocCover } from '@/components/library/DocCover';
 import { CATEGORY_META } from '@/app/discussion/_components/badges';
+import { discussionTagLabel } from '@/lib/discussion-tags';
 import { KIND_META } from '@/app/events/_components/badges';
 import { getTranslations } from 'next-intl/server';
 import { Reveal } from './home/Reveal';
@@ -260,11 +261,11 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
                         <span className="min-w-0 flex-1 truncate text-sm font-medium">
                           {topic.title}
                         </span>
-                        <TaxonomyChip
-                          cls={CATEGORY_META[topic.categories[0] ?? topic.category]?.className}
-                        >
-                          {tl(`discussionCategory.${topic.categories[0] ?? topic.category}`)}
-                        </TaxonomyChip>
+                        {topic.tags[0] && (
+                          <TaxonomyChip cls={CATEGORY_META[topic.tags[0].slug]?.className}>
+                            {discussionTagLabel(topic.tags[0], locale, tl as (key: string) => string)}
+                          </TaxonomyChip>
+                        )}
                       </div>
                       <p className="mt-0.5 text-xs tabular-nums text-muted">
                         {t('topic_meta', { replies: topic.replyCount, views: topic.viewCount })}

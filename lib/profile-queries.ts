@@ -5,7 +5,7 @@
 // queried for other viewers, so its data never leaves the server; the owner and
 // admins always see everything (with a 仅自己可见 badge in the UI).
 import { prisma } from '@/lib/db';
-import { excerptOf } from '@/lib/discussion-queries';
+import { discussionTagMap, excerptOf, tagViewsFrom } from '@/lib/discussion-queries';
 
 export const PROFILE_SECTIONS = [
   'skills',
@@ -85,7 +85,7 @@ export async function getProfilePosts(userId: string) {
 }
 
 export async function getProfileTopics(userId: string) {
-  return prisma.discussionTopic.findMany({
+  const rows = await prisma.discussionTopic.findMany({
     where: { authorId: userId },
     orderBy: { createdAt: 'desc' },
     take: 5,
@@ -93,13 +93,14 @@ export async function getProfileTopics(userId: string) {
       id: true,
       title: true,
       categories: true,
-      category: true,
       replyCount: true,
       upvoteCount: true,
       viewCount: true,
       createdAt: true,
     },
   });
+  const tagMap = await discussionTagMap();
+  return rows.map((r) => ({ ...r, tags: tagViewsFrom(r.categories, tagMap) }));
 }
 
 export interface ProfileComment {

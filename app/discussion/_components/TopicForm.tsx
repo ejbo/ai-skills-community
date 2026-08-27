@@ -1,80 +1,62 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Check, ChevronDown, Loader2 } from 'lucide-react';
-import type { DiscussionCategory } from '@prisma/client';
+import { Loader2 } from 'lucide-react';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
-import { VISIBLE_CATEGORIES } from './badges';
+import { DISCUSSION_EMBED_KINDS } from '@/lib/zones/shared';
+import type { DiscussionTagOption } from '@/lib/discussion-tags';
+import { TopicTagPicker } from './TopicTagPicker';
 import { EMPTY_MEDIA, MediaPicker, mediaPayload, type MediaDraft } from './MediaPicker';
-
-const MAX_TOPICS = 3;
 
 /**
  * Shared forum-topic form: creates a topic (POST) or edits an existing one
- * (PATCH). 主题 is a neutral multi-select dropdown (≤3); attachments use the
- * same MediaPicker as the feed composer (video plays inline on the topic
- * page, PDF/PPT/Word download).
+ * (PATCH). 分类 is the two-tier picker (侧栏分类 must-pick + 自建分类, see
+ * TopicTagPicker); the body editor gets the 技术专区 引用 button so a topic can
+ * embed 知识库/视频/Skill/活动/专区帖 cards; attachments use the same MediaPicker
+ * as the feed composer (video plays inline on the topic page, PDF/PPT/Word
+ * download).
  */
 export function TopicForm({
   topicId,
+  officialTags,
   initialTitle = '',
   initialBodyMd = '',
   initialCategories = [],
+  initialTagViews = [],
   initialMedia = EMPTY_MEDIA,
 }: {
   topicId?: string;
+  /** 侧栏分类，服务端渲染进来（不用再跑一趟 /api/discussion/tags）。 */
+  officialTags: DiscussionTagOption[];
   initialTitle?: string;
   initialBodyMd?: string;
-  initialCategories?: DiscussionCategory[];
+  initialCategories?: string[];
+  /** 已选分类的完整信息（编辑老帖时自建分类的显示名从这里来）。 */
+  initialTagViews?: DiscussionTagOption[];
   initialMedia?: MediaDraft;
 }) {
   const t = useTranslations('discussion_ui');
   const tc = useTranslations('common');
-  const tl = useTranslations('labels');
   const router = useRouter();
   const pathname = usePathname();
   const [title, setTitle] = useState(initialTitle);
-  const [categories, setCategories] = useState<DiscussionCategory[]>(
-    initialCategories.filter((c) =>
-      (VISIBLE_CATEGORIES as readonly DiscussionCategory[]).includes(c),
-    ),
-  );
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [categories, setCategories] = useState<string[]>(initialCategories);
   const [bodyMd, setBodyMd] = useState(initialBodyMd);
   const [media, setMedia] = useState<MediaDraft>(initialMedia);
   const [uploading, setUploading] = useState(0);
   const [busy, setBusy] = useState(false);
-  const pickerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!pickerOpen) return;
-    function close(e: MouseEvent) {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickerOpen(false);
-    }
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [pickerOpen]);
-
-  function toggleCategory(key: DiscussionCategory) {
-    setCategories((prev) => {
-      if (prev.includes(key)) return prev.filter((c) => c !== key);
-      if (prev.length >= MAX_TOPICS) {
-        pushToast('info', t('max_topics', { max: MAX_TOPICS }));
-        return prev;
-      }
-      return [...prev, key];
-    });
-  }
+  const officialSlugs = new Set(officialTags.map((tag) => tag.slug));
 
   async function submit() {
     if (title.trim().length < 4) {
       pushToast('error', t('title_min'));
       return;
     }
-    if (categories.length === 0) {
+    if (!categories.some((slug) => officialSlugs.has(slug))) {
       pushToast('error', t('pick_at_least_one_topic'));
       return;
     }
@@ -118,14 +100,10 @@ export function TopicForm({
     }
   }
 
-  const selectedLabels = categories
-    .map((c) => tl(`discussionCategory.${c}`))
-    .join(t('topic_separator'));
-  // Editing a legacy topic whose category got retired (e.g. 综合讨论) starts
-  // with an empty picker — tell the author why instead of silently blocking.
+  // 编辑一篇分类已退役（例如 综合讨论）的老帖：选择器里是空的，说清楚原因，
+  // 别让作者对着一个静默拦住发布的表单发呆。
   const hadRetiredCategory =
-    initialCategories.length > 0 &&
-    !initialCategories.some((c) => (VISIBLE_CATEGORIES as readonly DiscussionCategory[]).includes(c));
+    initialCategories.length > 0 && !initialCategories.some((slug) => officialSlugs.has(slug));
 
   return (
     <div className="surface space-y-4 rounded-2xl p-5">
@@ -138,43 +116,14 @@ export function TopicForm({
         className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
       />
 
-      {/* 主题 — neutral multi-select dropdown (no colored chips) */}
-      <div ref={pickerRef} className="relative">
-        <button
-          type="button"
-          onClick={() => setPickerOpen((v) => !v)}
-          aria-expanded={pickerOpen}
-          className="flex h-10 w-full items-center justify-between rounded-lg border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
-        >
-          <span className={selectedLabels ? '' : 'text-muted'}>
-            {selectedLabels || t('select_topics_placeholder', { max: MAX_TOPICS })}
-          </span>
-          <ChevronDown
-            className={`h-4 w-4 shrink-0 text-muted transition-transform ${pickerOpen ? 'rotate-180' : ''}`}
-          />
-        </button>
-        {hadRetiredCategory && categories.length === 0 && (
-          <p className="mt-1.5 text-xs text-muted">{t('retired_category_hint')}</p>
-        )}
-        {pickerOpen && (
-          <div className="surface absolute left-0 top-full z-30 mt-2 w-full rounded-xl p-1 shadow-lg">
-            {VISIBLE_CATEGORIES.map((key) => {
-              const selected = categories.includes(key);
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => toggleCategory(key)}
-                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                >
-                  <span>{tl(`discussionCategory.${key}`)}</span>
-                  {selected && <Check className="h-4 w-4 text-zinc-900 dark:text-zinc-50" />}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      <TopicTagPicker
+        officialTags={officialTags}
+        knownTags={initialTagViews}
+        value={categories}
+        onChange={setCategories}
+        disabled={busy}
+      />
+      {hadRetiredCategory && <p className="text-xs text-muted">{t('retired_category_hint')}</p>}
 
       <RichTextEditor
         value={bodyMd}
@@ -183,6 +132,9 @@ export function TopicForm({
         maxLength={20000}
         placeholder={t('topic_body_placeholder')}
         ariaLabel={t('topic_body_aria')}
+        // 引用站内内容 —— 与技术专区同一套 [embed:kind:ref] 契约。讨论区没有
+        // 附件表，所以 `file` 那一 tab 不给（它只认专区帖的附件行）。
+        embedPicker={{ kinds: DISCUSSION_EMBED_KINDS }}
       />
 
       <MediaPicker value={media} onChange={setMedia} onUploadingChange={setUploading} />

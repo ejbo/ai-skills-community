@@ -80,7 +80,7 @@ export function PostUnlock({ post, zone }: { post: ZonePostDetailView; zone: { s
           {authors.map((a, i) => (
             <span key={a.handle} className="inline-flex items-center gap-1.5">
               {i > 0 && <span aria-hidden>·</span>}
-              <Avatar name={a.displayName} src={a.avatarUrl} size="xs" />
+              <Avatar name={a.displayName} src={a.avatarUrl} size="xs" handle={a.handle} />
               <Link href={`/users/${a.handle}`} className="font-medium text-zinc-700 hover:underline dark:text-zinc-300">
                 {a.displayName}
               </Link>

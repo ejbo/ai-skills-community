@@ -16,6 +16,7 @@ import {
   VOTE_TITLE_MAX,
   VOTES_PER_USER_MAX,
   MAX_PER_ENTRY_MAX,
+  isVoteTimezone,
   parseCustomFields,
 } from '@/lib/votes/shared';
 import {
@@ -64,6 +65,8 @@ const contentSchema = z.object({
   coverKey: z.string().max(200).nullable().optional(),
   startAt: isoDate.nullable().optional(),
   endAt: isoDate.nullable().optional(),
+  // 固定选项集（加东/加西）—— 入库的是 IANA 名，展示走 i18n。
+  timezone: z.string().max(64).refine(isVoteTimezone, 'invalid_timezone').optional(),
   votesPerUser: z.number().int().min(1).max(VOTES_PER_USER_MAX).optional(),
   budgetPeriod: z.enum(['total', 'daily']).optional(),
   maxPerEntry: z.number().int().min(1).max(MAX_PER_ENTRY_MAX).optional(),
@@ -231,8 +234,25 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (nextStart && nextEnd && nextEnd.getTime() <= nextStart.getTime()) {
     return NextResponse.json({ error: 'end_before_start' }, { status: 400 });
   }
+  // 已经有人投票之后，把开始时间挪到未来会当场把进行中的投票重新关上：
+  // ballots 路由按 votingOpen 收口，加票和**撤票**一起被挡，已投的票既算数又
+  // 拿不回来（budgetPeriod 锁的是同一类事故）。切换时区时"保留钟面"会顺带把
+  // 已过去的开始时间推到未来，所以这条守卫是必需的，不是理论风险。
+  if (input.startAt !== undefined || input.timezone !== undefined) {
+    const movedIntoFuture = Boolean(nextStart && nextStart.getTime() > Date.now());
+    const wasStarted = !activity.startAt || activity.startAt.getTime() <= Date.now();
+    if (movedIntoFuture && wasStarted) {
+      const balloted = await prisma.voteBallot.count({ where: { activityId: activity.id } });
+      if (balloted > 0) {
+        return NextResponse.json({ error: 'start_locked' }, { status: 400 });
+      }
+    }
+  }
   if (input.startAt !== undefined) data.startAt = nextStart;
   if (input.endAt !== undefined) data.endAt = nextEnd;
+  // 时区只影响“瞬时怎么显示/怎么被填出来”，不改瞬时本身 —— 客户端换时区时会
+  // 连同重新换算过的 startAt/endAt 一起发上来。
+  if (input.timezone !== undefined) data.timezone = input.timezone;
 
   // Cover: client echoes the uploaded key; server re-derives the URL and
   // verifies the file exists (never trust a client URL). Keys are visible in

@@ -1,6 +1,7 @@
 import { format } from 'date-fns';
 import { requirePermission } from '@/lib/admin';
 import { prisma } from '@/lib/db';
+import { discussionTagMap } from '@/lib/discussion-queries';
 import { DiscussionManager } from './DiscussionManager';
 
 export const dynamic = 'force-dynamic';
@@ -11,7 +12,7 @@ export const dynamic = 'force-dynamic';
 // enforce isAdmin + logAdmin for moderation actions.
 export default async function AdminDiscussionPage() {
   await requirePermission('discussion');
-  const [posts, topics] = await Promise.all([
+  const [posts, topics, tagMap] = await Promise.all([
     prisma.post.findMany({
       orderBy: { createdAt: 'desc' },
       take: 50,
@@ -32,7 +33,6 @@ export default async function AdminDiscussionPage() {
       select: {
         id: true,
         title: true,
-        category: true,
         categories: true,
         pinned: true,
         locked: true,
@@ -42,6 +42,7 @@ export default async function AdminDiscussionPage() {
         author: { select: { handle: true, displayName: true } },
       },
     }),
+    discussionTagMap(),
   ]);
 
   return (
@@ -61,7 +62,9 @@ export default async function AdminDiscussionPage() {
         topics={topics.map((t) => ({
           id: t.id,
           title: t.title,
-          categories: t.categories.length > 0 ? t.categories : [t.category],
+          // 管理后台是中文界面（见 CLAUDE.md），直接用分类的存储名 —— 成员
+          // 自建分类没有 i18n key，只有名字。
+          categoryNames: t.categories.map((slug) => tagMap.get(slug)?.name ?? slug),
           pinned: t.pinned,
           locked: t.locked,
           upvoteCount: t.upvoteCount,

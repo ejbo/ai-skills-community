@@ -110,7 +110,7 @@ export function PostHeader({ post, zone }: { post: ZonePostDetailView; zone: { s
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <span className="flex -space-x-1.5">
             {authors.slice(0, 5).map((a) => (
-              <Avatar key={a.handle} name={a.displayName} src={a.avatarUrl} size="sm" className="ring-2 ring-[rgb(var(--bg))]" />
+              <Avatar key={a.handle} name={a.displayName} src={a.avatarUrl} size="sm" className="ring-2 ring-[rgb(var(--bg))]" handle={a.handle} />
             ))}
           </span>
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">

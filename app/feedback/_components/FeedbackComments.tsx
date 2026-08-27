@@ -280,7 +280,8 @@ function CommentBlock({
           name={comment.author.displayName}
           src={comment.author.avatarUrl}
           size={isRoot ? 'sm' : 'xs'}
-        />
+              handle={comment.author.handle}
+            />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted">
             <span className="font-medium text-zinc-800 dark:text-zinc-200">

@@ -297,6 +297,12 @@ export function formatBytes(n: number): string {
 
 export const EMBED_KINDS = ['library', 'short', 'video', 'skill', 'pack', 'event', 'post', 'file', 'link'] as const;
 export type EmbedKind = (typeof EMBED_KINDS)[number];
+/**
+ * 讨论区可引用的 kind：`file` 只认专区帖的附件行（ZonePostAttachment.id），
+ * 讨论区没有那张表，留着就是一个永远空的 tab。
+ */
+export const DISCUSSION_EMBED_KINDS: readonly EmbedKind[] = EMBED_KINDS.filter((k) => k !== 'file');
+
 export function isEmbedKind(v: unknown): v is EmbedKind {
   return typeof v === 'string' && (EMBED_KINDS as readonly string[]).includes(v);
 }

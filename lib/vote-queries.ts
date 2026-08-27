@@ -267,6 +267,9 @@ export interface VoteActivityView {
   startAt: string | null;
   endAt: string | null;
   closedAt: string | null;
+  // 发起人填 startAt/endAt 时用的 IANA 时区（null = 老数据，按默认时区解释）。
+  // 前台用它把瞬时标注成「东部时间 10:00」，倒计时仍是观众本地相对时间。
+  timezone: string | null;
   votesPerUser: number;
   budgetPeriod: 'total' | 'daily';
   maxPerEntry: number;
@@ -488,6 +491,7 @@ export async function getVoteActivityView(
     startAt: row.startAt?.toISOString() ?? null,
     endAt: row.endAt?.toISOString() ?? null,
     closedAt: row.closedAt?.toISOString() ?? null,
+    timezone: row.timezone,
     votesPerUser: row.votesPerUser,
     budgetPeriod: row.budgetPeriod,
     maxPerEntry: row.maxPerEntry,
@@ -573,6 +577,7 @@ export interface VoteActivityEdit {
   startAt: string | null;
   endAt: string | null;
   closedAt: string | null;
+  timezone: string | null;
   votesPerUser: number;
   budgetPeriod: 'total' | 'daily';
   maxPerEntry: number;
@@ -651,6 +656,7 @@ export async function getVoteActivityForEdit(
     startAt: row.startAt?.toISOString() ?? null,
     endAt: row.endAt?.toISOString() ?? null,
     closedAt: row.closedAt?.toISOString() ?? null,
+    timezone: row.timezone,
     votesPerUser: row.votesPerUser,
     budgetPeriod: row.budgetPeriod,
     maxPerEntry: row.maxPerEntry,

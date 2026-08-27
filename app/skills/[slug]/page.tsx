@@ -189,7 +189,7 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
               href={`/users/${author.handle}`}
               className="flex min-w-0 items-center gap-2.5 border-zinc-200 pr-6 transition hover:opacity-80 dark:border-zinc-800 sm:border-r"
             >
-              <Avatar name={author.displayName} src={author.avatarUrl} size="md" />
+              <Avatar name={author.displayName} src={author.avatarUrl} size="md" handle={author.handle} />
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium">{author.displayName}</div>
                 {!author.isPrivate && <div className="truncate text-xs text-muted">@{author.handle}</div>}

@@ -63,7 +63,7 @@ export async function ZoneSidebar({
           <dt className="text-zinc-400">{tl('zoneRole.owner')}</dt>
           <dd className="min-w-0">
             <Link href={`/users/${zone.owner.handle}`} className="inline-flex min-w-0 items-center gap-1.5 hover:underline">
-              <Avatar name={zone.owner.displayName} src={zone.owner.avatarUrl} size="xs" />
+              <Avatar name={zone.owner.displayName} src={zone.owner.avatarUrl} size="xs" handle={zone.owner.handle} />
               <span className="truncate">{zone.owner.displayName}</span>
             </Link>
           </dd>
@@ -85,7 +85,7 @@ export async function ZoneSidebar({
           <Link href={`${base}/members`} className="mt-3 flex -space-x-2" aria-label={t('sidebar_members')}>
             {members.slice(0, 8).map((m) => (
               <span key={m.id} className="rounded-full ring-2 ring-white dark:ring-zinc-950" title={m.user.displayName}>
-                <Avatar name={m.user.displayName} src={m.user.avatarUrl} size="md" />
+                <Avatar name={m.user.displayName} src={m.user.avatarUrl} size="md" handle={m.user.handle} />
               </span>
             ))}
             {zone.memberCount > 8 && (
@@ -99,7 +99,7 @@ export async function ZoneSidebar({
           <ul className="mt-3 space-y-2 border-t border-zinc-200 pt-3 dark:border-zinc-800">
             {leads.map((m) => (
               <li key={m.id} className="flex items-center gap-2 text-sm">
-                <Avatar name={m.user.displayName} src={m.user.avatarUrl} size="sm" />
+                <Avatar name={m.user.displayName} src={m.user.avatarUrl} size="sm" handle={m.user.handle} />
                 <div className="min-w-0 flex-1">
                   <Link href={`/users/${m.user.handle}`} className="block truncate font-medium hover:underline">
                     {m.user.displayName}

@@ -120,7 +120,7 @@ export function EntryComments({
         ) : (
           comments.map((c) => (
             <div key={c.id} className="group flex items-start gap-2.5">
-              <Avatar name={c.author.displayName} src={c.author.avatarUrl} size="xs" />
+              <Avatar name={c.author.displayName} src={c.author.avatarUrl} size="xs" handle={c.author.handle} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 text-[11px] text-white/60">
                   <span className="truncate font-medium text-white/85">{c.author.displayName}</span>

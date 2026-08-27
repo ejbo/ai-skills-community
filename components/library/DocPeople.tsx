@@ -128,7 +128,7 @@ export function DocPeople({
                 <ul className="max-h-64 space-y-1.5 overflow-y-auto">
                   {data.visibleReaders.map((u) => (
                     <li key={u.handle} className="flex items-center gap-2">
-                      <Avatar name={u.displayName} src={u.avatarUrl} size="xs" />
+                      <Avatar name={u.displayName} src={u.avatarUrl} size="xs" handle={u.handle} />
                       <span className="min-w-0 truncate text-xs">{u.displayName}</span>
                       <DeptTag department={u.department} lab={u.lab} />
                     </li>
@@ -147,7 +147,7 @@ export function DocPeople({
                 <ul className="max-h-64 space-y-1.5 overflow-y-auto">
                   {data.annotators.map(({ author, count }) => (
                     <li key={author.handle} className="flex items-center gap-2">
-                      <Avatar name={author.displayName} src={author.avatarUrl} size="xs" />
+                      <Avatar name={author.displayName} src={author.avatarUrl} size="xs" handle={author.handle} />
                       <span className="min-w-0 flex-1 truncate text-xs">{author.displayName}</span>
                       <DeptTag department={author.department} lab={author.lab} />
                       <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted">

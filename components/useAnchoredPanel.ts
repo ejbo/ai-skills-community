@@ -1,13 +1,14 @@
 'use client';
 
-// 技术专区 — shared anchoring for header dropdowns (ask #1).
+// Shared anchoring for any dropdown that must escape its own header.
 //
-// The zone header <section> is `relative overflow-hidden` (cover image +
-// HairlineGrid), so an absolutely positioned menu inside it is CLIPPED by that
-// ancestor at ANY z-index — and neighbouring `card-hover` transforms create
-// containing blocks that also trap `position: fixed`. The fix both header
-// dropdowns (管理 and 已加入) use is the same one `DeptTag` uses: PORTAL the
-// panel to <body> and position it from the trigger's getClientRect.
+// Two callers today: the 技术专区 header menus (管理 / 已加入) and the navbar's
+// overflow menu. Both sit inside an ancestor that would otherwise eat the
+// panel — the zone header <section> is `relative overflow-hidden` (cover image
+// + HairlineGrid) so an absolutely positioned menu is CLIPPED at ANY z-index,
+// and `NavBarShell` carries a `transition-transform` that makes it a
+// containing block for `position: fixed`. The fix is the one `DeptTag` uses:
+// PORTAL the panel to <body> and position it from the trigger's getClientRect.
 //
 // This hook owns everything portaling costs us, so the two menus can never
 // drift apart:

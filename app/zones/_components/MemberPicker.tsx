@@ -119,7 +119,7 @@ export function MemberPicker({
                 onClick={() => onPick(u)}
                 className="flex w-full items-center gap-3 px-3 py-2 text-left transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-zinc-900"
               >
-                <Avatar name={u.user.displayName} src={u.user.avatarUrl} size="sm" />
+                <Avatar name={u.user.displayName} src={u.user.avatarUrl} size="sm" handle={u.user.handle} />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
                     <span className="truncate text-sm font-medium">{u.user.displayName}</span>

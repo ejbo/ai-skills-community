@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { BackButton } from '@/components/BackButton';
+import { listOfficialDiscussionTags, resolveTagViews } from '@/lib/discussion-queries';
 import { TopicForm } from '../../../_components/TopicForm';
 import type { MediaDraft, UploadedItem } from '../../../_components/MediaPicker';
 
@@ -19,7 +20,6 @@ export default async function EditTopicPage({ params }: { params: { id: string }
       authorId: true,
       title: true,
       bodyMd: true,
-      category: true,
       categories: true,
       media: {
         orderBy: { sortOrder: 'asc' },
@@ -30,7 +30,11 @@ export default async function EditTopicPage({ params }: { params: { id: string }
   if (!topic) notFound();
   // Content edits are author-only (the PATCH route enforces the same rule).
   if (topic.authorId !== session.user.id) redirect(`/discussion/topics/${topic.id}`);
-  const t = await getTranslations('discussion_pages');
+  const [t, officialTags, initialTagViews] = await Promise.all([
+    getTranslations('discussion_pages'),
+    listOfficialDiscussionTags(),
+    resolveTagViews(topic.categories),
+  ]);
 
   const toItem = (m: (typeof topic.media)[number]): UploadedItem => ({
     key: m.key,
@@ -55,9 +59,11 @@ export default async function EditTopicPage({ params }: { params: { id: string }
       <div className="mt-5">
         <TopicForm
           topicId={topic.id}
+          officialTags={officialTags}
+          initialTagViews={initialTagViews}
           initialTitle={topic.title}
           initialBodyMd={topic.bodyMd}
-          initialCategories={topic.categories.length > 0 ? topic.categories : [topic.category]}
+          initialCategories={topic.categories}
           initialMedia={initialMedia}
         />
       </div>

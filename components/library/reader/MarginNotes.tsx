@@ -147,7 +147,7 @@ export function MarginNotes({
             <span className="flex -space-x-2">
               {shown.map((a) => (
                 <span key={a.handle} className="ring-2 ring-[var(--reader-surface)]">
-                  <Avatar name={a.displayName} src={a.avatarUrl} size="xs" />
+                  <Avatar name={a.displayName} src={a.avatarUrl} size="xs" handle={a.handle} />
                 </span>
               ))}
             </span>
@@ -175,7 +175,7 @@ export function MarginNotes({
               {openCluster.notes.map((note) => (
                 <li key={note.id} className="px-1 py-2">
                   <div className="flex items-center gap-1.5">
-                    <Avatar name={note.author.displayName} src={note.author.avatarUrl} size="xs" />
+                    <Avatar name={note.author.displayName} src={note.author.avatarUrl} size="xs" handle={note.author.handle} />
                     <span className="min-w-0 truncate text-xs font-medium">{note.author.displayName}</span>
                     <DeptTag department={note.author.department} lab={note.author.lab} />
                     <span className="r-muted ml-auto shrink-0 text-[10px]">

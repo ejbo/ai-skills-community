@@ -39,7 +39,7 @@ export function VideoPreview({ data }: { data: EmbedVideoData }) {
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted">
         <Link href={`/users/${data.uploader.handle}`} className="inline-flex items-center gap-1.5 hover:underline">
-          <Avatar name={data.uploader.displayName} src={data.uploader.avatarUrl} size="xs" />
+          <Avatar name={data.uploader.displayName} src={data.uploader.avatarUrl} size="xs" handle={data.uploader.handle} />
           <span className="text-zinc-800 dark:text-zinc-200">{data.uploader.displayName}</span>
         </Link>
         <span className="font-mono tabular-nums">{fmtDuration(data.durationSec)}</span>

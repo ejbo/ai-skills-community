@@ -112,7 +112,7 @@ export function ZoneCard({ zone, variant = 'grid' }: { zone: ZoneCardView; varia
             <span className="flex -space-x-1.5">
               {zone.moderators.slice(0, 4).map((m) => (
                 <span key={m.handle} className="rounded-full ring-2 ring-white dark:ring-zinc-950" title={m.displayName}>
-                  <Avatar name={m.displayName} src={m.avatarUrl} size="xs" />
+                  <Avatar name={m.displayName} src={m.avatarUrl} size="xs" handle={m.handle} />
                 </span>
               ))}
             </span>

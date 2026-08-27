@@ -4,6 +4,7 @@
 // Used in the navbar, comments, reviews, author bylines, cards, etc.
 
 import { withBasePath } from '@/lib/base-path';
+import { UserHoverCard } from '@/components/user/UserHoverCard';
 
 type Size = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
@@ -52,7 +53,43 @@ export function identityColor(name: string): string {
   return IDENTITY_COLORS[fnv1a(name.trim().toLowerCase()) % IDENTITY_COLORS.length];
 }
 
+/**
+ * Shared user avatar.
+ *
+ * Pass `handle` and the avatar becomes the entry point to that person's
+ * 用户卡片 — hovering pops their profile. It lives HERE rather than at each call
+ * site because "a user appears" and "an avatar is rendered" are the same event
+ * across the app: wiring it once means every byline, comment, member list and
+ * roster gets it, and a new surface gets it by default. Avatars with no handle
+ * (a zone icon, a guest byline) render exactly as before.
+ *
+ * Still server-safe: UserHoverCard is a client component, so this just opens a
+ * client boundary around markup the server already produced.
+ */
 export function Avatar({
+  name,
+  src,
+  size = 'md',
+  className = '',
+  handle,
+}: {
+  name: string;
+  src?: string | null;
+  size?: Size;
+  className?: string;
+  /** Profile handle; when set the avatar carries the hover 用户卡片. */
+  handle?: string | null;
+}) {
+  const inner = <AvatarImage name={name} src={src} size={size} className={className} />;
+  if (!handle) return inner;
+  return (
+    <UserHoverCard handle={handle} className="inline-flex">
+      {inner}
+    </UserHoverCard>
+  );
+}
+
+function AvatarImage({
   name,
   src,
   size = 'md',

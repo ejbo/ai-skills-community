@@ -175,7 +175,8 @@ export function ReactionsPanel({ postId, onClose }: { postId: string; onClose: (
                         name={u.author.displayName}
                         src={u.author.avatarUrl}
                         size="sm"
-                      />
+              handle={u.author.handle}
+            />
                       {isReactionType(u.reaction) && (
                         <span className="absolute -bottom-1 -right-1 text-sm leading-none">
                           {REACTION_META[u.reaction].emoji}

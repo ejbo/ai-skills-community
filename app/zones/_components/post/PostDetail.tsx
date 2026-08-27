@@ -126,7 +126,7 @@ export function PostDetail({
               {authors.map((a) => (
                 <li key={a.handle}>
                   <Link href={`/users/${a.handle}`} className="flex items-center gap-2.5 rounded-lg p-1 transition hover:bg-zinc-100 dark:hover:bg-zinc-900">
-                    <Avatar name={a.displayName} src={a.avatarUrl} size="md" />
+                    <Avatar name={a.displayName} src={a.avatarUrl} size="md" handle={a.handle} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">{a.displayName}</span>
                       <DeptTag department={a.department} lab={a.lab} className="relative z-[1]" />

@@ -5,27 +5,29 @@ import { apiReason } from '@/lib/api-errors';
 import { auth } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
 import { mediaArraySchema, mediaKeysAvailable, resolveMedia } from '@/lib/discussion-media';
+import { discussionTagMap } from '@/lib/discussion-queries';
+import {
+  MAX_CUSTOM_TAGS,
+  MAX_OFFICIAL_TAGS,
+  sanitizeTopicTags,
+  tagErrorReason,
+} from '@/lib/discussion-tags';
 
 export const dynamic = 'force-dynamic';
 
 const HOUR_MS = 60 * 60 * 1000;
 
-// AI-focused主题 set — `general` is a legacy value new topics can't pick.
-const CATEGORY_ENUM = z.enum([
-  'tech',
-  'models',
-  'agents',
-  'skills',
-  'research',
-  'qa',
-  'share',
-  'showcase',
-]);
+// 主题 = DiscussionTag slug（侧栏分类 + 成员自建）。存在性/配额校验要查库，
+// 所以 zod 这里只管形状，语义交给 sanitizeTopicTags —— 两条路由共用同一处规则。
+const categoriesSchema = z
+  .array(z.string().trim().min(1).max(64))
+  .min(1, '请至少选择一个主题')
+  .max(MAX_OFFICIAL_TAGS + MAX_CUSTOM_TAGS);
 
 const createSchema = z.object({
   title: z.string().trim().min(4, '标题至少 4 个字').max(120),
   bodyMd: z.string().max(20000).default(''),
-  categories: z.array(CATEGORY_ENUM).min(1, '请至少选择一个主题').max(3, '最多选择 3 个主题'),
+  categories: categoriesSchema,
   media: mediaArraySchema,
 });
 
@@ -66,14 +68,22 @@ export async function POST(req: Request) {
     );
   }
 
-  const categories = [...new Set(parsed.data.categories)];
+  const tags = sanitizeTopicTags(parsed.data.categories, await discussionTagMap());
+  if (!tags.ok) {
+    return NextResponse.json(
+      { error: 'invalid_input', reason: tagErrorReason(tags.error) },
+      { status: 400 },
+    );
+  }
+
+  const { categories, official } = tags.value;
   const created = await prisma.discussionTopic.create({
     data: {
       title: parsed.data.title,
       bodyMd: parsed.data.bodyMd,
       categories,
-      // Legacy single column stays in sync with categories[0] (old indexes).
-      category: categories[0],
+      // 主分类列 = 第一个侧栏分类（[category, lastActivityAt] 索引仍然有意义）。
+      category: official[0],
       authorId: session.user.id,
       media: { create: media },
     },

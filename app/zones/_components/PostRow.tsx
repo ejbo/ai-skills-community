@@ -129,7 +129,7 @@ export function PostRow({
             <span className="flex -space-x-1.5">
               {shownAuthors.map((a) => (
                 <span key={a.handle} className="rounded-full ring-2 ring-white dark:ring-zinc-950">
-                  <Avatar name={a.displayName} src={a.avatarUrl} size="xs" />
+                  <Avatar name={a.displayName} src={a.avatarUrl} size="xs" handle={a.handle} />
                 </span>
               ))}
             </span>

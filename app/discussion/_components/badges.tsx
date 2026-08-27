@@ -1,13 +1,19 @@
-import type { DiscussionCategory } from '@prisma/client';
-import { useTranslations } from 'next-intl';
+// Renders in BOTH server and client components — no 'use client' directive on
+// purpose (next-intl's useTranslations/useLocale work in RSC, see SkillCard).
+import Link from 'next/link';
+import { useLocale, useTranslations } from 'next-intl';
 import { Lock, Pin } from 'lucide-react';
+import { discussionTagLabel, tagColorIndex, type DiscussionTagOption } from '@/lib/discussion-tags';
 
-// Single source of truth for forum category colors — shared by filter
-// chips, the sidebar, list badges and the composer's category picker (same
-// pattern as the feedback board's badges.tsx). `dot` feeds the sidebar's
-// Discourse-style color dot. Display labels live in the 'labels' i18n
-// namespace: render tl(`discussionCategory.${category}`).
-export const CATEGORY_META: Record<DiscussionCategory, { className: string; dot: string }> = {
+// Single source of truth for forum tag colors — shared by filter chips, the
+// sidebar, list badges and the composer's picker (same pattern as the feedback
+// board's badges.tsx). `dot` feeds the sidebar's Discourse-style color dot.
+//
+// Two tiers (see lib/discussion-tags.ts): the OFFICIAL tags are the left-rail
+// categories and keep their curated color + `labels.discussionCategory.*`
+// translation; member-created tags have neither, so they take a color hashed
+// from their slug (stable everywhere) and render their stored name.
+export const CATEGORY_META: Record<string, { className: string; dot: string }> = {
   tech: {
     className: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',
     dot: 'bg-indigo-500',
@@ -46,37 +52,80 @@ export const CATEGORY_META: Record<DiscussionCategory, { className: string; dot:
   },
 };
 
-/**
- * i18n key for a category's display label — CATEGORY_META no longer carries a
- * `label`; the Chinese/English/French strings live in the messages `labels`
- * namespace under `discussionCategory.*`. Call it with the `labels` translator:
- * `const tl = useTranslations('labels'); tl(categoryLabelKey(c))`.
- */
-export function categoryLabelKey(category: DiscussionCategory): string {
-  return `discussionCategory.${category}`;
+// Member-created tags: a muted, outlined chip so they read as secondary to the
+// solid official ones, with a hashed hue so the same tag is the same color on
+// every page.
+const CUSTOM_PALETTE = [
+  { className: 'border-indigo-200 text-indigo-700 dark:border-indigo-500/30 dark:text-indigo-300', dot: 'bg-indigo-400' },
+  { className: 'border-teal-200 text-teal-700 dark:border-teal-500/30 dark:text-teal-300', dot: 'bg-teal-400' },
+  { className: 'border-amber-200 text-amber-700 dark:border-amber-500/30 dark:text-amber-300', dot: 'bg-amber-400' },
+  { className: 'border-rose-200 text-rose-700 dark:border-rose-500/30 dark:text-rose-300', dot: 'bg-rose-400' },
+  { className: 'border-sky-200 text-sky-700 dark:border-sky-500/30 dark:text-sky-300', dot: 'bg-sky-400' },
+  { className: 'border-violet-200 text-violet-700 dark:border-violet-500/30 dark:text-violet-300', dot: 'bg-violet-400' },
+];
+
+export function customTagMeta(slug: string) {
+  return CUSTOM_PALETTE[tagColorIndex(slug, CUSTOM_PALETTE.length)];
 }
 
-// AI-focused set offered for NEW topics and shown in filters; `general` is a
-// legacy value old rows may still carry (its chip still renders via META).
-export const VISIBLE_CATEGORIES = [
-  'tech',
-  'models',
-  'agents',
-  'skills',
-  'research',
-  'qa',
-  'share',
-  'showcase',
-] as const satisfies readonly DiscussionCategory[];
+/** Sidebar dot color for an official tag (falls back to the hashed palette). */
+export function tagDotClass(tag: DiscussionTagOption): string {
+  return tag.official ? (CATEGORY_META[tag.slug]?.dot ?? 'bg-zinc-400') : customTagMeta(tag.slug).dot;
+}
 
-export function CategoryChip({ category }: { category: DiscussionCategory }) {
+/**
+ * i18n key for an OFFICIAL tag's display label — the Chinese/English/French
+ * strings live in the messages `labels` namespace under `discussionCategory.*`.
+ * Member-created tags have no key; render `tag.name` (use `useTagLabel`).
+ */
+export function categoryLabelKey(slug: string): string {
+  return `discussionCategory.${slug}`;
+}
+
+/** Hook form of lib/discussion-tags.ts#discussionTagLabel. */
+export function useTagLabel(): (tag: DiscussionTagOption) => string {
   const tl = useTranslations('labels');
-  const meta = CATEGORY_META[category];
+  const locale = useLocale();
+  return (tag) => discussionTagLabel(tag, locale, tl as (key: string) => string);
+}
+
+/**
+ * A topic's分类 chip. Official ones are solid + curated color; member-created
+ * ones are outlined and prefixed with `#`, so "this is someone's own tag, not a
+ * section of the forum" reads at a glance. Both link to the filtered list —
+ * a self-made tag is not in the rail but is still browsable.
+ */
+export function CategoryChip({ tag, href }: { tag: DiscussionTagOption; href?: string }) {
+  const label = useTagLabel()(tag);
+  const meta = tag.official ? (CATEGORY_META[tag.slug] ?? CATEGORY_META.general) : null;
+  const cls = meta
+    ? `inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${meta.className}`
+    : `inline-flex shrink-0 items-center rounded-full border border-dashed bg-transparent px-2 py-0.5 text-[11px] font-medium ${customTagMeta(tag.slug).className}`;
+  const body = meta ? label : `#${label}`;
+  const linkTo = href ?? `/discussion?tab=forum&category=${encodeURIComponent(tag.slug)}`;
+
   return (
+    <Link href={linkTo} className={`${cls} transition hover:opacity-80`}>
+      {body}
+    </Link>
+  );
+}
+
+/** Non-interactive variant — inside a row that is itself one big link. */
+export function CategoryChipStatic({ tag }: { tag: DiscussionTagOption }) {
+  const label = useTagLabel()(tag);
+  const meta = tag.official ? (CATEGORY_META[tag.slug] ?? CATEGORY_META.general) : null;
+  return meta ? (
     <span
       className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${meta.className}`}
     >
-      {tl(`discussionCategory.${category}`)}
+      {label}
+    </span>
+  ) : (
+    <span
+      className={`inline-flex shrink-0 items-center rounded-full border border-dashed bg-transparent px-2 py-0.5 text-[11px] font-medium ${customTagMeta(tag.slug).className}`}
+    >
+      #{label}
     </span>
   );
 }

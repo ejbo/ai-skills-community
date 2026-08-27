@@ -21,8 +21,11 @@ import {
   Wand2,
   XCircle,
 } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
+// 通用的时区↔墙上时间换算（Intl 实现，客户端安全）——全站只有这一份，活动日历
+// 也用它；votes 只是它的第二个调用方。
+import { toWallDate, zonedWallToUtc } from '@/lib/events/time';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { withBasePath } from '@/lib/base-path';
 import type { VoteActivityEdit, VoteEntryEditRow } from '@/lib/vote-queries';
@@ -33,9 +36,14 @@ import {
   applyNameRule,
   parseNameRule,
   VOTE_ANNOUNCEMENT_MAX,
+  VOTE_TIMEZONES,
+  formatVoteInstant,
+  resolveWallToInstant,
+  voteTimezoneKey,
   VOTE_TITLE_MAX,
   VOTES_PER_USER_MAX,
   MAX_PER_ENTRY_MAX,
+  voteTimezoneOf,
   type VoteCustomField,
   type VoteFieldPick,
   type VoteNameRule,
@@ -62,18 +70,34 @@ interface UploadTask {
   error?: string;
 }
 
-function isoToLocal(iso: string | null): string {
+// 开始/截止时间的两个域：输入框里是**墙上时间**（发起人在所选时区看到的钟面），
+// 存库的是真实 UTC 瞬时。两者之间的换算走 zonedWallToUtc / toWallDate（DST 感知）
+// —— 用 `new Date('...T10:00')` 会按浏览器时区解释，加西的同事排出来的场次到了
+// 多伦多就差三小时，这正是要修的问题。
+
+/** UTC 瞬时 → 该时区的 'YYYY-MM-DDTHH:mm'（datetime-local 的取值）。 */
+function isoToWall(iso: string | null, zone: string): string {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
+  const wall = toWallDate(d, zone);
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${wall.getUTCFullYear()}-${pad(wall.getUTCMonth() + 1)}-${pad(wall.getUTCDate())}T${pad(wall.getUTCHours())}:${pad(wall.getUTCMinutes())}`;
 }
 
-function localToIso(v: string): string | null {
+/**
+ * 'YYYY-MM-DDTHH:mm'（在 zone 里输入的）→ 真实 UTC 瞬时的 ISO 串。
+ * 走 resolveWallToInstant 以处理夏令时缺口（不存在的钟面向后推，而不是悄悄
+ * 落回前一小时）。
+ */
+function wallToIso(v: string, zone: string): string | null {
   if (!v) return null;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  const [date, time] = v.split('T');
+  if (!date || !time) return null;
+  // datetime-local 有时带秒（'10:00:30'）——只取到分。
+  return (
+    resolveWallToInstant(date, time.slice(0, 5), zone, zonedWallToUtc, toWallDate)?.toISOString() ?? null
+  );
 }
 
 // Module-level building blocks — defining these inside VoteEditor would mint a
@@ -187,6 +211,7 @@ function FormFieldSelect({
 
 export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
   const t = useTranslations('votes');
+  const locale = useLocale();
   const router = useRouter();
 
   // ── section states ──
@@ -205,8 +230,14 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
   const [showTitles, setShowTitles] = useState(initial.showTitles);
   const [showAuthors, setShowAuthors] = useState(initial.showAuthors);
   const [entryOrder, setEntryOrder] = useState(initial.entryOrder);
-  const [startLocal, setStartLocal] = useState(isoToLocal(initial.startAt));
-  const [endLocal, setEndLocal] = useState(isoToLocal(initial.endAt));
+  // 时区 + 墙上时间是一组：切换时区**保留钟面**（“我说的是下午 2 点温哥华时间”），
+  // 瞬时在保存时才由 wallToIso 换算出来。
+  const [timezone, setTimezone] = useState(voteTimezoneOf(initial.timezone));
+  const [startLocal, setStartLocal] = useState(isoToWall(initial.startAt, voteTimezoneOf(initial.timezone)));
+  const [endLocal, setEndLocal] = useState(isoToWall(initial.endAt, voteTimezoneOf(initial.timezone)));
+  // 已落库的排期。发布提示只能照着它说话 —— 拿没保存的输入框去承诺"投票将于 X
+  // 开放"，而用户没点保存就去发布，结果是当场开投，提示恰好说反。
+  const [savedStartAt, setSavedStartAt] = useState(initial.startAt);
 
   const [allowSubmissions, setAllowSubmissions] = useState(initial.allowSubmissions);
   const [submissionReview, setSubmissionReview] = useState(initial.submissionReview);
@@ -279,7 +310,9 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
           'error',
           code === 'end_before_start'
             ? t('ed_end_before_start')
-            : code === 'no_entries'
+            : code === 'start_locked'
+              ? t('ed_start_locked')
+              : code === 'no_entries'
               ? t('ed_no_entries')
               : code === 'deadline_passed'
                 ? t('ed_deadline_passed')
@@ -324,11 +357,15 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
       showAuthors,
       entryOrder,
       allowComments,
-      startAt: localToIso(startLocal),
-      endAt: localToIso(endLocal),
+      timezone,
+      startAt: wallToIso(startLocal, timezone),
+      endAt: wallToIso(endLocal, timezone),
     });
     setSavingRules(false);
-    if (ok) pushToast('success', t('ed_saved'));
+    if (ok) {
+      setSavedStartAt(wallToIso(startLocal, timezone));
+      pushToast('success', t('ed_saved'));
+    }
   }
 
   async function saveSubmissionSettings() {
@@ -586,6 +623,20 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
       return;
     }
     setLifecycleBusy(true);
+    // 排期改了还没保存就点发布：先把规则落库，再发布。否则"到点才开投"会变成
+    // "立刻开投"，而用户刚刚读到的提示写的是前者。
+    if (scheduleDirty) {
+      const saved = await patchActivity({
+        timezone,
+        startAt: wallToIso(startLocal, timezone),
+        endAt: wallToIso(endLocal, timezone),
+      });
+      if (!saved) {
+        setLifecycleBusy(false);
+        return;
+      }
+      setSavedStartAt(wallToIso(startLocal, timezone));
+    }
     const ok = await patchActivity({ publish: true });
     setLifecycleBusy(false);
     if (ok) {
@@ -638,6 +689,11 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
   const isClosed = Boolean(closedAt);
   // 与 recountVisibleEntries 同口径：待审核/已驳回不算可见作品。
   const visibleCount = entries.filter((e) => !e.hidden && e.status === 'approved').length;
+  // 已排期且还没到点 → 发布提示要说清楚“先浏览、到点才开投”。
+  const scheduledStartIso =
+    savedStartAt && new Date(savedStartAt).getTime() > Date.now() ? savedStartAt : null;
+  // 输入框里的排期和已落库的不一致 —— 发布前必须先落库，否则提示与实际相反。
+  const scheduleDirty = wallToIso(startLocal, timezone) !== savedStartAt;
 
   return (
     <div className="space-y-6">
@@ -844,13 +900,48 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
               <option value="creator_only">{t('rule_results_creator_only')}</option>
             </select>
           </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">{t('ed_start_at')}</label>
-            <input type="datetime-local" value={startLocal} onChange={(e) => setStartLocal(e.target.value)} className={inputCls} />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">{t('ed_end_at')}</label>
-            <input type="datetime-local" value={endLocal} onChange={(e) => setEndLocal(e.target.value)} className={inputCls} />
+          {/* 开始/截止/时区是一组：时区管着上面两个输入框的钟面，分开摆会让人
+              以为填的是自己电脑的本地时间。 */}
+          <div className="sm:col-span-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">{t('ed_start_at')}</label>
+                <input
+                  type="datetime-local"
+                  value={startLocal}
+                  onChange={(e) => setStartLocal(e.target.value)}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">{t('ed_end_at')}</label>
+                <input
+                  type="datetime-local"
+                  value={endLocal}
+                  onChange={(e) => setEndLocal(e.target.value)}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">{t('ed_timezone')}</label>
+                <select
+                  value={timezone}
+                  onChange={(e) => setTimezone(voteTimezoneOf(e.target.value))}
+                  className={inputCls}
+                >
+                  {VOTE_TIMEZONES.map((tz) => (
+                    <option key={tz.value} value={tz.value}>
+                      {t(tz.key)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <p className="mt-1.5 text-xs text-muted">{t('ed_timezone_hint')}</p>
+            {initial.timezone === null && (initial.startAt || initial.endAt) && (
+              <p className="mt-1 text-xs text-muted">{t('ed_timezone_legacy_hint')}</p>
+            )}
+            <p className="mt-1 text-xs text-muted">{t('ed_start_at_hint')}</p>
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium">{t('ed_entry_order')}</label>
@@ -1344,7 +1435,12 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
         {status === 'draft' && (
           <div className="mt-4 flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-xs text-muted dark:border-zinc-800 dark:bg-zinc-900">
             <AlertTriangle className="h-4 w-4 shrink-0" />
-            {t('ed_publish_note', { count: visibleCount })}
+            {scheduledStartIso
+              ? t('ed_publish_note_scheduled', {
+                  count: visibleCount,
+                  time: `${formatVoteInstant(scheduledStartIso, timezone, locale)} ${t(voteTimezoneKey(timezone))}`,
+                })
+              : t('ed_publish_note', { count: visibleCount })}
           </div>
         )}
       </Section>

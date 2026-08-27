@@ -126,7 +126,7 @@ export function ShortsSidePanel({
           {/* Uploader */}
           <div className="flex items-center gap-3">
             <Link href={`/users/${item.uploader.handle}`} className="shrink-0">
-              <Avatar name={item.uploader.displayName} src={item.uploader.avatarUrl} size="lg" />
+              <Avatar name={item.uploader.displayName} src={item.uploader.avatarUrl} size="lg" handle={item.uploader.handle} />
             </Link>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">

@@ -1,8 +1,15 @@
 import { createHash } from 'node:crypto';
-import { Prisma, DiscussionCategory, PostReaction } from '@prisma/client';
+import { Prisma, PostReaction } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { AUTHOR_IDENTITY_FIELDS, AUTHOR_IDENTITY_SELECT } from '@/lib/user-identity';
 import { POLL_TOKEN_GLOBAL_RE } from '@/lib/polls-shared';
+import {
+  RETIRED_TAG_SLUGS,
+  normalizeTagName,
+  slugifyDiscussionTag,
+  isValidTagName,
+  type DiscussionTagOption,
+} from '@/lib/discussion-tags';
 
 // Shared query layer for the 讨论区 (Discussion) section: the LinkedIn/HF-style
 // post feed and the Discourse-style forum. Same conventions as
@@ -323,58 +330,188 @@ async function viewerCommentLikeSet(viewerId: string | null | undefined, comment
 
 // ─── Forum topics ───────────────────────────────────────────────────────────
 
-export const DISCUSSION_CATEGORIES = [
-  'tech',
-  'models',
-  'agents',
-  'skills',
-  'research',
-  'qa',
-  'share',
-  'showcase',
-  'general',
-] as const;
+const TAG_SELECT = { slug: true, name: true, nameEn: true, official: true } as const;
+const TAG_CACHE_MS = 30_000;
 
-// AI-focused set offered in the composer / filter UI. `general` (历史值) is
-// accepted by filters for old rows but no new topic can pick it.
-export const VISIBLE_DISCUSSION_CATEGORIES = [
-  'tech',
-  'models',
-  'agents',
-  'skills',
-  'research',
-  'qa',
-  'share',
-  'showcase',
-] as const;
+let tagCache: { at: number; rows: DiscussionTagOption[] } | null = null;
 
-export function isDiscussionCategory(v: unknown): v is DiscussionCategory {
-  return typeof v === 'string' && (DISCUSSION_CATEGORIES as readonly string[]).includes(v);
+export function bustDiscussionTagCache(): void {
+  tagCache = null;
+}
+
+/** 侧栏分类在前（按 sortOrder），然后是成员自建的（按名字）。 */
+export async function listDiscussionTags(): Promise<DiscussionTagOption[]> {
+  if (tagCache && Date.now() - tagCache.at < TAG_CACHE_MS) return tagCache.rows;
+  const rows = await prisma.discussionTag.findMany({
+    orderBy: [{ official: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],
+    select: TAG_SELECT,
+  });
+  tagCache = { at: Date.now(), rows };
+  return rows;
+}
+
+export async function discussionTagMap(): Promise<Map<string, DiscussionTagOption>> {
+  return new Map((await listDiscussionTags()).map((t) => [t.slug, t]));
+}
+
+/** 侧栏那一组（发帖时必须至少选一个）。 */
+export async function listOfficialDiscussionTags(): Promise<DiscussionTagOption[]> {
+  return (await listDiscussionTags()).filter((t) => t.official);
 }
 
 /**
- * Topic count per主题 — feeds the Discourse-style sidebar. Topics are
- * multi-category (enum array), so a topic counts toward each of its主题;
- * groupBy can't unnest arrays, so count in JS over the tiny select.
+ * 自建分类的候选：给了 q 就按名字模糊搜，没给就返回用得最多的几个。
+ * 选择器默认折叠，只有展开/输入时才会打到这里 —— 侧栏永远不会被它们挤爆。
  */
-export async function countTopicsByCategory(): Promise<{
-  counts: Partial<Record<DiscussionCategory, number>>;
-  /** Distinct topics — NOT the sum of counts (a topic counts once per主题). */
-  total: number;
-}> {
-  const rows = await prisma.discussionTopic.findMany({ select: { categories: true, category: true } });
-  const counts: Partial<Record<DiscussionCategory, number>> = {};
-  for (const r of rows) {
-    const cats = r.categories.length > 0 ? r.categories : [r.category];
-    for (const c of new Set(cats)) counts[c] = (counts[c] ?? 0) + 1;
+export async function searchCustomDiscussionTags(q: string, take = 8): Promise<DiscussionTagOption[]> {
+  const term = q.trim().slice(0, 40);
+  // 退役值（综合讨论）official=false，但它绝不是"可以挂到新帖上的自建分类" ——
+  // 老帖还留在它上面、侧栏也还能筛，但选择器里不该再出现。
+  const all = (await listDiscussionTags()).filter(
+    (t) => !t.official && !RETIRED_TAG_SLUGS.has(t.slug),
+  );
+  if (all.length === 0) return [];
+  if (term) {
+    const lower = term.toLowerCase();
+    return all
+      .filter(
+        (t) =>
+          t.name.toLowerCase().includes(lower) ||
+          t.nameEn.toLowerCase().includes(lower) ||
+          t.slug.includes(lower),
+      )
+      .slice(0, take);
   }
-  return { counts, total: rows.length };
+  // 无搜索词：按被使用次数排序，counts 里没有的（刚建还没发帖）排在后面。
+  const counts = await countTopicsByTag();
+  return [...all]
+    .sort((a, b) => (counts[b.slug] ?? 0) - (counts[a.slug] ?? 0) || a.name.localeCompare(b.name))
+    .slice(0, take);
+}
+
+export type CreateDiscussionTagResult =
+  | { ok: true; tag: DiscussionTagOption; created: boolean }
+  | { ok: false; error: 'invalid_name' | 'create_failed' };
+
+/**
+ * 成员自建分类的 find-or-create。撞上已存在的名字（任一语言、忽略大小写）就
+ * 复用那一个而不是造个近似重复的 —— 共享分类体系的意义就在这里；这也是为什么
+ * 自建分类是全站可搜的。新建的一律 official=false：侧栏只有管理员能改。
+ */
+export async function findOrCreateDiscussionTag(
+  rawName: string,
+  createdById: string | null,
+): Promise<CreateDiscussionTagResult> {
+  const name = normalizeTagName(rawName);
+  if (!isValidTagName(name)) return { ok: false, error: 'invalid_name' };
+
+  const existing = await prisma.discussionTag.findFirst({
+    where: {
+      OR: [
+        { name: { equals: name, mode: 'insensitive' } },
+        { nameEn: { equals: name, mode: 'insensitive' } },
+        { slug: name.toLowerCase() },
+      ],
+    },
+    select: TAG_SELECT,
+  });
+  if (existing) return { ok: true, tag: existing, created: false };
+
+  let slug = slugifyDiscussionTag(name);
+  // Slug collisions are possible (two different names, same latin skeleton).
+  for (let i = 0; i < 5; i++) {
+    const taken = await prisma.discussionTag.findUnique({ where: { slug }, select: { slug: true } });
+    if (!taken) break;
+    slug = `${slugifyDiscussionTag(name)}-${i + 2}`;
+  }
+
+  const create = (author: string | null) =>
+    prisma.discussionTag.create({
+      data: { slug, name, official: false, createdById: author, sortOrder: 200 },
+      select: TAG_SELECT,
+    });
+
+  try {
+    const created = await create(createdById);
+    bustDiscussionTagCache();
+    return { ok: true, tag: created, created: true };
+  } catch {
+    // Lost a race — whoever won created the same name.
+    const row = await prisma.discussionTag.findFirst({
+      where: { name: { equals: name, mode: 'insensitive' } },
+      select: TAG_SELECT,
+    });
+    if (row) return { ok: true, tag: row, created: false };
+    // Not a race: the only other way the insert fails is a dangling author (a
+    // session JWT outliving its user row). The TAG is still worth having.
+    if (createdById) {
+      try {
+        const created = await create(null);
+        bustDiscussionTagCache();
+        return { ok: true, tag: created, created: true };
+      } catch {
+        /* fall through */
+      }
+    }
+    return { ok: false, error: 'create_failed' };
+  }
+}
+
+/**
+ * Topic count per分类 — feeds the Discourse-style sidebar. Topics are
+ * multi-tag, so a topic counts toward each of its分类; groupBy can't unnest
+ * arrays, so count in JS over the tiny select.
+ */
+export async function countTopicsByTag(): Promise<Record<string, number>> {
+  const rows = await prisma.discussionTopic.findMany({ select: { categories: true } });
+  const counts: Record<string, number> = {};
+  for (const r of rows) {
+    for (const c of new Set(r.categories)) counts[c] = (counts[c] ?? 0) + 1;
+  }
+  return counts;
+}
+
+export interface SidebarTag extends DiscussionTagOption {
+  count: number;
+}
+
+/**
+ * 左侧栏：只有 official 分类。自建分类哪怕再热也不进来（这是刻意的 —— 侧栏
+ * 是固定导航，不是标签云），它们只作为 chip 出现在帖子上、点击可筛选。
+ */
+export async function listSidebarTags(): Promise<{ tags: SidebarTag[]; total: number }> {
+  const [all, counts, total] = await Promise.all([
+    listDiscussionTags(),
+    countTopicsByTag(),
+    prisma.discussionTopic.count(),
+  ]);
+  return {
+    tags: all.filter((t) => t.official).map((t) => ({ ...t, count: counts[t.slug] ?? 0 })),
+    total,
+  };
+}
+
+/** slug 数组 → 可渲染的分类视图；查不到的 slug 退化成显示 slug 本身。 */
+export async function resolveTagViews(slugs: readonly string[]): Promise<DiscussionTagOption[]> {
+  const map = await discussionTagMap();
+  return slugs.map(
+    (slug) => map.get(slug) ?? { slug, name: slug, nameEn: slug, official: false },
+  );
+}
+
+/** 批量版：一次 map，喂给列表页的多行。 */
+export function tagViewsFrom(
+  slugs: readonly string[],
+  map: ReadonlyMap<string, DiscussionTagOption>,
+): DiscussionTagOption[] {
+  return slugs.map((slug) => map.get(slug) ?? { slug, name: slug, nameEn: slug, official: false });
 }
 
 export type TopicSort = 'latest' | 'top' | 'new';
 
 export interface ListTopicsFilters {
-  category?: DiscussionCategory;
+  /** DiscussionTag slug — 侧栏分类或自建分类都能筛。 */
+  category?: string;
   sort?: TopicSort;
   page?: number;
   pageSize?: number;
@@ -392,16 +529,9 @@ export async function listTopics(filters: ListTopicsFilters) {
 
   // Both filters are OR-groups — compose with AND so they never clobber each other.
   const and: Prisma.DiscussionTopicWhereInput[] = [];
-  // Multi-category: match the array, falling back to the legacy single column
-  // for rows created before the backfill.
-  if (filters.category) {
-    and.push({
-      OR: [
-        { categories: { has: filters.category } },
-        { categories: { isEmpty: true }, category: filters.category },
-      ],
-    });
-  }
+  // 迁移把每一行的 categories 都填满了（见 20260827130000_discussion_tags），
+  // 所以这里不再需要回落到旧的单列。
+  if (filters.category) and.push({ categories: { has: filters.category } });
   const q = (filters.q ?? '').trim();
   if (q) {
     and.push({
@@ -452,10 +582,10 @@ export async function listTopics(filters: ListTopicsFilters) {
     viewerUpvoteSet(filters.viewerId, ids),
     topicParticipants(ids),
   ]);
+  const tagMap = await discussionTagMap();
   const items = rows.map(({ bodyMd, ...r }) => ({
     ...r,
-    // Pre-backfill rows may have an empty array — fall back to the legacy column.
-    categories: r.categories.length > 0 ? r.categories : [r.category],
+    tags: tagViewsFrom(r.categories, tagMap),
     excerpt: excerptOf(bodyMd),
     upvotedByMe: upvoted.has(r.id),
     // Recent repliers (raw identities — consumers trim via toPublicAuthor).
@@ -599,12 +729,11 @@ export async function getTopicDetail(id: string, viewerId?: string | null) {
   });
   if (!topic) return null;
 
-  const upvoted = await viewerUpvoteSet(viewerId, [topic.id]);
-  return {
-    ...topic,
-    categories: topic.categories.length > 0 ? topic.categories : [topic.category],
-    upvotedByMe: upvoted.has(topic.id),
-  };
+  const [upvoted, tags] = await Promise.all([
+    viewerUpvoteSet(viewerId, [topic.id]),
+    resolveTagViews(topic.categories),
+  ]);
+  return { ...topic, tags, upvotedByMe: upvoted.has(topic.id) };
 }
 
 async function viewerUpvoteSet(viewerId: string | null | undefined, topicIds: string[]) {

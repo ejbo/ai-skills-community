@@ -7,7 +7,8 @@
 // annotators does not become forty requests when you sweep across it. Touch
 // devices get the same card on tap-and-hold via focus.
 
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Avatar } from '@/components/Avatar';
@@ -57,6 +58,15 @@ async function loadCard(handle: string): Promise<UserCardData | null> {
 const OPEN_DELAY = 150;
 const CLOSE_DELAY = 200;
 
+/**
+ * Nesting guard. `Avatar` carries a hover card whenever it is given a handle,
+ * so an identity cluster that ALSO wraps its avatar+name in a card (to make the
+ * name hoverable too) would otherwise stack two popovers on the same person.
+ * The inner one steps aside instead — which also means a future call site can
+ * wrap freely without having to know what Avatar already does.
+ */
+const InsideHoverCard = createContext(false);
+
 export function UserHoverCard({
   handle,
   children,
@@ -73,6 +83,7 @@ export function UserHoverCard({
   const openTimer = useRef<number | null>(null);
   const closeTimer = useRef<number | null>(null);
   const id = useId();
+  const nested = useContext(InsideHoverCard);
 
   const clearTimers = () => {
     if (openTimer.current) window.clearTimeout(openTimer.current);
@@ -97,7 +108,13 @@ export function UserHoverCard({
         above,
       });
       setOpen(true);
-      void loadCard(handle).then(setCard);
+      void loadCard(handle).then((data) => {
+        // No card to show — an anonymous viewer (the endpoint needs a session),
+        // a deactivated account, a network blip. Close rather than leaving a
+        // skeleton hanging over the page forever.
+        if (!data) setOpen(false);
+        else setCard(data);
+      });
     }, OPEN_DELAY);
   }, [handle]);
 
@@ -106,8 +123,16 @@ export function UserHoverCard({
     closeTimer.current = window.setTimeout(() => setOpen(false), CLOSE_DELAY);
   }, []);
 
+  // An outer card already covers this person, and a handle-less avatar (a guest
+  // byline, a zone icon) has no profile to show.
+  if (nested || !handle) return <>{children}</>;
+
+  // Fullscreen first: a card opened from a fullscreened reader must portal INTO
+  // the fullscreen element or the top layer hides it.
+  const host = typeof document === 'undefined' ? null : (document.fullscreenElement ?? document.body);
+
   return (
-    <>
+    <InsideHoverCard.Provider value>
       <span
         ref={anchorRef}
         className={className}
@@ -119,21 +144,33 @@ export function UserHoverCard({
       >
         {children}
       </span>
-      {open && pos && (
-        <div
-          id={id}
-          role="tooltip"
-          onMouseEnter={clearTimers}
-          onMouseLeave={hide}
-          style={{ top: pos.top, left: pos.left }}
-          className={`surface fixed z-[70] w-72 overflow-hidden rounded-xl shadow-2xl ring-1 ring-black/5 dark:ring-white/10 ${
-            pos.above ? '-translate-y-full' : ''
-          }`}
-        >
-          <CardBody card={card} handle={handle} />
-        </div>
-      )}
-    </>
+      {/* PORTALED, like DeptTag's tooltip and ImageLightbox — for two reasons, and
+          both are real bugs seen in the browser, not theory. An ancestor with
+          `opacity` (a fading-in Reveal, a muted row) applies to its whole subtree,
+          so an in-flow card renders translucent with the page bleeding through it;
+          an ancestor with `transform` (card-hover) becomes the containing block for
+          `fixed`, so the card lands at the wrong place entirely. `pos` is already in
+          viewport coordinates, so moving the node to <body> needs no math change.
+          React events still bubble to this component through the React tree, so the
+          card's own mouseenter keeps it open while the pointer is over it. */}
+      {open && pos && host
+        ? createPortal(
+            <div
+              id={id}
+              role="tooltip"
+              onMouseEnter={clearTimers}
+              onMouseLeave={hide}
+              style={{ top: pos.top, left: pos.left }}
+              className={`surface fixed z-[70] w-72 overflow-hidden rounded-xl shadow-2xl ring-1 ring-black/5 dark:ring-white/10 ${
+                pos.above ? '-translate-y-full' : ''
+              }`}
+            >
+              <CardBody card={card} handle={handle} />
+            </div>,
+            host,
+          )
+        : null}
+    </InsideHoverCard.Provider>
   );
 }
 
@@ -175,7 +212,9 @@ function CardBody({ card, handle }: { card: UserCardData | null; handle: string 
           )}
         </div>
         {!card.isPrivate && <p className="text-[11px] text-muted">@{handle}</p>}
-        <DeptTag department={card.department} lab={card.lab} />
+        {/* `full` — the card IS an identity header, so the org path is the point;
+            it also avoids stacking DeptTag's own tooltip on top of this popover. */}
+        <DeptTag department={card.department} lab={card.lab} full />
 
         {card.signature && (
           <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted">{card.signature}</p>

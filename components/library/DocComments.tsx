@@ -152,7 +152,7 @@ export function DocComments({
     return (
       <div key={c.id} data-comment-id={c.id} className="py-3">
         <div className="flex items-center gap-2">
-          <Avatar name={c.author.displayName} src={c.author.avatarUrl} size="xs" />
+          <Avatar name={c.author.displayName} src={c.author.avatarUrl} size="xs" handle={c.author.handle} />
           <span className="text-xs font-medium">{c.author.displayName}</span>
           <DeptTag department={c.author.department} lab={c.author.lab} />
           <span className="text-[11px] text-muted">

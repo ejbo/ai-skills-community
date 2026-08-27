@@ -7,7 +7,8 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Loader2, Lock } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
-import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { ZoneMarkdown } from '@/components/zones/ZoneMarkdown';
+import { DISCUSSION_EMBED_KINDS } from '@/lib/zones/shared';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
 import { relativeTime } from '@/lib/i18n-date';
@@ -275,7 +276,8 @@ function ReplyBlock({
             name={reply.author.displayName}
             src={reply.author.avatarUrl}
             size={isRoot ? 'sm' : 'xs'}
-          />
+              handle={reply.author.handle}
+            />
         </Link>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -292,7 +294,7 @@ function ReplyBlock({
             <p className="mt-1 text-sm italic text-muted">{t('reply_deleted')}</p>
           ) : (
             <div className="mt-1">
-              <MarkdownRenderer content={reply.bodyMd} compact />
+              <ZoneMarkdown content={reply.bodyMd} compact headingIds={false} />
             </div>
           )}
           {!isTombstone && (
@@ -383,6 +385,7 @@ function ReplyBox({
         placeholder={placeholder}
         ariaLabel={t('reply')}
         autoFocus={autoFocus}
+        embedPicker={{ kinds: DISCUSSION_EMBED_KINDS }}
       />
       <div className="flex items-center justify-end gap-2">
         {onCancel && (

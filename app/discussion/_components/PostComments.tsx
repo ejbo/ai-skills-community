@@ -489,7 +489,8 @@ function CommentBlock({
             name={comment.author.displayName}
             src={comment.author.avatarUrl}
             size="xs"
-          />
+              handle={comment.author.handle}
+            />
         </Link>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -616,7 +617,8 @@ function CommentBox({
         src={currentUser.avatarUrl}
         size="xs"
         className="mt-1"
-      />
+              handle={currentUser.handle}
+            />
       <div className="min-w-0 flex-1 space-y-2">
         <RichTextEditor
           value={bodyMd}

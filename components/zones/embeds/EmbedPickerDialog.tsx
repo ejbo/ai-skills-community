@@ -22,19 +22,20 @@ const SEARCHABLE: readonly EmbedKind[] = ['library', 'short', 'video', 'skill', 
 export function EmbedPickerDialog({
   open,
   onClose,
-  zoneSlug,
+  kinds = EMBED_KINDS,
   postAttachments = [],
   onPick,
 }: {
   open: boolean;
   onClose: () => void;
-  zoneSlug: string;
+  /** Tabs to offer. 讨论区 drops `file` (it has no attachment rows). */
+  kinds?: readonly EmbedKind[];
   postAttachments?: ZoneAttachmentView[];
   onPick: (kind: EmbedKind, ref: string) => void;
 }) {
   const t = useTranslations('zones');
   const tc = useTranslations('common');
-  const [tab, setTab] = useState<EmbedKind>('library');
+  const [tab, setTab] = useState<EmbedKind>(() => kinds[0] ?? 'library');
   const [q, setQ] = useState('');
   const [items, setItems] = useState<EmbedCandidate[]>([]);
   const [loading, setLoading] = useState(false);
@@ -84,11 +85,11 @@ export function EmbedPickerDialog({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [open, tab, q, searchable, zoneSlug]);
+  }, [open, tab, q, searchable]);
 
   const tabs = useMemo(
-    () => EMBED_KINDS.map((k) => ({ key: k, label: t(embedKindLabelKey(k)), count: k === 'file' ? postAttachments.filter((a) => a.id).length : undefined })),
-    [t, postAttachments],
+    () => kinds.map((k) => ({ key: k, label: t(embedKindLabelKey(k)), count: k === 'file' ? postAttachments.filter((a) => a.id).length : undefined })),
+    [t, kinds, postAttachments],
   );
 
   const savedAttachments = postAttachments.filter((a) => a.id);

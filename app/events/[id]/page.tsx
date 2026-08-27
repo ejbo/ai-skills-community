@@ -128,7 +128,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
               href={`/users/${event.author.handle}`}
               className="flex items-center gap-2 transition hover:opacity-80"
             >
-              <Avatar name={event.author.displayName} src={event.author.avatarUrl} size="sm" />
+              <Avatar name={event.author.displayName} src={event.author.avatarUrl} size="sm" handle={event.author.handle} />
               <span className="font-medium">{event.author.displayName}</span>
             </Link>
             <DeptTag department={event.author.department} lab={event.author.lab} />

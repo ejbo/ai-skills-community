@@ -219,7 +219,7 @@ export function PostAccessPanel({
               key={d.userId}
               className="inline-flex items-center gap-1.5 rounded-full border border-zinc-300 py-0.5 pl-0.5 pr-2 text-xs dark:border-zinc-700"
             >
-              <Avatar name={d.user.displayName} src={d.user.avatarUrl} size="xs" />
+              <Avatar name={d.user.displayName} src={d.user.avatarUrl} size="xs" handle={d.user.handle} />
               <span>{d.user.displayName}</span>
               <DeptTag department={d.user.department} lab={d.user.lab} />
               {!disabled && (
@@ -275,7 +275,7 @@ export function PostAccessPanel({
                     }}
                     className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
                   >
-                    <Avatar name={m.user.displayName} src={m.user.avatarUrl} size="sm" />
+                    <Avatar name={m.user.displayName} src={m.user.avatarUrl} size="sm" handle={m.user.handle} />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
                         <span className="truncate font-medium">{m.user.displayName}</span>
@@ -351,7 +351,7 @@ export function PostAccessPanel({
           <ul className="flex flex-wrap gap-1.5">
             {grants.map((g) => (
               <li key={g.userId} className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 py-0.5 pl-0.5 pr-2 text-xs dark:border-zinc-800">
-                <Avatar name={g.user.displayName} src={g.user.avatarUrl} size="xs" />
+                <Avatar name={g.user.displayName} src={g.user.avatarUrl} size="xs" handle={g.user.handle} />
                 <span className="max-w-[8rem] truncate">{g.user.displayName}</span>
               </li>
             ))}

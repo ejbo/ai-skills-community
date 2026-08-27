@@ -37,7 +37,7 @@ export function RelatedPosts({ posts, className = '' }: { posts: ZonePostCardVie
                   {p.summary && <span className="line-clamp-2 text-xs leading-relaxed text-muted">{p.summary}</span>}
                   <span className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-[11px] text-muted">
                     <span className="inline-flex items-center gap-1.5">
-                      <Avatar name={p.author.displayName} src={p.author.avatarUrl} size="xs" />
+                      <Avatar name={p.author.displayName} src={p.author.avatarUrl} size="xs" handle={p.author.handle} />
                       <span className="truncate text-zinc-700 dark:text-zinc-300">{p.author.displayName}</span>
                     </span>
                     {p.publishedAt && <span>{relativeTime(p.publishedAt, locale)}</span>}

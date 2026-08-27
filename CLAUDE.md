@@ -231,6 +231,42 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   `20260729150000_discussion_v3`)**: topics are MULTI-主题 (`categories DiscussionCategory[]`,
   legacy `category` kept = `categories[0]`; filters compose `AND` of OR-groups — never assign
   `where.OR` twice) and carry attachments (`TopicMedia`, same shape/serving as `PostMedia`).
+  **v4 (migration `20260827130000_discussion_tags`) — 分类改为数据表，成员可自建**:
+  the `DiscussionCategory` enum is GONE; `DiscussionTopic.category`/`categories` are now
+  TEXT/TEXT[] holding `DiscussionTag.slug` (the enum labels WERE the slugs, so the migration
+  is a straight `::text` cast — no value backfill). Two tiers, and the split is the whole point:
+  `official` tags are the LEFT-RAIL categories (the original 8, seeded, still translated via
+  `labels.discussionCategory.*`, curated colors in `badges.tsx#CATEGORY_META`) — filterable,
+  counted, and **every topic must lead with one**; member-created tags are `official:false`,
+  render as outlined `#name` chips on the topic (hashed color, `tagColorIndex`) and are
+  **never in the rail** — that is what keeps the rail a fixed navigation instead of a tag
+  cloud (owner decision: 「如果自己创建的，就不会在侧边显示，只会在他的帖子上显示」).
+  They ARE globally shared and searchable so two people typing 「RAG」 land on one tag
+  (`findOrCreateDiscussionTag` — find-or-create on name, either language, case-insensitive;
+  CJK names get a hash slug). The picker (`TopicTagPicker`) renders the 8 official chips flat
+  and keeps the custom section COLLAPSED behind a 添加 button — expanding is what hits
+  `/api/discussion/tags`; do not pre-flatten the custom list into the form. Quotas are
+  SEPARATE and never trade against each other: `MAX_OFFICIAL_TAGS` 3 + `MAX_CUSTOM_TAGS` 3,
+  enforced once in the pure `sanitizeTopicTags` (lib/discussion-tags.ts) that BOTH write
+  routes call — it also orders official-first, so `categories[0]` is always an official slug
+  and the legacy `[category, lastActivityAt]` index stays meaningful. `general` (综合讨论) is
+  retired: seeded `official` only if old topics still sit there, excluded from the custom
+  candidates, and silently DROPPED by `sanitizeTopicTags` rather than erroring — else editing
+  a legacy topic would be a form the author cannot save. Custom chips still link to
+  `?category=<slug>`: not in the rail ≠ not browsable. There is deliberately NO admin
+  promote-to-sidebar UI yet — the rail set is the 8 enum-era slugs, which is what lets the
+  legacy `category` column keep taking a valid old value.
+  **正文可引用站内内容**: the topic composer AND the reply composer pass `embedPicker` to
+  `RichTextEditor`, so discussion bodies carry the SAME `[embed:<kind>:<ref>]` contract as
+  技术专区 — `kinds` is `DISCUSSION_EMBED_KINDS` (everything but `file`, which resolves
+  ZonePostAttachment row ids that discussion has no table for). `embedPicker.zoneSlug` was
+  deleted, not made optional: the候选 search (`/api/zones/embed/search`) was ALWAYS site-wide
+  and viewer-gated, the slug only ever sat unused in an effect dep array. Topic bodies render
+  through `ZoneMarkdown` with embeds resolved server-side (`resolveEmbeds(collectEmbedRefs(...))`,
+  skipped for anonymous viewers — the embed API requires login and the card degrades itself);
+  replies use `ZoneMarkdown` too but let the cards fetch (few, below the fold).
+  `app/discussion/layout.tsx` hosts `PreviewProvider` so a card opens the preview drawer —
+  it is deliberately NOT login-walled (讨论区 is publicly readable, unlike `/zones`).
   Attachment validation is shared in `lib/discussion-media.ts`: `resolveMedia` (format) +
   `mediaKeysAvailable` (a video/file key already attached elsewhere is rejected — keys are
   visible in URLs, no ownership ledger exists) + `deleteUnreferencedMediaFiles` (refcounts
@@ -368,6 +404,26 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   read as one welded block. Shorts CTAs are NEUTRAL (zinc/white
   solids) — the user explicitly rejected accent-blue "AI-looking" buttons; homepage shorts header
   has view-all ONLY (no upload button).
+- **导航栏 (2026-08-27) is measured, not guessed.** `components/nav-items.ts` is the destination
+  catalog; `components/nav-overflow.tsx` renders it. The row is `flex-1 min-w-0 overflow-hidden`
+  between a `shrink-0` logo and a `shrink-0` action cluster, so its `clientWidth` IS the budget: it
+  caches each link's natural width (after `document.fonts.ready` — a fallback-font pass measures
+  wrong) and keeps only what fits, handing the rest to the overflow menu through a context the
+  header wraps. **Never add a nav link by hand to the header** and never re-introduce a fixed
+  `hidden md:flex` list — that is exactly what ran "Docs" under the search box in English and left
+  phones with no navigation at all. 中文 fits 6 inline at 1440, en fits 6, fr fits 5, a phone fits
+  0; nothing is clipped in any of them because the row measures instead of assuming.
+  `PRIMARY_NAV` competes for the row; `STASHED_NAV` (投票 / 文档 / 意见反馈) is always in the menu.
+- **收纳菜单 `components/NavMoreMenu.tsx`** is the React Bits `<BubbleMenu />` *motion* on
+  framer-motion — deliberately NOT the component: the original is a GSAP full-viewport takeover
+  with 4rem rotated pills, which would have added a second animation library to animate three
+  utility links on a 56px bar. Kept: `back.out(1.5)`-shaped overshoot (`BACK_OUT` cubic-bezier),
+  per-item stagger, labels sliding up a beat behind their bubble, the two-line toggle morphing
+  into an X. Changed: the ±8° tilt is the ENTRANCE only and settles to 0 (a permanent tilt reads
+  as sloppy alignment in a 9-row stack at 13px), and the pills are ink — hover fills with
+  `zinc-900`/`zinc-100` rather than the original's per-item hue, per the 配色契约. The panel is
+  PORTALED via `useAnchoredPanel` because `NavBarShell`'s `transition-transform` makes it a
+  containing block for `position: fixed`.
 - **配色契约 (2026-08-26): ink chrome, colourful content.** ONE rule decides every colour
   question in this app: *the page has no colour of its own; colour belongs to the material.*
   - **Chrome is ink.** Primary buttons, toggles, active tabs/pills, progress bars, focus rings,
@@ -514,7 +570,34 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   newest-first when over budget, never touches revokes — so the toolbar can never offer a
   submit that only fails; a submit bumps `epochRef` so an in-flight 30 s poll can't
   overwrite the post-submit state. There is NO per-vote endpoint any more — don't
-  reintroduce one. Perf contract for the gallery: `EntryCard` is memo'd and fed a
+  reintroduce one.
+  **定时开投 + 时区 (2026-08-27)**: `startAt` 早就只挡投票不挡投稿，这一轮把它做成
+  发起人真的能用的功能 —— `VoteActivity.timezone`（migration `20260827000000_vote_timezone`,
+  nullable）记录发起人填 startAt/endAt 时用的 IANA 时区。**瞬时仍然存 UTC**；时区只
+  决定「输入框里回填成几点」和「前台标成东部/西部时间几点」。选项是**固定集合**
+  `VOTE_TIMEZONES`（只有 America/Toronto + America/Vancouver，团队所在地），入库永远
+  是 IANA 名、展示走 i18n key（`voteTimezoneKey`），老数据 `null` 按 `voteTimezoneOf`
+  回落到默认时区。换算复用 `lib/events/time.ts` 的 `zonedWallToUtc`/`toWallDate`
+  （全站唯一一份 DST 感知实现，客户端安全）—— **不要**再用 `new Date('...T10:00')`：
+  那是按浏览器时区解释的，加西排的场到多伦多就差三小时，这正是本次要修的。
+  编辑器里时区与两个 datetime-local 是一组：**换时区保留钟面**（“我说的是下午 2 点
+  温哥华时间”），瞬时在保存时才由 `wallToIso` 算出来。前台：未开始时作品照常浏览，
+  投票按钮渲染成**置灰的「未开始」**（不是消失 —— 消失会让人以为这活动根本不能投），
+  顶部横幅给绝对时间（活动自己的时区，`formatVoteInstant` 显式传 `timeZone` ⇒ 服务端
+  /客户端同串，无需客户端叶子、无水合不一致）＋ `Countdown` 给观众自己的相对时间。
+  开始/截止瞬时到点时会 `refresh()`，否则守着 10:00 开投的人得手动刷新 —— 这个
+  watcher 必须是**自愈**的（`boundaryTick` 重排 + `visibilitychange`）：只排一发
+  `setTimeout` 的话，客户端时钟快几秒 / 那一次 429 / 后台标签页被节流，服务端都会回
+  `started:false`，依赖项没变 effect 不重跑，页面就永远卡在「未开始」。评审扫出来、
+  已修的另外几条：`isVoteTimezone` 必须用 `hasOwnProperty` 而不是 `in`（
+  `Object.fromEntries` 带原型链，`'toString'` 会被当成合法时区存进库）；
+  `resolveWallToInstant` 处理**夏令时缺口**（春季跳变当天 02:30 不存在，裸转换会悄悄
+  落回 01:30，还会让「开始 01:30／截止 02:30」折叠成同一瞬时、服务端误报
+  `end_before_start`）；发布提示只能读**已落库**的 `startAt`，且 `publish()` 在排期未
+  保存时先 PATCH 再发布（否则提示写着"到点才开投"、实际当场开投）；已有票之后把
+  `startAt` 改到未来会连撤票一起关上（切时区保留钟面时会顺带触发），服务端按
+  `budget_period_locked` 的样子加了 `start_locked` 守卫。注意 daily 预算桶
+  （`voteDayKey`）**仍按北京时间**刷新，与这里的活动时区无关。 Perf contract for the gallery: `EntryCard` is memo'd and fed a
   `CardCtx` that only rebuilds on flag flips (`budgetLeft` boolean, never the remaining
   number), `mergeView` keeps entry identity across the 30s poll, cards carry `.cv-auto`
   (content-visibility), and the toolbar is OPAQUE — backdrop-blur over the image grid
@@ -655,7 +738,8 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   **feed-first landing** (`listZoneFeed` across zones: 最新/最热, multi-select 研究所→部门 via
   `zoneOrgTree`, 栏目/类型 facets, search) with 动态 / 版块 / 我的版块 tabs; the 版块 tab groups by 研究所.
   Zone chrome rules: the 管理 and 加入 dropdowns MUST portal out of the header (it is
-  `relative overflow-hidden`) — both ride `useAnchoredPanel`; 研究所·部门 gets its own prominent
+  `relative overflow-hidden`) — both ride `useAnchoredPanel` (now `components/useAnchoredPanel.ts`,
+  shared with the navbar's overflow menu); 研究所·部门 gets its own prominent
   untruncated row (never the capped `DeptTag`); and zone titles are PLAIN TEXT (no BlurText). **`Zone.slug` is
   IMMUTABLE** after creation (notification links / bookmarks embed it): the PATCH route strips it
   and `updateZone` throws `slug_immutable` as the lib-level backstop. Post publish is re-gated on
@@ -774,6 +858,22 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   raw header is that page's full URL — storing it raw would re-leak the redacted path). The roles
   migration ALSO rewrites existing staff rows (path → template, referrer → NULL); `pnpm roles:sync`
   repeats that data step for `db push` deploys.
+- **用户卡片 (hover card)**: `components/user/UserHoverCard.tsx` — hover any person and a
+  profile card (banner/avatar/角色/@handle/DeptTag/签名/标签/counts) fades in from
+  `GET /api/users/[handle]/card`. It is wired app-wide through `Avatar`: **pass `handle` to
+  `<Avatar/>` and it self-wraps** — that is the one thing to remember when adding a new surface
+  that renders another user. Omit `handle` ONLY for the viewer's own avatar (navbar, composers,
+  settings) and for non-users (`EventSpeaker` rows are free text). Three invariants, each of
+  which was a real bug: the popover is **portaled to body** (an ancestor `opacity` renders it
+  translucent with the page bleeding through; an ancestor `transform` re-parents its `fixed`
+  box — same trap as `DeptTag`'s tooltip and `ImageLightbox`); nesting is **self-suppressing**
+  via context, so a call site may still wrap an avatar+name cluster in `<UserHoverCard>` to make
+  the NAME hoverable without stacking two cards on the avatar inside; and a null/401 fetch
+  **closes** rather than leaving a skeleton (the endpoint needs a session, so anonymous visitors
+  get no card). One fetch per handle per page (module-level cache) on 150 ms hover intent.
+  标签 (`UserTag`/`UserTagAssignment`): admin-assigned in bulk or singly at `/manage/user-tags`,
+  auto-granted ones (版主) synced by `lib/user-tags.ts`, and the user picks which to display at
+  `/settings/tags`.
 - **隐私账号 & identity display**: `User.isPrivate` toggle at Settings → 隐私. Contract
   (`lib/user-identity.ts`): author queries select `AUTHOR_IDENTITY_SELECT` and every server
   boundary (RSC props / API JSON) maps through `toPublicAuthor(author, can(user, 'identity'))` so a

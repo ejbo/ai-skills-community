@@ -191,7 +191,7 @@ function PersonList({
         <li key={person.handle} className="flex items-center gap-2">
           <UserHoverCard handle={person.handle}>
             <span className="flex min-w-0 flex-1 items-center gap-2">
-              <Avatar name={person.displayName} src={person.avatarUrl} size="xs" />
+              <Avatar name={person.displayName} src={person.avatarUrl} size="xs" handle={person.handle} />
               <span className="min-w-0 truncate text-xs font-medium">{person.displayName}</span>
             </span>
           </UserHoverCard>
