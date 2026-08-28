@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { getLocale } from 'next-intl/server';
 import { requireUser } from '@/lib/admin';
+import { loginHref, selfHref } from '@/lib/auth/callback-path';
 import { getDocReaderData, libraryViewerFromSession } from '@/lib/library-queries';
 import { can } from '@/lib/permissions';
 import { ReaderShell } from '@/components/library/reader/ReaderShell';
@@ -8,12 +9,14 @@ import './reader.css';
 
 export const dynamic = 'force-dynamic';
 
-interface SearchParams {
+// A type alias, not an interface: only aliases get TypeScript's implicit index
+// signature, which is what lets this be passed to selfHref(base, searchParams).
+type SearchParams = {
   ch?: string;
   chat?: string;
   hl?: string;
   view?: string;
-}
+};
 
 export default async function LibraryReaderPage({
   params,
@@ -22,9 +25,10 @@ export default async function LibraryReaderPage({
   params: { slug: string };
   searchParams: SearchParams;
 }) {
-  const session = await requireUser();
+  const self = selfHref(`/library/${params.slug}/read`, searchParams);
+  const session = await requireUser(self);
   const viewer = libraryViewerFromSession(session);
-  if (!viewer) redirect('/auth/login');
+  if (!viewer) redirect(loginHref(self));
 
   // Negative sentinel = resume from saved progress (getDocReaderData clamps).
   // Number('') is 0, so an empty/whitespace ?ch= must fall through to resume

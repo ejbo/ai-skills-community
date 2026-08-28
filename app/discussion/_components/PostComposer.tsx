@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Loader2, X } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 import { EMPTY_MEDIA, MediaPicker, mediaCount, mediaPayload, type MediaDraft } from './MediaPicker';
 import type { CurrentUser, PostView } from './types';
 
@@ -23,7 +24,6 @@ export function PostComposer({
 }) {
   const t = useTranslations('discussion_ui');
   const router = useRouter();
-  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [bodyMd, setBodyMd] = useState('');
   const [media, setMedia] = useState<MediaDraft>(EMPTY_MEDIA);
@@ -33,7 +33,7 @@ export function PostComposer({
   function requireLogin(): boolean {
     if (currentUser) return true;
     pushToast('error', t('login_required'));
-    router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+    router.push(currentLoginHref());
     return false;
   }
 
@@ -53,7 +53,7 @@ export function PostComposer({
       });
       if (res.status === 401) {
         pushToast('error', t('login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = await res.json().catch(() => ({}));

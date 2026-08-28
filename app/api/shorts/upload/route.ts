@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
+import { MAX_UPLOAD_SAFETY_BYTES, hasFreeSpace } from '@/lib/uploads/disk-space';
 import {
   deleteVideoFile,
   extFor,
@@ -51,7 +52,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'unsupported_type' }, { status: 415 });
   }
 
-  const max = kind === 'poster' ? MAX_SHORT_POSTER_BYTES : MAX_SHORT_VIDEO_BYTES;
+  // Shorts are deliberately uncapped as a product decision (shorts-shared.ts) —
+  // the clamp is the volume-safety ceiling, which only refuses files big enough
+  // to destabilise the box, not big posts. MAX_UPLOAD_MB=0 removes it entirely.
+  const max = Math.min(
+    kind === 'poster' ? MAX_SHORT_POSTER_BYTES : MAX_SHORT_VIDEO_BYTES,
+    MAX_UPLOAD_SAFETY_BYTES,
+  );
+  // Reject a declared-oversize upload before it streams; saveVideoStream is the
+  // real guard (it aborts mid-stream and unlinks the partial file).
+  const declared = Number(req.headers.get('content-length') ?? '');
+  if (Number.isFinite(declared) && declared > max) {
+    return NextResponse.json({ error: 'file_too_large' }, { status: 413 });
+  }
+  // PostgreSQL shares this volume — refuse before writing a byte rather than
+  // ENOSPC the database. Best-effort: an unmeasurable disk lets the upload run.
+  if (!(await hasFreeSpace(declared))) {
+    return NextResponse.json({ error: 'insufficient_storage' }, { status: 507 });
+  }
   if (!req.body) return NextResponse.json({ error: 'empty_body' }, { status: 400 });
 
   const key = newVideoKey(kind, extFor(kind, contentType, filename));

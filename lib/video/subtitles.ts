@@ -12,6 +12,13 @@
 //      failure still ships the original track.
 // Files land in the videos storage as `subtitle/<nanoid>.vtt`, served by the
 // existing auth+Range file route (contentTypeForKey knows .vtt).
+//
+// ADMISSION CONTROL: one ASR run is minutes-to-hours of 100%-CPU, multi-GB-RSS
+// work on a box that also carries PostgreSQL and two neighbour apps, and the
+// publish route fires this `void`-style — five uploads in the same minute used
+// to mean five whisper processes. Jobs therefore queue on an in-process FIFO
+// (env.SUBTITLE_CONCURRENCY, default 1), and whisper's own thread pool is capped
+// so the one job that does run cannot take the whole machine either.
 
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -20,6 +27,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/db';
+import { env } from '@/lib/env';
 import { getLibraryProvider } from '@/lib/library/llm';
 import { videoFileAbsPath, videoPublicUrl } from './storage';
 import { buildVtt, detectSubtitleLang, parseVtt, type VttCue } from './subtitles-shared';
@@ -116,24 +124,43 @@ export async function subtitlesAvailable(): Promise<boolean> {
   return true;
 }
 
-function run(bin: string, args: string[], timeoutMs: number): Promise<boolean> {
+type RunOutcome = 'ok' | 'timeout' | 'failed';
+
+/**
+ * Spawn a tool under a HARD timeout. Every outcome — including the timeout — is
+ * a resolved value, never a rejection: a subtitle failure may only ever land on
+ * the row (see the module header). `extraEnv` caps thread pools through the
+ * environment, which — unlike a CLI flag — an older build cannot reject.
+ */
+function run(
+  bin: string,
+  args: string[],
+  timeoutMs: number,
+  extraEnv?: Record<string, string>,
+): Promise<RunOutcome> {
   return new Promise((resolve) => {
     try {
-      const p = spawn(bin, args, { stdio: 'ignore' });
+      const p = spawn(bin, args, {
+        stdio: 'ignore',
+        env: extraEnv ? { ...process.env, ...extraEnv } : process.env,
+      });
       const timer = setTimeout(() => {
         p.kill('SIGKILL');
-        resolve(false);
+        // Resolve WITHOUT waiting for 'close': a child stuck in uninterruptible
+        // IO can outlive its SIGKILL, and waiting on it would wedge the FIFO
+        // behind a process nothing can reap.
+        resolve('timeout');
       }, timeoutMs);
       p.on('error', () => {
         clearTimeout(timer);
-        resolve(false);
+        resolve('failed');
       });
       p.on('close', (code) => {
         clearTimeout(timer);
-        resolve(code === 0);
+        resolve(code === 0 ? 'ok' : 'failed');
       });
     } catch {
-      resolve(false);
+      resolve('failed');
     }
   });
 }
@@ -203,26 +230,47 @@ async function translateCues(cues: VttCue[], target: 'zh' | 'en'): Promise<VttCu
 const AUDIO_TIMEOUT_MS = 10 * 60 * 1000;
 const WHISPER_TIMEOUT_MS = 90 * 60 * 1000;
 
-async function transcribeToVtt(audioPath: string, workDir: string): Promise<string | null> {
+// Both whisper flavors default to "every core", which starves PostgreSQL and the
+// two neighbour apps sharing this box for as long as a job runs.
+const WHISPER_THREADS = 2;
+// OpenMP/torch honour this without a CLI flag — safe for every flavor and every
+// release, whereas an unknown ARGUMENT makes the CLI exit non-zero and would
+// turn every job into 转写失败.
+const THREAD_ENV: Record<string, string> = {
+  OMP_NUM_THREADS: String(WHISPER_THREADS),
+  MKL_NUM_THREADS: String(WHISPER_THREADS),
+};
+
+type Transcription = { vtt: string } | { error: string };
+
+function transcribeError(outcome: RunOutcome): string {
+  return outcome === 'timeout' ? 'whisper 转写超时' : 'whisper 转写失败';
+}
+
+async function transcribeToVtt(audioPath: string, workDir: string): Promise<Transcription> {
   const w = await detectWhisper();
-  if (!w) return null;
+  if (!w) return { error: 'whisper 不可用' };
   const outBase = path.join(workDir, 'out');
   if (w.flavor === 'cpp') {
     const model = resolveCppModel();
-    if (!model) return null;
-    const ok = await run(
+    if (!model) return { error: 'whisper 模型文件不存在' };
+    // `-t` is whisper.cpp's own thread flag; openai-whisper's flag set differs,
+    // so the cap there rides on THREAD_ENV alone.
+    const outcome = await run(
       w.bin,
-      ['-m', model, '-f', audioPath, '-l', 'auto', '-ovtt', '-of', outBase],
+      ['-m', model, '-t', String(WHISPER_THREADS), '-f', audioPath, '-l', 'auto', '-ovtt', '-of', outBase],
       WHISPER_TIMEOUT_MS,
+      THREAD_ENV,
     );
-    if (!ok) return null;
-    return fsp.readFile(`${outBase}.vtt`, 'utf8').catch(() => null);
+    if (outcome !== 'ok') return { error: transcribeError(outcome) };
+    const vtt = await fsp.readFile(`${outBase}.vtt`, 'utf8').catch(() => null);
+    return vtt === null ? { error: 'whisper 未输出字幕文件' } : { vtt };
   }
   // openai-whisper writes <audio-basename>.vtt into --output_dir. WHISPER_MODEL
   // here is a model NAME (turbo/small/base…), not a ggml path.
   const raw = process.env.WHISPER_MODEL?.trim();
   const model = raw && !raw.includes('/') ? raw : 'base';
-  const ok = await run(
+  const outcome = await run(
     w.bin,
     [
       audioPath,
@@ -233,37 +281,227 @@ async function transcribeToVtt(audioPath: string, workDir: string): Promise<stri
       '--verbose', 'False',
     ],
     WHISPER_TIMEOUT_MS,
+    THREAD_ENV,
   );
-  if (!ok) return null;
+  if (outcome !== 'ok') return { error: transcribeError(outcome) };
   const vttPath = path.join(
     workDir,
     `${path.basename(audioPath, path.extname(audioPath))}.vtt`,
   );
-  return fsp.readFile(vttPath, 'utf8').catch(() => null);
+  const vtt = await fsp.readFile(vttPath, 'utf8').catch(() => null);
+  return vtt === null ? { error: 'whisper 未输出字幕文件' } : { vtt };
+}
+
+// ── admission control (in-process FIFO, same shape as zones/office-preview) ──
+
+const CONCURRENCY = Math.max(1, env.SUBTITLE_CONCURRENCY);
+
+type Job = { videoId: string; done: () => void };
+
+const queue: Job[] = [];
+const queued = new Set<string>();
+let running = 0;
+
+function pump(): void {
+  while (running < CONCURRENCY) {
+    const job = queue.shift();
+    if (!job) return;
+    running++;
+    // runSubtitleJob never rejects, but the .catch keeps a rejecting job from
+    // skipping the finally and wedging the queue at running === CONCURRENCY.
+    runSubtitleJob(job.videoId)
+      .catch(() => undefined)
+      .finally(() => {
+        queued.delete(job.videoId);
+        running--;
+        job.done();
+        // Yield so a burst of publishes cannot starve the event loop.
+        setImmediate(pump);
+      });
+  }
+}
+
+/** Queued + running job count (diagnostics / tests). */
+export function subtitleQueueSize(): number {
+  return queue.length + running;
+}
+
+// ── stale-claim recovery ────────────────────────────────────────────────────
+//
+// The row is claimed in the DB at ENQUEUE time, so a process that dies mid-job
+// leaves it at 'processing' forever — and the retry endpoint refuses exactly
+// that status, so 重试 answers {status:'processing'} for good. This is the
+// COMMON case, not an exotic one: the deploy sequence is build + `systemctl
+// restart`, and the unit's TimeoutStopSec/KillMode SIGKILL a running whisper.
+// The sweep resets those orphans to 'failed', which IS a state 重试 accepts.
+// Deliberately NOT re-queued: a restart must not fire a whisper storm nobody
+// asked for.
+//
+// `subtitleAt` is therefore a LEASE, not merely a start stamp: it is written at
+// claim time and RENEWED while this process holds the row (queued OR running),
+// so an expired lease means the holder is gone. That is what lets the cutoff be
+// minutes instead of hours. Without a lease it would have to exceed the longest
+// a live job could legitimately sit silent — 100 min of hard tool timeouts plus
+// however long it waited behind SUBTITLE_CONCURRENCY — and the 200 min that came
+// out of that arithmetic meant a row stranded seconds ago by a deploy was never
+// old enough to rescue.
+const LEASE_RENEW_MS = 2 * 60_000;
+// Five missed renewals — slack for a stalled event loop or a brief DB outage,
+// still ~15× shorter than one whisper timeout.
+const STALE_PROCESSING_MS = 5 * LEASE_RENEW_MS;
+const STALE_SWEEP_LIMIT = 50;
+const STALE_ERROR = '字幕任务已中断（服务重启或超时），可重新生成';
+// Between sweeps the call is free, so this only bounds how long a stranded row
+// waits: the first sweep after boot runs before the row is old enough to be
+// swept, and it is the NEXT one that rescues it.
+const STALE_SWEEP_TTL_MS = 10 * 60_000;
+
+let leaseTimer: ReturnType<typeof setInterval> | null = null;
+
+/** Renew every lease this process still holds — one statement for all of them. */
+function renewLeases(): void {
+  const ids = [...queued];
+  if (ids.length === 0) {
+    // Nothing held any more; stop ticking until the next enqueue.
+    if (leaseTimer) clearInterval(leaseTimer);
+    leaseTimer = null;
+    return;
+  }
+  void prisma.video
+    .updateMany({
+      where: { id: { in: ids }, subtitleStatus: 'processing' },
+      data: { subtitleAt: new Date() },
+    })
+    // Best-effort: a missed renewal only risks a sweep, and `queued` below is
+    // the local backstop for exactly that (a DB blip cannot orphan our own job).
+    .catch(() => undefined);
+}
+
+function ensureLeaseTimer(): void {
+  if (leaseTimer) return;
+  const timer = setInterval(renewLeases, LEASE_RENEW_MS);
+  timer.unref?.(); // a heartbeat must never hold the process open
+  leaseTimer = timer;
+}
+
+let sweepInFlight: Promise<number> | null = null;
+let lastSweepAt = 0;
+
+/**
+ * Reset subtitle rows stranded at 'processing'. De-duplicated while a sweep is
+ * in flight and rate-limited to one run per STALE_SWEEP_TTL_MS — between runs it
+ * returns an already-resolved promise, so the request path pays nothing. Never
+ * throws.
+ *
+ * Deliberately NOT memoized for the life of the process: the rows a deploy
+ * strands are seconds old when the first publish/retry after boot arrives, so a
+ * one-shot sweep is guaranteed to find nothing — and would then block every
+ * later attempt, which is how this feature came to rescue nothing at all.
+ * @returns rows reset (0 when the call was skipped).
+ */
+export function sweepStaleSubtitles(): Promise<number> {
+  if (sweepInFlight) return sweepInFlight;
+  if (Date.now() - lastSweepAt < STALE_SWEEP_TTL_MS) return Promise.resolve(0);
+  // .catch here as well as inside: a rejection reaching the detached `void`
+  // call would be an unhandled rejection, i.e. a crash.
+  const sweep = runStaleSweep()
+    .catch(() => 0)
+    .finally(() => {
+      // Stamped on FINISH, so a slow sweep cannot immediately re-run itself.
+      lastSweepAt = Date.now();
+      sweepInFlight = null;
+    });
+  sweepInFlight = sweep;
+  return sweep;
+}
+
+async function runStaleSweep(): Promise<number> {
+  const cutoff = new Date(Date.now() - STALE_PROCESSING_MS);
+  // subtitleAt is the lease (claim + renewals); rows claimed by an older build
+  // have none, so fall back to the row's own updatedAt — which can only be
+  // NEWER than the claim, i.e. the fallback errs toward leaving a job alone.
+  const stale = {
+    isShort: true,
+    subtitleStatus: 'processing' as const,
+    OR: [{ subtitleAt: { lt: cutoff } }, { subtitleAt: null, updatedAt: { lt: cutoff } }],
+  };
+  try {
+    const rows = await prisma.video.findMany({
+      where: stale,
+      orderBy: { updatedAt: 'asc' },
+      take: STALE_SWEEP_LIMIT,
+      select: { id: true },
+    });
+    let reset = 0;
+    for (const r of rows) {
+      // We hold it (waiting its turn behind the FIFO, or running). Its lease
+      // should already be fresh; this also covers the case where the renewals
+      // themselves failed, so a DB blip can never orphan our own live job.
+      if (queued.has(r.id)) continue;
+      // Guarded claim (the site-wide updateMany pattern): count 0 means another
+      // process swept it first, or the job finished while we were looking. It
+      // is also what makes a repeat sweep a no-op — a row we already reset no
+      // longer matches `subtitleStatus: 'processing'`.
+      const done = await prisma.video.updateMany({
+        where: { id: r.id, ...stale },
+        data: { subtitleStatus: 'failed', subtitleError: STALE_ERROR },
+      });
+      reset += done.count;
+    }
+    return reset;
+  } catch {
+    return 0; // best-effort — a sweep failure must never reach a request
+  }
 }
 
 /**
  * Generate 中/EN subtitle tracks for a short. Fire-and-forget from the publish
  * route; also triggered on demand. Claims the row atomically (status →
- * processing) so concurrent triggers never double-run. NEVER throws.
+ * processing) so concurrent triggers never double-run, then queues the actual
+ * ASR behind the FIFO. The returned promise settles when the job reaches a
+ * terminal state (immediately when there was nothing to claim). NEVER throws.
  */
 export async function generateShortSubtitles(videoId: string): Promise<void> {
+  if (!videoId) return;
+  // Detached: a publish must never wait on the sweep.
+  void sweepStaleSubtitles();
+  if (queued.has(videoId)) return; // already waiting/running in this process
   try {
     const claimed = await prisma.video.updateMany({
       where: { id: videoId, isShort: true, deletedAt: null, subtitleStatus: { not: 'processing' } },
-      data: { subtitleStatus: 'processing', subtitleError: null },
+      // subtitleAt doubles as the lease: it is the only column recording when
+      // 'processing' started, and renewLeases keeps it current for as long as
+      // we hold the row. An expired one is what the stale sweep acts on.
+      data: { subtitleStatus: 'processing', subtitleError: null, subtitleAt: new Date() },
     });
-    if (claimed.count === 0) return;
+    if (claimed.count === 0) return; // another trigger (or another process) owns it
+  } catch {
+    return; // DB unreachable — best-effort by contract
+  }
+  if (queued.has(videoId)) return; // enqueued in this process while we awaited the claim
+  queued.add(videoId);
+  // Renew from ENQUEUE, not from job start: a job waiting behind
+  // SUBTITLE_CONCURRENCY holds a claim just as much as a running one, and its
+  // lease must not expire while it queues.
+  ensureLeaseTimer();
+  await new Promise<void>((resolve) => {
+    queue.push({ videoId, done: () => resolve() });
+    pump();
+  });
+}
 
-    const fail = async (reason: string) => {
-      await prisma.video
-        .updateMany({
-          where: { id: videoId, subtitleStatus: 'processing' },
-          data: { subtitleStatus: 'failed', subtitleError: reason.slice(0, 500) },
-        })
-        .catch(() => undefined);
-    };
+/** The queued half: the real work for an already-claimed row. Never throws. */
+async function runSubtitleJob(videoId: string): Promise<void> {
+  const fail = async (reason: string) => {
+    await prisma.video
+      .updateMany({
+        where: { id: videoId, subtitleStatus: 'processing' },
+        data: { subtitleStatus: 'failed', subtitleError: reason.slice(0, 500) },
+      })
+      .catch(() => undefined);
+  };
 
+  try {
     const video = await prisma.video.findUnique({
       where: { id: videoId },
       select: { videoKey: true },
@@ -281,22 +519,22 @@ export async function generateShortSubtitles(videoId: string): Promise<void> {
     const workDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'shorts-sub-'));
     try {
       const wav = path.join(workDir, 'audio.wav');
-      const audioOk = await run(
+      const audio = await run(
         'ffmpeg',
         ['-y', '-i', src, '-vn', '-ac', '1', '-ar', '16000', wav],
         AUDIO_TIMEOUT_MS,
       );
-      if (!audioOk || !fs.existsSync(wav)) {
-        await fail('音频提取失败（需要 ffmpeg）');
+      if (audio !== 'ok' || !fs.existsSync(wav)) {
+        await fail(audio === 'timeout' ? '音频提取超时' : '音频提取失败（需要 ffmpeg）');
         return;
       }
 
-      const rawVtt = await transcribeToVtt(wav, workDir);
-      if (!rawVtt) {
-        await fail('whisper 转写失败');
+      const transcription = await transcribeToVtt(wav, workDir);
+      if ('error' in transcription) {
+        await fail(transcription.error);
         return;
       }
-      const cues = parseVtt(rawVtt);
+      const cues = parseVtt(transcription.vtt);
       if (cues.length === 0) {
         await fail('未识别到语音内容');
         return;

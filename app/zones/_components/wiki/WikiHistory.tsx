@@ -9,15 +9,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useLocale, useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { ArrowLeft, GitCommitHorizontal, Loader2, RotateCcw } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { pushToast } from '@/components/Toaster';
 import { StaggerGrid } from '@/components/motion';
-import { relativeTime } from '@/lib/i18n-date';
 import { zoneWikiHref } from '@/lib/zones/shared';
 import type { WikiRevisionView } from '@/lib/zones/types';
+import { currentLoginHref } from '@/lib/auth/callback-path';
+import { RelTime } from '../RelTime';
 
 export interface WikiHistoryPage {
   id: string;
@@ -46,7 +47,6 @@ const PANEL_PRE =
 
 export function WikiHistory({ zoneSlug, page, revisions, canWiki, initialRevisionId = null }: WikiHistoryProps) {
   const t = useTranslations('zones');
-  const locale = useLocale();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -77,7 +77,7 @@ export function WikiHistory({ zoneSlug, page, revisions, canWiki, initialRevisio
         const res = await fetch(`/api/zones/${zoneSlug}/wiki/${page.id}/revisions/${id}`);
         if (res.status === 401) {
           pushToast('error', t('wiki_login_required'));
-          router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+          router.push(currentLoginHref());
           return;
         }
         const data = (await res.json().catch(() => ({}))) as { revision?: WikiRevisionView; reason?: string };
@@ -113,7 +113,7 @@ export function WikiHistory({ zoneSlug, page, revisions, canWiki, initialRevisio
       });
       if (res.status === 401) {
         pushToast('error', t('wiki_login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = (await res.json().catch(() => ({}))) as { error?: string; reason?: string };
@@ -206,9 +206,7 @@ export function WikiHistory({ zoneSlug, page, revisions, canWiki, initialRevisio
                       <span className="truncate">{r.editor.displayName}</span>
                       <DeptTag department={r.editor.department} lab={r.editor.lab} />
                       <span>·</span>
-                      <time dateTime={r.createdAt} className="font-mono tabular-nums">
-                        {relativeTime(r.createdAt, locale)}
-                      </time>
+                      <RelTime at={r.createdAt} className="font-mono tabular-nums" />
                     </span>
                   </span>
                 </button>
@@ -228,14 +226,14 @@ export function WikiHistory({ zoneSlug, page, revisions, canWiki, initialRevisio
                 <ComparePanel
                   label={t('wiki_revision_current')}
                   title={page.title}
-                  time={relativeTime(page.updatedAt, locale)}
+                  at={page.updatedAt}
                   body={page.bodyMd}
                   loading={false}
                 />
                 <ComparePanel
                   label={t('wiki_revision_selected')}
                   title={selected.title}
-                  time={relativeTime(selected.createdAt, locale)}
+                  at={selected.createdAt}
                   number={selected.number}
                   body={selectedBody?.bodyMd ?? ''}
                   loading={!selectedBody && loadingId === selected.id}
@@ -252,14 +250,14 @@ export function WikiHistory({ zoneSlug, page, revisions, canWiki, initialRevisio
 function ComparePanel({
   label,
   title,
-  time,
+  at,
   number,
   body,
   loading,
 }: {
   label: string;
   title: string;
-  time: string;
+  at: string;
   number?: number;
   body: string;
   loading: boolean;
@@ -273,7 +271,7 @@ function ComparePanel({
           {number != null && <span className="font-mono tabular-nums">#{number}</span>}
         </div>
         <div className="mt-0.5 truncate text-sm font-medium">{title}</div>
-        <div className="font-mono text-[11px] tabular-nums text-muted">{time}</div>
+        <RelTime at={at} className="block font-mono text-[11px] tabular-nums text-muted" />
       </header>
       {loading ? (
         <div className="space-y-2 p-4">

@@ -64,6 +64,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         status: true,
         parentId: true,
         replyCount: true,
+        likeCount: true,
         createdAt: true,
         author: AUTHOR_IDENTITY_SELECT,
       },
@@ -131,6 +132,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     ok: true,
     comment: {
       ...comment,
+      // A comment you just wrote cannot already be liked by you.
+      likedByMe: false,
       author: toPublicAuthor(comment.author, can(session.user, 'identity')),
     },
   });

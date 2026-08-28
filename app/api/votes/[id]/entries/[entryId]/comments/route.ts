@@ -63,6 +63,17 @@ export async function GET(
       include: { author: AUTHOR_IDENTITY_SELECT },
     })
   ).reverse();
+  // One batched read for the viewer's likes over this page of comments.
+  const likedIds = rows.length
+    ? new Set(
+        (
+          await prisma.voteCommentLike.findMany({
+            where: { userId: session.user.id, commentId: { in: rows.map((c) => c.id) } },
+            select: { commentId: true },
+          })
+        ).map((r) => r.commentId),
+      )
+    : new Set<string>();
   const canSeeIdentity = can(session.user, 'identity');
   return NextResponse.json({
     ok: true,
@@ -73,6 +84,8 @@ export async function GET(
       author: toPublicAuthor(c.author, canSeeIdentity),
       isMine: c.authorId === session.user.id,
       canDelete: c.authorId === session.user.id || isManager,
+      likeCount: c.likeCount,
+      likedByMe: likedIds.has(c.id),
     })),
   });
 }
@@ -137,6 +150,9 @@ export async function POST(
       author: toPublicAuthor(created.author, can(session.user, 'identity')),
       isMine: true,
       canDelete: true,
+      // A comment you just wrote cannot already be liked by you.
+      likeCount: 0,
+      likedByMe: false,
     },
   });
 }

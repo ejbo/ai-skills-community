@@ -4,10 +4,11 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { isLLMConfigured } from '@/lib/llm';
 import { SkillForm } from '@/app/skills/_components/SkillForm';
+import { loginHref } from '@/lib/auth/callback-path';
 
 export default async function NewSkillPage() {
   const session = await auth();
-  if (!session?.user) redirect('/auth/login?callbackUrl=/skills/new');
+  if (!session?.user) redirect(loginHref('/skills/new'));
 
   const categories = await prisma.category.findMany({
     orderBy: { name: 'asc' },

@@ -40,6 +40,8 @@ export default async function FeedbackDetailPage({
     bodyMd: c.bodyMd,
     status: c.status,
     replyCount: c.replyCount,
+    likeCount: c.likeCount,
+    likedByMe: feedback.likedComments.has(c.id),
     createdAt: c.createdAt,
     author: toPublicAuthor(c.author, canSeeIdentity),
     replies: c.replies.map((r) => ({
@@ -47,6 +49,8 @@ export default async function FeedbackDetailPage({
       bodyMd: r.bodyMd,
       status: r.status,
       replyCount: r.replyCount,
+      likeCount: r.likeCount,
+      likedByMe: feedback.likedComments.has(r.id),
       createdAt: r.createdAt,
       author: toPublicAuthor(r.author, canSeeIdentity),
     })),

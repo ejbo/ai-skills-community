@@ -8,6 +8,12 @@
 // 明确的产品决定（用户拍板）：短视频上传 NO caps — no duration limit, no file-size
 // limit, no daily byte budget. Do not reintroduce them. The stream saver still
 // needs a number, so the "cap" is effectively-infinite.
+//
+// The deploy box's volume-safety ceiling is NOT expressed here: the route
+// clamps with Math.min(…, MAX_UPLOAD_SAFETY_BYTES) (lib/uploads/disk-space.ts),
+// exactly like the 投票 upload routes. Keeping it out of this constant is the
+// point — a stability ceiling and a product cap must not be the same number,
+// and the ceiling is env-tunable (MAX_UPLOAD_MB) while this decision is not.
 export const MAX_SHORT_VIDEO_BYTES = Number.MAX_SAFE_INTEGER;
 /** Per-file cap for the auto-captured poster frame (never hit — ~100KB JPEGs). */
 export const MAX_SHORT_POSTER_BYTES = 10 * 1024 * 1024; // 10 MB

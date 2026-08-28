@@ -53,6 +53,7 @@ import { DateRangePicker } from './_components/DateRangePicker';
 import { EventTimeAgenda } from './_components/EventTime';
 import { KIND_META } from './_components/badges';
 import { eventLocalDayKey } from '@/lib/events/time';
+import { loginHref } from '@/lib/auth/callback-path';
 
 export const dynamic = 'force-dynamic';
 
@@ -233,7 +234,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
   const allKindCount = Object.values(kindCounts).reduce((a, b) => a + b, 0);
   const publishHref = session?.user
     ? '/events/new'
-    : `/auth/login?callbackUrl=${encodeURIComponent('/events/new')}`;
+    : loginHref('/events/new');
 
   return (
     <div className="container py-8">

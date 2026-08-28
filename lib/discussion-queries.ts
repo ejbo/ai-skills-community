@@ -627,21 +627,42 @@ async function topicParticipants(
   const map = new Map<string, ParticipantIdentity[]>();
   if (topicIds.length === 0) return map;
 
-  // Per-topic budget (indexed on [topicId, createdAt]) so one hot topic can't
-  // starve the quieter topics on the page; then one shared identity fetch.
-  const perTopicRows = await Promise.all(
-    topicIds.map((id) =>
-      prisma.discussionReply.findMany({
-        where: { topicId: id, status: 'visible' },
-        orderBy: { createdAt: 'desc' },
-        take: 12,
-        select: { topicId: true, authorId: true },
-      }),
-    ),
-  );
+  // ONE round trip, with the per-topic row budget still enforced IN SQL. This
+  // used to be Promise.all(topicIds.map(…)) — one query PER ROW, so a page of
+  // up to 50 topics fired 50 concurrent queries and could drain the Prisma pool
+  // on its own (P2024 surfaced as a raw 500). Collapsing it to a plain
+  // `topicId: { in: … }` findMany is not enough: an IN-query has no per-topic
+  // LIMIT, so it reads and ships every visible reply of every topic on the page
+  // — unbounded, and growing with the forum.
+  //
+  // The LATERAL is literally the old per-topic query, run once per id inside a
+  // single statement: same index, same ORDER BY, same LIMIT 12, and the rows
+  // even come back in the old `perTopicRows.flat()` order. EXPLAIN is
+  // `Nested Loop → Limit → Index Scan Backward using
+  // DiscussionReply_topicId_createdAt_idx`, i.e. it stops after 12 index
+  // entries per topic instead of sorting the whole match set. (A
+  // `row_number() … <= 12` window is the other way to write this, but it only
+  // stops early on PostgreSQL 15+, where the planner turns the outer filter
+  // into a WindowAgg Run Condition; below that it materialises every matching
+  // reply first. LATERAL is bounded on every version.)
+  // `unnest($1::text[])` keeps the ids one bound parameter — never
+  // interpolated, and one prepared-statement shape whatever the page size.
+  const replies = await prisma.$queryRaw<{ topicId: string; authorId: string }[]>`
+    SELECT r."topicId", r."authorId"
+    FROM unnest(${topicIds}::text[]) AS t(id)
+    CROSS JOIN LATERAL (
+      SELECT "topicId", "authorId"
+      FROM "DiscussionReply"
+      WHERE "topicId" = t.id AND "status" = 'visible'
+      ORDER BY "createdAt" DESC
+      LIMIT 12
+    ) r`;
 
+  // Unchanged: the 12-row window is the budget this scan spends, so a topic
+  // whose newest 12 replies come from 2 people yields 2 participants — it must
+  // NOT dig past the window to find a 3rd.
   const perTopic = new Map<string, string[]>();
-  for (const r of perTopicRows.flat()) {
+  for (const r of replies) {
     const list = perTopic.get(r.topicId) ?? [];
     if (list.length < 4 && !list.includes(r.authorId)) list.push(r.authorId);
     perTopic.set(r.topicId, list);
@@ -709,6 +730,7 @@ export async function getTopicDetail(id: string, viewerId?: string | null) {
           bodyMd: true,
           status: true,
           replyCount: true,
+          likeCount: true,
           createdAt: true,
           author: AUTHOR_SELECT,
           replies: {
@@ -719,6 +741,7 @@ export async function getTopicDetail(id: string, viewerId?: string | null) {
               bodyMd: true,
               status: true,
               replyCount: true,
+              likeCount: true,
               createdAt: true,
               author: AUTHOR_SELECT,
             },
@@ -729,11 +752,25 @@ export async function getTopicDetail(id: string, viewerId?: string | null) {
   });
   if (!topic) return null;
 
-  const [upvoted, tags] = await Promise.all([
+  // One batched read for the viewer's reply likes — a per-row `likes: { where }`
+  // would issue a subquery per reply on a 300-reply topic.
+  const replyIds = topic.replies.flatMap((r) => [r.id, ...r.replies.map((c) => c.id)]);
+  const [upvoted, tags, likedReplies] = await Promise.all([
     viewerUpvoteSet(viewerId, [topic.id]),
     resolveTagViews(topic.categories),
+    viewerReplyLikeSet(viewerId, replyIds),
   ]);
-  return { ...topic, tags, upvotedByMe: upvoted.has(topic.id) };
+  return { ...topic, tags, upvotedByMe: upvoted.has(topic.id), likedReplies };
+}
+
+/** Ids among `replyIds` the viewer has liked. Empty for anonymous viewers. */
+async function viewerReplyLikeSet(viewerId: string | null | undefined, replyIds: string[]) {
+  if (!viewerId || replyIds.length === 0) return new Set<string>();
+  const rows = await prisma.discussionReplyLike.findMany({
+    where: { userId: viewerId, replyId: { in: replyIds } },
+    select: { replyId: true },
+  });
+  return new Set(rows.map((r) => r.replyId));
 }
 
 async function viewerUpvoteSet(viewerId: string | null | undefined, topicIds: string[]) {

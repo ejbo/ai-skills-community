@@ -94,6 +94,7 @@ export async function getFeedbackDetail(id: string, viewerId?: string | null) {
           bodyMd: true,
           status: true,
           replyCount: true,
+          likeCount: true,
           createdAt: true,
           author: AUTHOR_SELECT,
           replies: {
@@ -104,6 +105,7 @@ export async function getFeedbackDetail(id: string, viewerId?: string | null) {
               bodyMd: true,
               status: true,
               replyCount: true,
+              likeCount: true,
               createdAt: true,
               author: AUTHOR_SELECT,
             },
@@ -114,6 +116,25 @@ export async function getFeedbackDetail(id: string, viewerId?: string | null) {
   });
   if (!feedback) return null;
 
-  const upvoted = await viewerUpvoteSet(viewerId, [feedback.id]);
-  return { ...feedback, upvotedByMe: upvoted.has(feedback.id) };
+  // One batched read for the viewer's comment likes — a per-row `likes: { where }`
+  // would issue a subquery per comment on a 300-comment thread.
+  const commentIds = feedback.comments.flatMap((c) => [c.id, ...c.replies.map((r) => r.id)]);
+  const [upvoted, likedComments] = await Promise.all([
+    viewerUpvoteSet(viewerId, [feedback.id]),
+    viewerCommentLikeSet(viewerId, commentIds),
+  ]);
+  return { ...feedback, upvotedByMe: upvoted.has(feedback.id), likedComments };
+}
+
+/** Ids among `commentIds` the viewer has liked. Empty for anonymous viewers. */
+async function viewerCommentLikeSet(
+  viewerId: string | null | undefined,
+  commentIds: string[],
+): Promise<Set<string>> {
+  if (!viewerId || commentIds.length === 0) return new Set();
+  const rows = await prisma.feedbackCommentLike.findMany({
+    where: { userId: viewerId, commentId: { in: commentIds } },
+    select: { commentId: true },
+  });
+  return new Set(rows.map((r) => r.commentId));
 }

@@ -142,6 +142,32 @@ export function statImageFile(key: string): ImageFileStat | null {
   }
 }
 
+/**
+ * Async variant — a busy feed page pulls dozens of images through the serving
+ * route, and every synchronous statSync there blocks the single JS thread.
+ * Keep the sync export: /api/stickers/add validates a key with it off the hot path.
+ */
+export async function statImageFileAsync(key: string): Promise<ImageFileStat | null> {
+  const full = uploadFileAbsPath(key);
+  if (!full) return null;
+  try {
+    const st = await fsp.stat(full);
+    if (!st.isFile()) return null;
+    return { size: st.size, contentType: contentTypeForKey(key) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * nginx internal URI for X-Accel-Redirect offload (paired with
+ * `location /_uploads/`, aliased to this module's UPLOAD_ROOT). Pure string
+ * work — deliberately no @/lib/env import here (see the header note).
+ */
+export function uploadXAccelUri(key: string): string {
+  return `/_uploads/${key.split('/').map(encodeURIComponent).join('/')}`;
+}
+
 /** A Node read stream for a stored image file (whole file; images don't need Range). */
 export function openImageFile(key: string): fs.ReadStream | null {
   const full = uploadFileAbsPath(key);

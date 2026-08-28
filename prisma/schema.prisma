@@ -103,18 +103,20 @@ model User {
   createdPacks           SkillPack[]             @relation("CreatedPacks")
 
   // ── Feedback back-relations (virtual; no SQL columns on User) ──
-  feedbacks        Feedback[]
-  feedbackUpvotes  FeedbackUpvote[]
-  feedbackComments FeedbackComment[]
+  feedbacks            Feedback[]
+  feedbackUpvotes      FeedbackUpvote[]
+  feedbackComments     FeedbackComment[]
+  feedbackCommentLikes FeedbackCommentLike[]
 
   // ── Discussion back-relations (virtual; no SQL columns on User) ──
-  posts             Post[]             @relation("AuthoredPosts")
-  postLikes         PostLike[]
-  postComments      PostComment[]
-  postCommentLikes  PostCommentLike[]
-  discussionTopics  DiscussionTopic[]
-  discussionUpvotes DiscussionUpvote[]
-  discussionReplies DiscussionReply[]
+  posts                Post[]                @relation("AuthoredPosts")
+  postLikes            PostLike[]
+  postComments         PostComment[]
+  postCommentLikes     PostCommentLike[]
+  discussionTopics     DiscussionTopic[]
+  discussionUpvotes    DiscussionUpvote[]
+  discussionReplies    DiscussionReply[]
+  discussionReplyLikes DiscussionReplyLike[]
 
   // ── Events back-relations (virtual; no SQL columns on User) ──
   authoredEvents   Event[]         @relation("AuthoredEvents")
@@ -132,6 +134,8 @@ model User {
   libraryRatings         LibraryRating[]
   libraryNoteReplies     LibraryNoteReply[]
   libraryNoteLikes       LibraryNoteLike[]
+  libraryCommentLikes    LibraryCommentLike[]
+  libraryNoteReplyLikes  LibraryNoteReplyLike[]
   libraryAccessRequests  LibraryAccessRequest[] @relation("LibraryAccessRequester")
   libraryAccessDecisions LibraryAccessRequest[] @relation("LibraryAccessDecider")
 
@@ -145,16 +149,18 @@ model User {
   pollVotes         PollVote[]
 
   // ── 投票活动 back-relations (virtual; no SQL columns on User) ──
-  createdVoteActivities VoteActivity[] @relation("CreatedVoteActivities")
+  createdVoteActivities VoteActivity[]    @relation("CreatedVoteActivities")
   voteBallots           VoteBallot[]
-  voteSubmissions       VoteEntry[]    @relation("VoteSubmissions")
-  voteComments          VoteComment[]  @relation("VoteComments")
+  voteSubmissions       VoteEntry[]       @relation("VoteSubmissions")
+  voteComments          VoteComment[]     @relation("VoteComments")
+  voteCommentLikes      VoteCommentLike[]
 
   // ── 技术专区 back-relations (virtual; no SQL columns on User) ──
   ownedZones            Zone[]                @relation("OwnedZones")
   zoneMemberships       ZoneMember[]          @relation("ZoneMemberships")
   zoneInvitesSent       ZoneMember[]          @relation("ZoneInvitesSent")
   zonePosts             ZonePost[]            @relation("AuthoredZonePosts")
+  zonePostsEdited       ZonePost[]            @relation("EditedZonePosts")
   zonePostCoauthorships ZonePostAuthor[]
   zonePostLikes         ZonePostLike[]
   zonePostBookmarks     ZonePostBookmark[]
@@ -621,15 +627,32 @@ model FeedbackComment {
   bodyMd     String
   status     FeedbackCommentStatus @default(visible)
   replyCount Int                   @default(0)
+  likeCount  Int                   @default(0)
   createdAt  DateTime              @default(now())
 
-  feedback Feedback          @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
-  author   User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  parent   FeedbackComment?  @relation("FeedbackCommentThread", fields: [parentId], references: [id], onDelete: Cascade)
-  replies  FeedbackComment[] @relation("FeedbackCommentThread")
+  feedback Feedback              @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  author   User                  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent   FeedbackComment?      @relation("FeedbackCommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  FeedbackComment[]     @relation("FeedbackCommentThread")
+  likes    FeedbackCommentLike[]
 
   @@index([feedbackId, createdAt])
   @@index([parentId])
+}
+
+/// 点赞 on a 意见反馈 comment or reply. One row per user per comment; the
+/// denormalized `FeedbackComment.likeCount` moves with it inside the same
+/// guarded transaction (see the comment-like route contract).
+model FeedbackCommentLike {
+  userId    String
+  commentId String
+  createdAt DateTime @default(now())
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment FeedbackComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@id([userId, commentId])
+  @@index([commentId])
 }
 
 // ─── Social ──────────────────────────────────────────────────────────────
@@ -1209,26 +1232,26 @@ model DiscussionTag {
 }
 
 model DiscussionTopic {
-  id             String               @id @default(cuid())
+  id             String   @id @default(cuid())
   authorId       String
   title          String
-  bodyMd         String               @default("")
+  bodyMd         String   @default("")
   // Primary主题 — always categories[0], i.e. the first OFFICIAL (侧栏) tag.
   // Kept as its own column so [category, lastActivityAt] stays a usable index.
-  category       String               @default("general")
+  category       String   @default("general")
   // DiscussionTag slugs in picked order: 1..3 official (侧栏分类) first, then
   // 0..3 member-created ones. Slugs, not ids — renaming a tag never rewrites
   // topics (same contract as LibraryDoc.categories).
-  categories     String[]             @default([])
-  pinned         Boolean              @default(false)
-  locked         Boolean              @default(false)
-  upvoteCount    Int                  @default(0)
-  replyCount     Int                  @default(0)
-  viewCount      Int                  @default(0)
+  categories     String[] @default([])
+  pinned         Boolean  @default(false)
+  locked         Boolean  @default(false)
+  upvoteCount    Int      @default(0)
+  replyCount     Int      @default(0)
+  viewCount      Int      @default(0)
   // Bumped on every reply — drives the default "最新回复" ordering.
-  lastActivityAt DateTime             @default(now())
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  lastActivityAt DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   author  User                  @relation(fields: [authorId], references: [id], onDelete: Cascade)
   upvotes DiscussionUpvote[]
@@ -1301,15 +1324,30 @@ model DiscussionReply {
   bodyMd     String
   status     DiscussionReplyStatus @default(visible)
   replyCount Int                   @default(0)
+  likeCount  Int                   @default(0)
   createdAt  DateTime              @default(now())
 
-  topic   DiscussionTopic   @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  author  User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  parent  DiscussionReply?  @relation("DiscussionReplyThread", fields: [parentId], references: [id], onDelete: Cascade)
-  replies DiscussionReply[] @relation("DiscussionReplyThread")
+  topic   DiscussionTopic       @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  author  User                  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent  DiscussionReply?      @relation("DiscussionReplyThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies DiscussionReply[]     @relation("DiscussionReplyThread")
+  likes   DiscussionReplyLike[]
 
   @@index([topicId, createdAt])
   @@index([parentId])
+}
+
+/// 点赞 on a forum reply (both levels of the flat thread).
+model DiscussionReplyLike {
+  userId    String
+  replyId   String
+  createdAt DateTime @default(now())
+
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reply DiscussionReply @relation(fields: [replyId], references: [id], onDelete: Cascade)
+
+  @@id([userId, replyId])
+  @@index([replyId])
 }
 
 // Per-user notification settings: per-category in-app toggle + "also email".
@@ -1681,16 +1719,31 @@ model LibraryComment {
   bodyMd     String
   status     LibraryCommentStatus @default(visible)
   replyCount Int                  @default(0)
+  likeCount  Int                  @default(0)
   createdAt  DateTime             @default(now())
 
-  doc     LibraryDoc       @relation(fields: [docId], references: [id], onDelete: Cascade)
-  author  User             @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  parent  LibraryComment?  @relation("LibraryCommentThread", fields: [parentId], references: [id], onDelete: Cascade)
-  replies LibraryComment[] @relation("LibraryCommentThread")
+  doc     LibraryDoc           @relation(fields: [docId], references: [id], onDelete: Cascade)
+  author  User                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent  LibraryComment?      @relation("LibraryCommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies LibraryComment[]     @relation("LibraryCommentThread")
+  likes   LibraryCommentLike[]
 
   @@index([docId, createdAt])
   @@index([parentId])
   @@index([authorId, createdAt])
+}
+
+/// 点赞 on a 知识库 document comment or reply.
+model LibraryCommentLike {
+  userId    String
+  commentId String
+  createdAt DateTime @default(now())
+
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment LibraryComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@id([userId, commentId])
+  @@index([commentId])
 }
 
 // 1–5 star rating, one per user per doc; avgRating/ratingCount denormalized on the doc.
@@ -1755,16 +1808,32 @@ model LibraryNoteReply {
   bodyMd      String
   status      LibraryCommentStatus @default(visible)
   replyCount  Int                  @default(0)
+  likeCount   Int                  @default(0)
   createdAt   DateTime             @default(now())
 
-  highlight LibraryHighlight   @relation(fields: [highlightId], references: [id], onDelete: Cascade)
-  author    User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  parent    LibraryNoteReply?  @relation("LibraryNoteThread", fields: [parentId], references: [id], onDelete: Cascade)
-  children  LibraryNoteReply[] @relation("LibraryNoteThread")
+  highlight LibraryHighlight       @relation(fields: [highlightId], references: [id], onDelete: Cascade)
+  author    User                   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent    LibraryNoteReply?      @relation("LibraryNoteThread", fields: [parentId], references: [id], onDelete: Cascade)
+  children  LibraryNoteReply[]     @relation("LibraryNoteThread")
+  likes     LibraryNoteReplyLike[]
 
   @@index([highlightId, createdAt])
   @@index([parentId])
   @@index([authorId])
+}
+
+/// 点赞 on a reply to a shared 批注. Distinct from LibraryNoteLike, which is the
+/// 有用 count on the annotation ITSELF and feeds the 最热 sort.
+model LibraryNoteReplyLike {
+  userId    String
+  replyId   String
+  createdAt DateTime @default(now())
+
+  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reply LibraryNoteReply @relation(fields: [replyId], references: [id], onDelete: Cascade)
+
+  @@id([userId, replyId])
+  @@index([replyId])
 }
 
 /// 有用 on a shared 批注. One per user per annotation; `LibraryHighlight.likeCount`
@@ -2185,15 +2254,30 @@ model VoteComment {
   entryId    String
   authorId   String
   body       String // 纯文本（whitespace-pre-wrap 渲染，非 markdown）
+  likeCount  Int      @default(0)
   createdAt  DateTime @default(now())
 
-  activity VoteActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  entry    VoteEntry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  author   User         @relation("VoteComments", fields: [authorId], references: [id], onDelete: Cascade)
+  activity VoteActivity      @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  entry    VoteEntry         @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  author   User              @relation("VoteComments", fields: [authorId], references: [id], onDelete: Cascade)
+  likes    VoteCommentLike[]
 
   @@index([entryId, createdAt])
   @@index([activityId])
   @@index([authorId])
+}
+
+/// 点赞 on a 作品评论 (the flat plain-text board on a vote entry).
+model VoteCommentLike {
+  userId    String
+  commentId String
+  createdAt DateTime @default(now())
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment VoteComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@id([userId, commentId])
+  @@index([commentId])
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2397,6 +2481,9 @@ model ZonePost {
   viewCount     Int                @default(0)
   bookmarkCount Int                @default(0)
   editedAt      DateTime?
+  // Who last edited the CONTENT (author, co-author, or a 版主 acting on it).
+  // Null until the first edit; SetNull so a departed editor never blocks the post.
+  editedById    String?
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   deletedAt     DateTime?
@@ -2404,6 +2491,7 @@ model ZonePost {
   zone        Zone                 @relation(fields: [zoneId], references: [id], onDelete: Cascade)
   author      User                 @relation("AuthoredZonePosts", fields: [authorId], references: [id], onDelete: Cascade)
   column      ZoneColumn?          @relation(fields: [columnId], references: [id], onDelete: SetNull)
+  editedBy    User?                @relation("EditedZonePosts", fields: [editedById], references: [id], onDelete: SetNull)
   viewers     ZonePostViewer[]
   coauthors   ZonePostAuthor[]
   attachments ZonePostAttachment[]

@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
-import { MEMBER_ROLE_KEY, can } from '@/lib/permissions';
+import { can, publicRoleBadge } from '@/lib/permissions';
 import { toPublicAuthor } from '@/lib/user-identity';
 import {
   canReadDoc,
   getMyNoteLikes,
+  getMyNoteReplyLikes,
   getSharedNotes,
   isAnnotationSort,
   libraryViewerFromSession,
@@ -43,18 +44,28 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     sort: isAnnotationSort(sortRaw) ? sortRaw : 'position',
     q: q || undefined,
   });
-  const likedIds = await getMyNoteLikes(
-    session.user.id,
-    rows.map((r) => r.id),
+  // Two batched reads: the annotations' own 有用 set and the likes on their
+  // replies (a separate join table, so it cannot ride the same query).
+  const replyIds = rows.flatMap((r) =>
+    r.replies.flatMap((rep) => [rep.id, ...rep.children.map((c) => c.id)]),
   );
+  const [likedIds, likedReplyIds] = await Promise.all([
+    getMyNoteLikes(
+      session.user.id,
+      rows.map((r) => r.id),
+    ),
+    getMyNoteReplyLikes(session.user.id, replyIds),
+  ]);
   const canSeeIdentity = can(session.user, 'identity');
   const canModerate = can(session.user, 'library');
 
-  // The author's ROLE is what marks an annotation as coming from a 专家 (or an
-  // admin). `member` / no role carries no badge — only a named role does, so a
-  // deployment creates 专家 in 管理后台 → 角色与权限 and assigns it.
-  const roleOf = (u: { role: { key: string; name: string } | null }) =>
-    u.role && u.role.key !== MEMBER_ROLE_KEY ? { key: u.role.key, name: u.role.name } : null;
+  // The author's ROLE is what marks an annotation as coming from a 专家. Only
+  // an HONORIFIC role earns a badge: `publicRoleBadge` drops `member` and every
+  // staff role, so a deployment creates 专家 with an empty permission list in
+  // 管理后台 → 角色与权限 and assigns it. An admin annotating a document is just
+  // a member here, which is the intent — the badge means expertise, not power.
+  const roleOf = (u: { role: { key: string; name: string; permissions: string[] } | null }) =>
+    publicRoleBadge(u.role);
 
   const mapReply = (r: {
     id: string;
@@ -62,13 +73,18 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     bodyMd: string;
     createdAt: Date;
     replyCount: number;
-    author: Parameters<typeof toPublicAuthor>[0] & { role: { key: string; name: string } | null };
+    likeCount: number;
+    author: Parameters<typeof toPublicAuthor>[0] & {
+      role: { key: string; name: string; permissions: string[] } | null;
+    };
   }) => ({
     id: r.id,
     parentId: r.parentId,
     bodyMd: r.bodyMd,
     createdAt: r.createdAt,
     replyCount: r.replyCount,
+    likeCount: r.likeCount,
+    likedByMe: likedReplyIds.has(r.id),
     author: toPublicAuthor(r.author, canSeeIdentity),
     authorRole: roleOf(r.author),
   });

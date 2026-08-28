@@ -215,7 +215,7 @@ export function MemberCard({
           <FileText className="h-3 w-3" />
           {member.postCount}
         </span>
-        <span className="tabular-nums">
+        <span className="tabular-nums" suppressHydrationWarning>
           {member.status === 'pending'
             ? t('members_requested_at', { time: relativeTime(member.createdAt, locale) })
             : t('members_joined_at', { time: relativeTime(member.joinedAt ?? member.createdAt, locale) })}

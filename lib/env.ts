@@ -16,6 +16,20 @@ const bool = (def: 'true' | 'false' = 'false') =>
  * `''`, which defeats `??` fallbacks (e.g. an empty HUAWEI_PROXY_PORT silently
  * produced `http://proxyca.huawei.com:` ⇒ port 80 ⇒ ECONNREFUSED).
  */
+/**
+ * Positive-integer flag with a default. A blank/garbage value falls back to the
+ * default rather than NaN — an operator typing `MEDIA_JOB_CONCURRENCY=` on the
+ * deploy box must not silently disable a concurrency guard.
+ */
+const num = (def: number, min = 0) =>
+  z
+    .string()
+    .optional()
+    .transform((v) => {
+      const n = Number.parseInt((v ?? '').trim(), 10);
+      return Number.isFinite(n) && n >= min ? n : def;
+    });
+
 const optStr = () =>
   z
     .string()
@@ -66,6 +80,40 @@ const schema = z.object({
   // Requires the internal `/_video/` nginx location (see deploy conf). Keep OFF
   // until that's wired, or videos return an empty body.
   VIDEO_X_ACCEL_REDIRECT: bool(),
+  // Same offload for the OTHER media roots (zone-media / vote-media / post-media
+  // / uploads). Separate flag from VIDEO_X_ACCEL_REDIRECT on purpose: each root
+  // needs its OWN internal nginx location, so flipping this before pasting all
+  // four would serve empty bodies for images/attachments. Turn both on together
+  // once the deploy conf's `/_video/ /_zonemedia/ /_votemedia/ /_postmedia/
+  // /_uploads/` locations are in place.
+  MEDIA_X_ACCEL_REDIRECT: bool(),
+  /**
+   * How many CPU/disk-heavy media jobs (ffmpeg faststart remux) may run at once
+   * across the whole process. These used to be spawned unbounded from inside
+   * upload request handlers, so N simultaneous uploaders meant N full-file
+   * disk-to-disk copies competing with video playback on the same spindle.
+   */
+  MEDIA_JOB_CONCURRENCY: num(1, 1),
+  /**
+   * How many whisper ASR jobs may run at once. Each is minutes of 100%-CPU,
+   * multi-GB-RSS work on a box shared with PostgreSQL and two neighbour apps.
+   */
+  SUBTITLE_CONCURRENCY: num(1, 1),
+  /**
+   * Refuse new uploads when the storage volume has less than this much free
+   * space (MB). PostgreSQL lives on the same disk, so ENOSPC takes the database
+   * down with the app — this keeps a reserve. 0 disables the check.
+   */
+  MIN_FREE_DISK_MB: num(2048),
+  /**
+   * Volume-safety ceiling for a single uploaded file (MB). 0 = unlimited.
+   * This is NOT a product cap — shorts/vote video deliberately have none (see
+   * CLAUDE.md). It is the size past which the box gives up anyway: faststart
+   * remux already skips files above 2 GB, so a larger upload is accepted only
+   * to be served degraded, after a multi-GB write to the disk PostgreSQL is on.
+   * Exposed as env so the owner can restore "no ceiling" with a restart.
+   */
+  MAX_UPLOAD_MB: num(2048),
 
   ENABLE_SSO: bool(),
   SSO_CLIENT_ID: z.string().optional(),

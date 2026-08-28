@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { rateLimit } from '@/lib/rate-limit';
+import { MAX_UPLOAD_SAFETY_BYTES, hasFreeSpace } from '@/lib/uploads/disk-space';
 import { voteOver } from '@/lib/votes/shared';
 import {
   MAX_VOTE_IMAGE_BYTES,
@@ -106,10 +107,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (uploadKind === 'media' && activity.maxSubmissionMb) {
     max = Math.min(max, activity.maxSubmissionMb * 1024 * 1024);
   }
+  // …and under everything sits the volume-safety ceiling: MAX_VOTE_VIDEO_BYTES
+  // is deliberately unbounded (product decision), which left a member able to
+  // push an arbitrarily large file onto the disk PostgreSQL lives on.
+  max = Math.min(max, MAX_UPLOAD_SAFETY_BYTES);
 
   const declared = Number(req.headers.get('content-length') ?? '');
   if (Number.isFinite(declared) && declared > max) {
     return NextResponse.json({ error: 'file_too_large' }, { status: 413 });
+  }
+  if (!(await hasFreeSpace(declared))) {
+    return NextResponse.json({ error: 'insufficient_storage' }, { status: 507 });
   }
   if (!req.body) return NextResponse.json({ error: 'empty_body' }, { status: 400 });
 

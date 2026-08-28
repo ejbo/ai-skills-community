@@ -17,6 +17,7 @@
 import { fetch as undiciFetch } from 'undici';
 import { env } from '@/lib/env';
 import { egressFor } from '@/lib/net/proxy';
+import { isLlmCancellation } from './limits';
 
 export class LLMNetworkError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
@@ -55,6 +56,11 @@ export const llmFetch: typeof fetch = (async (
     }
     return await fetch(input, init);
   } catch (e) {
+    // A cancelled request is not a network failure: either the caller aborted
+    // (the reader closed the drawer) or one of our deadlines fired. Rewriting
+    // it would log an outage that did not happen and hand the user a
+    // 调用模型失败 toast for their own navigation.
+    if (isLlmCancellation(e)) throw e;
     const err = e as NodeJS.ErrnoException & { cause?: unknown };
     const cause = err?.cause instanceof Error ? (err.cause as NodeJS.ErrnoException) : undefined;
     const code = err?.code ?? cause?.code ?? '';

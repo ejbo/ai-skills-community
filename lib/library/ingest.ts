@@ -6,7 +6,9 @@
 // rethrown — the uploader sees the failure and can retry.
 
 import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import fsp from 'node:fs/promises';
+import { pipeline } from 'node:stream/promises';
 import { prisma } from '@/lib/db';
 import { CHUNKER_VERSION, chunkChapterText } from './chunker';
 import { canonicalizeUrl } from './canonical-url';
@@ -57,6 +59,25 @@ interface IngestResult {
 
 function sha256Hex(data: Buffer | string): string {
   return createHash('sha256').update(data).digest('hex');
+}
+
+/**
+ * Same digest as `sha256Hex`, read through a stream instead of a whole-file
+ * Buffer: the reads land on the libuv threadpool and the file never enters the
+ * JS heap. Hashing a 300 MB PDF with `readFile` + `update(buf)` blocked the ONE
+ * thread that also renders every page for every other user.
+ *
+ * The hash is fed from the pipeline's CONSUMER rather than used as the pipeline
+ * destination: crypto.Hash is a Transform that finalizes itself when its
+ * writable side ends, so `digest()` afterwards depends on undocumented
+ * finalized-handle behaviour. This form has no such dependency.
+ */
+async function sha256File(absPath: string): Promise<string> {
+  const hash = createHash('sha256');
+  await pipeline(createReadStream(absPath), async (source) => {
+    for await (const chunk of source) hash.update(chunk);
+  });
+  return hash.digest('hex');
 }
 
 /** Decode uploaded HTML honouring an in-document meta charset (GBK pages…). */
@@ -414,14 +435,17 @@ export async function createDocFromFile(opts: {
 }): Promise<IngestResult> {
   const full = libraryAbsPath(opts.fileKey);
   if (!full) throw new IngestError('unsupported_content', '文件路径无效');
-  let buf: Buffer;
+
+  // Hash BEFORE buffering. The dedup check only needs the digest, so a re-upload
+  // of a document we already have now costs a streamed read and nothing else —
+  // it used to load the whole file into the heap first and then throw it away.
+  let contentHash: string;
   try {
-    buf = await fsp.readFile(full);
+    contentHash = await sha256File(full);
   } catch {
     throw new IngestError('unsupported_content', '无法读取上传的文件');
   }
 
-  const contentHash = sha256Hex(buf);
   const byHash = await prisma.libraryDoc.findFirst({
     where: { contentHash, deletedAt: null },
     select: { id: true, slug: true, status: true },
@@ -429,6 +453,15 @@ export async function createDocFromFile(opts: {
   if (byHash) {
     await deleteLibraryFile(opts.fileKey);
     return { ...byHash, existing: true };
+  }
+
+  // Only a genuinely new document is worth buffering: extractPdf/extractEpub/
+  // extractPptx all take a Buffer, so this read stays until they can stream.
+  let buf: Buffer;
+  try {
+    buf = await fsp.readFile(full);
+  } catch {
+    throw new IngestError('unsupported_content', '无法读取上传的文件');
   }
 
   const fallbackType: LibraryDocTypeValue = FALLBACK_TYPE_BY_FORMAT[opts.format];

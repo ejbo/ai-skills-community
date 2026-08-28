@@ -19,7 +19,7 @@ import {
   Vote,
   Tag,
 } from 'lucide-react';
-import { getManageActor } from '@/lib/admin';
+import { getManageActor, manageDenyTarget } from '@/lib/admin';
 import { manageSectionsFor, type PermissionKey } from '@/lib/permissions';
 import './manage.css';
 
@@ -43,7 +43,7 @@ const ICONS: Partial<Record<PermissionKey, React.ReactNode>> = {
 export default async function ManageLayout({ children }: { children: React.ReactNode }) {
   // Staff gate (any permission). Each section page adds its own requirePermission().
   const actor = await getManageActor();
-  if (!actor) redirect('/');
+  if (!actor) redirect(await manageDenyTarget());
   const { session, role } = actor;
 
   const links = manageSectionsFor(role).map((s) => ({ href: s.href, label: s.label, icon: ICONS[s.perm] }));

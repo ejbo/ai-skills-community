@@ -9,6 +9,7 @@ import { env } from '@/lib/env';
 import { createHuaweiFetch } from '@/lib/auth/huawei-fetch';
 import { buildAuthCookies } from '@/lib/auth/cookies';
 import { hostBypassesProxy } from '@/lib/net/proxy';
+import { rateLimit, releaseRateLimit } from '@/lib/rate-limit';
 import { cache as reactCache } from 'react';
 import { ROLE_SELECT, roleForUserRow, type EffectiveRole } from '@/lib/roles';
 
@@ -31,6 +32,45 @@ declare module 'next-auth' {
   }
 }
 
+const LOGIN_WINDOW_MS = 10 * 60 * 1000;
+/** FAILED attempts per targeted account — the credential-stuffing half. */
+const LOGIN_ATTEMPTS_PER_EMAIL = 10;
+/**
+ * FAILED attempts per client address — the CPU half (see the note in
+ * `authorize`). It is deliberately an order of magnitude looser than the
+ * per-email budget because this bucket is SHARED: a whole office reaches the
+ * intranet box through one NAT egress address, so the ceiling has to clear a
+ * morning of everyone's typos, not a morning of everyone's logins (successes
+ * are refunded). 200 per 10 min is 20 failures a minute from one address —
+ * far past what any human population mistypes, and still a hard bound on a
+ * script: every attempt that reaches bcrypt costs it ~97 ms of our single
+ * thread, so one address can burn at most ~19 s of CPU per window (~3%).
+ */
+const LOGIN_ATTEMPTS_PER_IP = 200;
+
+// Same anon-key convention as DiscussionTopicView: x-real-ip is set by our
+// nginx from $remote_addr; the FIRST x-forwarded-for hop is client-forgeable
+// (nginx appends, it does not replace), so fall back to the LAST hop.
+// null ⇒ no proxy in front of Node (the external AWS deploy's shape, and that
+// deploy is email/password ONLY) — the caller then SKIPS the IP bucket. A
+// literal 'unknown' key would put every visitor on earth in one bucket: a
+// site-wide login outage, presented to each of them as 邮箱或密码错误.
+// @auth/core always hands `authorize` a request, but a missing one must degrade
+// rather than throw — a throw here is a Configuration error that would break
+// every login.
+function loginClientIp(h: Headers | undefined): string | null {
+  return (
+    h?.get('x-real-ip')?.trim() ||
+    h
+      ?.get('x-forwarded-for')
+      ?.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .pop() ||
+    null
+  );
+}
+
 function buildProviders(): Provider[] {
   const providers: Provider[] = [
     Credentials({
@@ -40,14 +80,39 @@ function buildProviders(): Provider[] {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const email = String(credentials?.email ?? '').toLowerCase().trim();
         const password = String(credentials?.password ?? '');
         if (!email || !password) return null;
+
+        // bcrypt at cost 12 is ~97 ms of UNINTERRUPTIBLE work on the single JS
+        // thread, so an unthrottled login form is a whole-site stall as much as
+        // it is a credential-stuffing hole. Two buckets, and the ORDER matters:
+        // the per-IP one is checked first, which also bounds how many distinct
+        // per-email buckets one attacker can mint in the limiter's Map.
+        // Only FAILURES are charged — both buckets are released on the way out
+        // of a successful sign-in, so legitimate traffic can never spend the
+        // budget it shares with everyone behind the same egress address.
+        // A throttled attempt must fail EXACTLY like a wrong password —
+        // returning null yields `CredentialsSignin`, the only code
+        // app/auth/login/page.tsx renders as 邮箱或密码错误 (a custom code shows
+        // the generic SSO banner instead, and LoginForm's `redirect: false`
+        // path can't tell them apart anyway).
+        const ip = loginClientIp(request?.headers);
+        // Slice both keys: neither the header nor the email is validated input,
+        // and each is what names its bucket.
+        const ipKey = ip ? `login:ip:${ip.slice(0, 64)}` : null;
+        if (ipKey && !rateLimit(ipKey, LOGIN_ATTEMPTS_PER_IP, LOGIN_WINDOW_MS).allowed) return null;
+        const emailKey = `login:email:${email.slice(0, 120)}`;
+        if (!rateLimit(emailKey, LOGIN_ATTEMPTS_PER_EMAIL, LOGIN_WINDOW_MS).allowed) return null;
+
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user || !user.passwordHash || !user.isActive) return null;
         const ok = await verifyPassword(password, user.passwordHash);
         if (!ok) return null;
+        // Correct credentials: refund what this attempt charged.
+        if (ipKey) releaseRateLimit(ipKey);
+        releaseRateLimit(emailKey);
         return {
           id: user.id,
           email: user.email,

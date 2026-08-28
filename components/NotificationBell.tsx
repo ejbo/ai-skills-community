@@ -18,14 +18,25 @@ interface Notif {
   actor: { displayName: string; avatarUrl: string | null } | null;
 }
 
+const POLL_MS = 60_000;
+
+/**
+ * Floor on how often coming back to a tab may fire a catch-up load, so alt-tabbing
+ * doesn't become one request per switch. Well under POLL_MS, so a tab someone is
+ * actually using never notices it.
+ */
+const CATCHUP_MIN_GAP_MS = 10_000;
+
 export function NotificationBell() {
   const t = useTranslations('notifications');
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notif[]>([]);
   const [unread, setUnread] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
+  const lastLoadRef = useRef(0);
 
   const load = useCallback(async () => {
+    lastLoadRef.current = Date.now();
     try {
       const res = await fetch('/api/notifications');
       if (!res.ok) return;
@@ -37,11 +48,39 @@ export function NotificationBell() {
     }
   }, []);
 
-  // Initial load + light polling so the badge stays roughly fresh.
+  // Initial load + light polling so the badge stays roughly fresh — but the poll runs
+  // ONLY while the tab is visible. A hidden tab makes no other requests, so its poll is
+  // pure background load on the single Node thread, and it is the one that scales with
+  // tabs-per-user. Nothing else rides on the cadence: the 活动提醒 sweep this endpoint
+  // piggybacks is throttled per PROCESS (once a minute, whoever polls) and cron
+  // (scripts/send-event-reminders.ts) is its belt-and-braces path, so a browser full of
+  // hidden tabs no longer buys anything by polling.
   useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (timer === null) timer = setInterval(load, POLL_MS);
+    };
+    const stop = () => {
+      if (timer !== null) clearInterval(timer);
+      timer = null;
+    };
+    const onVisibility = () => {
+      if (document.visibilityState !== 'visible') {
+        stop();
+        return;
+      }
+      // Back in view: catch up once (the badge is the first thing the user looks at),
+      // then restart the interval from now rather than resuming a stale phase.
+      if (Date.now() - lastLoadRef.current >= CATCHUP_MIN_GAP_MS) load();
+      start();
+    };
     load();
-    const id = setInterval(load, 60_000);
-    return () => clearInterval(id);
+    if (document.visibilityState === 'visible') start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [load]);
 
   useEffect(() => {

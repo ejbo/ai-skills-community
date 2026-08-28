@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { Readable } from 'node:stream';
 import { auth } from '@/lib/auth';
+import { env } from '@/lib/env';
 import {
   isValidZoneMediaKey,
   openZoneMediaRange,
   statZoneMediaAsync,
   zoneMediaContentType,
+  zoneMediaXAccelUri,
 } from '@/lib/zones/storage';
 
 export const runtime = 'nodejs';
@@ -67,6 +69,19 @@ export async function GET(req: Request, { params }: { params: { key: string[] } 
 
   // Guards createReadStream({ end: -1 }) on an empty file.
   if (size === 0) return new NextResponse(null, { status: 200, headers: { ...baseHeaders, 'content-length': '0' } });
+
+  // Offload the bytes to nginx (kernel sendfile) now that the request is
+  // authorized — Node leaves the data path, so a 40 MB 附件 download no longer
+  // occupies the single JS thread. nginx does Range/206/416 itself, so we send
+  // NO content-length/content-range (ours would describe the whole file and
+  // contradict a 206). baseHeaders ride through unchanged. Gated: without the
+  // internal `/_zonemedia/` location this serves empty bodies (see deploy conf).
+  if (env.MEDIA_X_ACCEL_REDIRECT) {
+    return new NextResponse(null, {
+      status: 200,
+      headers: { ...baseHeaders, 'X-Accel-Redirect': zoneMediaXAccelUri(key) },
+    });
+  }
 
   const range = req.headers.get('range');
   if (range) {

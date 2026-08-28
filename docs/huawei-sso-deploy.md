@@ -37,8 +37,13 @@ is registered (备案) in IDaaS. Ready-to-use artifacts:
    registration and confirm **应用域名** covers `https://cari.rnd.huawei.com`
    (host root). 应用域名 is comma-separated multi-domain — adding a host there is
    self-service and effective immediately.
-3. Paste `deploy/ai-community.nginx.conf` **above** the catch-all `location /` in the
-   `cari.rnd.huawei.com` server block, then `nginx -t && nginx -s reload`.
+3. nginx — **see `docs/capacity-tuning.md` §2.2, not this line.** As of the 2026-08
+   capacity work `deploy/ai-community.nginx.conf` is split in two: PART A goes in
+   `http { }` (an `upstream` and a `map` are illegal inside `server { }`) and only
+   PART B goes above the catch-all `location /` in the `cari.rnd.huawei.com` server
+   block. Reloading is also NOT `nginx -s reload` on this box — nginx here is not
+   systemd-managed and `/run/nginx.pid` is empty, so signal the master directly:
+   `sudo ps -o pid,ppid,args -C nginx` then `sudo kill -HUP <master-pid>`.
 4. Build & run (basePath is baked at build time):
    ```bash
    pnpm install
@@ -203,6 +208,13 @@ Rule reminder: host+port must match the registered 应用域名 exactly; the pat
 subdirectory of it; **a different subdomain does NOT count**. A mismatch → `E_10004`.
 
 ## Step 3 — nginx
+
+> The block below is the MINIMAL subpath proxy — enough to make SSO work, and
+> that is all this guide is about. It is **not** what the cari box runs: the real
+> config is `deploy/ai-community.nginx.conf`, which since the 2026-08 capacity
+> work also serves `_next/static` from disk, offloads media bytes via
+> X-Accel-Redirect, and keeps an upstream keepalive pool. Deploying or changing
+> the real thing is `docs/capacity-tuning.md` §2.2.
 
 Add this **above** the catch-all `location /` block. Note: **no trailing slash** on
 `proxy_pass` — the `/<SUBPATH>/` prefix must be preserved for Next's `basePath`

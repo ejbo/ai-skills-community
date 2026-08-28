@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ChevronUp } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 
 /**
  * GitHub-style +1. Optimistic flip, reconciled with the server's authoritative
@@ -22,7 +23,6 @@ export function UpvoteButton({
   size?: 'sm' | 'lg';
 }) {
   const router = useRouter();
-  const pathname = usePathname();
   const t = useTranslations('feedback');
   const [count, setCount] = useState(initialCount);
   const [upvoted, setUpvoted] = useState(initialUpvoted);
@@ -44,7 +44,7 @@ export function UpvoteButton({
         setCount(prev.count);
         setUpvoted(prev.upvoted);
         pushToast('error', t('login_before_upvote'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = await res.json().catch(() => ({}));

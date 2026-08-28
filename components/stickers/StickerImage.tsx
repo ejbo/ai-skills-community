@@ -21,6 +21,7 @@ import { withBasePath } from '@/lib/base-path';
 import { pushToast } from '@/components/Toaster';
 import { stickerKeyFromSrc } from '@/lib/stickers';
 import { ImageLightbox } from '@/app/events/_components/ImageLightbox';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 
 const STICKER_BOX = 112; // px — WeChat renders received stickers around this size
 const MENU_W = 176; // px — matches w-44
@@ -85,7 +86,7 @@ export function StickerImage({ src, alt }: { src: string; alt?: string }) {
       });
       if (res.status === 401) {
         pushToast('error', t('login_hint'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = (await res.json().catch(() => null)) as

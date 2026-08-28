@@ -2,12 +2,13 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { UserTagsForm } from './UserTagsForm';
+import { loginHref } from '@/lib/auth/callback-path';
 
 export const dynamic = 'force-dynamic';
 
 export default async function SettingsTagsPage() {
   const session = await auth();
-  if (!session?.user) redirect('/auth/login?callbackUrl=/settings/tags');
+  if (!session?.user) redirect(loginHref('/settings/tags'));
   const t = await getTranslations('settings');
 
   return (

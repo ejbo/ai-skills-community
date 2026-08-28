@@ -1,4 +1,5 @@
 import type { LLMCompleteOptions, LLMCompletion, LLMProvider } from './types';
+import { acquireLlmSlot, completeDeadline, streamDeadline } from './limits';
 import { iterateSseDeltas, stripThinkDeltas } from './sse';
 
 /** Extract a text fragment from a parsed OpenAI-compatible stream event, or null. */
@@ -85,7 +86,7 @@ export class OpenAiProvider implements LLMProvider {
     };
   }
 
-  private async post(opts: LLMCompleteOptions, stream: boolean): Promise<Response> {
+  private async post(opts: LLMCompleteOptions, stream: boolean, signal: AbortSignal): Promise<Response> {
     const headers: Record<string, string> = { 'content-type': 'application/json' };
     // Only send Authorization when a key is configured — keyless internal servers can reject
     // a bare "Bearer " header.
@@ -94,6 +95,7 @@ export class OpenAiProvider implements LLMProvider {
       method: 'POST',
       headers,
       body: JSON.stringify(this.body(opts, stream)),
+      signal,
     });
     if (!res.ok || (stream && !res.body)) {
       const text = await res.text().catch(() => '');
@@ -103,26 +105,48 @@ export class OpenAiProvider implements LLMProvider {
   }
 
   async complete(opts: LLMCompleteOptions): Promise<LLMCompletion> {
-    const res = await this.post(opts, false);
-    const json = (await res.json()) as OpenAiChatResponse;
-    const choice = json.choices?.[0];
-    const message = choice?.message;
-    return {
-      text: message?.content ?? '',
-      usage: json.usage
-        ? { input: json.usage.prompt_tokens, output: json.usage.completion_tokens }
-        : null,
-      finishReason: choice?.finish_reason ?? null,
-      reasoning: message?.reasoning_content ?? message?.reasoning ?? null,
-    };
+    const release = await acquireLlmSlot(opts.signal);
+    // The deadline covers reading the body too, not just the response headers.
+    const deadline = completeDeadline(opts.signal);
+    try {
+      const res = await this.post(opts, false, deadline.signal);
+      const json = (await res.json()) as OpenAiChatResponse;
+      const choice = json.choices?.[0];
+      const message = choice?.message;
+      return {
+        text: message?.content ?? '',
+        usage: json.usage
+          ? { input: json.usage.prompt_tokens, output: json.usage.completion_tokens }
+          : null,
+        finishReason: choice?.finish_reason ?? null,
+        reasoning: message?.reasoning_content ?? message?.reasoning ?? null,
+      };
+    } finally {
+      deadline.dispose();
+      release();
+    }
   }
 
   async *streamDeltas(opts: LLMCompleteOptions): AsyncIterable<string> {
-    const res = await this.post(opts, true);
-    // A server without a --reasoning-parser streams <think> inline; strip it so
-    // the chain of thought never lands in the user's chat bubble.
-    yield* stripThinkDeltas(
-      iterateSseDeltas(res.body as ReadableStream<Uint8Array>, extractOpenAiDelta),
-    );
+    const release = await acquireLlmSlot(opts.signal);
+    // Time to first byte only — the clock is stopped by the first UPSTREAM
+    // frame, not the first visible delta: a reasoning model spends its opening
+    // minutes inside <think>, which is real progress that yields no text.
+    const deadline = streamDeadline(opts.signal);
+    try {
+      const res = await this.post(opts, true, deadline.signal);
+      // A server without a --reasoning-parser streams <think> inline; strip it so
+      // the chain of thought never lands in the user's chat bubble.
+      yield* stripThinkDeltas(
+        iterateSseDeltas(res.body as ReadableStream<Uint8Array>, extractOpenAiDelta, {
+          onFrame: deadline.reached,
+        }),
+      );
+    } finally {
+      // Also runs when the consumer abandons the iterator (client disconnect),
+      // which is what returns the slot for an answer nobody is reading.
+      deadline.dispose();
+      release();
+    }
   }
 }

@@ -111,6 +111,8 @@ export const ZONE_POST_CARD_SELECT = {
   createdAt: true,
   updatedAt: true,
   editedAt: true,
+  editedById: true,
+  editedBy: AUTHOR_IDENTITY_SELECT,
   pinned: true,
   locked: true,
   likeCount: true,
@@ -348,6 +350,9 @@ export function toZonePostCardView(row: ZonePostCardRow, ctx: PostCardContext): 
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
     editedAt: iso(row.editedAt),
+    // Who last touched the CONTENT — surfaced so a 版主 editing someone else's
+    // post is visible rather than silent. Falls back to null before any edit.
+    editedBy: row.editedBy ? toPublicAuthor(row.editedBy, ctx.canSeeIdentity) : null,
     pinned: row.pinned,
     locked: row.locked,
     likeCount: row.likeCount,
@@ -1295,7 +1300,11 @@ export async function updateZonePost(
     ...(nextColumnId !== undefined ? { column: nextColumnId ? { connect: { id: nextColumnId } } : { disconnect: true } } : {}),
     ...(patch.visibility !== undefined ? { visibility: nextVisibility } : {}),
     ...(codeChanged ? { accessCode } : {}),
-    ...(contentChanged && existing.status === 'published' ? { editedAt: now } : {}),
+    // Stamp WHO edited alongside WHEN. Drafts are not marked as "edited" (the
+    // author is still writing), so the editor rides the same condition.
+    ...(contentChanged && existing.status === 'published'
+      ? { editedAt: now, ...(opts.actorId ? { editedBy: { connect: { id: opts.actorId } } } : {}) }
+      : {}),
   };
 
   await prisma.$transaction(async (tx) => {

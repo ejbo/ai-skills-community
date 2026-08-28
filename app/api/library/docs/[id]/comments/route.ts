@@ -38,7 +38,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (!doc) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   const canSeeIdentity = can(session.user, 'identity');
-  const threads = (await getDocComments(doc.id)).map((c) => ({
+  const threads = (await getDocComments(doc.id, session.user.id)).map((c) => ({
     ...c,
     author: toPublicAuthor(c.author, canSeeIdentity),
     replies: c.replies.map((r) => ({ ...r, author: toPublicAuthor(r.author, canSeeIdentity) })),

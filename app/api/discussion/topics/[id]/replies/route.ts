@@ -73,6 +73,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         status: true,
         parentId: true,
         replyCount: true,
+        likeCount: true,
         createdAt: true,
         author: AUTHOR_IDENTITY_SELECT,
       },
@@ -136,6 +137,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   return NextResponse.json({
     ok: true,
-    reply: { ...reply, author: toPublicAuthor(reply.author, can(session.user, 'identity')) },
+    // A reply you just wrote cannot already be liked by you.
+    reply: {
+      ...reply,
+      likedByMe: false,
+      author: toPublicAuthor(reply.author, can(session.user, 'identity')),
+    },
   });
 }

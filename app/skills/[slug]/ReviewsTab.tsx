@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Star } from 'lucide-react';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { relativeTime } from '@/lib/i18n-date';
+import { loginHref } from '@/lib/auth/callback-path';
 import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { prisma } from '@/lib/db';
@@ -93,7 +94,7 @@ export async function ReviewsTab({ skillId, slug }: { skillId: string; slug: str
           {t.rich('login_to_review', {
             link: (chunks) => (
               <Link
-                href={`/auth/login?callbackUrl=/skills/${slug}?tab=reviews`}
+                href={loginHref(`/skills/${slug}?tab=reviews`)}
                 className="text-zinc-900 dark:text-zinc-50 hover:underline"
               >
                 {chunks}

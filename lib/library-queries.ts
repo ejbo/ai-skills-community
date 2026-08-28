@@ -641,13 +641,18 @@ const COMMENT_SELECT = {
   bodyMd: true,
   status: true,
   replyCount: true,
+  likeCount: true,
   createdAt: true,
   author: COMMENT_AUTHOR_SELECT,
 } as const;
 
-/** All comments of a doc as 2-level threads (hard render caps, no pagination). */
-export async function getDocComments(docId: string) {
-  return prisma.libraryComment.findMany({
+/**
+ * All comments of a doc as 2-level threads (hard render caps, no pagination).
+ * `viewerId` adds `likedByMe` — resolved with ONE batched read over the whole
+ * page of comments rather than a correlated subquery per row.
+ */
+export async function getDocComments(docId: string, viewerId?: string | null) {
+  const threads = await prisma.libraryComment.findMany({
     where: { docId, parentId: null },
     orderBy: { createdAt: 'asc' },
     take: 300,
@@ -660,6 +665,25 @@ export async function getDocComments(docId: string) {
       },
     },
   });
+
+  const ids = threads.flatMap((c) => [c.id, ...c.replies.map((r) => r.id)]);
+  const liked =
+    viewerId && ids.length
+      ? new Set(
+          (
+            await prisma.libraryCommentLike.findMany({
+              where: { userId: viewerId, commentId: { in: ids } },
+              select: { commentId: true },
+            })
+          ).map((r) => r.commentId),
+        )
+      : new Set<string>();
+
+  return threads.map((c) => ({
+    ...c,
+    likedByMe: liked.has(c.id),
+    replies: c.replies.map((r) => ({ ...r, likedByMe: liked.has(r.id) })),
+  }));
 }
 
 // ── 共享笔记（阅读器社区侧栏）────────────────────────────────────────────
@@ -677,10 +701,15 @@ export function isAnnotationSort(v: unknown): v is AnnotationSort {
 }
 
 /** Author select for annotations — identity fields PLUS the role, which is what
- *  marks an annotation as 专家/管理员 in the list. Kept local so the site-wide
- *  PublicAuthor contract (lib/user-identity.ts) stays untouched. */
+ *  marks an annotation as coming from a 专家 in the list. `permissions` rides
+ *  along because `publicRoleBadge` needs it to drop STAFF roles before the
+ *  payload leaves the server. Kept local so the site-wide PublicAuthor contract
+ *  (lib/user-identity.ts) stays untouched. */
 const ANNOTATION_AUTHOR_SELECT = {
-  select: { ...AUTHOR_IDENTITY_FIELDS, role: { select: { key: true, name: true } } },
+  select: {
+    ...AUTHOR_IDENTITY_FIELDS,
+    role: { select: { key: true, name: true, permissions: true } },
+  },
 } as const;
 
 const ANNOTATION_REPLY_SELECT = {
@@ -689,6 +718,7 @@ const ANNOTATION_REPLY_SELECT = {
   bodyMd: true,
   createdAt: true,
   replyCount: true,
+  likeCount: true,
   author: ANNOTATION_AUTHOR_SELECT,
 } as const;
 
@@ -774,6 +804,16 @@ export async function getMyNoteLikes(userId: string, highlightIds: string[]): Pr
     select: { highlightId: true },
   });
   return new Set(rows.map((r) => r.highlightId));
+}
+
+/** Same, for the REPLIES under those annotations (a separate join table). */
+export async function getMyNoteReplyLikes(userId: string, replyIds: string[]): Promise<Set<string>> {
+  if (replyIds.length === 0) return new Set();
+  const rows = await prisma.libraryNoteReplyLike.findMany({
+    where: { userId, replyId: { in: replyIds } },
+    select: { replyId: true },
+  });
+  return new Set(rows.map((r) => r.replyId));
 }
 
 // ── Dashboard（我的发布 / 我的互动）──────────────────────────────────────

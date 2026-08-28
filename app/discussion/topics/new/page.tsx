@@ -7,7 +7,7 @@ import { TopicForm } from '../../_components/TopicForm';
 export const dynamic = 'force-dynamic';
 
 export default async function NewTopicPage() {
-  await requireUser();
+  await requireUser('/discussion/topics/new');
   const [t, officialTags] = await Promise.all([
     getTranslations('discussion_pages'),
     listOfficialDiscussionTags(),

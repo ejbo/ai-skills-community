@@ -7,6 +7,7 @@
 
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 import { Image as ImageIcon, Loader2, Pilcrow, Send, Smile } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
@@ -95,7 +96,7 @@ export function CommentComposer({ slug, parentId, replyToId, onPosted, autoFocus
       if (!res.ok) {
         if (res.status === 401) {
           pushToast('info', t('login_required'));
-          router.push('/auth/login');
+          router.push(currentLoginHref());
           return;
         }
         pushToast('error', tu('post_failed'));

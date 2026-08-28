@@ -7,15 +7,16 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { useLocale, useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Heart } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { pushToast } from '@/components/Toaster';
-import { relativeTime } from '@/lib/i18n-date';
 import type { ZoneCommentView, ZoneCurrentUser } from '@/lib/zones/types';
+import { currentLoginHref } from '@/lib/auth/callback-path';
+import { RelTime } from '../RelTime';
 import { CommentBox } from './CommentBox';
 
 /** Own comments stay editable this long after posting (mirrors the API rule). */
@@ -53,9 +54,7 @@ export function CommentBlock({
 }) {
   const t = useTranslations('zones');
   const tc = useTranslations('common');
-  const locale = useLocale();
   const router = useRouter();
-  const pathname = usePathname();
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -90,7 +89,7 @@ export function CommentBlock({
     if (likeBusy || isTombstone) return;
     if (!currentUser) {
       pushToast('error', t('post_login_required'));
-      router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+      router.push(currentLoginHref());
       return;
     }
     setLikeBusy(true);
@@ -103,7 +102,7 @@ export function CommentBlock({
         setLiked(prev.liked);
         setLikeCount(prev.likeCount);
         pushToast('error', t('post_login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = (await res.json().catch(() => ({}))) as { liked?: boolean; likeCount?: number };
@@ -149,7 +148,7 @@ export function CommentBlock({
               {comment.author.displayName}
             </Link>
             <DeptTag department={comment.author.department} lab={comment.author.lab} />
-            <span className="text-muted">{relativeTime(comment.createdAt, locale)}</span>
+            <RelTime at={comment.createdAt} className="text-muted" />
             {comment.editedAt && !isTombstone && <span className="text-muted">{t('comment_edited')}</span>}
           </div>
 

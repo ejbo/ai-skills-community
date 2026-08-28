@@ -39,5 +39,50 @@ ExecStart=/home/eason/.nvm/versions/node/v24.19.0/bin/node node_modules/next/dis
 Restart=on-failure
 RestartSec=3
 
+# ── Resource bounds (added 2026-08 after the capacity audit) ────────────────
+# Before this, the unit had NO limits at all, so the service inherited systemd's
+# default 1024 soft file-descriptor limit. Each in-flight HTTP connection costs
+# an fd and each streaming media response costs a second one, so ~500 concurrent
+# viewers was enough to hit EMFILE — which is not a graceful degradation.
+LimitNOFILE=65535
+
+TasksMax=1024
+
+# ── Memory cap: DELIBERATELY COMMENTED OUT — enable it yourself, with a number ──
+# Containing an OOM to this unit is worth doing (PostgreSQL shares this box, and
+# without a cap the kernel's OOM killer may pick postgres instead of Node). But
+# a GUESSED number here causes the outage it was meant to prevent, because
+# whisper ASR is spawned as a CHILD of this process and therefore lives in THIS
+# unit's cgroup. Its model dominates the total:
+#     ggml-large-v3 / large     ≈ 3.1 GB RSS
+#     ggml-large-v3-turbo       ≈ 1.7 GB RSS
+#     ggml-medium               ≈ 1.5 GB RSS
+#     ggml-small / base / tiny  ≤ 1 GB
+# So size it as:
+#     MemoryMax ≈ 2.5 GB (Node heap + Next baseline)
+#               + (SUBTITLE_CONCURRENCY × your model's RSS)
+#               + 1 GB headroom
+# e.g. large-v3-turbo with SUBTITLE_CONCURRENCY=1 ⇒ ~5 GB.
+# Run `free -g` and `ls -la ~/models/` FIRST, and leave PostgreSQL + ai4news +
+# cari_dste their share. If the box cannot afford both, prefer the turbo model
+# over raising the cap. Enable the whole block or none of it: --max-old-space-size
+# without a cgroup cap only makes the heap SMALLER than Node's default, which
+# adds crash risk without adding protection.
+# MemoryHigh=4G
+# MemoryMax=5G
+# Environment=NODE_OPTIONS=--max-old-space-size=2048
+
+# Bound a deploy's downtime. `next start` closes the listener on SIGTERM and then
+# waits for in-flight requests with no deadline of its own, so with systemd's
+# 90 s default a `systemctl restart` after a git pull could serve 502s for a
+# minute and a half. 20 s is long enough to drain page requests; a long-lived
+# video stream or SSE chat is cut, which is the right trade for a deploy.
+TimeoutStopSec=20
+KillMode=mixed
+
+# libuv's threadpool (default 4) serves ALL fs reads AND all zlib compression.
+# Every media byte read and every gzipped response competes for those 4 slots.
+Environment=UV_THREADPOOL_SIZE=8
+
 [Install]
 WantedBy=multi-user.target

@@ -11,7 +11,9 @@ import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
 import { relativeTime } from '@/lib/i18n-date';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 import type { CurrentUser, PostCommentView, PostThreadView } from './types';
+import { LoginLink } from '@/components/LoginLink';
 
 type Sort = 'relevant' | 'recent';
 
@@ -201,12 +203,11 @@ export function PostComments({
         <p className="text-sm text-muted">
           {t.rich('login_to_comment', {
             link: (chunks) => (
-              <Link
-                href="/auth/login"
+              <LoginLink
                 className="text-zinc-900 dark:text-zinc-50 hover:underline"
               >
                 {chunks}
-              </Link>
+              </LoginLink>
             ),
           })}
         </p>
@@ -443,7 +444,7 @@ function CommentBlock({
         setLiked(prev.liked);
         setLikeCount(prev.likeCount);
         pushToast('error', t('login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = await res.json().catch(() => ({}));
@@ -593,7 +594,7 @@ function CommentBox({
       });
       if (res.status === 401) {
         pushToast('error', t('login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = await res.json().catch(() => ({}));

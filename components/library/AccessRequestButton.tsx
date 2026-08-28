@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Lock } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 
 /** 受限文档的 申请阅读 flow (skills access-request model). */
 export function AccessRequestButton({
@@ -18,7 +19,6 @@ export function AccessRequestButton({
 }) {
   const t = useTranslations('library_ui');
   const router = useRouter();
-  const pathname = usePathname();
   const [status, setStatus] = useState(initialStatus);
   const [message, setMessage] = useState('');
   const [open, setOpen] = useState(false);
@@ -27,7 +27,7 @@ export function AccessRequestButton({
   async function submit() {
     if (busy) return;
     if (!loggedIn) {
-      router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+      router.push(currentLoginHref());
       return;
     }
     setBusy(true);

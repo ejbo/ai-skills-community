@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { loginHref } from '@/lib/auth/callback-path';
 import { Download, Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
@@ -36,7 +37,7 @@ export function DownloadButton({
         const data = await res.json().catch(() => ({}) as { error?: string; message?: string });
         if (res.status === 401) {
           pushToast('error', t('session_expired'));
-          router.push(`/auth/login?callbackUrl=/skills/${slug}`);
+          router.push(loginHref(`/skills/${slug}`));
         } else if (res.status === 403) {
           pushToast('error', data.message ?? t('restricted_need_approval'));
         } else {

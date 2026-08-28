@@ -1,54 +1,23 @@
 import { NextResponse } from 'next/server';
-import { z } from 'zod';
-import { prisma } from '@/lib/db';
-import { hashPassword, deriveHandle } from '@/lib/auth/password';
-import { isSsoEnabled } from '@/lib/auth';
 
-const schema = z.object({
-  email: z.string().email().transform((v) => v.toLowerCase().trim()),
-  password: z.string().min(8).max(128),
-  displayName: z.string().min(2).max(64),
-});
-
-async function uniqueHandle(base: string): Promise<string> {
-  for (let i = 0; i < 12; i++) {
-    const candidate = i === 0 ? base : `${base}-${i + 1}`;
-    const exists = await prisma.user.findUnique({ where: { handle: candidate } });
-    if (!exists) return candidate;
-  }
-  return `${base}-${Date.now().toString(36).slice(-4)}`;
-}
-
-export async function POST(req: Request) {
-  // SSO deploys have no self-service signup; the UI hides it, this stops curl.
-  if (isSsoEnabled) {
-    return NextResponse.json({ error: 'signup_disabled' }, { status: 403 });
-  }
-  const body = await req.json().catch(() => null);
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
-  }
-  const { email, password, displayName } = parsed.data;
-
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) {
-    return NextResponse.json({ error: 'email_in_use' }, { status: 409 });
-  }
-
-  const handle = await uniqueHandle(deriveHandle(email));
-  const passwordHash = await hashPassword(password);
-
-  const user = await prisma.user.create({
-    data: {
-      email,
-      handle,
-      displayName,
-      passwordHash,
-      authMethod: 'password',
-    },
-    select: { id: true, handle: true, email: true },
-  });
-
-  return NextResponse.json({ ok: true, user });
+/**
+ * Self-service registration is CLOSED on every deploy (owner decision,
+ * 2026-08-27) — not just on the SSO ones, which is all this route used to
+ * check. The UI no longer offers it (`/auth/signup` redirects to the login
+ * page and the login page has no signup link); this is the half that stops a
+ * curl.
+ *
+ * Where accounts come from now:
+ *   - Huawei W3 first login — provisioned by the `signIn` callback in
+ *     lib/auth.ts, which links an existing row by 工号/email or creates one.
+ *   - `pnpm db:seed` — `ensureAdmin()` in scripts/seed.ts, driven by
+ *     INITIAL_ADMIN_EMAIL / INITIAL_ADMIN_PASSWORD.
+ * Password LOGIN is untouched: existing admin/service accounts still sign in
+ * through the credentials provider.
+ *
+ * The route file stays (rather than being deleted) so an old client gets a
+ * clear 403 instead of a 404 that reads like a deploy problem.
+ */
+export async function POST() {
+  return NextResponse.json({ error: 'signup_disabled' }, { status: 403 });
 }

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { TriangleAlert } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
+import { AuthRetryLink } from './AuthRetryLink';
 
 // Auth.js redirects hard sign-in failures here (pages.error in lib/auth.ts) with
 // `?error=<type>` — before this page existed users dead-ended on the built-in
@@ -18,7 +19,7 @@ function firstParam(v: string | string[] | undefined): string {
 export default async function AuthErrorPage({
   searchParams,
 }: {
-  searchParams: { error?: string | string[] };
+  searchParams: { error?: string | string[]; callbackUrl?: string | string[] };
 }) {
   const t = await getTranslations('auth_error');
   // The code is attacker-influenceable query input — strip to a plain token.
@@ -27,6 +28,11 @@ export default async function AuthErrorPage({
   let rawCode = firstParam(searchParams.error).replace(/[^\w.-]/g, '').slice(0, 64) || 'Default';
   if (/^(undefined|null)$/i.test(rawCode)) rawCode = 'Default';
   const knownKey = KNOWN.find((k) => k === rawCode.toLowerCase()) ?? 'default';
+  // Carry the destination through the failure. @auth/core puts ONLY ?error= on
+  // this url, so the query is just the (rare) hand-built case — AuthRetryLink
+  // falls back to the breadcrumb the W3 button left in sessionStorage, which is
+  // the path that actually fires on a failed W3 callback (pitfall #10).
+  const callbackUrl = firstParam(searchParams.callbackUrl) || undefined;
 
   return (
     <div className="container flex min-h-[calc(100vh-128px)] items-center justify-center py-12">
@@ -42,12 +48,10 @@ export default async function AuthErrorPage({
           </p>
           <p className="mt-4 text-xs text-muted">{t('contact')}</p>
           <div className="mt-6 flex items-center justify-center gap-3">
-            <Link
-              href="/auth/login"
-              className="flex h-10 items-center justify-center rounded-lg bg-zinc-900 dark:bg-zinc-100 px-5 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
-            >
-              {t('retry')}
-            </Link>
+            <AuthRetryLink
+              callbackUrl={callbackUrl}
+              className="flex h-10 items-center justify-center rounded-lg bg-zinc-900 px-5 text-sm font-medium text-white transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            />
             <Link
               href="/"
               className="surface flex h-10 items-center justify-center rounded-lg px-5 text-sm font-medium text-muted transition hover:text-zinc-900"

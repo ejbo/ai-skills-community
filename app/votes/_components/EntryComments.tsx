@@ -11,6 +11,7 @@ import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { pushToast } from '@/components/Toaster';
 import { relativeTime } from '@/lib/i18n-date';
+import { CommentLikeButton } from '@/components/CommentLikeButton';
 import { VOTE_COMMENT_MAX } from '@/lib/votes/shared';
 import type { PublicAuthor } from '@/lib/user-identity';
 
@@ -21,6 +22,8 @@ interface EntryComment {
   author: PublicAuthor;
   isMine: boolean;
   canDelete: boolean;
+  likeCount: number;
+  likedByMe: boolean;
 }
 
 export function EntryComments({
@@ -138,6 +141,16 @@ export function EntryComments({
                   )}
                 </div>
                 <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-white/90">{c.body}</p>
+                <div className="mt-1 text-[11px]">
+                  <CommentLikeButton
+                    endpoint={`/api/votes/${encodeURIComponent(activityId)}/comments/${encodeURIComponent(c.id)}/like`}
+                    initialLiked={c.likedByMe}
+                    initialCount={c.likeCount}
+                    signedIn
+                    size="xs"
+                    tone="onDark"
+                  />
+                </div>
               </div>
             </div>
           ))

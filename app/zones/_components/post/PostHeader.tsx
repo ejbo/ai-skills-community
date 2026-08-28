@@ -7,7 +7,7 @@
 
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Clock, ExternalLink, Eye, FolderOpen, Lock, Pin } from 'lucide-react';
+import { Clock, ExternalLink, Eye, FolderOpen, Lock, PencilLine, Pin } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { GlareHover } from '@/components/motion';
@@ -131,7 +131,24 @@ export function PostHeader({ post, zone }: { post: ZonePostDetailView; zone: { s
         <span suppressHydrationWarning title={new Date(when).toLocaleString()}>
           {relativeTime(when, locale)}
         </span>
-        {post.editedAt && <span>{t('post_edited')}</span>}
+        {post.editedAt && (
+          // Who edited, not just that it was edited: a 版主 editing someone
+          // else's post should be visible rather than silent.
+          <span className="inline-flex items-center gap-1" title={new Date(post.editedAt).toLocaleString()}>
+            <PencilLine className="h-3 w-3" />
+            {/* suppressHydrationWarning must sit on the TEXT-ONLY node: the
+                relative time can tick over between SSR and hydration, and the
+                attribute does not cover a sibling icon's text children. */}
+            <span suppressHydrationWarning>
+              {post.editedBy
+                ? t('post_edited_by', {
+                    name: post.editedBy.displayName,
+                    time: relativeTime(post.editedAt, locale),
+                  })
+                : t('post_edited_at', { time: relativeTime(post.editedAt, locale) })}
+            </span>
+          </span>
+        )}
         <span className="inline-flex items-center gap-1 font-mono tabular-nums">
           <Clock className="h-3 w-3" />
           {t('post_read_minutes', { count: post.readMinutes })}

@@ -67,6 +67,7 @@ import {
 import { Countdown } from './Countdown';
 import { EntryComments } from './EntryComments';
 import { SubmitDialog } from './SubmitDialog';
+import { loginHref } from '@/lib/auth/callback-path';
 
 type SortMode = 'default' | 'no' | 'votes';
 const GRID_PAGE = 48;
@@ -677,7 +678,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
       const tt = tRef.current;
       if (!current.viewer.loggedIn) {
         pushToast('info', tt('login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(`/votes/${current.id}`)}`);
+        router.push(loginHref(`/votes/${current.id}`));
         return;
       }
       if (!current.viewer.canVote) {

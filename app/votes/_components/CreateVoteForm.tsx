@@ -9,6 +9,7 @@ import { Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
 import { VOTE_TITLE_MAX } from '@/lib/votes/shared';
+import { loginHref } from '@/lib/auth/callback-path';
 
 export function CreateVoteForm() {
   const t = useTranslations('votes');
@@ -29,7 +30,7 @@ export function CreateVoteForm() {
       });
       if (res.status === 401) {
         pushToast('error', t('login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent('/votes/new')}`);
+        router.push(loginHref('/votes/new'));
         return;
       }
       const data = await res.json().catch(() => ({}));

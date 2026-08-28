@@ -10,6 +10,7 @@ import {
   hasPermission,
   isPermissionKey,
   isStaff,
+  publicRoleBadge,
   isSuperAdmin,
   manageSectionsFor,
   normalizePermissions,
@@ -99,5 +100,36 @@ describe('manageSectionsFor / domainViewer', () => {
     expect(v).toEqual({ id: 'u1', canManage: true, canSeeIdentity: false });
     const w = domainViewer({ id: 'u2', roleKey: 'x', permissions: ['identity'] }, 'votes');
     expect(w).toEqual({ id: 'u2', canManage: false, canSeeIdentity: true });
+  });
+});
+
+describe('publicRoleBadge', () => {
+  it('hides every administrative role from member-facing surfaces', () => {
+    expect(
+      publicRoleBadge({ key: SUPER_ADMIN_ROLE_KEY, name: '超级管理员', permissions: [WILDCARD_PERMISSION] }),
+    ).toBeNull();
+    expect(publicRoleBadge({ key: 'admin', name: '管理员', permissions: ['users'] })).toBeNull();
+    // A custom role is administrative as soon as it carries ONE permission.
+    expect(publicRoleBadge({ key: 'moderator', name: '版务', permissions: ['discussion'] })).toBeNull();
+  });
+
+  it('keeps honorific roles — a 专家 with no permissions is a label, not power', () => {
+    expect(publicRoleBadge({ key: 'expert', name: '专家', permissions: [] })).toEqual({
+      key: 'expert',
+      name: '专家',
+    });
+  });
+
+  it('never badges 普通成员 or a role-less account', () => {
+    expect(publicRoleBadge({ key: 'member', name: '普通成员', permissions: [] })).toBeNull();
+    expect(publicRoleBadge(null)).toBeNull();
+    expect(publicRoleBadge(undefined)).toBeNull();
+  });
+
+  it('treats a missing permission list as honorific, not as staff', () => {
+    expect(publicRoleBadge({ key: 'guest_speaker', name: '特邀讲者' })).toEqual({
+      key: 'guest_speaker',
+      name: '特邀讲者',
+    });
   });
 });

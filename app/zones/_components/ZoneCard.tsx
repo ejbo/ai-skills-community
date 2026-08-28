@@ -14,6 +14,7 @@ import { withBasePath } from '@/lib/base-path';
 import { relativeTime } from '@/lib/i18n-date';
 import { zoneHref } from '@/lib/zones/shared';
 import type { ZoneCardView } from '@/lib/zones/types';
+import { RelTime } from './RelTime';
 import { PILL_INK, PILL_MONO } from './ui';
 
 export function ZoneCard({ zone, variant = 'grid' }: { zone: ZoneCardView; variant?: 'grid' | 'featured' }) {
@@ -122,12 +123,10 @@ export function ZoneCard({ zone, variant = 'grid' }: { zone: ZoneCardView; varia
               <>
                 <span className={PILL_MONO}>{tl(`zonePostType.${zone.latestPost.type}`)}</span>
                 <span className="min-w-0 flex-1 truncate text-zinc-700 dark:text-zinc-300">{zone.latestPost.title}</span>
-                <span className="shrink-0 tabular-nums text-zinc-400">
-                  {relativeTime(zone.latestPost.publishedAt, locale)}
-                </span>
+                <RelTime at={zone.latestPost.publishedAt} className="shrink-0 tabular-nums text-zinc-400" />
               </>
             ) : (
-              <span className="text-zinc-400">
+              <span className="text-zinc-400" suppressHydrationWarning>
                 {t('zone_card_active_at', { time: relativeTime(zone.lastActivityAt, locale) })}
               </span>
             )}

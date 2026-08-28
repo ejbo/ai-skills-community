@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { motion, AnimatePresence } from 'framer-motion';
 import { relativeTime } from '@/lib/i18n-date';
+import { SEARCH_DEBOUNCE_MS, isSearchableQuery } from '@/lib/search-guard';
 
 type GroupKey =
   | 'skills'
@@ -130,6 +131,8 @@ export function SearchTrigger() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Results>(EMPTY);
   const [loading, setLoading] = useState(false);
+  /** Last fetch came back non-OK (429 / server error) — suppresses the empty state. */
+  const [failed, setFailed] = useState(false);
   const [active, setActive] = useState(0);
   const [mounted, setMounted] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -159,6 +162,7 @@ export function SearchTrigger() {
     }
     setQuery('');
     setResults(EMPTY);
+    setFailed(false);
     setActive(0);
   }, [open]);
 
@@ -169,17 +173,39 @@ export function SearchTrigger() {
     if (!q) {
       setResults(EMPTY);
       setLoading(false);
+      setFailed(false);
       setActive(0);
       return;
     }
     // 清空重打时立刻回到合成行（flat 收缩后旧 active 会越界，Enter 变成静默 no-op）。
     setActive(0);
+    // Mirror of the SERVER's floor (lib/search-guard) — a term the API would
+    // answer empty by definition never becomes a request, and it can't drift
+    // from the server's rule because both sides call the same predicate. The
+    // synthetic 查看全部搜索结果 row still leads to /search, which has no floor.
+    if (!isSearchableQuery(q)) {
+      setResults(EMPTY);
+      setLoading(false);
+      setFailed(false);
+      return;
+    }
     setLoading(true);
     const ctrl = new AbortController();
+    // 160 ms was ~one request per keystroke — a 10-character term cost 10 calls.
+    // The palette budget in lib/search-guard is sized against THIS number.
     const id = setTimeout(() => {
       fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal })
-        .then((r) => r.json())
+        // A 429 body is { error, resetAt }; spreading it through `?? []` below
+        // would blank every group and render 「没有找到相关内容」 — a throttled
+        // search would read as an EMPTY SITE. Keep the last good results instead
+        // and just stop spinning.
+        .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
+          if (!data) {
+            setFailed(true);
+            return;
+          }
+          setFailed(false);
           setResults({
             skills: data.skills ?? [],
             users: data.users ?? [],
@@ -200,7 +226,7 @@ export function SearchTrigger() {
           /* aborted or network error — ignore */
         })
         .finally(() => setLoading(false));
-    }, 160);
+    }, SEARCH_DEBOUNCE_MS);
     return () => {
       ctrl.abort();
       clearTimeout(id);
@@ -342,8 +368,11 @@ export function SearchTrigger() {
   }
 
   // flat[0] is the synthetic all-results row whenever a query exists, so
-  // "no matches" means the synthetic row is the ONLY item.
-  const showEmpty = Boolean(query.trim()) && !loading && flat.length <= 1;
+  // "no matches" means the synthetic row is the ONLY item. Only claim it when
+  // the server actually answered for a term it would search: below the floor
+  // nothing was sent, and after a 429 the results on screen belong to an earlier
+  // query — in both cases 「没有找到相关内容」 would be a lie about the site.
+  const showEmpty = isSearchableQuery(query) && !loading && !failed && flat.length <= 1;
   const hasResults = flat.length > 0;
   let lastGroup: GroupKey | null | '' = '';
 

@@ -1,4 +1,5 @@
 import type { LLMCompleteOptions, LLMCompletion, LLMProvider } from './types';
+import { acquireLlmSlot, completeDeadline, streamDeadline } from './limits';
 import { iterateSseDeltas } from './sse';
 
 /** Extract a text fragment from a parsed Anthropic stream event, or null. */
@@ -65,7 +66,7 @@ export class AnthropicProvider implements LLMProvider {
     };
   }
 
-  private async post(opts: LLMCompleteOptions, stream: boolean): Promise<Response> {
+  private async post(opts: LLMCompleteOptions, stream: boolean, signal: AbortSignal): Promise<Response> {
     const res = await this.fetchImpl(`${this.baseUrl}/v1/messages`, {
       method: 'POST',
       headers: {
@@ -74,6 +75,7 @@ export class AnthropicProvider implements LLMProvider {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify(this.body(opts, stream)),
+      signal,
     });
     if (!res.ok || (stream && !res.body)) {
       const text = await res.text().catch(() => '');
@@ -83,21 +85,39 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   async complete(opts: LLMCompleteOptions): Promise<LLMCompletion> {
-    const res = await this.post(opts, false);
-    const json = (await res.json()) as AnthropicMessagesResponse;
-    const text = json.content
-      .filter((b) => b.type === 'text' && b.text)
-      .map((b) => b.text)
-      .join('\n');
-    return {
-      text,
-      usage: json.usage ? { input: json.usage.input_tokens, output: json.usage.output_tokens } : null,
-      finishReason: json.stop_reason ?? null,
-    };
+    const release = await acquireLlmSlot(opts.signal);
+    const deadline = completeDeadline(opts.signal);
+    try {
+      const res = await this.post(opts, false, deadline.signal);
+      const json = (await res.json()) as AnthropicMessagesResponse;
+      const text = json.content
+        .filter((b) => b.type === 'text' && b.text)
+        .map((b) => b.text)
+        .join('\n');
+      return {
+        text,
+        usage: json.usage ? { input: json.usage.input_tokens, output: json.usage.output_tokens } : null,
+        finishReason: json.stop_reason ?? null,
+      };
+    } finally {
+      deadline.dispose();
+      release();
+    }
   }
 
   async *streamDeltas(opts: LLMCompleteOptions): AsyncIterable<string> {
-    const res = await this.post(opts, true);
-    yield* iterateSseDeltas(res.body as ReadableStream<Uint8Array>, extractAnthropicDelta);
+    const release = await acquireLlmSlot(opts.signal);
+    // Time to first byte only; `message_start` stops the clock long before any
+    // text arrives, so a slow-but-alive generation is never cut off.
+    const deadline = streamDeadline(opts.signal);
+    try {
+      const res = await this.post(opts, true, deadline.signal);
+      yield* iterateSseDeltas(res.body as ReadableStream<Uint8Array>, extractAnthropicDelta, {
+        onFrame: deadline.reached,
+      });
+    } finally {
+      deadline.dispose();
+      release();
+    }
   }
 }

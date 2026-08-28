@@ -5,6 +5,7 @@ import { ShieldCheck } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { withBasePath } from '@/lib/base-path';
 import { sanitizeCallbackPath } from '@/lib/auth/callback-path';
+import { rememberAuthDest } from '@/lib/auth/pending-dest';
 
 export function HuaweiLoginButton({ callbackUrl }: { callbackUrl?: string }) {
   const t = useTranslations('auth');
@@ -13,13 +14,18 @@ export function HuaweiLoginButton({ callbackUrl }: { callbackUrl?: string }) {
   // land on /ai-community/… and not the host root (which on the shared host is another app).
   // Sanitize first: rejects absolute/protocol-relative URLs and strips an
   // already-present basePath, so a crafted ?callbackUrl can't double-prefix or escape.
-  const dest = withBasePath(
-    sanitizeCallbackPath(callbackUrl, process.env.NEXT_PUBLIC_BASE_PATH ?? ''),
-  );
+  const appPath = sanitizeCallbackPath(callbackUrl, process.env.NEXT_PUBLIC_BASE_PATH ?? '');
+  const dest = withBasePath(appPath);
   return (
     <button
-      onClick={() => signIn('huawei', { callbackUrl: dest })}
-      className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
+      onClick={() => {
+        // Breadcrumb for /auth/error: @auth/core drops the callbackUrl when the
+        // W3 callback fails, and the cookie holding it is path-scoped to
+        // /api/auth. Store the basePath-FREE path — loginHref re-derives from it.
+        rememberAuthDest(appPath);
+        void signIn('huawei', { callbackUrl: dest });
+      }}
+      className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 text-sm font-medium text-white shadow-sm transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
     >
       <ShieldCheck className="h-4 w-4" />
       {t('w3_button')}

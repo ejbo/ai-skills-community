@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
+import { loginHref } from '@/lib/auth/callback-path';
 import { prisma } from '@/lib/db';
 import { BackButton } from '@/components/BackButton';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
@@ -23,7 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function EditZonePostPage({ params }: { params: { slug: string; postId: string } }) {
   const session = await auth();
-  if (!session?.user) redirect('/auth/login');
+  if (!session?.user) redirect(loginHref(`${zonePostHref(params.slug, params.postId)}/edit`));
   const viewer = zoneSiteViewer(session.user);
   const zone = await loadZoneBySlug(params.slug, viewer);
   if (!zone) notFound();

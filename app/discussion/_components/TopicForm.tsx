@@ -1,13 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Loader2 } from 'lucide-react';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
 import { DISCUSSION_EMBED_KINDS } from '@/lib/zones/shared';
 import type { DiscussionTagOption } from '@/lib/discussion-tags';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 import { TopicTagPicker } from './TopicTagPicker';
 import { EMPTY_MEDIA, MediaPicker, mediaPayload, type MediaDraft } from './MediaPicker';
 
@@ -41,7 +42,6 @@ export function TopicForm({
   const t = useTranslations('discussion_ui');
   const tc = useTranslations('common');
   const router = useRouter();
-  const pathname = usePathname();
   const [title, setTitle] = useState(initialTitle);
   const [categories, setCategories] = useState<string[]>(initialCategories);
   const [bodyMd, setBodyMd] = useState(initialBodyMd);
@@ -79,7 +79,7 @@ export function TopicForm({
       const data = await res.json().catch(() => ({}));
       if (res.status === 401) {
         pushToast('error', t('login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       if (!res.ok) {

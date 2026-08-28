@@ -124,11 +124,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     provider.streamDeltas({
       system: context.system,
       messages: messages.slice(-12),
+      // Closing the drawer must stop the generation, not just stop reading it —
+      // the shared model would otherwise keep working for an absent reader.
+      signal: req.signal,
     }),
   );
 
   const encoder = new TextEncoder();
-  const upstream = toSseResponseStream(deltas).getReader();
+  const upstream = toSseResponseStream(deltas, { signal: req.signal }).getReader();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(encoder.encode(`data: ${JSON.stringify({ citations })}\n\n`));
@@ -147,6 +150,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     headers: {
       'content-type': 'text/event-stream; charset=utf-8',
       'cache-control': 'no-cache, no-transform',
+      // Opts out of nginx's app-wide `proxy_buffering on` for THIS response
+      // only — without it the whole answer arrives in one lump at the end.
+      'X-Accel-Buffering': 'no',
       'x-ratelimit-remaining': String(gate.remaining),
     },
   });

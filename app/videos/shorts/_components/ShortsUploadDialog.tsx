@@ -11,13 +11,14 @@
 // inline progress instead of spinners where the shape is known.
 
 import { useEffect, useRef, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Captions, Clock, Film, Loader2, Proportions, Sparkles, Upload, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
 import { withBasePath } from '@/lib/base-path';
 import { formatDuration } from '@/lib/video/types';
 import { MAX_SHORT_CAPTION_CHARS } from '@/lib/video/shorts-shared';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 import type { ShortView } from './types';
 
 const ACCEPTED_TYPES = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
@@ -157,8 +158,6 @@ interface Props {
 export function ShortsUploadDialog({ onClose, onPublished }: Props) {
   const t = useTranslations('shorts');
   const router = useRouter();
-  const pathname = usePathname();
-
   const [file, setFile] = useState<File | null>(null);
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [meta, setMeta] = useState<Meta | null>(null);
@@ -198,6 +197,7 @@ export function ShortsUploadDialog({ onClose, onPublished }: Props) {
     if (msg === 'file_too_large') return 'err_too_large';
     if (msg === 'unsupported_type') return 'err_unsupported';
     if (msg === 'quota_exceeded') return 'err_quota';
+    if (msg === 'insufficient_storage') return 'err_no_space';
     if (msg === 'rate_limited') return 'err_rate_limited';
     if (msg === 'network_error') return 'err_network';
     return 'err_upload_failed';
@@ -303,7 +303,7 @@ export function ShortsUploadDialog({ onClose, onPublished }: Props) {
       const data = await res.json().catch(() => ({}));
       if (res.status === 401) {
         pushToast('error', t('login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       if (!res.ok) {

@@ -13,6 +13,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { nanoid } from 'nanoid';
 import { env } from '@/lib/env';
+import { tryRunMediaJob } from '@/lib/uploads/job-queue';
 
 const VIDEO_ROOT = path.resolve(process.cwd(), env.LOCAL_STORAGE_DIR, 'videos');
 
@@ -169,6 +170,14 @@ export async function deleteVideoFile(key: string | null | undefined): Promise<v
 // would hold the upload request too long. Typical talk/share videos are well under.
 const FASTSTART_MAX_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
 
+// Hard caps on the child processes. A `-c copy` remux of a multi-GB file is
+// minutes at worst; past these the child is stuck rather than slow, and killing
+// it is strictly better than holding a media-job slot (and the uploader's
+// request) open forever. A timeout is treated exactly like "ffmpeg missing".
+const FFMPEG_TIMEOUT_MS = 180_000;
+const DETECT_TIMEOUT_MS = 10_000; // `-version` answers in milliseconds or not at all
+const FFPROBE_TIMEOUT_MS = 30_000;
+
 let ffmpegProbe: Promise<boolean> | null = null;
 /** Detect ffmpeg once (cached). When absent, faststart is a no-op. */
 function hasFfmpeg(): Promise<boolean> {
@@ -176,8 +185,18 @@ function hasFfmpeg(): Promise<boolean> {
     ffmpegProbe = new Promise<boolean>((resolve) => {
       try {
         const p = spawn('ffmpeg', ['-version'], { stdio: 'ignore' });
-        p.on('error', () => resolve(false)); // ENOENT — not installed
-        p.on('close', (code) => resolve(code === 0));
+        // The result is cached for the life of the process, so a hung `-version`
+        // would leave EVERY later upload awaiting a promise that never settles.
+        const timer = setTimeout(() => {
+          p.kill('SIGKILL');
+          resolve(false);
+        }, DETECT_TIMEOUT_MS);
+        const done = (ok: boolean) => {
+          clearTimeout(timer);
+          resolve(ok);
+        };
+        p.on('error', () => done(false)); // ENOENT — not installed
+        p.on('close', (code) => done(code === 0));
       } catch {
         resolve(false);
       }
@@ -189,8 +208,16 @@ function hasFfmpeg(): Promise<boolean> {
 function runFfmpeg(args: string[]): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const p = spawn('ffmpeg', args, { stdio: 'ignore' });
-    p.on('error', () => resolve(false));
-    p.on('close', (code) => resolve(code === 0));
+    const timer = setTimeout(() => {
+      p.kill('SIGKILL');
+      resolve(false); // in case 'close' never arrives; a later resolve is a no-op
+    }, FFMPEG_TIMEOUT_MS);
+    const done = (ok: boolean) => {
+      clearTimeout(timer); // a live timer would keep the event loop alive
+      resolve(ok);
+    };
+    p.on('error', () => done(false));
+    p.on('close', (code) => done(code === 0));
   });
 }
 
@@ -201,8 +228,18 @@ function hasFfprobe(): Promise<boolean> {
     ffprobeCheck = new Promise<boolean>((resolve) => {
       try {
         const p = spawn('ffprobe', ['-version'], { stdio: 'ignore' });
-        p.on('error', () => resolve(false));
-        p.on('close', (code) => resolve(code === 0));
+        // The result is cached for the life of the process, so a hung `-version`
+        // would leave EVERY later upload awaiting a promise that never settles.
+        const timer = setTimeout(() => {
+          p.kill('SIGKILL');
+          resolve(false);
+        }, DETECT_TIMEOUT_MS);
+        const done = (ok: boolean) => {
+          clearTimeout(timer);
+          resolve(ok);
+        };
+        p.on('error', () => done(false));
+        p.on('close', (code) => done(code === 0));
       } catch {
         resolve(false);
       }
@@ -229,12 +266,20 @@ export async function probeVideoDurationSec(key: string): Promise<number | null>
         '-of', 'csv=p=0',
         full,
       ]);
+      const timer = setTimeout(() => {
+        p.kill('SIGKILL');
+        resolve(null);
+      }, FFPROBE_TIMEOUT_MS);
       let out = '';
       p.stdout?.on('data', (d) => {
         out += String(d);
       });
-      p.on('error', () => resolve(null));
+      p.on('error', () => {
+        clearTimeout(timer);
+        resolve(null);
+      });
       p.on('close', (code) => {
+        clearTimeout(timer);
         if (code !== 0) return resolve(null);
         const v = Number.parseFloat(out.trim());
         resolve(Number.isFinite(v) && v > 0 ? v : null);
@@ -252,8 +297,9 @@ export async function probeVideoDurationSec(key: string): Promise<number | null>
  * fast (~disk-copy speed), lossless, and ~same size — it only relocates metadata.
  *
  * Best-effort by contract: returns false (and leaves the original untouched) when
- * ffmpeg is missing, the file is too large, or anything fails. NEVER throws, so a
- * missing ffmpeg on the box can't break uploads.
+ * ffmpeg is missing, the file is too large, the media queue is too busy to reach
+ * in time, or anything fails. NEVER throws, so a missing ffmpeg on the box can't
+ * break uploads.
  */
 export async function faststartRemux(key: string, size: number): Promise<boolean> {
   const ext = key.split('.').pop()?.toLowerCase() ?? '';
@@ -264,8 +310,23 @@ export async function faststartRemux(key: string, size: number): Promise<boolean
   if (!(await hasFfmpeg())) return false;
 
   const tmp = `${full}.tmp.${ext}`; // matching ext ⇒ ffmpeg keeps the same container
-  const ok = await runFfmpeg(['-y', '-i', full, '-map', '0', '-c', 'copy', '-movflags', '+faststart', tmp]);
-  if (!ok) {
+  // Queued: the remux is a whole-file, disk-to-disk stream copy on the SAME disk
+  // that serves every media byte and every PostgreSQL WAL flush. Run unbounded
+  // from the upload handler, N uploaders meant N concurrent copies and playback
+  // stuttered for everyone — MEDIA_JOB_CONCURRENCY bounds that.
+  //
+  // The WAIT for a slot is bounded (MEDIA_JOB_MAX_WAIT_MS) because this runs
+  // inside the upload request: queueing past that deadline risks nginx's
+  // `proxy_read_timeout 300s` firing on a request whose file is already fully
+  // written — a 504 for the uploader, and an orphaned file nothing owns. On
+  // `ran: false` ffmpeg was NEVER spawned and no tmp file exists, so degrade
+  // exactly like a box without ffmpeg: return false, silently, and let the
+  // upload succeed with a tail-`moov` file.
+  const job = await tryRunMediaJob(() =>
+    runFfmpeg(['-y', '-i', full, '-map', '0', '-c', 'copy', '-movflags', '+faststart', tmp]),
+  );
+  if (!job.ran) return false;
+  if (!job.value) {
     await fsp.unlink(tmp).catch(() => undefined);
     return false;
   }

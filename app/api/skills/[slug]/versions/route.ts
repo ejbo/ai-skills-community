@@ -8,6 +8,55 @@ import { parseSemver, compareSemver, formatSemver, type Semver } from '@/lib/ver
 
 const MAX_BYTES = 512 * 1024 * 1024; // 512MB (internal deploy; nginx caps the rest)
 
+type CappedForm = FormData | 'too_large' | null;
+
+/**
+ * Read the multipart body with a hard ceiling on the bytes we ever hold.
+ * Same contract (and same reason) as the copy in `../../upload-package/route.ts`:
+ * `req.formData()` buffers the ENTIRE body before any `file.size` check can run
+ * and nginx lets a 5 GB body through, so an oversized version upload could
+ * exhaust the single Node process's heap and drop every other user's in-flight
+ * request. Gate 1 is the declared `content-length` — absent on a chunked upload
+ * (`Number(null)` is 0) and garbage on a hostile one (NaN), so both fall THROUGH
+ * rather than throw; gate 2 counts the bytes actually received, which is the
+ * only one a client that lies about its length cannot walk past.
+ * `'too_large'` = either gate tripped (413); `null` = unparseable body (400).
+ */
+async function readFormCapped(req: Request, max: number): Promise<CappedForm> {
+  const declared = Number(req.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > max) return 'too_large';
+  if (!req.body) return null;
+
+  let received = 0;
+  let over = false;
+  const capped = req.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        received += chunk.byteLength;
+        if (received > max) {
+          // Record it here instead of matching on the rejection downstream: the
+          // multipart parser wraps whatever the stream throws.
+          over = true;
+          controller.error(new Error('too_large'));
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+
+  try {
+    // Parsed through a Response rather than a re-wrapped Request: no URL and no
+    // `duplex` (which the DOM RequestInit type lacks) are needed, and forwarding
+    // content-type verbatim preserves the original multipart boundary.
+    return await new Response(capped, {
+      headers: { 'content-type': req.headers.get('content-type') ?? '' },
+    }).formData();
+  } catch {
+    return over ? 'too_large' : null;
+  }
+}
+
 function str(form: FormData, key: string): string | undefined {
   const v = form.get(key);
   return typeof v === 'string' && v.trim() ? v.trim() : undefined;
@@ -34,7 +83,10 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
   if (owned === null) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   if (owned === 'forbidden') return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
-  const form = await req.formData().catch(() => null);
+  const form = await readFormCapped(req, MAX_BYTES);
+  if (form === 'too_large') {
+    return NextResponse.json({ error: 'too_large', max_bytes: MAX_BYTES }, { status: 413 });
+  }
   if (!form) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
 
   const file = form.get('file');
@@ -43,6 +95,8 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
   const publish = form.get('publish') !== 'false' && form.get('publish') !== '0'; // default true
 
   if (!(file instanceof File)) return NextResponse.json({ error: 'file_missing' }, { status: 400 });
+  // Unreachable past readFormCapped — kept as the backstop that keeps this route
+  // correct on its own if the streaming cap above is ever loosened.
   if (file.size > MAX_BYTES) {
     return NextResponse.json({ error: 'too_large', max_bytes: MAX_BYTES }, { status: 413 });
   }

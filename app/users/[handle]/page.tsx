@@ -128,11 +128,6 @@ export default async function UserProfilePage({ params }: { params: { handle: st
                 <Calendar className="h-3.5 w-3.5" />
                 {t('joined', { time: relativeTime(user.createdAt, locale) })}
               </span>
-              {user.isAdmin && (
-                <span className="rounded-full bg-zinc-900/[0.06] dark:bg-white/10 px-2 py-0.5 text-[11px] font-medium text-zinc-900 dark:text-zinc-50">
-                  Admin
-                </span>
-              )}
               {canSeeIdentity && user.isPrivate && (
                 <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
                   {t('private_badge')}

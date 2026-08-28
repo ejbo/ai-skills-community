@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 import { requireUser } from '@/lib/admin';
+import { selfHref } from '@/lib/auth/callback-path';
 import { can } from '@/lib/permissions';
 import { getShortForFeed, listShorts, toShortView } from '@/lib/video/shorts-queries';
 import { parseShortsSort } from '@/lib/video/shorts-shared';
@@ -23,7 +24,7 @@ interface PageProps {
 }
 
 export default async function ShortsPage({ searchParams }: PageProps) {
-  const session = await requireUser();
+  const session = await requireUser(selfHref('/videos/shorts', searchParams));
   const viewerId = session.user.id;
   const canSeeIdentity = can(session.user, 'identity');
   const canModerate = can(session.user, 'shorts');

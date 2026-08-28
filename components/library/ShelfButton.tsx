@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { BookmarkCheck, BookmarkPlus } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 
 /** 加入书架 / 已在书架 — 乐观切换，服务端计数回填，出错回滚。 */
 export function ShelfButton({
@@ -20,7 +21,6 @@ export function ShelfButton({
   const tv = useTranslations('video');
   const tf = useTranslations('feedback');
   const router = useRouter();
-  const pathname = usePathname();
   const [shelved, setShelved] = useState(initialShelved);
   const [count, setCount] = useState(initialCount);
   const [busy, setBusy] = useState(false);
@@ -39,7 +39,7 @@ export function ShelfButton({
         setShelved(prev.shelved);
         setCount(prev.count);
         pushToast('error', tv('login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = await res.json().catch(() => ({}));

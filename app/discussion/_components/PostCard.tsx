@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Link2,
@@ -23,6 +23,7 @@ import { pushToast } from '@/components/Toaster';
 import { withBasePath } from '@/lib/base-path';
 import { copyText } from '@/lib/clipboard';
 import { relativeTime } from '@/lib/i18n-date';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 import { PostMediaGallery } from './PostMediaGallery';
 import { PostComments } from './PostComments';
 import { ReactionsPanel } from './ReactionsPanel';
@@ -58,7 +59,6 @@ export function PostCard({
   const tc = useTranslations('common');
   const locale = useLocale();
   const router = useRouter();
-  const pathname = usePathname();
   const [myReaction, setMyReaction] = useState<ReactionType | null>(
     isReactionType(post.myReaction) ? post.myReaction : null,
   );
@@ -155,7 +155,7 @@ export function PostCard({
         setLikeCount(prev.likeCount);
         setReactions(prev.reactions);
         pushToast('error', t('login_to_react'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = await res.json().catch(() => ({}));

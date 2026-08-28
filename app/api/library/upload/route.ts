@@ -11,6 +11,7 @@ import {
   saveLibraryStream,
 } from '@/lib/library/storage';
 import { createDocFromFile, IngestError } from '@/lib/library/ingest';
+import { MAX_UPLOAD_SAFETY_BYTES, hasFreeSpace } from '@/lib/uploads/disk-space';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -58,8 +59,17 @@ export async function POST(req: Request) {
     );
   }
 
-  // No upload size cap by design (product decision) — the save is streamed to
-  // disk so large files never sit in memory.
+  // No product size cap by design — the save is streamed to disk so large files
+  // never sit in memory. MAX_UPLOAD_SAFETY_BYTES is a volume-safety ceiling far
+  // above any real PDF/EPUB, not a limit on what people may submit.
+  const declared = Number(req.headers.get('content-length') ?? '');
+  if (Number.isFinite(declared) && declared > MAX_UPLOAD_SAFETY_BYTES) {
+    return NextResponse.json({ error: 'file_too_large' }, { status: 413 });
+  }
+  // PostgreSQL shares this volume; refuse before writing rather than ENOSPC it.
+  if (!(await hasFreeSpace(declared))) {
+    return NextResponse.json({ error: 'insufficient_storage' }, { status: 507 });
+  }
   if (!req.body) return NextResponse.json({ error: 'empty_body' }, { status: 400 });
 
   const docTypeHeader = req.headers.get('x-doc-type') ?? '';
@@ -74,8 +84,15 @@ export async function POST(req: Request) {
   const key = newLibraryKey('original', format);
   let size = 0;
   try {
-    size = await saveLibraryStream(key, req.body, Number.POSITIVE_INFINITY);
-  } catch {
+    // The cap is enforced HERE rather than only from Content-Length: the header
+    // is client-supplied (and absent on a chunked body), and saveLibraryStream
+    // aborts mid-write and unlinks the partial file the moment it is passed.
+    size = await saveLibraryStream(key, req.body, MAX_UPLOAD_SAFETY_BYTES);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'upload_failed';
+    if (msg === 'file_too_large') {
+      return NextResponse.json({ error: 'file_too_large' }, { status: 413 });
+    }
     return NextResponse.json({ error: 'upload_failed' }, { status: 500 });
   }
 

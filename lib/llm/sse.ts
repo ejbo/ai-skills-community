@@ -1,6 +1,8 @@
 // Shared Server-Sent-Events helpers used by the provider adapters (to read
 // upstream SSE) and by the routes (to emit a normalized client SSE stream).
 
+import { isLlmCancellation, isLlmTimeout } from './limits';
+
 /**
  * Frame an accumulated SSE buffer into complete `data:` payloads plus the
  * trailing incomplete remainder. Events are separated by a blank line; multiple
@@ -23,10 +25,16 @@ export function parseSseData(buffer: string): { data: string[]; rest: string } {
  * Read an upstream SSE body and yield normalized text deltas, using a
  * provider-specific extractor to turn each parsed event into a text fragment.
  * Stops at an OpenAI-style `[DONE]` sentinel.
+ *
+ * `onFrame` fires for every upstream event, INCLUDING the ones that extract to
+ * nothing — it is the honest "the model is producing output" signal, which the
+ * yielded deltas are not: behind a `--reasoning-parser` the whole <think> phase
+ * arrives as `reasoning_content` and yields no text at all.
  */
 export async function* iterateSseDeltas(
   body: ReadableStream<Uint8Array>,
   extract: (event: unknown) => string | null,
+  opts?: { onFrame?: () => void },
 ): AsyncIterable<string> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -36,6 +44,7 @@ export async function* iterateSseDeltas(
   // Yields deltas for a batch of payloads; sets `done` and stops on [DONE].
   function* process(payloads: string[]): Generator<string> {
     for (const payload of payloads) {
+      opts?.onFrame?.();
       if (payload === '[DONE]') {
         done = true;
         return;
@@ -51,21 +60,29 @@ export async function* iterateSseDeltas(
     }
   }
 
-  for (;;) {
-    const { value, done: streamDone } = await reader.read();
-    if (streamDone) break;
-    buffer += decoder.decode(value, { stream: true });
-    const { data, rest } = parseSseData(buffer);
-    buffer = rest;
-    yield* process(data);
-    if (done) return;
-  }
+  try {
+    for (;;) {
+      const { value, done: streamDone } = await reader.read();
+      if (streamDone) break;
+      buffer += decoder.decode(value, { stream: true });
+      const { data, rest } = parseSseData(buffer);
+      buffer = rest;
+      yield* process(data);
+      if (done) return;
+    }
 
-  // Stream ended: flush any trailing multi-byte sequence and process a final
-  // frame that may have arrived without a terminating blank line.
-  buffer += decoder.decode();
-  if (buffer.length > 0) {
-    yield* process(parseSseData(buffer + '\n\n').data);
+    // Stream ended: flush any trailing multi-byte sequence and process a final
+    // frame that may have arrived without a terminating blank line.
+    buffer += decoder.decode();
+    if (buffer.length > 0) {
+      yield* process(parseSseData(buffer + '\n\n').data);
+    }
+  } finally {
+    // Also runs when the consumer abandons this generator (the client closed
+    // the drawer, so the route's SSE stream was cancelled). Cancelling the body
+    // tears the upstream request down instead of leaving the model generating
+    // into a socket nobody is reading.
+    reader.cancel().catch(() => undefined);
   }
 }
 
@@ -176,21 +193,49 @@ export function encodeSseError(message: string): string {
 
 export const SSE_DONE = 'data: [DONE]\n\n';
 
-/** Wrap a delta async-iterable into a normalized SSE ReadableStream for a route. */
-export function toSseResponseStream(deltas: AsyncIterable<string>): ReadableStream<Uint8Array> {
+/**
+ * Wrap a delta async-iterable into a normalized SSE ReadableStream for a route.
+ * Pass the request's `signal` so a client disconnect ends the stream quietly
+ * instead of as an error.
+ */
+export function toSseResponseStream(
+  deltas: AsyncIterable<string>,
+  opts?: { signal?: AbortSignal },
+): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   return new ReadableStream<Uint8Array>({
     async start(controller) {
+      // Every enqueue throws once the consumer has cancelled this stream (the
+      // client went away), so nothing below may assume the controller is still
+      // open — the error frame and the close included.
+      const send = (frame: string): boolean => {
+        try {
+          controller.enqueue(encoder.encode(frame));
+          return true;
+        } catch {
+          return false;
+        }
+      };
       try {
         for await (const delta of deltas) {
-          controller.enqueue(encoder.encode(encodeSseDelta(delta)));
+          // Breaking finalizes `deltas`, which is what releases the LLM slot
+          // and cancels the upstream request when the reader has gone.
+          if (!send(encodeSseDelta(delta))) break;
         }
-        controller.enqueue(encoder.encode(SSE_DONE));
+        send(SSE_DONE);
       } catch (e) {
-        const message = e instanceof Error ? e.message : 'stream error';
-        controller.enqueue(encoder.encode(encodeSseError(message)));
+        // A cancelled generation is not something to report: the reader who
+        // aborted it is gone, and an `{error}` frame would only surface as a
+        // toast on a client that is still there — which a TIMEOUT is, so that
+        // one keeps its message.
+        const cancelled = opts?.signal?.aborted || (isLlmCancellation(e) && !isLlmTimeout(e));
+        if (!cancelled) send(encodeSseError(e instanceof Error ? e.message : 'stream error'));
       } finally {
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          /* already closed or cancelled */
+        }
       }
     },
   });

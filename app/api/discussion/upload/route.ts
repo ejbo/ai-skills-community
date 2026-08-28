@@ -13,6 +13,7 @@ import {
   postMediaPublicUrl,
   savePostMediaStream,
 } from '@/lib/uploads/post-media-storage';
+import { hasFreeSpace } from '@/lib/uploads/disk-space';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -83,6 +84,11 @@ export async function POST(req: Request) {
   const declared = Number(req.headers.get('content-length') ?? '');
   if (Number.isFinite(declared) && declared > max) {
     return NextResponse.json({ error: 'file_too_large' }, { status: 413 });
+  }
+  // The per-file and per-day caps bound one user; they do not bound the volume,
+  // and PostgreSQL's data directory lives on it. Refuse before writing a byte.
+  if (!(await hasFreeSpace(declared))) {
+    return NextResponse.json({ error: 'insufficient_storage' }, { status: 507 });
   }
   if (!req.body) return NextResponse.json({ error: 'empty_body' }, { status: 400 });
 

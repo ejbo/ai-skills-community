@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { AnimatePresence, motion } from 'framer-motion';
 import { FileUp, Link2, Loader2, Plus, UploadCloud, X } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 import { CategoryPicker } from '@/components/library/CategoryPicker';
 import { withBasePath } from '@/lib/base-path';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 import {
   DOC_TYPES,
   type LibraryDocTypeValue,
@@ -51,7 +52,6 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
   const tv = useTranslations('video');
   const tc = useTranslations('common');
   const router = useRouter();
-  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<'url' | 'file'>('url');
   const [url, setUrl] = useState('');
@@ -79,7 +79,7 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
   function openModal() {
     if (!loggedIn) {
       pushToast('error', t('login_before_add'));
-      router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+      router.push(currentLoginHref());
       return;
     }
     setOpen(true);
@@ -87,7 +87,7 @@ export function AddDocButton({ loggedIn }: { loggedIn: boolean }) {
 
   function goToLogin() {
     pushToast('error', tv('login_required'));
-    router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+    router.push(currentLoginHref());
   }
 
   function done(doc: { slug: string }, existing: boolean) {

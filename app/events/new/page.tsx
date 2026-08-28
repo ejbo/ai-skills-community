@@ -4,6 +4,7 @@ import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { BackButton } from '@/components/BackButton';
 import { EventForm } from '../_components/EventForm';
+import { loginHref } from '@/lib/auth/callback-path';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +16,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function NewEventPage() {
   const t = await getTranslations('event_form');
   const session = await auth();
-  if (!session?.user) redirect('/auth/login?callbackUrl=/events/new');
+  if (!session?.user) redirect(loginHref('/events/new'));
 
   return (
     <div className="container max-w-3xl py-8">

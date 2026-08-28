@@ -145,6 +145,8 @@ export interface ZonePostCardView {
   createdAt: string;
   updatedAt: string;
   editedAt: string | null;
+  /** Who last edited the content (author, co-author, or a 版主). Null before any edit. */
+  editedBy: PublicAuthor | null;
   pinned: boolean;
   locked: boolean;
   likeCount: number;

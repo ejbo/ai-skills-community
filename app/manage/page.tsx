@@ -1,7 +1,7 @@
 import { Users, Package, Download, Sparkles, Activity } from 'lucide-react';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
-import { getManageActor } from '@/lib/admin';
+import { getManageActor, manageDenyTarget } from '@/lib/admin';
 import { hasPermission, isPermissionKey, manageSectionsFor, permissionDef } from '@/lib/permissions';
 import { DashboardCharts } from './DashboardCharts';
 
@@ -13,7 +13,7 @@ export default async function AdminDashboard({
   searchParams?: { denied?: string | string[] };
 }) {
   const actor = await getManageActor();
-  if (!actor) redirect('/');
+  if (!actor) redirect(await manageDenyTarget());
   // Staff without 仪表盘: land on their first section instead of a dead page.
   if (!hasPermission(actor.role, 'dashboard')) {
     const first = manageSectionsFor(actor.role).find((s) => s.href !== '/manage');

@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ChevronUp } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 
 /** Optimistic +1 toggle for forum topics — same contract as the feedback board's UpvoteButton. */
 export function TopicUpvoteButton({
@@ -20,7 +21,6 @@ export function TopicUpvoteButton({
 }) {
   const t = useTranslations('discussion_ui');
   const router = useRouter();
-  const pathname = usePathname();
   const [count, setCount] = useState(initialCount);
   const [upvoted, setUpvoted] = useState(initialUpvoted);
   const [busy, setBusy] = useState(false);
@@ -41,7 +41,7 @@ export function TopicUpvoteButton({
         setCount(prev.count);
         setUpvoted(prev.upvoted);
         pushToast('error', t('login_before_upvote'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = await res.json().catch(() => ({}));

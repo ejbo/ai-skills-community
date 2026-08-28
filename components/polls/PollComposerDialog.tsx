@@ -9,13 +9,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Loader2, Plus, X } from 'lucide-react';
 import { withBasePath } from '@/lib/base-path';
 import { pushToast } from '@/components/Toaster';
 import { POLL_UPDATED_EVENT } from '@/lib/polls-shared';
 import type { PollDto } from '@/lib/poll-queries';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 
 const MAX_OPTIONS = 12;
 
@@ -40,8 +41,6 @@ export function PollComposerDialog({
 }) {
   const t = useTranslations('polls');
   const router = useRouter();
-  const pathname = usePathname();
-
   const [question, setQuestion] = useState('');
   const [options, setOptions] = useState<string[]>(['', '']);
   const [multiple, setMultiple] = useState(false);
@@ -360,7 +359,7 @@ export function PollComposerDialog({
             <button
               type="button"
               onClick={() =>
-                router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`)
+                router.push(currentLoginHref())
               }
               className="shrink-0 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-2.5 py-1 text-xs font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
             >

@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireUser } from '@/lib/admin';
+import { selfHref } from '@/lib/auth/callback-path';
 import { can } from '@/lib/permissions';
 import { prisma } from '@/lib/db';
 import { RelatedVideos } from '@/components/video/RelatedVideos';
@@ -23,7 +24,7 @@ interface PageProps {
 }
 
 export default async function VideoDetailPage({ params, searchParams }: PageProps) {
-  const session = await requireUser();
+  const session = await requireUser(selfHref(`/videos/${params.slug}`, searchParams));
   const actor = await getVideoActor();
   const video = await getVideoBySlug(params.slug);
   if (!video || !canViewVideo(video, actor)) notFound();

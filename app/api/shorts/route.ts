@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { apiReason } from '@/lib/api-errors';
+import { rateLimit } from '@/lib/rate-limit';
 import { toPublicAuthor } from '@/lib/user-identity';
 import { uniqueVideoSlug } from '@/lib/video/slug';
 import { probeVideoDurationSec, statVideoFileAsync, videoPublicUrl } from '@/lib/video/storage';
@@ -19,6 +20,15 @@ import {
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+const TEN_MINUTES_MS = 10 * 60 * 1000;
+// Abuse protection ONLY, deliberately far above any real publishing rhythm —
+// shorts carry no product caps (no size, duration, daily byte budget or
+// per-day publish count) and this must not become one. What needs admission
+// control is what a publish STARTS: generateShortSubtitles runs whisper ASR,
+// minutes of 100%-CPU work on the very thread that renders every page, and
+// nothing upstream limits how many of those a single client can queue.
+const PUBLISHES_PER_10_MIN = 10;
 
 // GET /api/shorts?cursor=&limit=&sort= (login) — feed pages for the swipe UI.
 export async function GET(req: Request) {
@@ -68,6 +78,14 @@ const createSchema = z.object({
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+
+  const gate = rateLimit(`shorts:publish:${session.user.id}`, PUBLISHES_PER_10_MIN, TEN_MINUTES_MS);
+  if (!gate.allowed) {
+    return NextResponse.json(
+      { error: 'rate_limited', reason: await apiReason('rate_limited'), resetAt: gate.resetAt },
+      { status: 429 },
+    );
+  }
 
   const body = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(body);

@@ -17,6 +17,7 @@ import { zoneHref } from '@/lib/zones/shared';
 import type { ZoneCommentView, ZoneCurrentUser, ZoneThreadView } from '@/lib/zones/types';
 import { CommentBlock, type CommentFocus } from './CommentBlock';
 import { CommentBox } from './CommentBox';
+import { LoginLink } from '@/components/LoginLink';
 
 type Sort = 'relevant' | 'recent';
 
@@ -206,9 +207,9 @@ export function PostComments({
         <p className="text-sm text-muted">
           {t.rich('comment_login_to_comment', {
             link: (chunks) => (
-              <Link href="/auth/login" className="font-medium text-zinc-900 underline dark:text-zinc-100">
+              <LoginLink className="font-medium text-zinc-900 underline dark:text-zinc-100">
                 {chunks}
-              </Link>
+              </LoginLink>
             ),
           })}
         </p>

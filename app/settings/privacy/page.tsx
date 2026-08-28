@@ -6,12 +6,13 @@ import { PROFILE_VISIBILITY_SELECT } from '@/lib/profile-queries';
 import { PrivacyForm } from './PrivacyForm';
 import { LibraryActivityForm } from './LibraryActivityForm';
 import { ProfileSectionsForm } from './ProfileSectionsForm';
+import { loginHref } from '@/lib/auth/callback-path';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PrivacySettingsPage() {
   const session = await auth();
-  if (!session?.user) redirect('/auth/login?callbackUrl=/settings/privacy');
+  if (!session?.user) redirect(loginHref('/settings/privacy'));
   const t = await getTranslations('settings');
 
   const user = await prisma.user.findUnique({
@@ -24,7 +25,7 @@ export default async function PrivacySettingsPage() {
       ...PROFILE_VISIBILITY_SELECT,
     },
   });
-  if (!user) redirect('/auth/login?callbackUrl=/settings/privacy');
+  if (!user) redirect(loginHref('/settings/privacy'));
 
   const dept = [user.department, user.lab].filter(Boolean).join(' · ');
 

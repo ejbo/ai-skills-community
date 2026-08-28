@@ -123,6 +123,31 @@ export function isStaff(holder: PermissionHolder | null | undefined): boolean {
 }
 
 /**
+ * The role badge a MEMBER-FACING surface is allowed to render.
+ *
+ * Who administers the site is a fact about the deployment, not a decoration on
+ * someone's profile: an "Admin" / 超级管理员 chip next to a name tells ordinary
+ * members nothing they can act on, and it advertises exactly which accounts are
+ * worth attacking. So every staff role — super_admin, admin, and any custom
+ * role that carries even one permission — is trimmed at the SERVER boundary and
+ * never reaches the client.
+ *
+ * Honorific roles survive, and that is the point: a 专家 role created with an
+ * EMPTY permission list is a pure label, so its badge still rides along on
+ * annotations and user cards. `member` (and no role at all) never had one.
+ *
+ * The staff themselves keep seeing everything they need in 管理后台, which is
+ * where role information belongs.
+ */
+export function publicRoleBadge(
+  role: { key: string; name: string; permissions?: readonly string[] | null } | null | undefined,
+): { key: string; name: string } | null {
+  if (!role || role.key === MEMBER_ROLE_KEY) return null;
+  if (isStaff({ roleKey: role.key, permissions: role.permissions })) return null;
+  return { key: role.key, name: role.name };
+}
+
+/**
  * Sanitize a permission list coming from the DB or from a form: unknown keys
  * dropped, duplicates removed, catalog order restored. The wildcard is NOT
  * preserved — it is reserved for the super_admin role and only ever written by

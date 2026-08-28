@@ -23,6 +23,7 @@ import { ImageLightbox } from '../_components/ImageLightbox';
 import { EventActions } from '../_components/EventActions';
 import { EventTimeDetail } from '../_components/EventTime';
 import { CancelledBadge, KindBadge, ModeBadge, TopicChip } from '../_components/badges';
+import { loginHref } from '@/lib/auth/callback-path';
 
 export const dynamic = 'force-dynamic';
 
@@ -210,7 +211,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
                 ) : (
                   <div>
                     <Link
-                      href={`/auth/login?callbackUrl=${encodeURIComponent(`/events/${event.id}`)}`}
+                      href={loginHref(`/events/${event.id}`)}
                       className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
                     >
                       <CalendarPlus className="h-4 w-4" />
@@ -293,7 +294,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
                     {t.rich('login_to_see_meeting', {
                       link: (chunks) => (
                         <Link
-                          href={`/auth/login?callbackUrl=${encodeURIComponent(`/events/${event.id}`)}`}
+                          href={loginHref(`/events/${event.id}`)}
                           className="text-zinc-900 dark:text-zinc-50 underline-offset-2 hover:underline"
                         >
                           {chunks}

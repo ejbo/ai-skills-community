@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { NextIntlClientProvider } from 'next-intl';
 import { withBasePath } from '@/lib/base-path';
 import { canonicalRedirectTarget } from '@/lib/auth/cookies';
+import { pickClientMessages } from '@/lib/i18n-client-namespaces';
 import { env } from '@/lib/env';
 
 // Self-hosted variable fonts (committed woff2, latin subset — CJK falls back to
@@ -65,6 +66,15 @@ export default async function RootLayout({
     auth(),
   ]);
 
+  // Only the namespaces client components read cross the wire. The full catalog
+  // is 238-289 KB and this document is `no-store`, so inlining all of it made
+  // the i18n payload 80.8% of every 281 KB HTML response — trimming it measured
+  // +51% document throughput. Server components are untouched: they keep
+  // reading the FULL catalog through getTranslations()/getMessages().
+  // The allowlist is enforced in both directions by
+  // tests/i18n-client-namespaces.test.ts — never edit it by hand.
+  const clientMessages = pickClientMessages(messages);
+
   return (
     <html
       lang={locale}
@@ -74,7 +84,7 @@ export default async function RootLayout({
       <body>
         <ThemeProvider>
           <AuthProvider session={session}>
-            <NextIntlClientProvider locale={locale} messages={messages}>
+            <NextIntlClientProvider locale={locale} messages={clientMessages}>
               <NavBar session={session} />
               <main className="min-h-[calc(100vh-64px)]">{children}</main>
               <Toaster />

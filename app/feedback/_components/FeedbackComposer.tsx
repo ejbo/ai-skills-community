@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Loader2, MessageSquarePlus, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { FeedbackCategory } from '@prisma/client';
 import { pushToast } from '@/components/Toaster';
 import { RichTextEditor } from '@/components/RichTextEditor';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 import { CATEGORY_META } from './badges';
 
 const CATEGORIES = Object.entries(CATEGORY_META) as [
@@ -17,7 +18,6 @@ const CATEGORIES = Object.entries(CATEGORY_META) as [
 /** Collapsed "提交反馈" button that expands into the inline new-feedback form. */
 export function FeedbackComposer({ loggedIn }: { loggedIn: boolean }) {
   const router = useRouter();
-  const pathname = usePathname();
   const t = useTranslations('feedback');
   const g = useTranslations();
   const [open, setOpen] = useState(false);
@@ -29,7 +29,7 @@ export function FeedbackComposer({ loggedIn }: { loggedIn: boolean }) {
   function openForm() {
     if (!loggedIn) {
       pushToast('error', t('login_before_submit'));
-      router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+      router.push(currentLoginHref());
       return;
     }
     setOpen(true);
@@ -51,7 +51,7 @@ export function FeedbackComposer({ loggedIn }: { loggedIn: boolean }) {
       const data = await res.json().catch(() => ({}));
       if (res.status === 401) {
         pushToast('error', g('video.login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       if (!res.ok) {

@@ -6,12 +6,12 @@
 
 import { useMemo } from 'react';
 import Link from 'next/link';
-import { useLocale, useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { ArrowRight, BookOpen, FileText, Plus } from 'lucide-react';
 import { StaggerGrid, SpotlightCard } from '@/components/motion';
-import { relativeTime } from '@/lib/i18n-date';
 import { zoneWikiHref } from '@/lib/zones/shared';
 import type { WikiTreeNode } from '@/lib/zones/types';
+import { RelTime } from '../RelTime';
 
 export interface WikiWelcomeProps {
   zoneSlug: string;
@@ -46,7 +46,6 @@ const PRIMARY_BTN =
 
 export function WikiWelcome({ zoneSlug, tree, canWiki }: WikiWelcomeProps) {
   const t = useTranslations('zones');
-  const locale = useLocale();
   const all = useMemo(() => flatten(tree), [tree]);
   const recent = useMemo(
     () => [...all].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 8),
@@ -118,12 +117,7 @@ export function WikiWelcome({ zoneSlug, tree, canWiki }: WikiWelcomeProps) {
                   <span className="block truncate text-[11px] text-muted">{r.path.join(' / ')}</span>
                 )}
               </span>
-              <time
-                dateTime={r.updatedAt}
-                className="shrink-0 font-mono text-xs tabular-nums text-muted"
-              >
-                {relativeTime(r.updatedAt, locale)}
-              </time>
+              <RelTime at={r.updatedAt} className="shrink-0 font-mono text-xs tabular-nums text-muted" />
             </Link>
           )}
           className="divide-y divide-zinc-100 dark:divide-zinc-800/70"

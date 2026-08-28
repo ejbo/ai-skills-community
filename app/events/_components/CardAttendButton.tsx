@@ -6,15 +6,15 @@
 // list works without knowing the session.
 
 import { useEffect, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { CalendarCheck2, CalendarPlus, Loader2 } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 
 export function CardAttendButton({ id, attending }: { id: string; attending: boolean }) {
   const t = useTranslations('events');
   const router = useRouter();
-  const pathname = usePathname();
   const [isAttending, setIsAttending] = useState(attending);
   const [busy, setBusy] = useState(false);
 
@@ -30,7 +30,7 @@ export function CardAttendButton({ id, attending }: { id: string; attending: boo
       const data = await res.json().catch(() => ({}));
       if (res.status === 401) {
         pushToast('error', t('attend_login'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       if (!res.ok) {

@@ -8,6 +8,7 @@ import type { LLMProvider } from './types';
 export type { LLMProvider, LLMMessage, LLMCompleteOptions, LLMCompletion, LLMUsage } from './types';
 export { toSseResponseStream } from './sse';
 export { resolveLLMConfig } from './config';
+export { LLMTimeoutError, isLlmCancellation, llmQueueDepth } from './limits';
 
 /** Thrown when the active LLM env configuration is incomplete. */
 export class LLMConfigError extends Error {

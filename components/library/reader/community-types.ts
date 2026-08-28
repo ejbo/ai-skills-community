@@ -7,7 +7,8 @@ export interface NoteAuthor {
   isPrivate?: boolean;
 }
 
-/** Named role behind a 专家 / 管理员 badge. `member` never reaches the client. */
+/** Named role behind a 专家 badge. `member` and every STAFF role are trimmed
+ *  server-side by `publicRoleBadge` and never reach the client. */
 export interface NoteAuthorRole {
   key: string;
   name: string;
@@ -19,6 +20,8 @@ export interface NoteReply {
   bodyMd: string;
   createdAt: string;
   replyCount: number;
+  likeCount: number;
+  likedByMe: boolean;
   author: NoteAuthor;
   authorRole: NoteAuthorRole | null;
   /** Second level only — the thread is flat below the root (house contract). */

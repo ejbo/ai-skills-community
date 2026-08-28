@@ -14,7 +14,7 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Bookmark,
@@ -34,6 +34,7 @@ import { DeptTag } from '@/components/DeptTag';
 import { withBasePath } from '@/lib/base-path';
 import { relativeTime } from '@/lib/i18n-date';
 import { formatCount, formatDuration } from '@/lib/video/types';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 import type { ShortsCellApi, ShortView } from './types';
 
 const DOUBLE_TAP_MS = 280;
@@ -77,8 +78,6 @@ export function ShortsCell({
   const t = useTranslations('shorts');
   const locale = useLocale();
   const router = useRouter();
-  const pathname = usePathname();
-
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTapRef = useRef(0);
@@ -223,7 +222,7 @@ export function ShortsCell({
         setLiked(prev.liked);
         setLikeCount(prev.likeCount);
         pushToast('error', t('login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       if (!res.ok) throw new Error('failed');
@@ -251,7 +250,7 @@ export function ShortsCell({
         setFavorited(prev.favorited);
         setFavoriteCount(prev.favoriteCount);
         pushToast('error', t('login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       if (!res.ok) throw new Error('failed');

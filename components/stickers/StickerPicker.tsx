@@ -17,6 +17,7 @@ import { useTranslations } from 'next-intl';
 import { Clock, Heart, LayoutGrid, Loader2, Plus, Trash2 } from 'lucide-react';
 import { withBasePath } from '@/lib/base-path';
 import { pushToast } from '@/components/Toaster';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 import {
   MAX_STICKERS_PER_USER,
   RECENT_STICKERS_LIMIT,
@@ -155,7 +156,7 @@ export function StickerPicker({
 
   const goLogin = useCallback(() => {
     onClose();
-    router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+    router.push(currentLoginHref());
   }, [onClose, router, pathname]);
 
   // ── Uploads: sequential raw-body POSTs, one file per request (house protocol).

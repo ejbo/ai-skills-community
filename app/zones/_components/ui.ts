@@ -59,9 +59,12 @@ export async function readError(res: Response): Promise<{ error: string; reason?
   };
 }
 
-export function loginHref(pathname: string): string {
-  return `/auth/login?callbackUrl=${encodeURIComponent(pathname)}`;
-}
+/**
+ * Re-export so zone code can keep importing it from the section's ui module.
+ * The implementation is the app-wide one (lib/auth/callback-path.ts) — it also
+ * strips the deploy basePath and refuses anything that is not an in-app path.
+ */
+export { loginHref } from '@/lib/auth/callback-path';
 
 /** Build `/zones/<slug>?…` (or any base) dropping empty values and `page=1`. */
 export function hrefWith(base: string, params: Record<string, string | null | undefined>): string {

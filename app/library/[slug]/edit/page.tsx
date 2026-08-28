@@ -1,4 +1,5 @@
 import { notFound, redirect } from 'next/navigation';
+import { loginHref } from '@/lib/auth/callback-path';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { getDocBySlug, libraryViewerFromSession } from '@/lib/library-queries';
@@ -14,7 +15,7 @@ export default async function DocEditPage({ params }: { params: { slug: string }
   const t = await getTranslations('library');
   const session = await auth();
   const viewer = libraryViewerFromSession(session);
-  if (!viewer) redirect(`/auth/login?callbackUrl=/library/${params.slug}/edit`);
+  if (!viewer) redirect(loginHref(`/library/${params.slug}/edit`));
 
   const doc = await getDocBySlug(params.slug, viewer);
   if (!doc) notFound();

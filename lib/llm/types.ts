@@ -25,6 +25,12 @@ export interface LLMCompleteOptions {
    * through extractJsonObject, so it is a hint, never a guarantee.
    */
   json?: boolean;
+  /**
+   * Cancels the upstream request. The streaming routes thread `req.signal`
+   * through: a reader who closes the chat drawer used to leave the generation
+   * running against the shared model until it finished on its own.
+   */
+  signal?: AbortSignal;
 }
 
 export interface LLMCompletion {

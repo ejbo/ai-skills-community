@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { CreateVoteForm } from '../_components/CreateVoteForm';
+import { loginHref } from '@/lib/auth/callback-path';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +14,7 @@ export async function generateMetadata() {
 export default async function NewVotePage() {
   const session = await auth();
   if (!session?.user) {
-    redirect(`/auth/login?callbackUrl=${encodeURIComponent('/votes/new')}`);
+    redirect(loginHref('/votes/new'));
   }
   const t = await getTranslations('votes');
   return (

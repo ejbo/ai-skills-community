@@ -4,6 +4,7 @@ import { Bell, GitFork, Heart, Star, Calendar, Tag as TagIcon, ExternalLink, Dow
 import { getLocale, getTranslations } from 'next-intl/server';
 import { relativeTime } from '@/lib/i18n-date';
 import { auth } from '@/lib/auth';
+import { loginHref } from '@/lib/auth/callback-path';
 import { can } from '@/lib/permissions';
 import { getSkillBySlug } from '@/lib/skill-queries';
 import { prisma } from '@/lib/db';
@@ -158,7 +159,7 @@ export default async function SkillDetailPage({ params, searchParams }: PageProp
                   />
                 ) : (
                   <a
-                    href={`/auth/login?callbackUrl=/skills/${skill.slug}`}
+                    href={loginHref(`/skills/${skill.slug}`)}
                     className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:bg-zinc-900/10 dark:hover:bg-white/[0.14] hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:text-zinc-50"
                   >
                     <Download className="h-3.5 w-3.5" />

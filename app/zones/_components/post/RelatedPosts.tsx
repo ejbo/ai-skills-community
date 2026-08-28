@@ -4,19 +4,18 @@
 // The RSC page computes the list (listZonePosts by type + first tag, merged).
 
 import Link from 'next/link';
-import { useLocale, useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { Heart, MessageCircle } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { SpotlightCard } from '@/components/motion';
-import { relativeTime } from '@/lib/i18n-date';
 import { zonePostHref } from '@/lib/zones/shared';
 import type { ZonePostCardView } from '@/lib/zones/types';
+import { RelTime } from '../RelTime';
 import { POST_TYPE_ICONS } from './PostTypePicker';
 
 export function RelatedPosts({ posts, className = '' }: { posts: ZonePostCardView[]; className?: string }) {
   const t = useTranslations('zones');
   const tl = useTranslations('labels');
-  const locale = useLocale();
   if (posts.length === 0) return null;
 
   return (
@@ -40,7 +39,7 @@ export function RelatedPosts({ posts, className = '' }: { posts: ZonePostCardVie
                       <Avatar name={p.author.displayName} src={p.author.avatarUrl} size="xs" handle={p.author.handle} />
                       <span className="truncate text-zinc-700 dark:text-zinc-300">{p.author.displayName}</span>
                     </span>
-                    {p.publishedAt && <span>{relativeTime(p.publishedAt, locale)}</span>}
+                    {p.publishedAt && <RelTime at={p.publishedAt} />}
                     <span className="inline-flex items-center gap-1 font-mono tabular-nums">
                       <Heart className="h-3 w-3" />
                       {p.likeCount}

@@ -1,13 +1,14 @@
 import Link from 'next/link';
 import type { Session } from 'next-auth';
+import { getTranslations } from 'next-intl/server';
 import { ThemeToggle } from './ThemeToggle';
 import { UserMenu } from './UserMenu';
+import { LoginLink } from './LoginLink';
 import { SearchTrigger } from './SearchTrigger';
 import { NavBarShell } from './NavBarShell';
 import { NotificationBell } from './NotificationBell';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { NavMoreButton, NavOverflowProvider, NavPrimaryRow } from './nav-overflow';
-import { getTranslations } from 'next-intl/server';
 import { withBasePath } from '@/lib/base-path';
 
 export async function NavBar({ session }: { session: Session | null }) {
@@ -43,12 +44,9 @@ export async function NavBar({ session }: { session: Session | null }) {
             {session?.user ? (
               <UserMenu user={session.user} />
             ) : (
-              <Link
-                href="/auth/login"
-                className="whitespace-nowrap rounded-lg bg-zinc-900 px-3.5 py-1.5 text-sm font-medium text-white transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-              >
+              <LoginLink className="whitespace-nowrap rounded-lg bg-zinc-900 px-3.5 py-1.5 text-sm font-medium text-white transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300">
                 {t('login')}
-              </Link>
+              </LoginLink>
             )}
           </div>
         </NavOverflowProvider>

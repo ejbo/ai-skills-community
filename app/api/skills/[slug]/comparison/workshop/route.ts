@@ -77,12 +77,16 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
     messages: parsed.data.messages,
     model: parsed.data.model,
     maxTokens: 2048,
+    signal: req.signal,
   });
 
-  return new NextResponse(toSseResponseStream(deltas), {
+  return new NextResponse(toSseResponseStream(deltas, { signal: req.signal }), {
     headers: {
       'content-type': 'text/event-stream; charset=utf-8',
       'cache-control': 'no-cache, no-transform',
+      // Opts out of nginx's app-wide `proxy_buffering on` for THIS response
+      // only — without it the whole answer arrives in one lump at the end.
+      'X-Accel-Buffering': 'no',
       'x-ratelimit-remaining': String(gate.remaining),
     },
   });

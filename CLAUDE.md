@@ -85,7 +85,49 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
    uses `gateApi('<domain>')` — both read the role from the DB, so a revoked role locks out on the
    next request. `getToken()` in edge middleware can't see the secure session cookie behind the
    proxy+subpath, so it false-negatives logged-in admins and bounces them to a (wrong-host) login.
-   There is intentionally no `middleware.ts`.
+   `middleware.ts` exists but does ONE thing — publish `x-pathname` (see 登录跳转 below) — and
+   **no auth decision may ever move into it**.
+8b. **登录后回到原来的页面 (2026-08-27).** A shared deep link into a login-walled surface used to
+   dump the visitor on the homepage after signing in, because `requireUser()` redirected to a bare
+   `/auth/login`. Three parts, and they only work together:
+   - `middleware.ts` is HEADER-ONLY: it sets `x-pathname` (basePath-free, query included) and
+     nothing else. A layout gets no pathname prop and Next 14 sets no such header itself, so this is
+     the only way `app/{zones,videos,votes}/layout.tsx` can name the route they are gating. Its
+     invariants are in the file and each is load-bearing: CLONE the inbound headers (Next deletes
+     every header not in the override set — a bare `new Headers()` drops `cookie` and
+     `accept-language`), set NO response headers, keep the bare `'/'` matcher entry (a `'/(…)'`
+     pattern cannot match `/ai-community` itself — the `location = /ai-community` nginx block,
+     pitfall #6), and remember `.set()` only overwrites a spoofed value on matcher-COVERED paths —
+     never read `x-pathname` in an `/api` route. **A deploy must rebuild**: a `.next` built before
+     the file existed silently runs no middleware and re-opens the spoof.
+   - **`loginHref()` / `currentLoginHref()` / `selfHref()` (`lib/auth/callback-path.ts`) are the ONLY
+     way to build a login link.** Never hand-write `` `/auth/login?callbackUrl=${pathname}` `` again:
+     the literals dropped the destination, one produced a double `?` (`/skills/x?tab=reviews`), and
+     none stripped the deploy basePath — so `withBasePath()` on the far side double-prefixed it.
+     In a client event handler use `currentLoginHref()` (reads `window.location`, so it keeps the
+     query — `usePathname()` has none and `useSearchParams()` would opt the route out of static
+     rendering); in an RSC gate pass `requireUser(selfHref(base, searchParams))` where the route
+     knows itself, so the fallback survives even a stale build.
+   - `sanitizeCallbackPath` compares the PATH part when stripping the basePath. `/ai-community?tab=x`
+     is the deploy root with a query and @auth/core produces exactly that shape (it bounces to
+     `pages.signIn` with the absolute stored callbackUrl); whole-string matching missed it. It also
+     **rejects C0 control characters anywhere in the value** — WHATWG URL parsers REMOVE tab/CR/LF
+     before parsing, so `/<TAB>/evil.example` walked past the `//` check, Node put the raw byte in
+     the `Location` header and the browser then read `//evil.example` as scheme-relative and left
+     the origin. That was a live open redirect on the ROOT deploy (the `/ai-community` prefix
+     neutralised it by accident). `loginHref` additionally refuses `/auth/*` destinations, so the
+     navbar link may render on the login/error pages without nesting itself.
+   - A failed W3 attempt is the one case the callbackUrl cannot survive on its own: @auth/core puts
+     ONLY `?error=` on `pages.error`, and the `aic.callback-url` cookie is path-scoped to
+     `/api/auth`. `HuaweiLoginButton` therefore leaves a sessionStorage breadcrumb
+     (`lib/auth/pending-dest.ts`) that `app/auth/error/AuthRetryLink.tsx` reads after mount.
+   The W3 round trip is unchanged — `HuaweiLoginButton` still does `withBasePath(sanitize(…))`
+   (pitfall #4) and the callbackUrl still rides the `aic.callback-url` cookie, never the state.
+   **自助注册已关闭** on every deploy (owner decision): `/auth/signup` redirects to the login page
+   (the route is KEPT — `tests/page-visit.test.ts` enforces `app/**/page.tsx` ↔ `PAGE_NAMES` in both
+   directions), `POST /api/auth/register` always 403s, and the login page has no signup link.
+   Accounts come from W3 first login (`signIn` callback) or `pnpm db:seed`; there is no admin
+   create-user UI, so re-opening a path is a real decision, not a toggle.
 9. **Client `fetch('/api/...')` must carry the basePath.** Root-relative client fetches resolve
    to `<origin>/api/...` (origin root → neighbour app/404), not `/ai-community/api/...`, so every
    client-side write breaks under the subpath while RSC reads work. Fixed globally by
@@ -404,6 +446,36 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   read as one welded block. Shorts CTAs are NEUTRAL (zinc/white
   solids) — the user explicitly rejected accent-blue "AI-looking" buttons; homepage shorts header
   has view-all ONLY (no upload button).
+- **评论点赞是一条统一契约 (2026-08-27).** Every comment/reply surface in the app now has likes:
+  video, 动态, 技术专区 and 共享批注 already did; migration `20260827160000_comment_likes` adds
+  `FeedbackCommentLike` / `DiscussionReplyLike` / `LibraryCommentLike` / `LibraryNoteReplyLike` /
+  `VoteCommentLike` plus a `likeCount` column on each parent. Three rules, all load-bearing:
+  - **The route shape is fixed**: guarded writes in ONE transaction (`deleteMany` → decrement, else
+    `createMany({skipDuplicates})` → increment) followed by an AUTHORITATIVE re-read of both the
+    counter and the viewer's own row. A racing double-click must be a no-op, never a P2002 500, and
+    the counter must never drift from the join table. Copy `app/api/zones/comments/[id]/like`.
+  - **The gate mirrors the surface's own LIST route** — a comment is likeable exactly when it is
+    readable. 作品评论 on a hidden/unapproved entry stay manager-only; a 批注 reply is likeable only
+    while its annotation is shared; every route re-checks that the comment belongs to the parent in
+    the URL so an id from another thread cannot be liked through it.
+  - **The button is `components/CommentLikeButton.tsx`**, not a new copy. It owns optimistic paint →
+    server reconcile → rollback, the signed-out login redirect, and the single-flight guard. `tone`
+    exists because three palettes are in play: `default` (zinc), `reader` (the 知识库 reader follows
+    its OWN 浅色/护眼/深色 theme, so `dark:` variants are wrong there half the time) and `onDark`
+    (the 投票 lightbox is dark whatever the site theme, so `dark:` never fires). The video, 动态 and
+    技术专区 components still carry their own inline copy of the handler — new threads must use the
+    shared button, and those three should migrate onto it when next touched.
+  - `likedByMe` is resolved with ONE batched read per page of comments (a `likes: { where }` per row
+    is a correlated subquery per comment, and these threads cap at 300+100).
+- **管理身份不出现在成员界面 (2026-08-27).** `publicRoleBadge` (`lib/permissions.ts`) is the ONLY
+  way a role name reaches a member-facing payload. It drops `member` AND every staff role — where
+  "staff" is `isStaff`, i.e. carries at least one permission — so 超级管理员/管理员 never appear on
+  a profile, a 用户卡片 or an annotation byline. An HONORIFIC role survives on purpose: a 专家 role
+  created with an EMPTY permission list still badges, which is what the 共享批注 feature was built
+  around. The trim happens at the SERVER boundary (`/api/users/[handle]/card`,
+  `/api/library/docs/[id]/notes`), never as a client-side hide, and the role's `permissions` must be
+  in the select for it to work. The staff's own 管理后台 link in `UserMenu` is unaffected — that is
+  the operator seeing their own tools, not a badge shown to others.
 - **导航栏 (2026-08-27) is measured, not guessed.** `components/nav-items.ts` is the destination
   catalog; `components/nav-overflow.tsx` renders it. The row is `flex-1 min-w-0 overflow-hidden`
   between a `shrink-0` logo and a `shrink-0` action cluster, so its `clientWidth` IS the budget: it
@@ -740,7 +812,16 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   Zone chrome rules: the 管理 and 加入 dropdowns MUST portal out of the header (it is
   `relative overflow-hidden`) — both ride `useAnchoredPanel` (now `components/useAnchoredPanel.ts`,
   shared with the navbar's overflow menu); 研究所·部门 gets its own prominent
-  untruncated row (never the capped `DeptTag`); and zone titles are PLAIN TEXT (no BlurText). **`Zone.slug` is
+  untruncated row (never the capped `DeptTag`); and zone titles are PLAIN TEXT (no BlurText).
+  **Editing**: a post is editable by its 主作者, any 合著者 (`ZonePostAuthor` — they hold the same
+  content rights) and any `moderate` holder; `updateZonePost` stamps `editedAt` + `editedById` on a
+  CONTENT change to a PUBLISHED post only (drafts are still being written), and the header renders
+  「最后由 X 编辑于 …」 so a 版主 editing someone else's post is visible rather than silent.
+  **Relative times go through `app/zones/_components/RelTime.tsx`** — a text-only `<time>` carrying
+  `suppressHydrationWarning`, because the string ticks over between SSR and hydration; the attribute
+  does NOT cover a text node sitting beside a sibling icon, which is what caused the hydration error
+  the first time. When the time is interpolated into a translated sentence, wrap that sentence in its
+  own text-only element with the attribute (see `PostHeader.tsx`). **`Zone.slug` is
   IMMUTABLE** after creation (notification links / bookmarks embed it): the PATCH route strips it
   and `updateZone` throws `slug_immutable` as the lib-level backstop. Post publish is re-gated on
   the draft→published TRANSITION (`canPost`, `canModerate` for announcements) — being the author is

@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
-import { generateShortSubtitles, subtitlesAvailable } from '@/lib/video/subtitles';
+import { generateShortSubtitles, subtitlesAvailable, sweepStaleSubtitles } from '@/lib/video/subtitles';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -12,7 +12,7 @@ const HOUR_MS = 60 * 60 * 1000;
 
 // POST /api/shorts/[id]/subtitles — (re)generate subtitle tracks on demand.
 // Author-or-admin; the pipeline itself claims the row atomically so concurrent
-// triggers never double-run.
+// triggers never double-run, and queues the ASR behind its FIFO.
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
@@ -21,6 +21,15 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   if (!gate.allowed) {
     return NextResponse.json({ error: 'rate_limited', resetAt: gate.resetAt }, { status: 429 });
   }
+
+  // Awaited on purpose, BEFORE reading the row: a restart strands jobs at
+  // 'processing', which is the one status this route refuses — so 重试 on
+  // exactly those rows would answer "processing" forever. The sweep is
+  // TTL-throttled (one run per ~10 min, de-duplicated while in flight), so it
+  // costs nothing on the common path — and unlike the old run-once-per-process
+  // memo it can still rescue a row whose lease expires AFTER this process
+  // booted, which is exactly the case a deploy creates.
+  await sweepStaleSubtitles();
 
   const short = await prisma.video.findFirst({
     where: { id: params.id, isShort: true, deletedAt: null },

@@ -7,6 +7,7 @@ import { BackButton } from '@/components/BackButton';
 import { dayKey, fmtTime, toWallDate } from '@/lib/events/time';
 import { DEFAULT_EVENT_TIMEZONE } from '@/lib/events/types';
 import { EventForm, type EventFormInitial } from '../../_components/EventForm';
+import { loginHref } from '@/lib/auth/callback-path';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function EditEventPage({ params }: { params: { id: string } }) {
   const t = await getTranslations('event_form');
   const session = await auth();
-  if (!session?.user) redirect(`/auth/login?callbackUrl=${encodeURIComponent(`/events/${params.id}/edit`)}`);
+  if (!session?.user) redirect(loginHref(`/events/${params.id}/edit`));
 
   const row = await prisma.event.findFirst({
     where: { id: params.id, deletedAt: null },

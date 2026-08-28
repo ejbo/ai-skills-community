@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { rateLimit } from '@/lib/rate-limit';
+import { MAX_UPLOAD_SAFETY_BYTES, hasFreeSpace } from '@/lib/uploads/disk-space';
 import { findManagedActivity, recountVisibleEntries, voteViewerFromSession } from '@/lib/vote-queries';
 import { DEFAULT_NAME_RULE, applyNameRule, parseNameRule, voteOver } from '@/lib/votes/shared';
 import {
@@ -81,10 +82,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
   }
 
-  const max = maxBytesForVoteKind(kind);
+  // Entry videos are deliberately uncapped as a product decision (lib/votes/
+  // storage.ts) — the clamp is the volume-safety ceiling, which only refuses
+  // files big enough to destabilise the box, not big contest submissions.
+  const max = Math.min(maxBytesForVoteKind(kind), MAX_UPLOAD_SAFETY_BYTES);
   const declared = Number(req.headers.get('content-length') ?? '');
   if (Number.isFinite(declared) && declared > max) {
     return NextResponse.json({ error: 'file_too_large' }, { status: 413 });
+  }
+  // A bulk intake is hundreds of files back to back; PostgreSQL shares this
+  // volume, so stop at the reserve instead of ENOSPC-ing the database.
+  if (!(await hasFreeSpace(declared))) {
+    return NextResponse.json({ error: 'insufficient_storage' }, { status: 507 });
   }
   if (!req.body) return NextResponse.json({ error: 'empty_body' }, { status: 400 });
 

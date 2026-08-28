@@ -31,6 +31,7 @@ import { Avatar } from '@/components/Avatar';
 import { UserHoverCard } from '@/components/user/UserHoverCard';
 import { DeptTag } from '@/components/DeptTag';
 import { pushToast } from '@/components/Toaster';
+import { CommentLikeButton } from '@/components/CommentLikeButton';
 import { relativeTime } from '@/lib/i18n-date';
 import type { TocEntry } from './TocPanel';
 import {
@@ -464,6 +465,7 @@ function AnnotationCard({
             <ReplyRow
               key={r.id}
               reply={r}
+              highlightId={note.id}
               locale={locale}
               onReplyTo={(id, name) => {
                 setReplyTo({ id, name });
@@ -518,11 +520,13 @@ function AnnotationCard({
 
 function ReplyRow({
   reply,
+  highlightId,
   locale,
   onReplyTo,
   nested = false,
 }: {
   reply: NoteReply;
+  highlightId: string;
   locale: string;
   onReplyTo: (id: string, name: string) => void;
   nested?: boolean;
@@ -541,17 +545,34 @@ function ReplyRow({
         <time className="r-muted ml-auto">{relativeTime(reply.createdAt, locale)}</time>
       </div>
       <p className="mt-0.5 whitespace-pre-wrap pl-6 text-xs leading-relaxed">{reply.bodyMd}</p>
-      <button
-        type="button"
-        onClick={() => onReplyTo(reply.id, reply.author.displayName)}
-        className="r-muted ml-6 mt-0.5 text-[11px] transition hover:text-[var(--reader-accent)]"
-      >
-        {t('reply')}
-      </button>
+      <div className="ml-6 mt-0.5 flex items-center gap-3 text-[11px]">
+        <CommentLikeButton
+          endpoint={`/api/library/notes/${encodeURIComponent(highlightId)}/replies/${encodeURIComponent(reply.id)}/like`}
+          initialLiked={reply.likedByMe}
+          initialCount={reply.likeCount}
+          signedIn
+          size="xs"
+          tone="reader"
+        />
+        <button
+          type="button"
+          onClick={() => onReplyTo(reply.id, reply.author.displayName)}
+          className="r-muted transition hover:text-[var(--reader-accent)]"
+        >
+          {t('reply')}
+        </button>
+      </div>
       {reply.children && reply.children.length > 0 && (
         <div className="mt-1.5 space-y-1.5">
           {reply.children.map((c) => (
-            <ReplyRow key={c.id} reply={c} locale={locale} onReplyTo={onReplyTo} nested />
+            <ReplyRow
+              key={c.id}
+              reply={c}
+              highlightId={highlightId}
+              locale={locale}
+              onReplyTo={onReplyTo}
+              nested
+            />
           ))}
         </div>
       )}

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { relativeTime } from '@/lib/i18n-date';
 import { CornerDownRight, Loader2, Trash2 } from 'lucide-react';
@@ -11,12 +11,17 @@ import { RichTextEditor } from '@/components/RichTextEditor';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
+import { CommentLikeButton } from '@/components/CommentLikeButton';
+import { currentLoginHref } from '@/lib/auth/callback-path';
+import { loginHref } from '@/lib/auth/callback-path';
 
 export interface CommentView {
   id: string;
   bodyMd: string;
   status: 'visible' | 'deleted';
   replyCount: number;
+  likeCount: number;
+  likedByMe: boolean;
   createdAt: string | Date;
   author: {
     handle: string;
@@ -113,7 +118,7 @@ export function FeedbackComments({
           {t.rich('login_to_discuss', {
             link: (chunks) => (
               <Link
-                href={`/auth/login?callbackUrl=${encodeURIComponent(`/feedback/${feedbackId}`)}`}
+                href={loginHref(`/feedback/${feedbackId}`)}
                 className="text-zinc-900 dark:text-zinc-50 underline"
               >
                 {chunks}
@@ -225,7 +230,6 @@ function CommentBlock({
   onRemoved: (commentId: string, tombstoned: boolean, prunedParent: boolean) => void;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
   const t = useTranslations('feedback');
   const g = useTranslations();
   const locale = useLocale();
@@ -299,6 +303,13 @@ function CommentBlock({
           )}
           {!isTombstone && (
             <div className="mt-1.5 flex items-center gap-3 text-xs text-muted">
+              <CommentLikeButton
+                endpoint={`/api/feedback/${encodeURIComponent(feedbackId)}/comments/${encodeURIComponent(comment.id)}/like`}
+                initialLiked={comment.likedByMe}
+                initialCount={comment.likeCount}
+                signedIn={!!currentUser}
+                size="xs"
+              />
               {currentUser ? (
                 <button
                   onClick={onReply}
@@ -310,7 +321,7 @@ function CommentBlock({
               ) : (
                 <button
                   onClick={() =>
-                    router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`)
+                    router.push(currentLoginHref())
                   }
                   className="flex items-center gap-1 transition hover:text-zinc-900"
                 >
@@ -354,7 +365,6 @@ function CommentBox({
   onCancel?: () => void;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
   const t = useTranslations('feedback');
   const g = useTranslations();
   const [bodyMd, setBodyMd] = useState('');
@@ -378,7 +388,7 @@ function CommentBox({
       });
       if (res.status === 401) {
         pushToast('error', g('video.login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = await res.json().catch(() => ({}));

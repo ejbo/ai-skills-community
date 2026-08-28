@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Star } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 
 /** 评分 — average display + the viewer's own 1-5 star input (click again to clear). */
 export function RatingStars({
@@ -23,7 +24,6 @@ export function RatingStars({
   const t = useTranslations('library_cards');
   const tv = useTranslations('video');
   const router = useRouter();
-  const pathname = usePathname();
   const [avg, setAvg] = useState(initialAvg);
   const [count, setCount] = useState(initialCount);
   const [mine, setMine] = useState(initialMine);
@@ -34,7 +34,7 @@ export function RatingStars({
     if (busy) return;
     if (!canRate) {
       pushToast('error', tv('login_required'));
-      router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+      router.push(currentLoginHref());
       return;
     }
     setBusy(true);

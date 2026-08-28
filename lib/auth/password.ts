@@ -10,6 +10,12 @@ export async function verifyPassword(plain: string, hash: string): Promise<boole
   return bcrypt.compare(plain, hash);
 }
 
+/**
+ * Kept although it has no caller today: its only one was the self-service
+ * registration route, closed on 2026-08-27. It is the documented handle rule
+ * (and what every legacy password account's handle was built from), so an
+ * admin create-user path should reuse this rather than reinvent it.
+ */
 export function deriveHandle(email: string): string {
   const local = email.split('@')[0] ?? 'user';
   return local

@@ -7,7 +7,7 @@
 // body + x-filename header) and store the returned ROOT-RELATIVE url.
 
 import { useRef, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
   ArrowDown,
@@ -24,6 +24,7 @@ import { CoverEditor } from './CoverEditor';
 import { Avatar } from '@/components/Avatar';
 import { pushToast } from '@/components/Toaster';
 import { withBasePath } from '@/lib/base-path';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 import {
   DEFAULT_EVENT_TIMEZONE,
   EVENT_CITIES,
@@ -104,8 +105,6 @@ export function EventForm({ eventId, initial }: { eventId?: string; initial?: Ev
   const tc = useTranslations('common');
   const tl = useTranslations('labels');
   const router = useRouter();
-  const pathname = usePathname();
-
   const [title, setTitle] = useState(initial?.title ?? '');
   const [summary, setSummary] = useState(initial?.summary ?? '');
   const [descriptionMd, setDescriptionMd] = useState(initial?.descriptionMd ?? '');
@@ -231,7 +230,7 @@ export function EventForm({ eventId, initial }: { eventId?: string; initial?: Ev
       const data = await res.json().catch(() => ({}));
       if (res.status === 401) {
         pushToast('error', t('err_login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       if (!res.ok) {

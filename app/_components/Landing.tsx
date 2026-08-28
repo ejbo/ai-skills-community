@@ -94,11 +94,13 @@ export async function Landing() {
               {t('browse_skills')}
               <ArrowRight className="h-4 w-4" />
             </Link>
+            {/* 自助注册已关闭（账号来自 W3 首次登录 / 种子脚本），落地页的第二个
+                CTA 因此是「登录」而不是「加入社区」。 */}
             <Link
-              href="/auth/signup"
+              href="/auth/login"
               className="flex h-10 items-center rounded-xl border border-zinc-300 bg-white/60 px-5 text-sm font-medium backdrop-blur transition hover:border-zinc-400 hover:bg-white dark:border-zinc-700 dark:bg-zinc-900/60 dark:hover:border-zinc-600 dark:hover:bg-zinc-900"
             >
-              {t('join_now')}
+              {t('sign_in')}
             </Link>
           </div>
           {stats.length > 0 && (
@@ -197,17 +199,17 @@ export async function Landing() {
             <p className="relative mx-auto mt-2 max-w-md text-base text-muted">{t('cta_sub')}</p>
             <div className="relative mt-6 flex flex-wrap items-center justify-center gap-3">
               <Link
-                href="/auth/signup"
+                href="/auth/login"
                 className="flex h-10 items-center gap-1.5 rounded-xl bg-zinc-900 dark:bg-zinc-100 px-5 text-sm font-medium text-white dark:text-zinc-900 shadow-lg shadow-zinc-900/15 dark:shadow-black/40 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
               >
-                {t('join_now')}
+                {t('sign_in')}
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
-                href="/auth/login"
+                href="/skills"
                 className="flex h-10 items-center rounded-xl px-5 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800/70 dark:hover:text-white"
               >
-                {t('sign_in')}
+                {t('browse_skills')}
               </Link>
             </div>
           </div>

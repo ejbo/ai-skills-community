@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
-import { can } from '@/lib/permissions';
+import { can, publicRoleBadge } from '@/lib/permissions';
 import { syncAndLoadUserTags } from '@/lib/user-tags';
 
 export const runtime = 'nodejs';
@@ -31,7 +31,7 @@ export async function GET(_req: Request, { params }: { params: { handle: string 
       isPrivate: true,
       isActive: true,
       createdAt: true,
-      role: { select: { key: true, name: true } },
+      role: { select: { key: true, name: true, permissions: true } },
     },
   });
   if (!user || !user.isActive) return NextResponse.json({ error: 'not_found' }, { status: 404 });
@@ -59,7 +59,8 @@ export async function GET(_req: Request, { params }: { params: { handle: string 
     department: hide ? null : user.department,
     lab: hide ? null : user.lab,
     isPrivate: user.isPrivate,
-    roleName: user.role && user.role.key !== 'member' ? user.role.name : null,
+    // Staff roles are trimmed here, not hidden in the client — see publicRoleBadge.
+    roleName: publicRoleBadge(user.role)?.name ?? null,
     tags,
     stats: { skills, docs },
     joinedAt: user.createdAt,

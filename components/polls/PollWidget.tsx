@@ -20,6 +20,7 @@ import { withBasePath } from '@/lib/base-path';
 import { pushToast } from '@/components/Toaster';
 import { Avatar } from '@/components/Avatar';
 import type { PollDto } from '@/lib/poll-queries';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 
 const VOTER_AVATARS_SHOWN = 8;
 
@@ -75,7 +76,7 @@ export function PollWidget({ id }: { id: string }) {
         });
         if (res.status === 401) {
           pushToast('error', t('login_to_vote'));
-          router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+          router.push(currentLoginHref());
           return;
         }
         const data = (await res.json().catch(() => null)) as
@@ -116,7 +117,7 @@ export function PollWidget({ id }: { id: string }) {
       });
       if (res.status === 401) {
         pushToast('error', t('login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = (await res.json().catch(() => null)) as { poll?: PollDto } | null;

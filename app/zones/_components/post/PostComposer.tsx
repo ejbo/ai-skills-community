@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { ImagePlus, Loader2, RotateCcw, Trash2, X } from 'lucide-react';
 import { RichTextEditor } from '@/components/RichTextEditor';
@@ -33,6 +33,7 @@ import {
   type ZonePostVisibilityValue,
 } from '@/lib/zones/shared';
 import type { ZoneAccess, ZoneColumnView, ZoneCurrentUser, ZonePostDetailView } from '@/lib/zones/types';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 import {
   AttachmentUploader,
   attachmentPayload,
@@ -174,8 +175,6 @@ export function PostComposer({
   const tc = useTranslations('common');
   const locale = useLocale();
   const router = useRouter();
-  const pathname = usePathname();
-
   const initial = useMemo(
     () => initialDraft(post, initialCoauthors, initialDesignated),
     [post, initialCoauthors, initialDesignated],
@@ -315,7 +314,7 @@ export function PostComposer({
       );
       if (res.status === 401) {
         pushToast('error', t('post_login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = (await res.json().catch(() => ({}))) as { id?: string; reason?: string; error?: string };
@@ -390,7 +389,9 @@ export function PostComposer({
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm dark:border-zinc-700 dark:bg-zinc-900">
           <span className="inline-flex items-center gap-2">
             <RotateCcw className="h-4 w-4 text-muted" />
-            {t('composer_restore_prompt', { time: relativeTime(pending.savedAt, locale) })}
+            {/* suppressHydrationWarning must sit on the TEXT-ONLY node — it does
+                not cover text children that sit beside the icon above. */}
+            <span suppressHydrationWarning>{t('composer_restore_prompt', { time: relativeTime(pending.savedAt, locale) })}</span>
           </span>
           <span className="flex gap-2">
             <button
@@ -427,7 +428,11 @@ export function PostComposer({
         </span>
         <span className="font-mono tabular-nums">
           {t('composer_read_minutes', { count: readMinutes })}
-          {autosavedAt && <span className="ml-3">{t('composer_autosaved', { time: relativeTime(autosavedAt, locale) })}</span>}
+          {autosavedAt && (
+            <span className="ml-3" suppressHydrationWarning>
+              {t('composer_autosaved', { time: relativeTime(autosavedAt, locale) })}
+            </span>
+          )}
         </span>
       </div>
 

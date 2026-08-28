@@ -10,6 +10,7 @@ import {
   type VoteTab,
 } from '@/lib/vote-queries';
 import { VoteCard } from './_components/VoteCard';
+import { loginHref } from '@/lib/auth/callback-path';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,7 +57,7 @@ export default async function VotesPage({ searchParams }: { searchParams: Search
 
   const createHref = session?.user
     ? '/votes/new'
-    : `/auth/login?callbackUrl=${encodeURIComponent('/votes/new')}`;
+    : loginHref('/votes/new');
 
   const tabs: { key: VoteTab; label: string }[] = [
     { key: 'active', label: t('tab_active') },

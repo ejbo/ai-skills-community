@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 import { motion } from 'framer-motion';
 import { Heart, Star, Share2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -55,7 +56,7 @@ export function VideoEngagementBar(props: Props) {
       setCount(count);
       if (err instanceof Response && err.status === 401) {
         pushToast('info', t('login_required'));
-        router.push('/auth/login');
+        router.push(currentLoginHref());
       } else {
         pushToast('error', tu('action_failed'));
       }

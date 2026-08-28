@@ -5,7 +5,7 @@
 // thread ROOT, `replyToId` only routes the notification.
 
 import { useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Loader2 } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
@@ -13,6 +13,7 @@ import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
 import { ZONE_LIMITS } from '@/lib/zones/shared';
 import type { ZoneCommentView, ZoneCurrentUser } from '@/lib/zones/types';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 
 export function CommentBox({
   zoneSlug,
@@ -41,7 +42,6 @@ export function CommentBox({
   const t = useTranslations('zones');
   const tc = useTranslations('common');
   const router = useRouter();
-  const pathname = usePathname();
   const [bodyMd, setBodyMd] = useState(editing?.initialBody ?? '');
   const [busy, setBusy] = useState(false);
   const tooLong = bodyMd.trim().length > ZONE_LIMITS.commentMax;
@@ -64,7 +64,7 @@ export function CommentBox({
           });
       if (res.status === 401) {
         pushToast('error', t('post_login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = (await res.json().catch(() => ({}))) as { comment?: ZoneCommentView; reason?: string; error?: string };

@@ -8,6 +8,7 @@ import { DOC_TYPES, isDocType } from '@/lib/library/types';
 import { EmptyState } from '@/components/EmptyState';
 import { ShelfGrid } from '@/components/library/ShelfGrid';
 import { ListScrollRestore } from '@/components/library/ScrollMemory';
+import { loginHref } from '@/lib/auth/callback-path';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +28,7 @@ function shelfHref(current: SearchParams, patch: Partial<SearchParams>) {
 
 export default async function ShelfPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await auth();
-  if (!session?.user) redirect('/auth/login?callbackUrl=/library/shelf');
+  if (!session?.user) redirect(loginHref('/library/shelf'));
 
   const t = await getTranslations('shelf');
   const tl = await getTranslations('labels');

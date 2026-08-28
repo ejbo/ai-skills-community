@@ -66,7 +66,7 @@ export function LoginForm({
       <button
         type="submit"
         disabled={pending}
-        className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300 disabled:opacity-60"
+        className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 text-sm font-medium text-white shadow-sm transition hover:bg-zinc-700 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
       >
         {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
         {t('login')}
@@ -74,9 +74,9 @@ export function LoginForm({
       <style jsx>{`
         .input {
           width: 100%;
-          height: 2.5rem;
+          height: 2.625rem;
           padding: 0 0.75rem;
-          border-radius: 0.5rem;
+          border-radius: 0.75rem;
           border: 1px solid rgb(var(--border));
           background: rgb(var(--surface));
           font-size: 0.875rem;

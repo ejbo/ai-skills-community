@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
+import { loginHref } from '@/lib/auth/callback-path';
 import { prisma } from '@/lib/db';
 import { BackButton } from '@/components/BackButton';
 import { listOfficialDiscussionTags, resolveTagViews } from '@/lib/discussion-queries';
@@ -11,7 +12,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function EditTopicPage({ params }: { params: { id: string } }) {
   const session = await auth();
-  if (!session?.user) redirect('/auth/login');
+  if (!session?.user) redirect(loginHref(`/discussion/topics/${params.id}/edit`));
 
   const topic = await prisma.discussionTopic.findUnique({
     where: { id: params.id },

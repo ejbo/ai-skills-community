@@ -20,12 +20,13 @@ import { relativeTime } from '@/lib/i18n-date';
 import { SkillCard } from '@/components/SkillCard';
 import { SourceBadge } from '@/components/SourceBadge';
 import { VisibilityBadge } from '@/components/VisibilityBadge';
+import { loginHref } from '@/lib/auth/callback-path';
 
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
   const session = await auth();
-  if (!session?.user) redirect('/auth/login?callbackUrl=/dashboard');
+  if (!session?.user) redirect(loginHref('/dashboard'));
 
   const locale = await getLocale();
   const t = await getTranslations('dashboard');

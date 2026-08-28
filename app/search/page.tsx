@@ -13,11 +13,15 @@ import {
   Vote as VoteIcon,
   Layers,
   SearchX,
+  Clock,
 } from 'lucide-react';
+import { headers } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { relativeTime } from '@/lib/i18n-date';
 import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
+import { rateLimit } from '@/lib/rate-limit';
+import { PAGE_SEARCHES_PER_MINUTE, SEARCH_WINDOW_MS, searchRateKey } from '@/lib/search-guard';
 import { searchSite, type SiteSearchResults } from '@/lib/search';
 import { SearchBar } from '@/components/SearchBar';
 
@@ -54,12 +58,31 @@ export default async function SearchPage({
   searchParams: { q?: string | string[] };
 }) {
   const q = firstParam(searchParams.q);
-  const [session, t, locale] = await Promise.all([auth(), getTranslations('nav'), getLocale()]);
+  const [session, t, terr, locale] = await Promise.all([
+    auth(),
+    getTranslations('nav'),
+    getTranslations('api_errors'),
+    getLocale(),
+  ]);
   const reldate = makeReldate(locale);
-  // `viewerCanSeeIdentity` only gates the 隐私账号 handle in user rows — it is the `identity` permission.
-  const results = q
-    ? await searchSite(q, { viewerCanSeeIdentity: can(session?.user, 'identity'), perType: PER_TYPE })
+  // This page is the HEAVIER twin of /api/search: force-dynamic, no login, the
+  // same 14 parallel unindexed ILIKE scans, and a 4× larger slice. Limiting only
+  // the palette API would have left the cheaper way to stall the process wide
+  // open. Own key namespace, so arriving here from 查看全部搜索结果 never spends
+  // the palette's budget.
+  const gate = q
+    ? rateLimit(
+        searchRateKey('page', session?.user?.id, headers()),
+        PAGE_SEARCHES_PER_MINUTE,
+        SEARCH_WINDOW_MS,
+      )
     : null;
+  const limited = gate !== null && !gate.allowed;
+  // `viewerCanSeeIdentity` only gates the 隐私账号 handle in user rows — it is the `identity` permission.
+  const results =
+    q && !limited
+      ? await searchSite(q, { viewerCanSeeIdentity: can(session?.user, 'identity'), perType: PER_TYPE })
+      : null;
 
   const groups: { key: keyof SiteSearchResults; label: string; icon: typeof FileCode2; rows: Row[] }[] =
     results
@@ -211,14 +234,23 @@ export default async function SearchPage({
         <SearchBar placeholder={t('search_placeholder')} />
       </div>
 
-      {q && (
+      {q && !limited && (
         <p className="mt-3 text-sm text-muted">
           {t('search_results_count', { q, count: total })}
           {capped ? ` ${t('search_results_capped')}` : ''}
         </p>
       )}
 
-      {q && total === 0 && (
+      {/* A throttled search must never render as 「没有找到相关内容」— that reads as
+          "this site has nothing", the worst possible failure for a search page. */}
+      {q && limited && (
+        <div className="mt-16 flex flex-col items-center gap-3 text-muted">
+          <Clock className="h-10 w-10" />
+          <p className="text-sm">{terr('rate_limited')}</p>
+        </div>
+      )}
+
+      {q && !limited && total === 0 && (
         <div className="mt-16 flex flex-col items-center gap-3 text-muted">
           <SearchX className="h-10 w-10" />
           <p className="text-sm">{t('search_empty')}</p>

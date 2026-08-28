@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+import { loginHref } from '@/lib/auth/callback-path';
 import { ExternalLink } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
@@ -20,7 +21,7 @@ export default async function ManageSkillPage({
   searchParams: { section?: string };
 }) {
   const session = await auth();
-  if (!session?.user) redirect(`/auth/login?callbackUrl=/skills/${params.slug}/manage`);
+  if (!session?.user) redirect(loginHref(`/skills/${params.slug}/manage`));
 
   const skill = await prisma.skill.findUnique({
     where: { slug: params.slug },

@@ -10,8 +10,8 @@
 
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { useLocale, useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useReducedMotion } from 'framer-motion';
 import { ChevronRight, CornerDownRight, FilePlus2, History, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
@@ -19,9 +19,10 @@ import { DeptTag } from '@/components/DeptTag';
 import { pushToast } from '@/components/Toaster';
 import { TabBar } from '@/components/motion';
 import { ZONE_HEADINGS_READY_EVENT } from '@/components/zones/ZoneMarkdown';
-import { relativeTime } from '@/lib/i18n-date';
 import { zoneWikiHref, type MdHeading } from '@/lib/zones/shared';
 import type { WikiPageView as WikiPageData } from '@/lib/zones/types';
+import { currentLoginHref } from '@/lib/auth/callback-path';
+import { RelTime } from '../RelTime';
 
 export interface WikiCrumb {
   slug: string;
@@ -44,9 +45,7 @@ const SECONDARY_BTN =
 
 export function WikiPageView({ zoneSlug, page, canWiki, body, ancestors, childPages }: WikiPageViewProps) {
   const t = useTranslations('zones');
-  const locale = useLocale();
   const router = useRouter();
-  const pathname = usePathname();
   const articleRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
 
@@ -61,7 +60,7 @@ export function WikiPageView({ zoneSlug, page, canWiki, body, ancestors, childPa
       const res = await fetch(`/api/zones/${zoneSlug}/wiki/${page.id}`, { method: 'DELETE' });
       if (res.status === 401) {
         pushToast('error', t('wiki_login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = (await res.json().catch(() => ({}))) as { error?: string; reason?: string };
@@ -114,7 +113,7 @@ export function WikiPageView({ zoneSlug, page, canWiki, body, ancestors, childPa
               </Link>
               <DeptTag department={editor.department} lab={editor.lab} />
               <span>·</span>
-              <time dateTime={page.updatedAt}>{relativeTime(page.updatedAt, locale)}</time>
+              <RelTime at={page.updatedAt} />
               <span>·</span>
               <Link href={historyHref} className="font-mono tabular-nums hover:underline">
                 {t('wiki_revisions_n', { count: page.revisionCount })}

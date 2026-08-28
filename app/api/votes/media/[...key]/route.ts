@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import { Readable } from 'node:stream';
 import { auth } from '@/lib/auth';
-import { openVoteMediaRange, statVoteMediaAsync, voteMediaContentType } from '@/lib/votes/storage';
+import { env } from '@/lib/env';
+import {
+  openVoteMediaRange,
+  statVoteMediaAsync,
+  voteMediaContentType,
+  voteMediaXAccelUri,
+} from '@/lib/votes/storage';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -39,6 +45,19 @@ export async function GET(req: Request, { params }: { params: { key: string[] } 
     return new NextResponse(null, {
       status: 200,
       headers: { ...baseHeaders, 'content-length': '0' },
+    });
+  }
+
+  // Offload the bytes to nginx (kernel sendfile) now that the request is
+  // authorized — a 作品评选 gallery pulls a poster per card and the entry videos
+  // are uncapped, so this is the worst byte-per-request surface in the app.
+  // nginx does Range/206/416 itself, so we send NO content-length/content-range
+  // (ours would describe the whole file and contradict a 206). Gated: without
+  // the internal `/_votemedia/` location this serves empty bodies (deploy conf).
+  if (env.MEDIA_X_ACCEL_REDIRECT) {
+    return new NextResponse(null, {
+      status: 200,
+      headers: { ...baseHeaders, 'X-Accel-Redirect': voteMediaXAccelUri(key) },
     });
   }
 

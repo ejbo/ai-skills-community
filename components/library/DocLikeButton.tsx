@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Heart } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 
 /** 喜欢 / 已喜欢 — 与 ShelfButton 相同的乐观切换模式。 */
 export function DocLikeButton({
@@ -20,7 +21,6 @@ export function DocLikeButton({
   const tv = useTranslations('video');
   const tf = useTranslations('feedback');
   const router = useRouter();
-  const pathname = usePathname();
   const [liked, setLiked] = useState(initialLiked);
   const [count, setCount] = useState(initialCount);
   const [busy, setBusy] = useState(false);
@@ -39,7 +39,7 @@ export function DocLikeButton({
         setLiked(prev.liked);
         setCount(prev.count);
         pushToast('error', tv('login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = await res.json().catch(() => ({}));

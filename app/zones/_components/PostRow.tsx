@@ -7,15 +7,15 @@
 // profile, tag filter) sit above the overlay with `relative z-[1]`.
 
 import Link from 'next/link';
-import { useLocale, useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { Clock, Eye, FolderOpen, Heart, Lock, MessageCircle, Paperclip, Pin } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { GlareHover } from '@/components/motion';
 import { withBasePath } from '@/lib/base-path';
-import { relativeTime } from '@/lib/i18n-date';
 import { zoneHref, zonePostHref, type ZonePostTypeValue } from '@/lib/zones/shared';
 import type { ZonePostCardView } from '@/lib/zones/types';
+import { RelTime } from './RelTime';
 import { VISIBILITY_ICONS } from './post/VisibilityPicker';
 import { PILL_INK, PILL_MONO } from './ui';
 
@@ -48,7 +48,6 @@ export function PostRow({
 }) {
   const t = useTranslations('zones');
   const tl = useTranslations('labels');
-  const locale = useLocale();
   const VisibilityIcon = VISIBILITY_ICONS[post.visibility];
   const href =
     post.status === 'draft' ? `${zonePostHref(post.zone.slug, post.id)}/edit` : zonePostHref(post.zone.slug, post.id);
@@ -151,7 +150,7 @@ export function PostRow({
               <DeptTag department={post.author.department} lab={post.author.lab} className="relative z-[1]" />
             )}
           </span>
-          <span className="inline-flex items-center gap-1 tabular-nums">{relativeTime(when, locale)}</span>
+          <RelTime at={when} className="inline-flex items-center gap-1 tabular-nums" />
           {!compact && (
             <span className="inline-flex items-center gap-1">
               <Clock className="h-3 w-3" />

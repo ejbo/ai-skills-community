@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { loginHref } from '@/lib/auth/callback-path';
 import { Lock, Clock, Send } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
@@ -39,7 +40,7 @@ export function AccessRequestPanel({
         pushToast('success', t('request_submitted'));
         startTransition(() => router.refresh());
       } else if (res.status === 401) {
-        router.push(`/auth/login?callbackUrl=/skills/${slug}`);
+        router.push(loginHref(`/skills/${slug}`));
       } else {
         const j = await res.json().catch(() => ({}));
         pushToast('error', j.message || t('submit_failed'));
@@ -65,7 +66,7 @@ export function AccessRequestPanel({
           {t.rich('restricted_desc_login', { code: codeTag })}
         </p>
         <button
-          onClick={() => router.push(`/auth/login?callbackUrl=/skills/${slug}`)}
+          onClick={() => router.push(loginHref(`/skills/${slug}`))}
           className="mt-3 inline-flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-3 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
         >
           {t('login_to_apply')}

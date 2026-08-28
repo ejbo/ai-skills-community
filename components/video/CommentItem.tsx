@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 import { motion } from 'framer-motion';
 import { ChevronDown, ChevronUp, Heart, Loader2, MessageSquare, Pencil, Trash2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
@@ -100,7 +101,7 @@ export function CommentItem({ slug, comment, currentUser, onChanged, onAddSiblin
       setLikeCount((n) => (next ? Math.max(0, n - 1) : n + 1));
       if (err instanceof Response && err.status === 401) {
         pushToast('info', t('login_required'));
-        router.push('/auth/login');
+        router.push(currentLoginHref());
       } else {
         pushToast('error', tu('action_failed'));
       }

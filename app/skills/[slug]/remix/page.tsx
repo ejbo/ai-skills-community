@@ -1,4 +1,5 @@
 import { notFound, redirect } from 'next/navigation';
+import { loginHref } from '@/lib/auth/callback-path';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function RemixPage({ params }: { params: { slug: string } }) {
   const session = await auth();
-  if (!session?.user) redirect(`/auth/login?callbackUrl=/skills/${params.slug}/remix`);
+  if (!session?.user) redirect(loginHref(`/skills/${params.slug}/remix`));
 
   const skill = await prisma.skill.findUnique({
     where: { slug: params.slug },

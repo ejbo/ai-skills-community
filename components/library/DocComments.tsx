@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { Loader2, MessageSquare, Trash2 } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
@@ -10,6 +10,9 @@ import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
 import { relativeTime } from '@/lib/i18n-date';
+import { CommentLikeButton } from '@/components/CommentLikeButton';
+import { currentLoginHref } from '@/lib/auth/callback-path';
+import { LoginLink } from '@/components/LoginLink';
 
 interface CommentAuthor {
   handle: string;
@@ -25,6 +28,8 @@ interface CommentNode {
   bodyMd: string;
   status: string;
   replyCount: number;
+  likeCount: number;
+  likedByMe: boolean;
   createdAt: string;
   author: CommentAuthor;
   replies?: CommentNode[];
@@ -50,7 +55,6 @@ export function DocComments({
   const tc = useTranslations('common');
   const locale = useLocale();
   const router = useRouter();
-  const pathname = usePathname();
   const [threads, setThreads] = useState<CommentNode[] | null>(null);
   const [text, setText] = useState('');
   const [replyTo, setReplyTo] = useState<{ parentId: string; targetId: string; name: string } | null>(null);
@@ -92,7 +96,7 @@ export function DocComments({
     const body = text.trim();
     if (!body || sending) return;
     if (!currentUser) {
-      router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+      router.push(currentLoginHref());
       return;
     }
     setSending(true);
@@ -159,7 +163,14 @@ export function DocComments({
             {relativeTime(c.createdAt, locale)}
           </span>
           {!deleted && (
-            <span className="ml-auto flex shrink-0 items-center gap-2">
+            <span className="ml-auto flex shrink-0 items-center gap-2.5 text-[11px] text-muted">
+              <CommentLikeButton
+                endpoint={`/api/library/docs/${encodeURIComponent(docId)}/comments/${encodeURIComponent(c.id)}/like`}
+                initialLiked={c.likedByMe}
+                initialCount={c.likeCount}
+                signedIn={!!currentUser}
+                size="xs"
+              />
               <button
                 type="button"
                 onClick={() =>
@@ -233,7 +244,14 @@ export function DocComments({
           disabled={!currentUser}
           ariaLabel={t('comment_body_aria')}
         />
-        <div className="mt-2 flex justify-end">
+        <div className="mt-2 flex items-center justify-end gap-3">
+          {/* Anonymous visitors saw a disabled composer saying 「登录后发表评论」
+              with nothing to click — a dead end on a publicly readable page. */}
+          {!currentUser && (
+            <LoginLink className="mr-auto text-xs font-medium text-zinc-900 underline dark:text-zinc-100">
+              {t('login_to_comment')}
+            </LoginLink>
+          )}
           <button
             type="button"
             disabled={sending || !text.trim()}

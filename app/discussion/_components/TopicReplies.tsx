@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { Loader2, Lock } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
@@ -12,6 +12,9 @@ import { DISCUSSION_EMBED_KINDS } from '@/lib/zones/shared';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
 import { relativeTime } from '@/lib/i18n-date';
+import { CommentLikeButton } from '@/components/CommentLikeButton';
+import { currentLoginHref } from '@/lib/auth/callback-path';
+import { LoginLink } from '@/components/LoginLink';
 
 // 2-level flat threads — same contract and UI structure as the feedback
 // board's FeedbackComments (parentId = thread root, transient replyToId).
@@ -21,6 +24,8 @@ export interface ReplyView {
   bodyMd: string;
   status: 'visible' | 'deleted';
   replyCount: number;
+  likeCount: number;
+  likedByMe: boolean;
   createdAt: string | Date;
   author: {
     handle: string;
@@ -123,12 +128,11 @@ export function TopicReplies({
         <p className="text-sm text-muted">
           {t.rich('login_to_join_discussion', {
             link: (chunks) => (
-              <Link
-                href="/auth/login"
+              <LoginLink
                 className="text-zinc-900 dark:text-zinc-50 hover:underline"
               >
                 {chunks}
-              </Link>
+              </LoginLink>
             ),
           })}
         </p>
@@ -299,6 +303,12 @@ function ReplyBlock({
           )}
           {!isTombstone && (
             <div className="mt-1.5 flex items-center gap-3 text-xs text-muted">
+              <CommentLikeButton
+                endpoint={`/api/discussion/topics/${encodeURIComponent(topicId)}/replies/${encodeURIComponent(reply.id)}/like`}
+                initialLiked={reply.likedByMe}
+                initialCount={reply.likeCount}
+                signedIn={!!currentUser}
+              />
               {canReply && (
                 <button onClick={onReply} className="transition hover:text-zinc-700 dark:hover:text-zinc-200">
                   {t('reply')}
@@ -337,7 +347,6 @@ function ReplyBox({
   const t = useTranslations('discussion_ui');
   const tc = useTranslations('common');
   const router = useRouter();
-  const pathname = usePathname();
   const [bodyMd, setBodyMd] = useState('');
   const [busy, setBusy] = useState(false);
   const tooLong = bodyMd.trim().length > 5000;
@@ -358,7 +367,7 @@ function ReplyBox({
       });
       if (res.status === 401) {
         pushToast('error', t('login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = await res.json().catch(() => ({}));

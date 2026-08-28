@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { loginHref } from '@/lib/auth/callback-path';
 import { motion } from 'framer-motion';
 import { Bell, BellRing, Heart, Star, GitFork } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -46,7 +47,7 @@ export function ActionButtons(props: Props) {
       if (countSetter && typeof currentCount === 'number') countSetter(currentCount);
       if (res.status === 401) {
         pushToast('info', ts('login_required'));
-        router.push(`/auth/login?callbackUrl=/skills/${props.slug}`);
+        router.push(loginHref(`/skills/${props.slug}`));
       } else {
         pushToast('error', ts('action_failed'));
       }

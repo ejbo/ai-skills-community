@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 import { Readable } from 'node:stream';
 import { auth } from '@/lib/auth';
+import { env } from '@/lib/env';
 import {
   openPostMediaRange,
   postMediaContentType,
+  postMediaXAccelUri,
   statPostMediaAsync,
 } from '@/lib/uploads/post-media-storage';
 
@@ -67,6 +69,20 @@ export async function GET(req: Request, { params }: { params: { key: string[] } 
     return new NextResponse(null, {
       status: 200,
       headers: { ...baseHeaders, 'content-length': '0' },
+    });
+  }
+
+  // Offload the bytes to nginx (kernel sendfile) now that the request is
+  // authorized — Node leaves the data path, so a 1 GB post video no longer
+  // pumps through the single JS thread. nginx does Range/206/416 itself, so we
+  // send NO content-length/content-range (ours would describe the whole file
+  // and contradict a 206). baseHeaders — including the CJK-safe
+  // content-disposition — ride through unchanged. Gated: without the internal
+  // `/_postmedia/` location this serves empty bodies (see deploy conf).
+  if (env.MEDIA_X_ACCEL_REDIRECT) {
+    return new NextResponse(null, {
+      status: 200,
+      headers: { ...baseHeaders, 'X-Accel-Redirect': postMediaXAccelUri(key) },
     });
   }
 

@@ -8,7 +8,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Loader2, Save } from 'lucide-react';
 import { RichTextEditor } from '@/components/RichTextEditor';
@@ -16,6 +16,7 @@ import { pushToast } from '@/components/Toaster';
 import { Magnetic } from '@/components/motion';
 import { ZONE_LIMITS, isValidWikiSlug, slugifyAscii, zoneWikiHref } from '@/lib/zones/shared';
 import type { WikiTreeNode } from '@/lib/zones/types';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 
 const WIKI_SLUG_MAX = 60;
 
@@ -63,7 +64,6 @@ const LABEL_CLS = 'mb-1.5 block text-xs font-medium text-zinc-600 dark:text-zinc
 export function WikiEditor({ zoneSlug, tree, page = null, initialParentId = null }: WikiEditorProps) {
   const t = useTranslations('zones');
   const router = useRouter();
-  const pathname = usePathname();
   const editing = !!page;
 
   const [title, setTitle] = useState(page?.title ?? '');
@@ -141,7 +141,7 @@ export function WikiEditor({ zoneSlug, tree, page = null, initialParentId = null
       );
       if (res.status === 401) {
         pushToast('error', t('wiki_login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = (await res.json().catch(() => ({}))) as { id?: string; slug?: string; error?: string; reason?: string };

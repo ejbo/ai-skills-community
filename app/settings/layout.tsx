@@ -3,10 +3,11 @@ import { redirect } from 'next/navigation';
 import { User, Key, Lock, Bell, Languages, ShieldCheck, Tag } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
+import { loginHref } from '@/lib/auth/callback-path';
 
 export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
-  if (!session?.user) redirect('/auth/login?callbackUrl=/settings');
+  if (!session?.user) redirect(loginHref('/settings'));
   const t = await getTranslations('settings');
 
   const links = [

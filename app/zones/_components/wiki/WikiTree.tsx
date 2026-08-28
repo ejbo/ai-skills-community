@@ -10,7 +10,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
   ArrowDown,
@@ -25,6 +25,7 @@ import {
 import { pushToast } from '@/components/Toaster';
 import { zoneWikiHref } from '@/lib/zones/shared';
 import type { WikiTreeNode } from '@/lib/zones/types';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 
 export interface WikiTreeProps {
   zoneSlug: string;
@@ -118,8 +119,6 @@ function flattenWithPath(nodes: WikiTreeNode[], path: string[] = [], out: FlatRo
 export function WikiTree({ zoneSlug, tree, activeId, canWiki, filter = '' }: WikiTreeProps) {
   const t = useTranslations('zones');
   const router = useRouter();
-  const pathname = usePathname();
-
   // Adjust-state-on-prop-change (React docs pattern): a router.refresh() hands
   // us a new tree identity, which must win over the optimistic local copy.
   const [nodes, setNodes] = useState<WikiTreeNode[]>(tree);
@@ -173,7 +172,7 @@ export function WikiTree({ zoneSlug, tree, activeId, canWiki, filter = '' }: Wik
       if (res.status === 401) {
         setNodes(previous);
         pushToast('error', t('wiki_login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = (await res.json().catch(() => ({}))) as { error?: string; reason?: string };

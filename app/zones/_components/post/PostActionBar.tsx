@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Bookmark, Heart, Lock, MessageCircle, MoreHorizontal, Pencil, Pin, PinOff, Share2, Trash2, Unlock } from 'lucide-react';
@@ -17,6 +17,7 @@ import { withBasePath } from '@/lib/base-path';
 import { copyText } from '@/lib/clipboard';
 import { zoneHref, zonePostHref } from '@/lib/zones/shared';
 import type { ZoneAccess, ZoneCurrentUser, ZonePostDetailView } from '@/lib/zones/types';
+import { currentLoginHref } from '@/lib/auth/callback-path';
 
 export function PostActionBar({
   post,
@@ -38,7 +39,6 @@ export function PostActionBar({
   const t = useTranslations('zones');
   const tc = useTranslations('common');
   const router = useRouter();
-  const pathname = usePathname();
   const reduce = useReducedMotion();
   const [liked, setLiked] = useState(post.likedByMe);
   const [likeCount, setLikeCount] = useState(post.likeCount);
@@ -70,7 +70,7 @@ export function PostActionBar({
   function requireLogin(): boolean {
     if (currentUser) return true;
     pushToast('error', t('post_login_required'));
-    router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+    router.push(currentLoginHref());
     return false;
   }
 
@@ -93,7 +93,7 @@ export function PostActionBar({
         setBookmarked(prev.bookmarked);
         setBookmarkCount(prev.bookmarkCount);
         pushToast('error', t('post_login_required'));
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(pathname)}`);
+        router.push(currentLoginHref());
         return;
       }
       const data = (await res.json().catch(() => ({}))) as { liked?: boolean; likeCount?: number; bookmarked?: boolean; bookmarkCount?: number; reason?: string };
