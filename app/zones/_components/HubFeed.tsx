@@ -8,7 +8,9 @@
 // `o:<n>` offset for 最热 — the route decides, we just echo it back).
 //
 // The RSC keys this component per stream (sort + every filter) so a soft
-// navigation never mixes cursors from two different queries.
+// navigation never mixes cursors from two different queries. Rows render with
+// `showZone` (zone icon + name) and WITHOUT lead roles — a 版主 of one zone is
+// nobody in another, so the cross-zone feed carries no pills.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
@@ -24,7 +26,6 @@ export interface HubFeedQuery {
   labs: string[];
   departments: string[];
   columns: string[];
-  types: string[];
 }
 
 interface FeedPayload {
@@ -67,7 +68,6 @@ export function HubFeed({
       if (query.labs.length) sp.set('lab', query.labs.join(','));
       if (query.departments.length) sp.set('department', query.departments.join(','));
       if (query.columns.length) sp.set('column', query.columns.join(','));
-      if (query.types.length) sp.set('type', query.types.join(','));
       sp.set('cursor', cursor);
       const res = await fetch(`/api/zones/feed?${sp.toString()}`);
       if (!res.ok) {
@@ -124,7 +124,7 @@ export function HubFeed({
           {filtered ? t('hub_feed_empty_filtered_title') : t('hub_feed_empty_title')}
         </h3>
         <p className="mt-1 max-w-sm text-xs text-muted">
-          {filtered ? t('hub_feed_empty_filtered_desc') : t('hub_feed_empty_desc')}
+          {filtered ? t('hub_feed_empty_filtered_v2') : t('hub_feed_empty_desc')}
         </p>
       </div>
     );

@@ -33,7 +33,7 @@ function formatWhen(data: EmbedEventData, locale: string): string {
   }
 }
 
-export function EventPreview({ data }: { data: EmbedEventData }) {
+export function EventPreview({ data }: { data: EmbedEventData; fill?: boolean }) {
   const t = useTranslations('zones');
   const tl = useTranslations('labels');
   const locale = useLocale();

@@ -8,16 +8,16 @@ import { withBasePath } from '@/lib/base-path';
 import type { EmbedVideoData } from '@/lib/zones/types';
 import { fmtCount, fmtDuration } from '@/components/zones/embeds/EmbedCard';
 
-export function VideoPreview({ data }: { data: EmbedVideoData }) {
+export function VideoPreview({ data, fill = false }: { data: EmbedVideoData; fill?: boolean }) {
   const t = useTranslations('zones');
   const poster = data.posterUrl ? withBasePath(data.posterUrl) : undefined;
   const src = data.videoUrl ? withBasePath(data.videoUrl) : null;
 
   return (
     <div className="space-y-4">
-      <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black">
+      <div className={`relative aspect-video w-full overflow-hidden rounded-2xl bg-black ${fill ? 'mx-auto max-h-[calc(100dvh-14rem)]' : ''}`}>
         {src ? (
-          <video controls playsInline preload="metadata" poster={poster} src={src} className="h-full w-full" />
+          <video controls playsInline preload="metadata" poster={poster} src={src} className="h-full w-full object-contain" />
         ) : (
           <>
             {poster && (

@@ -1,37 +1,50 @@
 'use client';
 
-// 技术专区 post composer — one page, no stepper: type → title → summary →
-// cover / link → body (RichTextEditor `full` with the 插入引用 picker) →
-// attachments → tags → co-authors, and a footer with 保存草稿 / 发布 (Magnetic).
+// 技术专区 post composer — DOCUMENT-FIRST: a top bar (ComposerTopBar) that
+// replaces the navbar, then a 720 px document column — 「发布到 ▾ 栏目」 →
+// a big borderless title → a one-line summary → the body (RichTextEditor
+// `chrome="document" size="article"`, the reader's own typography) → a
+// collapsible 附件 ledger — with the non-text settings (封面 / 链接 / 标签 /
+// 合著者 / 可见范围) in ComposerSettingsSheet (sticky column on xl, a drawer
+// below). There is no 类型 control any more: the schema defaults `type` to
+// `article` and 公告 is a moderator flag on the reading page.
+//
+// Files: dropping / pasting / 📎 in the body uploads AT THE CARET as
+// `[embed:file:<key>]` and the finished draft is appended to `attachments`
+// here (the ledger). The ledger's 在正文插入 inserts a card for an unreferenced
+// row through `editorRef`; removing a row that is in the body strips its
+// own-line token too. On save the server unions body keys with the ledger
+// (mergeBodyFileKeys), so nothing can be orphaned either way.
+//
 // The draft autosaves to localStorage `zones:draft:<zoneSlug>:<postId|new>`
 // (debounced) and offers 恢复 on the next visit; a successful save clears it.
 // Creates through POST /api/zones/<slug>/posts, edits through PATCH
 // /api/zones/<slug>/posts/<id> (attachments + co-authors replaced wholesale).
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { ImagePlus, Loader2, RotateCcw, Trash2, X } from 'lucide-react';
+import type { Editor } from '@tiptap/react';
+import { ChevronRight, Paperclip, RotateCcw } from 'lucide-react';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
-import { Magnetic } from '@/components/motion';
-import { withBasePath } from '@/lib/base-path';
 import { relativeTime } from '@/lib/i18n-date';
 import {
   MAX_ZONE_IMAGE_BYTES,
   ZONE_IMAGE_TYPES,
   ZONE_LIMITS,
+  collectEmbedRefs,
   estimateReadMinutes,
   formatBytes,
   isZonePostVisibility,
   normalizeColumnName,
   normalizeHttpUrl,
+  parseEmbedToken,
   zoneHref,
   zonePostHref,
-  type ZonePostTypeValue,
   type ZonePostVisibilityValue,
 } from '@/lib/zones/shared';
+import { ARTICLE_MEASURE_CLASS } from '@/lib/zones/prose';
 import type { ZoneAccess, ZoneColumnView, ZoneCurrentUser, ZonePostDetailView } from '@/lib/zones/types';
 import { currentLoginHref } from '@/lib/auth/callback-path';
 import {
@@ -39,20 +52,21 @@ import {
   attachmentPayload,
   draftFromView,
   draftToView,
+  uploadEndpoint,
   uploadErrorKey,
   uploadRaw,
   zoneMediaKeyFromPublicUrl,
   type AttachmentDraft,
 } from '@/components/zones/attachments/AttachmentUploader';
-import { PostTypePicker } from './PostTypePicker';
-import { TagInput } from './TagInput';
-import { CoauthorPicker, type CoauthorPick } from './CoauthorPicker';
+import { insertContentEmbed } from '@/components/zones/embeds/embed-node-extension';
+import { attachmentPreviewRef } from '@/components/zones/attachments/AttachmentCard';
+import { ComposerTopBar } from './ComposerTopBar';
+import { ComposerSettingsSheet } from './ComposerSettingsSheet';
+import type { CoauthorPick } from './CoauthorPicker';
 import { ColumnPicker, type ColumnPick } from './ColumnPicker';
-import { VisibilityPicker } from './VisibilityPicker';
-import { PostAccessPanel, type DesignatedPick } from './PostAccessPanel';
+import type { DesignatedPick } from './PostAccessPanel';
 
 interface DraftState {
-  type: ZonePostTypeValue;
   title: string;
   summary: string;
   bodyMd: string;
@@ -68,8 +82,14 @@ interface DraftState {
   designated: DesignatedPick[];
 }
 
-/** Bumped when DraftState gains fields; `readStored` migrates v1 instead of dropping it. */
-const DRAFT_VERSION = 2;
+/**
+ * Bumped when DraftState changes shape; `readStored` migrates older versions
+ * instead of dropping them. v3 (2026-09): `type` is gone from the draft.
+ * Append-only rule: new fields go at the END of `initialDraft`'s literals AND
+ * of the migration spread, or the JSON "unchanged" comparison breaks.
+ */
+const DRAFT_VERSION = 3;
+const READABLE_VERSIONS: ReadonlySet<unknown> = new Set([1, 2, 3]);
 
 interface StoredDraft {
   v: typeof DRAFT_VERSION;
@@ -82,6 +102,8 @@ const AUTOSAVE_MS = 800;
 const EMPTY_COAUTHORS: CoauthorPick[] = [];
 const EMPTY_DESIGNATED: DesignatedPick[] = [];
 const EMPTY_COLUMNS: ZoneColumnView[] = [];
+const TITLE_COUNTER_FROM = 100;
+const SUMMARY_COUNTER_FROM = 260;
 
 function draftStorageKey(zoneSlug: string, postId: string | null): string {
   return `zones:draft:${zoneSlug}:${postId ?? 'new'}`;
@@ -90,7 +112,6 @@ function draftStorageKey(zoneSlug: string, postId: string | null): string {
 function initialDraft(post: ZonePostDetailView | undefined, coauthors: CoauthorPick[], designated: DesignatedPick[]): DraftState {
   if (!post) {
     return {
-      type: 'article',
       title: '',
       summary: '',
       bodyMd: '',
@@ -107,7 +128,6 @@ function initialDraft(post: ZonePostDetailView | undefined, coauthors: CoauthorP
   }
   const coverKey = zoneMediaKeyFromPublicUrl(post.coverUrl);
   return {
-    type: post.type,
     title: post.title,
     summary: post.summary,
     bodyMd: post.bodyMd,
@@ -127,25 +147,57 @@ function readStored(key: string): StoredDraft | null {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { v?: unknown; savedAt?: unknown; draft?: Partial<DraftState> } | null;
+    const parsed = JSON.parse(raw) as { v?: unknown; savedAt?: unknown; draft?: Partial<DraftState> & { type?: unknown } } | null;
     const d = parsed?.draft;
-    if (!d || (parsed?.v !== 1 && parsed?.v !== DRAFT_VERSION)) return null;
-    // A v1 draft predates 栏目 / 可见范围: fill the new fields with their defaults
-    // (key order stays DraftState's, so the "unchanged" comparison below still works).
+    if (!d || !READABLE_VERSIONS.has(parsed?.v)) return null;
+    // v1/v2 drafts carried `type`: destructure it OUT before re-spreading, or
+    // the extra key would make an otherwise identical draft compare unequal to
+    // `initialJson` (the "unchanged → clear" rule) and re-offer 恢复 forever.
+    // A v1 draft predates 栏目 / 可见范围: fill those with their defaults (key
+    // order stays DraftState's).
+    const { type: _type, ...rest } = d;
+    void _type;
     return {
       v: DRAFT_VERSION,
       savedAt: typeof parsed.savedAt === 'string' ? parsed.savedAt : new Date().toISOString(),
       draft: {
-        ...(d as DraftState),
-        columnId: typeof d.columnId === 'string' ? d.columnId : null,
-        columnName: typeof d.columnName === 'string' ? d.columnName : null,
-        visibility: isZonePostVisibility(d.visibility) ? d.visibility : 'zone',
-        designated: Array.isArray(d.designated) ? d.designated : [],
+        ...(rest as DraftState),
+        columnId: typeof rest.columnId === 'string' ? rest.columnId : null,
+        columnName: typeof rest.columnName === 'string' ? rest.columnName : null,
+        visibility: isZonePostVisibility(rest.visibility) ? rest.visibility : 'zone',
+        designated: Array.isArray(rest.designated) ? rest.designated : [],
       },
     };
   } catch {
     return null;
   }
+}
+
+const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
+
+/** Drops the own-line `[embed:file:<ref>]` tokens for `refs` (fence-aware) — the ledger row left, so its card goes too. */
+export function stripFileEmbedTokens(md: string, refs: readonly string[]): string {
+  if (!md.includes('[embed:') || refs.length === 0) return md;
+  const drop = new Set(refs);
+  const out: string[] = [];
+  let fence: { char: string; len: number } | null = null;
+  for (const line of md.split('\n')) {
+    const mark = FENCE_RE.exec(line);
+    if (mark) {
+      const char = mark[1][0];
+      const len = mark[1].length;
+      if (!fence) fence = { char, len };
+      else if (char === fence.char && len >= fence.len) fence = null;
+      out.push(line);
+      continue;
+    }
+    if (!fence) {
+      const parsed = parseEmbedToken(line);
+      if (parsed && parsed.kind === 'file' && drop.has(parsed.ref)) continue;
+    }
+    out.push(line);
+  }
+  return out.join('\n');
 }
 
 export function PostComposer({
@@ -172,7 +224,6 @@ export function PostComposer({
   initialDesignated?: DesignatedPick[];
 }) {
   const t = useTranslations('zones');
-  const tc = useTranslations('common');
   const locale = useLocale();
   const router = useRouter();
   const initial = useMemo(
@@ -185,15 +236,19 @@ export function PostComposer({
   const [draft, setDraft] = useState<DraftState>(initial);
   const [pending, setPending] = useState<StoredDraft | null>(null);
   const [autosavedAt, setAutosavedAt] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(0);
+  const [attachmentUploading, setAttachmentUploading] = useState(0);
+  const [editorUploading, setEditorUploading] = useState(0);
   const [coverBusy, setCoverBusy] = useState(false);
   const [busy, setBusy] = useState<'draft' | 'publish' | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   // 访问密码 is a live server secret, never draft content: it is never autosaved
   // and never restored — it only ever comes back from the server.
   const [accessCode, setAccessCode] = useState<string | null>(post?.accessCode ?? null);
   const [regenerateCode, setRegenerateCode] = useState(false);
-  const coverInput = useRef<HTMLInputElement>(null);
   const restoreChecked = useRef(false);
+  const editorRef = useRef<Editor | null>(null);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
+  const summaryRef = useRef<HTMLInputElement>(null);
 
   const patch = useCallback((p: Partial<DraftState>) => setDraft((d) => ({ ...d, ...p })), []);
 
@@ -226,6 +281,14 @@ export function PostComposer({
     return () => clearTimeout(timer);
   }, [draft, initialJson, storageKey]);
 
+  // Title auto-grow: `field-sizing: content` where supported, scrollHeight elsewhere.
+  useEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft.title]);
+
   function clearStored() {
     try {
       localStorage.removeItem(storageKey);
@@ -234,11 +297,22 @@ export function PostComposer({
     }
   }
 
+  const uploading = attachmentUploading + editorUploading;
   const readMinutes = estimateReadMinutes(draft.bodyMd);
+  const charCount = [...draft.bodyMd].length;
   const isPublished = post?.status === 'published';
   const titleLen = [...draft.title.trim()].length;
+  const summaryLen = [...draft.summary].length;
   // 版主 may always add a 栏目; members only when the zone allows it.
   const canCreateColumn = access.canModerate || allowMemberColumns;
+  const settingsIncomplete = draft.visibility === 'restricted' && draft.designated.length === 0;
+
+  // Ids / keys the body references — the ledger shows 「正文中」 on those rows.
+  const insertedRefs = useMemo(
+    () => new Set(collectEmbedRefs(draft.bodyMd).filter((r) => r.kind === 'file').map((r) => r.ref)),
+    [draft.bodyMd],
+  );
+  const savedAttachments = useMemo(() => draft.attachments.filter((a) => a.id).map(draftToView), [draft.attachments]);
 
   function validate(): string | null {
     if (draft.columnName && [...normalizeColumnName(draft.columnName)].length > ZONE_LIMITS.columnNameMax) {
@@ -246,11 +320,9 @@ export function PostComposer({
     }
     if (titleLen < ZONE_LIMITS.postTitleMin) return t('composer_err_title_min', { min: ZONE_LIMITS.postTitleMin });
     if (titleLen > ZONE_LIMITS.postTitleMax) return t('composer_err_title_max', { max: ZONE_LIMITS.postTitleMax });
-    if ([...draft.summary].length > ZONE_LIMITS.postSummaryMax) return t('composer_err_summary_max', { max: ZONE_LIMITS.postSummaryMax });
+    if (summaryLen > ZONE_LIMITS.postSummaryMax) return t('composer_err_summary_max', { max: ZONE_LIMITS.postSummaryMax });
     if (draft.bodyMd.length > ZONE_LIMITS.postBodyMax) return t('composer_err_body_max');
-    if (draft.type === 'link' && !normalizeHttpUrl(draft.linkUrl)) return t('composer_err_link_required');
     if (draft.linkUrl.trim() && !normalizeHttpUrl(draft.linkUrl)) return t('composer_err_link_invalid');
-    if (draft.type === 'announcement' && !access.canModerate) return t('composer_err_announcement');
     return null;
   }
 
@@ -265,7 +337,7 @@ export function PostComposer({
     }
     setCoverBusy(true);
     try {
-      const r = await uploadRaw(file, `/api/zones/${encodeURIComponent(zone.slug)}/attachments/upload`, { 'x-upload-kind': 'image' });
+      const r = await uploadRaw(file, uploadEndpoint(zone.slug), { 'x-upload-kind': 'image' });
       patch({ cover: { key: r.key, url: r.url } });
     } catch (e) {
       pushToast('error', t('attach_upload_error', { name: file.name, error: t(uploadErrorKey(e)) }));
@@ -274,12 +346,13 @@ export function PostComposer({
     }
   }
 
-  async function submit(status: 'draft' | 'published') {
-    if (busy || uploading > 0) return;
+  /** Resolves true on success (the StatefulButton draws its ✓); false after a toast. */
+  async function submit(status: 'draft' | 'published'): Promise<boolean> {
+    if (busy || uploading > 0) return false;
     const err = validate();
     if (err) {
       pushToast('error', err);
-      return;
+      return false;
     }
     setBusy(status === 'draft' ? 'draft' : 'publish');
     const link = normalizeHttpUrl(draft.linkUrl);
@@ -289,8 +362,8 @@ export function PostComposer({
     // renders it as 未归栏). Only when we positively know the zone's list.
     const columnId =
       draft.columnName || (columns.length > 0 && !columns.some((c) => c.id === draft.columnId)) ? null : draft.columnId;
+    // No `type`: the schema defaults it to `article` (公告 is set from the reading page).
     const body = {
-      type: draft.type,
       title: draft.title.trim(),
       summary: draft.summary.trim(),
       bodyMd: draft.bodyMd,
@@ -315,32 +388,32 @@ export function PostComposer({
       if (res.status === 401) {
         pushToast('error', t('post_login_required'));
         router.push(currentLoginHref());
-        return;
+        return false;
       }
       const data = (await res.json().catch(() => ({}))) as { id?: string; reason?: string; error?: string };
       if (!res.ok) {
         pushToast('error', data.reason ?? t('composer_save_failed'));
-        return;
+        return false;
       }
       const id = post?.id ?? data.id;
       if (!id) {
         pushToast('error', t('composer_save_failed'));
-        return;
+        return false;
       }
       clearStored();
       if (status === 'published') {
         pushToast('success', post && isPublished ? t('composer_updated') : t('composer_published'));
         router.push(zonePostHref(zone.slug, id));
         router.refresh();
-        return;
+        return true;
       }
       pushToast('success', t('composer_draft_saved'));
       if (!post) {
         // A fresh draft now has an id: continue on its edit page (attachments
-        // gain ids there, which the 附件 embed tab needs).
+        // gain ids there).
         router.replace(`/zones/${zone.slug}/posts/${id}/edit`);
         router.refresh();
-        return;
+        return true;
       }
       // Existing post: pull the saved shape back (attachment ids, cover url,
       // the resolved 栏目 and the freshly issued 访问密码).
@@ -370,309 +443,236 @@ export function PostComposer({
         /* the next reload shows the ids */
       }
       router.refresh();
+      return true;
     } catch {
       pushToast('error', t('composer_save_failed'));
+      return false;
     } finally {
       setBusy(null);
     }
   }
 
+  function reset() {
+    if (JSON.stringify(draft) === initialJson || confirm(t('composer_reset_confirm'))) {
+      setDraft(initial);
+      setRegenerateCode(false);
+      clearStored();
+    }
+  }
+
+  // 在正文插入 (ledger row → card at the caret block). Saved rows by id, drafts by key.
+  function insertFromLedger(d: AttachmentDraft) {
+    const ed = editorRef.current;
+    if (!ed) return;
+    const ref = d.id ?? attachmentPreviewRef(draftToView(d));
+    if (ref) insertContentEmbed(ed, 'file', ref);
+  }
+
+  // A removed ledger row takes its body card with it (both ref forms).
+  function onLedgerRemove(_index: number, gone: AttachmentDraft) {
+    const refs = [gone.key, ...(gone.id ? [gone.id] : [])];
+    setDraft((d) => (insertedRefs.size === 0 ? d : { ...d, bodyMd: stripFileEmbedTokens(d.bodyMd, refs) }));
+  }
+
+  const onTitleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // A title is one line: Enter moves on to the summary.
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      summaryRef.current?.focus();
+    }
+  };
+
   const disabled = busy !== null;
-  const field =
-    'w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm outline-none transition focus:border-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:focus:border-zinc-500';
-  const label = 'mb-1.5 flex items-baseline justify-between text-xs font-medium text-zinc-700 dark:text-zinc-300';
-  const savedAttachments = draft.attachments.filter((a) => a.id).map(draftToView);
+  const backHref = post ? (isPublished ? zonePostHref(zone.slug, post.id) : zoneHref(zone.slug)) : zoneHref(zone.slug);
+  const saveLabel = isPublished ? t('composer_unpublish') : t('composer_save_draft');
+  const publishLabel = isPublished ? t('composer_update') : t('composer_publish');
 
   return (
-    <div className="space-y-6">
-      {pending && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm dark:border-zinc-700 dark:bg-zinc-900">
-          <span className="inline-flex items-center gap-2">
-            <RotateCcw className="h-4 w-4 text-muted" />
-            {/* suppressHydrationWarning must sit on the TEXT-ONLY node — it does
-                not cover text children that sit beside the icon above. */}
-            <span suppressHydrationWarning>{t('composer_restore_prompt', { time: relativeTime(pending.savedAt, locale) })}</span>
-          </span>
-          <span className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setDraft(pending.draft);
-                setPending(null);
-              }}
-              className="h-8 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white transition hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-            >
-              {t('composer_restore')}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                clearStored();
-                setPending(null);
-              }}
-              className="h-8 rounded-lg border border-zinc-300 px-3 text-xs font-medium transition hover:border-zinc-500 dark:border-zinc-700"
-            >
-              {t('composer_discard')}
-            </button>
-          </span>
-        </div>
-      )}
+    <div>
+      <ComposerTopBar
+        backHref={backHref}
+        zoneName={zone.name}
+        published={Boolean(isPublished)}
+        autosavedAt={autosavedAt}
+        uploading={uploading}
+        settingsIncomplete={settingsIncomplete}
+        onOpenSettings={() => setSettingsOpen(true)}
+        saveLabel={saveLabel}
+        publishLabel={publishLabel}
+        onSaveDraft={() => submit('draft')}
+        onPublish={() => submit('published')}
+        disabled={disabled}
+      />
 
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-        <span>
-          <Link href={zoneHref(zone.slug)} className="hover:underline">
-            {zone.name}
-          </Link>
-          <span className="mx-1.5">/</span>
-          <span>{post ? (isPublished ? t('composer_editing_published') : t('composer_editing_draft')) : t('composer_new')}</span>
-        </span>
-        <span className="font-mono tabular-nums">
-          {t('composer_read_minutes', { count: readMinutes })}
-          {autosavedAt && (
-            <span className="ml-3" suppressHydrationWarning>
-              {t('composer_autosaved', { time: relativeTime(autosavedAt, locale) })}
-            </span>
-          )}
-        </span>
-      </div>
-
-      <section>
-        <div className={label}>{t('composer_type_label')}</div>
-        <PostTypePicker value={draft.type} onChange={(type) => patch({ type })} canAnnounce={access.canModerate} disabled={disabled} />
-      </section>
-
-      <section>
-        <div className={label}>
-          <span>
-            {t('composer_column_label')}
-            <span className="ml-1 font-normal text-muted">{t('composer_optional')}</span>
-          </span>
-        </div>
-        <ColumnPicker
-          columns={columns}
-          value={{ columnId: draft.columnId, columnName: draft.columnName }}
-          onChange={(pick: ColumnPick) => patch({ columnId: pick.columnId, columnName: pick.columnName })}
-          allowCreate={canCreateColumn}
-          disabled={disabled}
-        />
-        <p className="mt-1.5 text-[11px] text-muted">
-          {t('composer_column_hint')} {canCreateColumn ? t('composer_column_hint_create') : t('composer_column_hint_locked')}
-        </p>
-      </section>
-
-      <section>
-        <label className={label} htmlFor="zone-post-title">
-          <span>{t('composer_title_label')}</span>
-          <span className={`font-mono tabular-nums ${titleLen > ZONE_LIMITS.postTitleMax ? 'text-danger' : ''}`}>
-            {titleLen}/{ZONE_LIMITS.postTitleMax}
-          </span>
-        </label>
-        <input
-          id="zone-post-title"
-          value={draft.title}
-          onChange={(e) => patch({ title: e.target.value })}
-          placeholder={t('composer_title_placeholder')}
-          maxLength={ZONE_LIMITS.postTitleMax + 20}
-          disabled={disabled}
-          autoFocus={!post}
-          className={`${field} h-12 text-lg font-semibold tracking-tight`}
-        />
-      </section>
-
-      <section>
-        <label className={label} htmlFor="zone-post-summary">
-          <span>{t('composer_summary_label')}</span>
-          <span className="font-mono tabular-nums">
-            {[...draft.summary].length}/{ZONE_LIMITS.postSummaryMax}
-          </span>
-        </label>
-        <textarea
-          id="zone-post-summary"
-          value={draft.summary}
-          onChange={(e) => patch({ summary: e.target.value })}
-          placeholder={t('composer_summary_placeholder')}
-          rows={2}
-          maxLength={ZONE_LIMITS.postSummaryMax + 50}
-          disabled={disabled}
-          className={`${field} resize-y py-2 leading-relaxed`}
-        />
-      </section>
-
-      <section className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <div className={label}>{t('composer_cover_label')}</div>
-          {draft.cover ? (
-            <div className="relative overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={withBasePath(draft.cover.url)} alt="" className="aspect-[2/1] w-full object-cover" />
-              <button
-                type="button"
-                onClick={() => patch({ cover: null })}
-                disabled={disabled}
-                aria-label={t('composer_cover_remove')}
-                className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+      <div className="py-8 xl:grid xl:grid-cols-[minmax(0,1fr)_280px] xl:gap-8">
+        <div className={`mx-auto w-full ${ARTICLE_MEASURE_CLASS}`}>
+          {pending && (
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm dark:border-zinc-700 dark:bg-zinc-900">
+              <span className="inline-flex items-center gap-2">
+                <RotateCcw className="h-4 w-4 text-muted" />
+                {/* suppressHydrationWarning must sit on the TEXT-ONLY node — it does
+                    not cover text children that sit beside the icon above. */}
+                <span suppressHydrationWarning>{t('composer_restore_prompt', { time: relativeTime(pending.savedAt, locale) })}</span>
+              </span>
+              <span className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraft(pending.draft);
+                    setPending(null);
+                  }}
+                  className="h-8 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white transition hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                >
+                  {t('composer_restore')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearStored();
+                    setPending(null);
+                  }}
+                  className="h-8 rounded-lg border border-zinc-300 px-3 text-xs font-medium transition hover:border-zinc-500 dark:border-zinc-700"
+                >
+                  {t('composer_discard')}
+                </button>
+              </span>
             </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => coverInput.current?.click()}
-              disabled={disabled || coverBusy}
-              className="flex aspect-[2/1] w-full flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-zinc-300 text-xs text-muted transition hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-700 dark:hover:border-zinc-500 dark:hover:text-zinc-100"
-            >
-              {coverBusy ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImagePlus className="h-5 w-5" />}
-              {t('composer_cover_add')}
-            </button>
           )}
-          <input
-            ref={coverInput}
-            type="file"
-            accept={Array.from(ZONE_IMAGE_TYPES).join(',')}
-            hidden
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void uploadCover(f);
-              e.target.value = '';
-            }}
-          />
-        </div>
-        <div>
-          <label className={label} htmlFor="zone-post-link">
-            <span>
-              {t('composer_link_label')}
-              {draft.type !== 'link' && <span className="ml-1 font-normal text-muted">{t('composer_optional')}</span>}
-            </span>
-          </label>
-          <input
-            id="zone-post-link"
-            value={draft.linkUrl}
-            onChange={(e) => patch({ linkUrl: e.target.value })}
-            placeholder="https://"
-            inputMode="url"
-            disabled={disabled}
-            className={`${field} h-10 font-mono`}
-          />
-          <p className="mt-1.5 text-[11px] text-muted">{draft.type === 'link' ? t('composer_link_hint_required') : t('composer_link_hint')}</p>
-        </div>
-      </section>
 
-      <section>
-        <div className={label}>
-          <span>{t('composer_body_label')}</span>
-          <span className="font-normal text-muted">{t('composer_body_hint')}</span>
-        </div>
-        <RichTextEditor
-          value={draft.bodyMd}
-          onChange={(bodyMd) => patch({ bodyMd })}
-          variant="full"
-          maxLength={ZONE_LIMITS.postBodyMax}
-          placeholder={t('composer_body_placeholder')}
-          ariaLabel={t('composer_body_label')}
-          disabled={disabled}
-          embedPicker={{ attachments: savedAttachments }}
-        />
-      </section>
-
-      <section>
-        <div className={label}>{t('composer_attachments_label')}</div>
-        <AttachmentUploader
-          zoneSlug={zone.slug}
-          value={draft.attachments}
-          onChange={(attachments) => patch({ attachments })}
-          onUploadingChange={setUploading}
-          disabled={disabled}
-        />
-        {draft.attachments.some((a) => !a.id) && <p className="mt-1.5 text-[11px] text-muted">{t('composer_attachments_embed_hint')}</p>}
-      </section>
-
-      <section>
-        <div className={label}>{t('composer_tags_label')}</div>
-        <TagInput value={draft.tags} onChange={(tags) => patch({ tags })} disabled={disabled} />
-      </section>
-
-      <section>
-        <div className={label}>{t('composer_coauthors_label')}</div>
-        <CoauthorPicker zoneSlug={zone.slug} value={draft.coauthors} onChange={(coauthors) => patch({ coauthors })} selfHandle={currentUser.handle} disabled={disabled} />
-      </section>
-
-      <section className="space-y-3">
-        <div className={label}>{t('composer_visibility_label')}</div>
-        <VisibilityPicker value={draft.visibility} onChange={(visibility) => patch({ visibility })} disabled={disabled} />
-        {draft.visibility === 'restricted' && (
-          <PostAccessPanel
-            zoneSlug={zone.slug}
-            postId={post?.id ?? null}
-            serverRestricted={post?.visibility === 'restricted'}
-            designated={draft.designated}
-            onDesignatedChange={(designated) => patch({ designated })}
-            accessCode={accessCode}
-            onAccessCodeChange={setAccessCode}
-            regenerate={regenerateCode}
-            onRegenerateChange={setRegenerateCode}
-            selfUserId={currentUser.id}
+          <ColumnPicker
+            variant="inline"
+            columns={columns}
+            value={{ columnId: draft.columnId, columnName: draft.columnName }}
+            onChange={(pick: ColumnPick) => patch({ columnId: pick.columnId, columnName: pick.columnName })}
+            allowCreate={canCreateColumn}
             disabled={disabled}
           />
-        )}
-      </section>
 
-      <footer className="sticky bottom-0 z-20 -mx-1 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-200 bg-[rgb(var(--bg))] px-1 py-3 dark:border-zinc-800">
-        <div className="text-xs text-muted">
-          {uploading > 0 ? (
-            <span className="inline-flex items-center gap-1.5">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              {t('composer_wait_uploads', { count: uploading })}
-            </span>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                if (JSON.stringify(draft) === initialJson || confirm(t('composer_reset_confirm'))) {
-                  setDraft(initial);
-                  setRegenerateCode(false);
-                  clearStored();
-                }
-              }}
+          <div className="relative mt-3">
+            <textarea
+              ref={titleRef}
+              id="zone-post-title"
+              rows={1}
+              value={draft.title}
+              onChange={(e) => patch({ title: e.target.value.replace(/\n/g, ' ') })}
+              onKeyDown={onTitleKeyDown}
+              placeholder={t('composer_title_placeholder')}
+              aria-label={t('composer_title_label')}
+              maxLength={ZONE_LIMITS.postTitleMax + 20}
               disabled={disabled}
-              className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 transition hover:text-zinc-900 dark:hover:text-zinc-100"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              {t('composer_reset')}
-            </button>
-          )}
+              autoFocus={!post}
+              style={{ fieldSizing: 'content' } as CSSProperties}
+              className="w-full resize-none overflow-hidden bg-transparent text-3xl font-semibold leading-tight tracking-tight text-zinc-900 outline-none placeholder:text-zinc-300 disabled:opacity-60 dark:text-zinc-50 dark:placeholder:text-zinc-700"
+            />
+            {titleLen > TITLE_COUNTER_FROM && (
+              <span className={`absolute -top-4 right-0 font-mono text-[11px] tabular-nums ${titleLen > ZONE_LIMITS.postTitleMax ? 'text-danger' : 'text-muted'}`}>
+                {titleLen}/{ZONE_LIMITS.postTitleMax}
+              </span>
+            )}
+          </div>
+
+          <div className="relative mt-2">
+            <input
+              ref={summaryRef}
+              id="zone-post-summary"
+              value={draft.summary}
+              onChange={(e) => patch({ summary: e.target.value })}
+              placeholder={t('composer_summary_placeholder')}
+              aria-label={t('composer_summary_label')}
+              maxLength={ZONE_LIMITS.postSummaryMax + 50}
+              disabled={disabled}
+              className="w-full bg-transparent text-lg text-zinc-600 outline-none placeholder:text-zinc-400 disabled:opacity-60 dark:text-zinc-400 dark:placeholder:text-zinc-600"
+            />
+            {summaryLen > SUMMARY_COUNTER_FROM && (
+              <span className={`absolute -top-4 right-0 font-mono text-[11px] tabular-nums ${summaryLen > ZONE_LIMITS.postSummaryMax ? 'text-danger' : 'text-muted'}`}>
+                {summaryLen}/{ZONE_LIMITS.postSummaryMax}
+              </span>
+            )}
+          </div>
+
+          <div className="mt-4">
+            <RichTextEditor
+              value={draft.bodyMd}
+              onChange={(bodyMd) => patch({ bodyMd })}
+              variant="full"
+              chrome="document"
+              size="article"
+              maxLength={ZONE_LIMITS.postBodyMax}
+              placeholder={t('composer_body_placeholder')}
+              ariaLabel={t('composer_body_label')}
+              disabled={disabled}
+              editorRef={editorRef}
+              embedPicker={{
+                attachments: savedAttachments,
+                upload: {
+                  zoneSlug: zone.slug,
+                  drafts: draft.attachments,
+                  // Functional update: two uploads finishing back to back must both land.
+                  onUploaded: (d) => setDraft((s) => ({ ...s, attachments: [...s.attachments, d] })),
+                  onBusyChange: setEditorUploading,
+                },
+              }}
+            />
+          </div>
+
+          <details open={draft.attachments.length > 0} className="group/ledger mt-8">
+            <summary className="flex cursor-pointer select-none list-none items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted transition hover:text-zinc-900 dark:hover:text-zinc-100">
+              <Paperclip className="h-3.5 w-3.5" />
+              {t('composer_attachments_toggle', { count: draft.attachments.length })}
+              <ChevronRight className="h-3.5 w-3.5 transition-transform group-open/ledger:rotate-90" aria-hidden />
+            </summary>
+            <div className="mt-3">
+              <AttachmentUploader
+                zoneSlug={zone.slug}
+                value={draft.attachments}
+                onChange={(attachments) => patch({ attachments })}
+                onUploadingChange={setAttachmentUploading}
+                disabled={disabled}
+                insertedRefs={insertedRefs}
+                onInsert={insertFromLedger}
+                onRemove={onLedgerRemove}
+              />
+            </div>
+          </details>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => (post ? router.push(isPublished ? zonePostHref(zone.slug, post.id) : zoneHref(zone.slug)) : router.push(zoneHref(zone.slug)))}
-            disabled={disabled}
-            className="h-9 rounded-lg px-3 text-sm font-medium text-muted transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
-          >
-            {tc('cancel')}
-          </button>
-          <button
-            type="button"
-            onClick={() => submit('draft')}
-            disabled={disabled || uploading > 0}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-4 text-sm font-medium transition hover:border-zinc-500 disabled:opacity-60 dark:border-zinc-700 dark:hover:border-zinc-500"
-          >
-            {busy === 'draft' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {isPublished ? t('composer_unpublish') : t('composer_save_draft')}
-          </button>
-          <Magnetic>
-            <button
-              type="button"
-              onClick={() => submit('published')}
-              disabled={disabled || uploading > 0}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 px-5 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-            >
-              {busy === 'publish' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {isPublished ? t('composer_update') : t('composer_publish')}
-            </button>
-          </Magnetic>
-        </div>
-      </footer>
+
+        <ComposerSettingsSheet
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          disabled={disabled}
+          zoneSlug={zone.slug}
+          selfHandle={currentUser.handle}
+          selfUserId={currentUser.id}
+          cover={draft.cover}
+          coverBusy={coverBusy}
+          onPickCover={(f) => void uploadCover(f)}
+          onRemoveCover={() => patch({ cover: null })}
+          linkUrl={draft.linkUrl}
+          onLinkChange={(linkUrl) => patch({ linkUrl })}
+          tags={draft.tags}
+          onTagsChange={(tags) => patch({ tags })}
+          coauthors={draft.coauthors}
+          onCoauthorsChange={(coauthors) => patch({ coauthors })}
+          visibility={draft.visibility}
+          onVisibilityChange={(visibility) => patch({ visibility })}
+          access={{
+            postId: post?.id ?? null,
+            serverRestricted: post?.visibility === 'restricted',
+            designated: draft.designated,
+            onDesignatedChange: (designated) => patch({ designated }),
+            accessCode,
+            onAccessCodeChange: setAccessCode,
+            regenerate: regenerateCode,
+            onRegenerateChange: setRegenerateCode,
+          }}
+          charCount={charCount}
+          readMinutes={readMinutes}
+          onReset={reset}
+          saveLabel={saveLabel}
+          onSaveDraft={() => submit('draft')}
+          uploading={uploading}
+        />
+      </div>
     </div>
   );
 }

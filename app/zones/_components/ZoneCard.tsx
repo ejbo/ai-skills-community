@@ -3,7 +3,8 @@
 // 技术专区 — hub card. SpotlightCard chrome (pointer-tracked light, no
 // re-render), GlareHover on the cover strip only, HairlineGrid fallback when a
 // zone has no cover. The whole card is a stretched link; moderator avatars and
-// the latest-post line are informational (no nested links but the title).
+// the latest-post line are informational (no nested links but the title). The
+// latest post shows title + time only — types are hidden everywhere.
 
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
@@ -121,7 +122,7 @@ export function ZoneCard({ zone, variant = 'grid' }: { zone: ZoneCardView; varia
           <div className="mt-3 flex items-center gap-2 border-t border-zinc-200 pt-3 text-xs dark:border-zinc-800">
             {zone.latestPost ? (
               <>
-                <span className={PILL_MONO}>{tl(`zonePostType.${zone.latestPost.type}`)}</span>
+                <FileText className="h-3.5 w-3.5 shrink-0 text-zinc-400" aria-hidden />
                 <span className="min-w-0 flex-1 truncate text-zinc-700 dark:text-zinc-300">{zone.latestPost.title}</span>
                 <RelTime at={zone.latestPost.publishedAt} className="shrink-0 tabular-nums text-zinc-400" />
               </>

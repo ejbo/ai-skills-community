@@ -55,7 +55,7 @@ export default async function ZoneWikiNewPage({
     : null;
 
   return (
-    <div className="container max-w-6xl py-8">
+    <div className="container max-w-7xl py-6">
       <ZoneHeader zone={zone} activeTab="wiki" currentUser={currentUser} />
       <div className="mx-auto mt-6 max-w-4xl">
         <h1 className="mb-5 text-xl font-semibold tracking-tight">{t('wiki_editor_new_title')}</h1>

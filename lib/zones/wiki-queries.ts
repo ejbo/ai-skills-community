@@ -1,9 +1,11 @@
 // 技术专区 Wiki — page tree + revisions.
 //
-// Pages form a tree (parentId / sortOrder), slugs are unique per zone (a
-// collision gets a `-2`, `-3`… suffix), every content save snapshots title +
-// body into ZoneWikiRevision (restore = save the snapshot again with a note),
-// deletes are soft and re-parent the children so no page is orphaned.
+// Pages form a tree (parentId / sortOrder), slugs are unique per zone among
+// LIVE pages (a collision gets a `-2`, `-3`… suffix; a slug only a soft-deleted
+// row still holds is released to the new page — see `releaseDeletedSlug`),
+// every content save snapshots title + body into ZoneWikiRevision (restore =
+// save the snapshot again with a note), deletes are soft and re-parent the
+// children so no page is orphaned.
 // Embeds in the body resolve exactly like post bodies (lib/zones/embeds.ts).
 
 import { Prisma } from '@prisma/client';
@@ -159,11 +161,26 @@ export const wikiPageInputSchema = z.object({
 
 // ── Slug / parent helpers ────────────────────────────────────────────────────
 
+/**
+ * The slug a soft-deleted row keeps: `~` can never appear in a valid slug, so
+ * the renamed row collides with nothing and never shadows a live page.
+ */
+function deletedSlugFor(slug: string, id: string): string {
+  return `${slug}~del-${id.slice(-8)}`;
+}
+
+/**
+ * `@@unique([zoneId, slug])` counts soft-deleted rows, but only LIVE pages
+ * decide a slug here: a slug held by a deleted row is handed to the new page
+ * (the write transaction calls `releaseDeletedSlug` first), so the fixed-slug
+ * 版规 page (`rules`, lib/zones/rules.ts) can always be recreated — including
+ * on a deployment whose deleted rows predate the rename-on-delete rule.
+ */
 async function uniqueWikiSlug(zoneId: string, base: string, excludeId?: string): Promise<string> {
   let candidate = base;
   for (let n = 2; n < 200; n++) {
     const clash = await prisma.zoneWikiPage.findFirst({
-      where: { zoneId, slug: candidate, ...(excludeId ? { id: { not: excludeId } } : {}) },
+      where: { zoneId, slug: candidate, deletedAt: null, ...(excludeId ? { id: { not: excludeId } } : {}) },
       select: { id: true },
     });
     if (!clash) return candidate;
@@ -171,6 +188,23 @@ async function uniqueWikiSlug(zoneId: string, base: string, excludeId?: string):
     candidate = `${base.slice(0, WIKI_SLUG_MAX - suffix.length).replace(/-+$/, '')}${suffix}`;
   }
   return `page-${randomSlugPart()}`;
+}
+
+/**
+ * Free `slug` for a page about to take it: a soft-deleted row that still holds
+ * the original spelling (deleted before `deleteWikiPage` renamed on delete)
+ * moves to its `~del-` form INSIDE the caller's transaction, so the unique
+ * index is satisfied by the time the new row is written. There is no restore
+ * path for a deleted page (revisions belong to the row, not the slug), so
+ * nothing ever looks the old slug up again. No-op when nothing holds it.
+ */
+async function releaseDeletedSlug(tx: Prisma.TransactionClient, zoneId: string, slug: string): Promise<void> {
+  const held = await tx.zoneWikiPage.findFirst({
+    where: { zoneId, slug, deletedAt: { not: null } },
+    select: { id: true },
+  });
+  if (!held) return;
+  await tx.zoneWikiPage.update({ where: { id: held.id }, data: { slug: deletedSlugFor(slug, held.id) } });
 }
 
 function slugBaseFor(input: { slug?: string; title: string }): string {
@@ -238,6 +272,7 @@ export async function createWikiPage(
 
   try {
     const page = await prisma.$transaction(async (tx) => {
+      await releaseDeletedSlug(tx, zoneId, slug);
       const created = await tx.zoneWikiPage.create({
         data: {
           zoneId,
@@ -302,6 +337,7 @@ export async function updateWikiPage(pageId: string, input: Partial<WikiPageInpu
 
   try {
     await prisma.$transaction(async (tx) => {
+      if (slug !== page.slug) await releaseDeletedSlug(tx, page.zoneId, slug);
       await tx.zoneWikiPage.update({
         where: { id: page.id },
         data: {
@@ -326,15 +362,25 @@ export async function updateWikiPage(pageId: string, input: Partial<WikiPageInpu
   }
 }
 
-/** Soft delete; children move up to the deleted page's parent. */
+/**
+ * Soft delete; children move up to the deleted page's parent. The slug is
+ * RELEASED on delete (`deletedSlugFor`): `@@unique([zoneId, slug])` counts
+ * soft-deleted rows, and a fixed-slug page such as the 版规 page (`rules`,
+ * lib/zones/rules.ts) could otherwise never be recreated after one deletion.
+ * Rows deleted before this rule shipped are released lazily by the next
+ * create / rename that wants their slug (`releaseDeletedSlug`).
+ */
 export async function deleteWikiPage(pageId: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
     const page = await tx.zoneWikiPage.findFirst({
       where: { id: pageId, deletedAt: null },
-      select: { id: true, zoneId: true, parentId: true },
+      select: { id: true, zoneId: true, parentId: true, slug: true },
     });
     if (!page) return;
-    const r = await tx.zoneWikiPage.updateMany({ where: { id: page.id, deletedAt: null }, data: { deletedAt: new Date() } });
+    const r = await tx.zoneWikiPage.updateMany({
+      where: { id: page.id, deletedAt: null },
+      data: { deletedAt: new Date(), slug: deletedSlugFor(page.slug, page.id) },
+    });
     if (r.count === 0) return;
     await tx.zoneWikiPage.updateMany({
       where: { zoneId: page.zoneId, parentId: page.id, deletedAt: null },

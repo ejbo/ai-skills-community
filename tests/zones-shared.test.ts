@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ACCESS_CODE_ALPHABET,
   ACCESS_CODE_LENGTH,
+  EMBED_FILE_KEY_RE,
   EMBED_TOKEN_GLOBAL_RE,
   EMBED_TOKEN_RE,
   MAX_EMBEDS_PER_CONTENT,
@@ -9,8 +10,10 @@ import {
   MAX_ZONE_LINKS,
   MAX_ZONE_POST_TAGS,
   RESERVED_ZONE_SLUGS,
+  UNCATEGORIZED_COLUMN_PARAM,
   ZONE_LIMITS,
   ZONE_POST_VISIBILITIES,
+  bodyFileKeys,
   collectEmbedRefs,
   columnDedupeKey,
   columnSlugFrom,
@@ -28,8 +31,11 @@ import {
   isValidWikiSlug,
   isZonePostVisibility,
   isValidZoneSlug,
+  isEmbedFileKey,
+  mergeBodyFileKeys,
   normalizeAccessCode,
   normalizeColumnName,
+  normalizeEmbedRef,
   normalizeHttpUrl,
   normalizeTags,
   parseEmbedToken,
@@ -394,5 +400,84 @@ describe('hub filters', () => {
     expect(parseZoneFeedSort('active')).toBe('new');
     expect(parseZoneFeedSort(null)).toBe('new');
     expect(parseZoneFeedSort(undefined)).toBe('new');
+  });
+});
+
+describe('file embeds by storage key', () => {
+  const key = 'file/V1StGXR8_Z5jdHi6B-myT.pptx';
+
+  it('accepts the three attachment-kind key prefixes with an extension', () => {
+    expect(parseEmbedToken(`[embed:file:${key}]`)).toEqual({ kind: 'file', ref: key });
+    expect(parseEmbedToken('[embed:file:image/abc_123-x.jpg]')).toEqual({ kind: 'file', ref: 'image/abc_123-x.jpg' });
+    expect(parseEmbedToken('[embed:file:video/clip.mp4]')).toEqual({ kind: 'file', ref: 'video/clip.mp4' });
+    expect(isEmbedFileKey(key)).toBe(true);
+    expect(EMBED_FILE_KEY_RE.test('file/x.webp')).toBe(true);
+  });
+
+  it('still accepts the row-id form', () => {
+    expect(parseEmbedToken('[embed:file:clxyz123]')).toEqual({ kind: 'file', ref: 'clxyz123' });
+    expect(isEmbedFileKey('clxyz123')).toBe(false);
+    expect(normalizeEmbedRef('file', 'clxyz123')).toBe('clxyz123');
+  });
+
+  it('rejects the namespaces that never have an attachment row, traversal and ext-less keys', () => {
+    for (const bad of ['cover/x.jpg', 'poster/x.jpg', 'preview/x.pdf', 'icon/x.png', 'file/../x.pdf', 'file/x', 'file/x.', 'file/x.PDF', 'file//x.pdf', 'file/x.pdf/y.pdf']) {
+      expect(parseEmbedToken(`[embed:file:${bad}]`)).toBeNull();
+      expect(isEmbedFileKey(bad)).toBe(false);
+    }
+    // an overlong nanoid segment
+    expect(isEmbedFileKey(`file/${'a'.repeat(81)}.pdf`)).toBe(false);
+  });
+
+  it('only the `file` kind widens — every other kind keeps the plain-id ref grammar', () => {
+    expect(parseEmbedToken('[embed:skill:file/x.pdf]')).toBeNull();
+    expect(parseEmbedToken('[embed:post:image/x.jpg]')).toBeNull();
+    expect(normalizeEmbedRef('short', 'video/x.mp4')).toBeNull();
+    expect(normalizeEmbedRef('file', ' file/x.pdf ')).toBe('file/x.pdf');
+  });
+
+  it('a key-form and an id-form token are distinct segments (the server keys the answer by ref form)', () => {
+    const md = `[embed:file:${key}]\n[embed:file:clxyz123]`;
+    expect(splitEmbedSegments(md)).toEqual([
+      { type: 'embed', kind: 'file', ref: key, key: `file:${key}` },
+      { type: 'embed', kind: 'file', ref: 'clxyz123', key: 'file:clxyz123' },
+    ]);
+  });
+
+  it('the per-body cap is 200 (server pre-resolution makes a long ledger affordable)', () => {
+    expect(MAX_EMBEDS_PER_CONTENT).toBe(200);
+  });
+
+  it('bodyFileKeys returns the distinct KEY refs in render order and skips row ids', () => {
+    expect(bodyFileKeys('[embed:file:file/a.pdf]\n[embed:file:clid1]\n[embed:file:file/a.pdf]')).toEqual(['file/a.pdf']);
+    expect(bodyFileKeys(`[embed:file:image/b.png]\ntext\n[embed:file:file/a.pdf]\n[embed:skill:file/c.pdf]`)).toEqual([
+      'image/b.png',
+      'file/a.pdf',
+    ]);
+    // a token inside a fence is inert text, never a key to union
+    expect(bodyFileKeys('```\n[embed:file:file/a.pdf]\n```')).toEqual([]);
+    expect(bodyFileKeys('')).toEqual([]);
+  });
+
+  it('mergeBodyFileKeys keeps the ledger rows and appends each missing body key once', () => {
+    type Item = { key: string; name: string; mimeType: string; sizeBytes: number };
+    const make = (k: string): Item => ({ key: k, name: '', mimeType: '', sizeBytes: 0 });
+    const ledger: Item[] = [{ key: 'file/a.pdf', name: 'A.pdf', mimeType: 'application/pdf', sizeBytes: 10 }];
+    const md = '[embed:file:file/a.pdf]\n\n[embed:file:file/b.pdf]\n\n[embed:file:file/b.pdf]\n[embed:file:clid1]';
+    const merged = mergeBodyFileKeys(ledger, md, make);
+    expect(merged).toEqual([ledger[0], { key: 'file/b.pdf', name: '', mimeType: '', sizeBytes: 0 }]);
+    // the input array is never mutated; a body without keys is an identity
+    expect(ledger).toHaveLength(1);
+    expect(mergeBodyFileKeys(ledger, 'plain text', make)).toEqual(ledger);
+    expect(mergeBodyFileKeys([], md, make).map((i) => i.key)).toEqual(['file/a.pdf', 'file/b.pdf']);
+  });
+});
+
+describe('未归栏 sentinel', () => {
+  it('can never collide with a real 栏目 slug', () => {
+    expect(UNCATEGORIZED_COLUMN_PARAM).toBe('_none');
+    expect(isValidColumnSlug(UNCATEGORIZED_COLUMN_PARAM)).toBe(false);
+    // `none` itself IS a legal slug — which is exactly why the sentinel carries the underscore
+    expect(isValidColumnSlug('none')).toBe(true);
   });
 });

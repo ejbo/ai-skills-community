@@ -1,8 +1,10 @@
 'use client';
 
-// 技术专区 — post list controls on the zone home: type chips, the 栏目 row
-// (ask #2, `?column=<slug>`), sort, in-zone search, active tag chip and the
-// 发布 CTA (primary, Magnetic) when canPost.
+// 技术专区 — post list controls on the zone home. ONE controls row:
+// [最新 | 最热] · in-zone search · the active #tag chip · 发布 (primary,
+// Magnetic) right-aligned. The 栏目 chip row renders BELOW xl only — on xl the
+// ColumnRail owns the taxonomy — with official chips first, member chips
+// dashed, and 未归栏 (`?column=_none`). Types are gone (owner decision).
 
 import { useEffect, useState, useTransition } from 'react';
 import Link from 'next/link';
@@ -10,7 +12,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { PenLine, Search, X } from 'lucide-react';
 import { Magnetic } from '@/components/motion';
-import { ZONE_POST_SORTS, ZONE_POST_TYPES, isZonePostType, parseZonePostSort, zoneHref } from '@/lib/zones/shared';
+import { UNCATEGORIZED_COLUMN_PARAM, ZONE_POST_SORTS, parseZonePostSort, zoneHref } from '@/lib/zones/shared';
 import type { ZoneColumnView } from '@/lib/zones/types';
 import { BTN_PRIMARY, INPUT_CLS, chipCls } from './ui';
 
@@ -18,14 +20,16 @@ export function PostFilters({
   slug,
   canPost,
   columns = [],
+  uncategorized = 0,
 }: {
   slug: string;
   canPost: boolean;
-  /** The zone's 栏目 (official first) — the row is hidden when there are none. */
+  /** The zone's 栏目 (official first) — the chip row is hidden when there are none. */
   columns?: ZoneColumnView[];
+  /** Posts without a column — the 未归栏 chip renders when > 0. */
+  uncategorized?: number;
 }) {
   const t = useTranslations('zones');
-  const tl = useTranslations('labels');
   const sp = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -33,8 +37,6 @@ export function PostFilters({
   const [q, setQ] = useState(sp.get('q') ?? '');
   useEffect(() => setQ(sp.get('q') ?? ''), [sp]);
 
-  const typeRaw = sp.get('type');
-  const type = isZonePostType(typeRaw) ? typeRaw : null;
   const sort = parseZonePostSort(sp.get('sort'));
   const tag = sp.get('tag') ?? '';
   const columnSlug = sp.get('column') ?? '';
@@ -50,66 +52,67 @@ export function PostFilters({
     startTransition(() => router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false }));
   }
 
+  const columnChip = (c: ZoneColumnView) => (
+    <button
+      key={c.id}
+      type="button"
+      onClick={() => update({ column: columnSlug === c.slug ? null : c.slug })}
+      className={`${chipCls(columnSlug === c.slug)} inline-flex max-w-[14rem] items-center gap-1.5 ${c.official ? '' : 'border-dashed'}`}
+      aria-pressed={columnSlug === c.slug}
+      title={c.description || c.name}
+    >
+      <span className="truncate">{c.official ? c.name : `#${c.name}`}</span>
+      <span className="font-mono text-[10px] tabular-nums opacity-70">{c.postCount}</span>
+    </button>
+  );
+
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="-mx-1 flex min-w-0 flex-1 gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <button type="button" onClick={() => update({ type: null })} className={chipCls(!type)} aria-pressed={!type}>
-            {t('filters_type_all')}
-          </button>
-          {ZONE_POST_TYPES.map((tp) => (
-            <button
-              key={tp}
-              type="button"
-              onClick={() => update({ type: tp })}
-              className={chipCls(type === tp)}
-              aria-pressed={type === tp}
-            >
-              {tl(`zonePostType.${tp}`)}
-            </button>
-          ))}
-        </div>
-        {canPost && (
-          <Magnetic>
-            <Link href={`${zoneHref(slug)}/posts/new`} className={BTN_PRIMARY}>
-              <PenLine className="h-4 w-4" />
-              {t('zone_publish')}
-            </Link>
-          </Magnetic>
-        )}
-      </div>
       {columns.length > 0 && (
         <div
           role="group"
           aria-label={t('filters_column_label')}
-          className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] xl:hidden [&::-webkit-scrollbar]:hidden"
         >
           <button type="button" onClick={() => update({ column: null })} className={chipCls(!columnSlug)} aria-pressed={!columnSlug}>
             {t('filters_column_all')}
           </button>
-          {columns.map((c) => (
+          {columns.filter((c) => c.official).map(columnChip)}
+          {columns.filter((c) => !c.official).map(columnChip)}
+          {uncategorized > 0 && (
             <button
-              key={c.id}
               type="button"
-              onClick={() => update({ column: columnSlug === c.slug ? null : c.slug })}
-              className={`${chipCls(columnSlug === c.slug)} inline-flex max-w-[14rem] items-center gap-1.5`}
-              aria-pressed={columnSlug === c.slug}
-              title={c.description || c.name}
+              onClick={() => update({ column: columnSlug === UNCATEGORIZED_COLUMN_PARAM ? null : UNCATEGORIZED_COLUMN_PARAM })}
+              className={`${chipCls(columnSlug === UNCATEGORIZED_COLUMN_PARAM)} inline-flex items-center gap-1.5`}
+              aria-pressed={columnSlug === UNCATEGORIZED_COLUMN_PARAM}
             >
-              <span className="truncate">{c.name}</span>
-              <span className="font-mono text-[10px] tabular-nums opacity-70">{c.postCount}</span>
+              {t('column_rail_uncategorized')}
+              <span className="font-mono text-[10px] tabular-nums opacity-70">{uncategorized}</span>
             </button>
-          ))}
+          )}
         </div>
       )}
 
       <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1.5" role="group" aria-label={t('filters_sort')}>
+          {ZONE_POST_SORTS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => update({ sort: s === 'new' ? null : s })}
+              className={chipCls(sort === s)}
+              aria-pressed={sort === s}
+            >
+              {s === 'new' ? t('filters_post_sort_new') : t('filters_post_sort_hot')}
+            </button>
+          ))}
+        </div>
         <form
           onSubmit={(e) => {
             e.preventDefault();
             update({ q: q.trim() || null });
           }}
-          className="relative w-full sm:w-64"
+          className="relative w-full sm:w-56"
         >
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
           <input
@@ -134,19 +137,6 @@ export function PostFilters({
             </button>
           )}
         </form>
-        <div className="flex items-center gap-1.5" role="group" aria-label={t('filters_sort')}>
-          {ZONE_POST_SORTS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => update({ sort: s === 'new' ? null : s })}
-              className={chipCls(sort === s)}
-              aria-pressed={sort === s}
-            >
-              {s === 'new' ? t('filters_post_sort_new') : t('filters_post_sort_hot')}
-            </button>
-          ))}
-        </div>
         {tag && (
           <button
             type="button"
@@ -156,6 +146,16 @@ export function PostFilters({
             #{tag}
             <X className="h-3 w-3" />
           </button>
+        )}
+        {canPost && (
+          <div className="ml-auto">
+            <Magnetic>
+              <Link href={`${zoneHref(slug)}/posts/new`} className={BTN_PRIMARY}>
+                <PenLine className="h-4 w-4" />
+                {t('zone_publish')}
+              </Link>
+            </Magnetic>
+          </div>
         )}
       </div>
     </div>

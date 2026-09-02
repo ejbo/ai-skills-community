@@ -42,9 +42,9 @@ ${t('zones_join_policy_table')}
 - ${t('zones_join_leave')}
 - ${t('zones_join_notify')}
 
-## ${t('zones_h_posts')}
+## ${t('zones_h_posts_v2')}
 
-${t('zones_posts_types_table')}
+${t('zones_posts_columns')}
 
 - ${t('zones_posts_compose')}
 - ${t('zones_posts_draft')}
@@ -54,7 +54,7 @@ ${t('zones_posts_types_table')}
 
 ## ${t('zones_h_attach')}
 
-${t('zones_attach_table')}
+${t('zones_attach_limits')}
 
 - ${t('zones_attach_preview_inline')}
 - ${t('zones_attach_preview_office')}
@@ -70,7 +70,7 @@ ${t('zones_embed_table')}
 
 - ${t('zones_embed_rule_line')}
 - ${t('zones_embed_rule_fence')}
-- ${t('zones_embed_rule_cap')}
+- ${t('zones_embed_rule_cap_v2')}
 - ${t('zones_embed_rule_gate')}
 - ${t('zones_embed_preview')}
 - ${t('zones_embed_editor')}
@@ -97,7 +97,7 @@ ${t('zones_embed_table')}
 
 ## ${t('zones_h_mod')}
 
-${t('zones_mod_table')}
+${t('zones_mod_table_v2')}
 
 - ${t('zones_mod_pin_cap')}
 - ${t('zones_mod_lock')}
@@ -106,7 +106,7 @@ ${t('zones_mod_table')}
 
 ## ${t('zones_h_limits')}
 
-${t('zones_limits_table')}
+${t('zones_limits_table_v2')}
 
 ## ${t('zones_h_rate')}
 

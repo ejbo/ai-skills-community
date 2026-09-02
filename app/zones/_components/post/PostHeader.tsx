@@ -1,29 +1,53 @@
 'use client';
 
-// Post masthead: zone breadcrumb, outlined type pill (+ 置顶/锁定/草稿), h1,
-// summary lead, cover (GlareHover + lightbox), authors with DeptTag, and the
-// publishedAt · 阅读 N 分钟 · views meta row. `link` posts show the shared URL
-// as a prominent external card under the lead.
+// Post masthead: zone breadcrumb, chip row (栏目 FIRST — the taxonomy — then
+// the 公告 pill, visibility, 置顶/锁定/草稿, #tags), h1, summary lead, link
+// card, authors with DeptTag + lead-role pills, the publishedAt · 阅读 N 分钟 ·
+// views meta row, and the cover (GlareHover + lightbox).
+//
+// There is no type pill: the content type is hidden everywhere. `announcement`
+// is the ONE stored value that still shows, as the moderator's notice (an ink
+// pill), not as a format. Lead roles (主版主 / 版主) reach the byline ONLY
+// through RolePill + `leadRoleOf`.
+//
+// Hydration: the byline's `title` is the ISO instant, never
+// `toLocaleString()` — that string depends on the process locale and differed
+// between the server ("2026-09-01, 3:48:55 p.m.") and the browser
+// ("9/1/2026, 3:48:55 PM").
 
 import Link from 'next/link';
+import type { RefObject } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Clock, ExternalLink, Eye, FolderOpen, Lock, PencilLine, Pin } from 'lucide-react';
+import { Clock, ExternalLink, Eye, FolderOpen, Lock, Megaphone, PencilLine, Pin } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { GlareHover } from '@/components/motion';
 import { ImageLightbox } from '@/app/events/_components/ImageLightbox';
 import { withBasePath } from '@/lib/base-path';
 import { relativeTime } from '@/lib/i18n-date';
+import { leadRoleOf, type LeadRoles } from '@/lib/zones/lead-roles';
 import { hostnameOf, zoneHref } from '@/lib/zones/shared';
 import type { ZonePostDetailView } from '@/lib/zones/types';
-import { POST_TYPE_ICONS } from './PostTypePicker';
+import { RolePill } from '../RolePill';
+import { PILL_COLUMN, PILL_COLUMN_MEMBER, PILL_INK } from '../ui';
 import { VISIBILITY_ICONS } from './VisibilityPicker';
 
-export function PostHeader({ post, zone }: { post: ZonePostDetailView; zone: { slug: string; name: string } }) {
+export function PostHeader({
+  post,
+  zone,
+  leadRoles,
+  titleRef,
+}: {
+  post: ZonePostDetailView;
+  zone: { slug: string; name: string };
+  /** handle → 主版主 / 版主 (built by the RSC page). */
+  leadRoles?: LeadRoles;
+  /** Handed to the <h1> so PostContextStrip can watch it leave the viewport. */
+  titleRef?: RefObject<HTMLHeadingElement>;
+}) {
   const t = useTranslations('zones');
   const tl = useTranslations('labels');
   const locale = useLocale();
-  const TypeIcon = POST_TYPE_ICONS[post.type];
   const VisibilityIcon = VISIBILITY_ICONS[post.visibility];
   const authors = [post.author, ...post.coauthors];
   const when = post.publishedAt ?? post.createdAt;
@@ -41,19 +65,21 @@ export function PostHeader({ post, zone }: { post: ZonePostDetailView; zone: { s
       </nav>
 
       <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-        <span className="inline-flex items-center gap-1 rounded-full border border-zinc-400 px-2 py-px font-medium text-zinc-800 dark:border-zinc-600 dark:text-zinc-200">
-          <TypeIcon className="h-3 w-3" />
-          {tl(`zonePostType.${post.type}`)}
-        </span>
         {post.column && (
           <Link
             href={`${zoneHref(zone.slug)}?column=${encodeURIComponent(post.column.slug)}`}
             aria-label={t('post_column_aria', { name: post.column.name })}
-            className="inline-flex max-w-[14rem] items-center gap-1 rounded-full border border-zinc-300 px-2 py-px font-medium text-zinc-700 transition hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:text-zinc-100"
+            className={post.column.official ? PILL_COLUMN : PILL_COLUMN_MEMBER}
           >
             <FolderOpen className="h-3 w-3 shrink-0" aria-hidden />
             <span className="truncate">{post.column.name}</span>
           </Link>
+        )}
+        {post.type === 'announcement' && (
+          <span className={PILL_INK}>
+            <Megaphone className="h-3 w-3" aria-hidden />
+            {t('post_badge_announcement')}
+          </span>
         )}
         {post.visibility !== 'zone' && (
           <span className="inline-flex items-center gap-1 rounded-full border border-zinc-300 px-2 py-px text-muted dark:border-zinc-700">
@@ -87,7 +113,10 @@ export function PostHeader({ post, zone }: { post: ZonePostDetailView; zone: { s
         ))}
       </div>
 
-      <h1 className="break-words text-3xl font-semibold leading-tight tracking-tight md:text-4xl">{post.title}</h1>
+      {/* Never animated (owner decision): the title is the first thing a reader needs. */}
+      <h1 ref={titleRef} className="break-words text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+        {post.title}
+      </h1>
 
       {post.summary && <p className="text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">{post.summary}</p>}
 
@@ -114,27 +143,31 @@ export function PostHeader({ post, zone }: { post: ZonePostDetailView; zone: { s
             ))}
           </span>
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            {authors.map((a, i) => (
-              <span key={a.handle} className="inline-flex items-center gap-1.5">
-                <Link href={`/users/${a.handle}`} className="font-medium text-zinc-900 hover:underline dark:text-zinc-100">
-                  {a.displayName}
-                </Link>
-                <DeptTag department={a.department} lab={a.lab} className="relative z-[1]" />
-                {i < authors.length - 1 && <span aria-hidden>·</span>}
-              </span>
-            ))}
+            {authors.map((a, i) => {
+              const role = leadRoleOf(leadRoles, a.handle);
+              return (
+                <span key={a.handle} className="inline-flex items-center gap-1.5">
+                  <Link href={`/users/${a.handle}`} className="font-medium text-zinc-900 hover:underline dark:text-zinc-100">
+                    {a.displayName}
+                  </Link>
+                  {role && <RolePill role={role} />}
+                  <DeptTag department={a.department} lab={a.lab} className="relative z-[1]" />
+                  {i < authors.length - 1 && <span aria-hidden>·</span>}
+                </span>
+              );
+            })}
           </span>
         </div>
         <span className="hidden sm:inline" aria-hidden>
           |
         </span>
-        <span suppressHydrationWarning title={new Date(when).toLocaleString()}>
+        <span suppressHydrationWarning title={new Date(when).toISOString()}>
           {relativeTime(when, locale)}
         </span>
         {post.editedAt && (
           // Who edited, not just that it was edited: a 版主 editing someone
           // else's post should be visible rather than silent.
-          <span className="inline-flex items-center gap-1" title={new Date(post.editedAt).toLocaleString()}>
+          <span className="inline-flex items-center gap-1" title={new Date(post.editedAt).toISOString()}>
             <PencilLine className="h-3 w-3" />
             {/* suppressHydrationWarning must sit on the TEXT-ONLY node: the
                 relative time can tick over between SSR and hydration, and the

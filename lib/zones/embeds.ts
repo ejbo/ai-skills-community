@@ -20,7 +20,8 @@ import { canViewVideo, videoActorFrom } from '@/lib/video/access';
 import { VIDEO_DETAIL_INCLUDE } from '@/lib/video/queries';
 import { SHORT_FEED_SELECT, annotateShortsViewer, toShortView } from '@/lib/video/shorts-queries';
 import { ZONE_ACCESS_SELECT, resolveZoneAccess, type ZoneAccessRow, type ZoneSiteViewer } from './access';
-import { getLinkPreview } from './link-preview';
+import { getLinkPreview, linkPreviewHash } from './link-preview';
+import { normalizePreviewUrl } from './og-parse';
 import type { ZoneAccess } from './permissions';
 import {
   ZONE_POST_ACCESS_SELECT,
@@ -29,7 +30,7 @@ import {
   toAttachmentView,
   zonePostVisibilityWhere,
 } from './post-queries';
-import { embedKey, normalizeEmbedRef, zonePostHref, type EmbedKind, type EmbedRef } from './shared';
+import { embedKey, hostnameOf, isEmbedFileKey, normalizeEmbedRef, zonePostHref, type EmbedKind, type EmbedRef } from './shared';
 import type {
   EmbedCandidate,
   EmbedData,
@@ -51,7 +52,12 @@ export interface EmbedContext {
   locale?: string;
 }
 
-type Resolved = Map<string, EmbedData>;
+/**
+ * A resolver's answers, keyed by normalized ref. `null` means "not decided in
+ * this pass" — the token is left OUT of the result so the card fetches it
+ * through the budgeted `/api/zones/embed` route (only `link` ever defers).
+ */
+type Resolved = Map<string, EmbedData | null>;
 
 function fail(kind: EmbedKind, ref: string, reason: EmbedFailReason): EmbedData {
   return { kind, ref, ok: false, reason };
@@ -355,13 +361,32 @@ async function resolvePost(refs: string[], ctx: EmbedContext): Promise<Resolved>
   return out;
 }
 
+/**
+ * `file` refs come in two forms: the attachment ROW id, or its storage KEY
+ * (`file/<nanoid>.pdf`, `image/…`, `video/…`) — the form a body-inserted
+ * upload carries before the post (and its row) exists. Both resolve through
+ * `ZonePostAttachment` and answer under the SAME `canSeeZonePost` gate. Keys
+ * are already visible in every media URL and `/api/zones/media/[...key]` is
+ * only `auth()`-gated, so key-form refs widen nothing; the embed path stays
+ * stricter than the byte path. The answer is keyed by the REQUESTED ref form
+ * (id-form and key-form tokens of one row both render); `data.id` is always
+ * the row id, which the office preview endpoint needs.
+ */
 async function resolveFile(refs: string[], ctx: EmbedContext): Promise<Resolved> {
   const out: Resolved = new Map();
+  const ids = refs.filter((r) => !isEmbedFileKey(r));
+  const keys = refs.filter(isEmbedFileKey);
+  // Prisma rejects an empty `OR: []` as "always false" only by accident — guard
+  // rather than rely on it.
+  if (ids.length === 0 && keys.length === 0) return out;
   const rows = await prisma.zonePostAttachment.findMany({
     // A soft-deleted post's attachments are gone for everyone — the `post` kind
     // filters `deletedAt` in its query too, so the author / moderator branch
     // below must never resurrect them.
-    where: { id: { in: refs }, post: { deletedAt: null } },
+    where: {
+      OR: [...(ids.length ? [{ id: { in: ids } }] : []), ...(keys.length ? [{ key: { in: keys } }] : [])],
+      post: { deletedAt: null },
+    },
     select: {
       id: true,
       kind: true,
@@ -384,6 +409,9 @@ async function resolveFile(refs: string[], ctx: EmbedContext): Promise<Resolved>
     },
   });
   const accessCache = new ZoneAccessCache(ctx.viewer);
+  // Decide each ROW once (a row may be asked for by id AND by key), then hand
+  // the decision to every ref form that named it.
+  const decided = new Map<string, EmbedData>(); // row id → answer (ref filled in below)
   await Promise.all(
     rows.map(async (a) => {
       const post = a.post;
@@ -393,22 +421,93 @@ async function resolveFile(refs: string[], ctx: EmbedContext): Promise<Resolved>
       // post are exactly as private as its body. `canSeeZonePost` already lets the
       // author / co-authors / 版主 through on an unpublished row.
       if (!(await canSeeZonePost(post, access, ctx.viewer))) {
-        out.set(a.id, fail('file', a.id, 'forbidden'));
+        decided.set(a.id, fail('file', a.id, 'forbidden'));
         return;
       }
       const data: EmbedFileData = { ...toAttachmentView(a), postId: post.id, zoneSlug: post.zone.slug };
-      out.set(a.id, { kind: 'file', ref: a.id, ok: true, data });
+      decided.set(a.id, { kind: 'file', ref: a.id, ok: true, data });
     }),
   );
+  const byKey = new Map(rows.map((a) => [a.key, a.id] as const));
+  for (const ref of refs) {
+    const hit = decided.get(ref) ?? decided.get(byKey.get(ref) ?? '');
+    if (hit) out.set(ref, { ...hit, ref });
+  }
   return out;
 }
 
 // ── link ─────────────────────────────────────────────────────────────────────
 
+/**
+ * `link` is the only kind whose resolution can LEAVE the box (an OG fetch of
+ * an arbitrary url through the SSRF-guarded, 6 s-budgeted `getLinkPreview`),
+ * and a post body may carry up to MAX_EMBEDS_PER_CONTENT (200) of them. One
+ * page render is therefore allowed at most this many LIVE fetches, started
+ * together (the constant is both the per-render outbound cap and the
+ * concurrency, so the wall-clock cost stays one fetch budget). Everything the
+ * `ZoneLinkPreview` cache already answers is served from ONE batched read —
+ * cached links are free, whatever their number — and the uncached remainder
+ * is DEFERRED (`null`): the card fetches it lazily through `/api/zones/embed`,
+ * whose 30/min link budget is the throttle a per-render cap cannot be. A
+ * failed cache row counts as live (link-preview.ts owns the retry rule and
+ * answers a fresh failure from the row without a fetch).
+ */
+export const MAX_LIVE_LINK_FETCHES_PER_PASS = 4;
+
+type LinkPreviewRow = {
+  urlHash: string;
+  url: string;
+  title: string;
+  description: string;
+  imageUrl: string | null;
+  siteName: string;
+  ok: boolean;
+};
+
 async function resolveLink(refs: string[]): Promise<Resolved> {
   const out: Resolved = new Map();
+  const hashOf = new Map<string, string>(); // normalized ref → urlHash
+  for (const url of refs) {
+    const normalized = normalizePreviewUrl(url);
+    if (normalized) hashOf.set(url, linkPreviewHash(normalized));
+  }
+  const cached = new Map<string, LinkPreviewRow>();
+  if (hashOf.size > 0) {
+    try {
+      const rows = await prisma.zoneLinkPreview.findMany({
+        where: { urlHash: { in: [...new Set(hashOf.values())] } },
+        select: { urlHash: true, url: true, title: true, description: true, imageUrl: true, siteName: true, ok: true },
+      });
+      for (const row of rows) cached.set(row.urlHash, row);
+    } catch {
+      // DB hiccup — every ref falls into the live path, still under the cap
+    }
+  }
+
+  const live: string[] = [];
+  for (const url of refs) {
+    const row = cached.get(hashOf.get(url) ?? '');
+    if (row?.ok) {
+      out.set(url, {
+        kind: 'link',
+        ref: url,
+        ok: true,
+        data: {
+          url: row.url,
+          hostname: hostnameOf(row.url),
+          title: row.title,
+          description: row.description,
+          imageUrl: row.imageUrl,
+          siteName: row.siteName,
+        },
+      });
+    } else {
+      live.push(url);
+    }
+  }
+
   await Promise.all(
-    refs.map(async (url) => {
+    live.slice(0, MAX_LIVE_LINK_FETCHES_PER_PASS).map(async (url) => {
       try {
         const data = await getLinkPreview(url);
         out.set(url, { kind: 'link', ref: url, ok: true, data });
@@ -417,6 +516,7 @@ async function resolveLink(refs: string[]): Promise<Resolved> {
       }
     }),
   );
+  for (const url of live.slice(MAX_LIVE_LINK_FETCHES_PER_PASS)) out.set(url, null);
   return out;
 }
 
@@ -437,7 +537,9 @@ const RESOLVERS: Record<EmbedKind, (refs: string[], ctx: EmbedContext) => Promis
 /**
  * Resolve every token of a body in one pass. Keyed by `embedKey(kind, ref)`
  * using the ref AS GIVEN (splitEmbedSegments already normalized it, so the
- * renderer's keys line up). Never throws.
+ * renderer's keys line up). Never throws. A token a resolver DEFERRED (only
+ * `link`, past MAX_LIVE_LINK_FETCHES_PER_PASS uncached urls) has NO entry —
+ * `ZoneMarkdown` hands an absent key to the card, which fetches it itself.
  */
 export async function resolveEmbeds(refs: EmbedRef[], ctx: EmbedContext): Promise<Record<string, EmbedData>> {
   const out: Record<string, EmbedData> = {};
@@ -477,7 +579,12 @@ export async function resolveEmbeds(refs: EmbedRef[], ctx: EmbedContext): Promis
       for (const [normalized, raws] of perKind) {
         const hit = resolved.get(normalized);
         for (const raw of raws) {
-          out[embedKey(kind, raw)] = hit ? { ...hit, ref: raw } : fail(kind, raw, 'not_found');
+          const key = embedKey(kind, raw);
+          if (hit === null) {
+            delete out[key]; // deferred — drop the placeholder so the card fetches it
+            continue;
+          }
+          out[key] = hit ? { ...hit, ref: raw } : fail(kind, raw, 'not_found');
         }
       }
     }),
@@ -485,6 +592,11 @@ export async function resolveEmbeds(refs: EmbedRef[], ctx: EmbedContext): Promis
   return out;
 }
 
+/**
+ * One token (the `/api/zones/embed` route — the lazy path the cards use). A
+ * single ref can never be deferred (1 ≤ MAX_LIVE_LINK_FETCHES_PER_PASS), so
+ * the card's fetch always ends in an answer, never in another deferral.
+ */
 export async function resolveEmbed(kind: EmbedKind, ref: string, ctx: EmbedContext): Promise<EmbedData> {
   const all = await resolveEmbeds([{ kind, ref }], ctx);
   return all[embedKey(kind, ref)] ?? fail(kind, ref, 'not_found');

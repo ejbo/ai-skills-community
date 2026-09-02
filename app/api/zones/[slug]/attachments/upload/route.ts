@@ -45,9 +45,13 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
 
   const gate = rateLimit(`zones:upload:${session.user.id}`, UPLOADS_PER_MINUTE, MINUTE_MS);
   if (!gate.allowed) {
+    // `retry-after` (seconds, ≥ 1) is what the editor's sequential upload queue
+    // sleeps on before retrying the same file at the same position — the body
+    // keeps `resetAt` for the toast. Counts are unlimited; this is the ONLY
+    // upload throttle left, so it must be recoverable, not terminal.
     return NextResponse.json(
       { error: 'rate_limited', reason: await apiReason('zone_rate_limited_upload'), resetAt: gate.resetAt },
-      { status: 429 },
+      { status: 429, headers: { 'retry-after': String(Math.max(1, Math.ceil((gate.resetAt - Date.now()) / 1000))) } },
     );
   }
 

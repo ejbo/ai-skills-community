@@ -4,12 +4,11 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { loginHref } from '@/lib/auth/callback-path';
 import { prisma } from '@/lib/db';
-import { BackButton } from '@/components/BackButton';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
 import { loadZoneBySlug, resolveZoneAccess, zoneSiteViewer } from '@/lib/zones/access';
 import { listZoneColumns } from '@/lib/zones/columns';
 import { getZonePostDetail } from '@/lib/zones/post-queries';
-import { zoneHref, zonePostHref } from '@/lib/zones/shared';
+import { zonePostHref } from '@/lib/zones/shared';
 import type { ZoneCurrentUser } from '@/lib/zones/types';
 import { PostComposer } from '@/app/zones/_components/post/PostComposer';
 import type { CoauthorPick } from '@/app/zones/_components/post/CoauthorPicker';
@@ -22,6 +21,8 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t('composer_edit_title') };
 }
 
+// Document-first composer: the page is only the container — the composer's own
+// top bar carries the back link, the zone name and the actions (no page h1).
 export default async function EditZonePostPage({ params }: { params: { slug: string; postId: string } }) {
   const session = await auth();
   if (!session?.user) redirect(loginHref(`${zonePostHref(params.slug, params.postId)}/edit`));
@@ -38,8 +39,7 @@ export default async function EditZonePostPage({ params }: { params: { slug: str
   // the public views deliberately do not carry — read the join rows here. The
   // designated list is only meaningful (and only readable) for a `restricted`
   // post, and this page is already gated on author-or-moderator above.
-  const [t, rows, columns, options] = await Promise.all([
-    getTranslations('zones'),
+  const [rows, columns, options] = await Promise.all([
     prisma.zonePostAuthor.findMany({
       where: { postId: post.id },
       orderBy: { sortOrder: 'asc' },
@@ -71,24 +71,17 @@ export default async function EditZonePostPage({ params }: { params: { slug: str
   };
 
   return (
-    <div className="container max-w-3xl py-8">
-      <div className="mb-5">
-        <BackButton fallbackHref={post.status === 'published' ? zonePostHref(zone.slug, post.id) : zoneHref(zone.slug)} />
-      </div>
-      <h1 className="text-2xl font-semibold tracking-tight">{t('composer_edit_title')}</h1>
-      <p className="mt-1 text-sm text-muted">{t('composer_edit_subtitle', { zone: zone.name })}</p>
-      <div className="mt-6">
-        <PostComposer
-          zone={{ id: zone.id, slug: zone.slug, name: zone.name }}
-          access={access}
-          currentUser={currentUser}
-          post={post}
-          initialCoauthors={initialCoauthors}
-          initialDesignated={initialDesignated}
-          columns={columns}
-          allowMemberColumns={options?.allowMemberColumns ?? true}
-        />
-      </div>
+    <div className="container max-w-6xl py-0">
+      <PostComposer
+        zone={{ id: zone.id, slug: zone.slug, name: zone.name }}
+        access={access}
+        currentUser={currentUser}
+        post={post}
+        initialCoauthors={initialCoauthors}
+        initialDesignated={initialDesignated}
+        columns={columns}
+        allowMemberColumns={options?.allowMemberColumns ?? true}
+      />
     </div>
   );
 }

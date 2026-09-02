@@ -2,15 +2,16 @@
 
 // 技术专区 hub — the shared filter chrome for the feed-first landing.
 //
-// ALL state lives in the URL (`?tab=&sort=&lab=a,b&department=x,y&column=…&
-// type=…&q=`) through `serializeMultiParam`, so every view is linkable and the
-// back button works. One hook (`useHubFilters`) owns the read/write: it mirrors
+// ALL state lives in the URL (`?tab=&sort=&lab=a,b&department=x,y&column=…&q=`)
+// through `serializeMultiParam`, so every view is linkable and the back button
+// works. There is no 类型 facet: post types are hidden everywhere (owner
+// decision) — the rail is 研究所/部门 + 栏目. One hook (`useHubFilters`) owns the read/write: it mirrors
 // the URL into local state so a click flips instantly, then pushes inside a
 // transition — `pending` dims the results instead of blocking them.
 //
 // Exports, all consumed by app/zones/page.tsx:
 //   HubSearchBox    — the single search box (posts in 动态, 版块 in 版块)
-//   HubFilterRail   — 研究所→部门 tree + 栏目 + 类型, collapsible on mobile
+//   HubFilterRail   — 研究所→部门 tree + 栏目, collapsible on mobile
 //   HubActiveChips  — removable chips for everything currently selected
 //   HubSortToggle   — 最新 / 最热 (feed) and 最近活跃 / 最新创建 / 成员最多 (版块)
 
@@ -20,7 +21,6 @@ import { useTranslations } from 'next-intl';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
 import {
   ZONE_FEED_SORTS,
-  ZONE_POST_TYPES,
   ZONE_SORTS,
   parseMultiParam,
   parseZoneFeedSort,
@@ -38,10 +38,9 @@ export interface HubFilterState {
   labs: string[];
   departments: string[];
   columns: string[];
-  types: string[];
 }
 
-const EMPTY: HubFilterState = { q: '', labs: [], departments: [], columns: [], types: [] };
+const EMPTY: HubFilterState = { q: '', labs: [], departments: [], columns: [] };
 
 /** Reads the hub filters out of the URL and writes them back (page reset, scroll kept). */
 export function useHubFilters() {
@@ -58,7 +57,6 @@ export function useHubFilters() {
       labs: parseMultiParam(params.get('lab')),
       departments: parseMultiParam(params.get('department')),
       columns: parseMultiParam(params.get('column')),
-      types: parseMultiParam(params.get('type')),
     };
   }, [key]);
 
@@ -79,7 +77,8 @@ export function useHubFilters() {
       write('lab', serializeMultiParam(next.labs));
       write('department', serializeMultiParam(next.departments));
       write('column', serializeMultiParam(next.columns));
-      write('type', serializeMultiParam(next.types));
+      // A stale `?type=` from an old bookmark is dropped on the first write.
+      params.delete('type');
       params.delete('page');
       const qs = params.toString();
       startTransition(() => router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false }));
@@ -99,7 +98,7 @@ export function useHubFilters() {
     [key, pathname, router],
   );
 
-  const active = state.labs.length + state.departments.length + state.columns.length + state.types.length + (state.q ? 1 : 0);
+  const active = state.labs.length + state.departments.length + state.columns.length + (state.q ? 1 : 0);
 
   return { state, commit, setParam, pending, active, clearAll: () => commit(EMPTY) };
 }
@@ -182,12 +181,10 @@ export function HubFilterRail({
   mode: 'feed' | 'boards';
 }) {
   const t = useTranslations('zones');
-  const tl = useTranslations('labels');
   const { state, commit, clearAll } = useHubFilters();
   const [open, setOpen] = useState(false);
-  // Only count what this rail can actually change — 栏目/类型 are feed-only.
-  const active =
-    state.labs.length + state.departments.length + (mode === 'feed' ? state.columns.length + state.types.length : 0);
+  // Only count what this rail can actually change — 栏目 is feed-only.
+  const active = state.labs.length + state.departments.length + (mode === 'feed' ? state.columns.length : 0);
 
   const departmentsOf = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -249,24 +246,6 @@ export function HubFilterRail({
         </RailSection>
       )}
 
-      {mode === 'feed' && (
-        <RailSection title={t('hub_filter_types')}>
-          <div className="flex flex-wrap gap-1.5">
-            {ZONE_POST_TYPES.map((type) => (
-              <button
-                key={type}
-                type="button"
-                onClick={() => commit({ types: toggle(state.types, type) })}
-                aria-pressed={state.types.includes(type)}
-                className={chipCls(state.types.includes(type))}
-              >
-                {tl(`zonePostType.${type}`)}
-              </button>
-            ))}
-          </div>
-        </RailSection>
-      )}
-
       {active > 0 && (
         <button
           type="button"
@@ -310,12 +289,10 @@ export function HubFilterRail({
 
 export function HubActiveChips({ mode, className = '' }: { mode: 'feed' | 'boards'; className?: string }) {
   const t = useTranslations('zones');
-  const tl = useTranslations('labels');
   const { state, commit, clearAll } = useHubFilters();
-  // 栏目 / 类型 only narrow the 动态 feed — never advertise them on the 版块 tab.
+  // 栏目 only narrows the 动态 feed — never advertise it on the 版块 tab.
   const columnsOn = mode === 'feed' ? state.columns : [];
-  const typesOn = mode === 'feed' ? state.types : [];
-  const shown = state.labs.length + state.departments.length + columnsOn.length + typesOn.length + (state.q ? 1 : 0);
+  const shown = state.labs.length + state.departments.length + columnsOn.length + (state.q ? 1 : 0);
   if (shown === 0) return null;
 
   const chips: { key: string; label: string; remove: () => void }[] = [];
@@ -339,13 +316,6 @@ export function HubActiveChips({ mode, className = '' }: { mode: 'feed' | 'board
       key: `col:${c}`,
       label: t('hub_chip_column', { value: c }),
       remove: () => commit({ columns: state.columns.filter((v) => v !== c) }),
-    });
-  }
-  for (const type of typesOn) {
-    chips.push({
-      key: `type:${type}`,
-      label: t('hub_chip_type', { value: tl(`zonePostType.${type}`) }),
-      remove: () => commit({ types: state.types.filter((v) => v !== type) }),
     });
   }
 

@@ -37,6 +37,14 @@ describe('parseInDocEmbedToken', () => {
     expect(parseInDocEmbedToken('[embed:unknown:abc]')).toBeNull();
     expect(parseInDocEmbedToken('see [embed:skill:abc] inline')).toBeNull();
   });
+
+  it('file refs accept a storage key (attachment kinds only) as well as a row id', () => {
+    expect(parseInDocEmbedToken('[embed:file:file/abc.pdf]')).toEqual({ kind: 'file', ref: 'file/abc.pdf' });
+    expect(parseInDocEmbedToken('[embed:file:image/V1StGXR8_Z5jdHi6B-myT.png]')).toEqual({ kind: 'file', ref: 'image/V1StGXR8_Z5jdHi6B-myT.png' });
+    expect(parseInDocEmbedToken('[embed:file:clxyz123]')).toEqual({ kind: 'file', ref: 'clxyz123' });
+    expect(parseInDocEmbedToken('[embed:file:cover/x.jpg]')).toBeNull();
+    expect(parseInDocEmbedToken('[embed:skill:file/x.pdf]')).toBeNull();
+  });
 });
 
 describe('contentEmbed node', () => {
@@ -89,6 +97,28 @@ describe('contentEmbed node', () => {
     const ed = makeEditor('- item one\n- item two');
     ed.commands.setTextSelection(6);
     insertContentEmbed(ed, 'post', 'clpost1');
+    const out = ed.storage.markdown.getMarkdown();
+    expect(ownLine(out)).toBe(true);
+    expect(out).not.toMatch(/^[-*] .*embed/m);
+    ed.destroy();
+  });
+
+  it('a key-form file token round-trips with the key intact (the upload plugin inserts keys)', async () => {
+    const ed = makeEditor('[embed:file:file/abc.pdf]');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(nodes(ed)).toEqual([{ kind: 'file', ref: 'file/abc.pdf' }]);
+    const out = ed.storage.markdown.getMarkdown();
+    expect(ownLine(out)).toBe(true);
+    const seg = splitEmbedSegments(out).find((s) => s.type === 'embed');
+    expect(seg && seg.type === 'embed' ? seg.ref : null).toBe('file/abc.pdf');
+    ed.destroy();
+  });
+
+  it('a key-form file insert from a list caret lands top-level', () => {
+    const ed = makeEditor('- item one\n- item two');
+    ed.commands.setTextSelection(6);
+    insertContentEmbed(ed, 'file', 'file/abc.pdf');
+    expect(nodes(ed)).toEqual([{ kind: 'file', ref: 'file/abc.pdf' }]);
     const out = ed.storage.markdown.getMarkdown();
     expect(ownLine(out)).toBe(true);
     expect(out).not.toMatch(/^[-*] .*embed/m);

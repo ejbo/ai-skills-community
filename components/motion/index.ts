@@ -25,6 +25,13 @@
 //    cascade, not both on one fold); hover ≤ 2px / scale ≤ 1.02; springs
 //    stiffness 300–500, damping ≥ 22; tweens 0.2–0.6 s on EASE_OUT.
 //
+// 7. Two hosts for a side panel, deliberately distinct: DrawerShell is MODAL
+//    (portal, scrim, body scroll lock, aria-modal, swipe-to-close — menus and the
+//    phone preview); DockShell is NON-MODAL (an in-flow sticky aside with a
+//    resize sash, no scrim, no scroll lock, no aria-modal — the 技术专区 reading
+//    panel). Never give the dock a scrim "for consistency"; parallel reading is
+//    the point.
+//
 // Server components: GlareHover, HairlineGrid. Everything else is 'use client'.
 
 export { SpotlightCard } from './SpotlightCard';
@@ -40,4 +47,7 @@ export { Stepper } from './Stepper';
 export type { Step } from './Stepper';
 export { HairlineGrid } from './HairlineGrid';
 export { DrawerShell } from './DrawerShell';
+export { DockShell } from './DockShell';
+export type { DockShellProps } from './DockShell';
+export { StatefulButton } from './StatefulButton';
 export { RollingNumber } from './RollingNumber';

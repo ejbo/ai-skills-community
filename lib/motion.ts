@@ -24,6 +24,24 @@ export const SPRING_SOFT = { stiffness: 220, damping: 26, mass: 0.6 } as const;
 /** Panel slides (drawer): decisive, no overshoot past the edge. */
 export const SPRING_DRAWER = { type: 'spring', stiffness: 380, damping: 40, mass: 0.8 } as const;
 
+// ---------------------------------------------------------------------------
+// Named tweens — the 技术专区 motion grammar (no component invents a duration).
+//
+// | Value          | Used for                                                    | Never for            |
+// | SPRING_SNAPPY  | indicators following a selection/pointer (TabBar hairline,  | anything that moves  |
+// |                | hover pill, listbox highlight, active-attachment hairline)  | content              |
+// | SPRING_DRAWER  | sash snap-back, modal DrawerShell, rail overlay, Reorder    | text                 |
+// | TWEEN_FAST     | crossfades, overlays, popovers, drop overlay                | lists                |
+// | TWEEN          | bars hide/reveal, accordion rows, stack slide               | drags (transition 0) |
+// | TWEEN_PANE     | dock open/close/expand width                                | drags                |
+// Never animated: titles, prose, avatars, first-paint counts, route changes,
+// dropdown item lists, typing/filtering, page-append rows.
+// ---------------------------------------------------------------------------
+
+export const TWEEN_FAST = { duration: 0.16, ease: EASE_OUT } as const;
+export const TWEEN = { duration: 0.22, ease: EASE_OUT } as const;
+export const TWEEN_PANE = { duration: 0.28, ease: EASE_OUT } as const;
+
 /**
  * true only for mouse/trackpad users; false on the server and on touch.
  * Read in an effect (never at render) so SSR and the first client render agree.

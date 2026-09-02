@@ -15,6 +15,7 @@ import { ChevronDown, Loader2, Lock } from 'lucide-react';
 import { LiveList } from '@/components/motion';
 import { zoneHref } from '@/lib/zones/shared';
 import type { ZoneCommentView, ZoneCurrentUser, ZoneThreadView } from '@/lib/zones/types';
+import type { LeadRoles } from '@/lib/zones/lead-roles';
 import { CommentBlock, type CommentFocus } from './CommentBlock';
 import { CommentBox } from './CommentBox';
 import { LoginLink } from '@/components/LoginLink';
@@ -41,6 +42,7 @@ export function PostComments({
   isMember,
   locked,
   focusId,
+  leadRoles,
   onCountChange,
 }: {
   zoneSlug: string;
@@ -52,6 +54,8 @@ export function PostComments({
   isMember: boolean;
   locked: boolean;
   focusId?: string;
+  /** handle → 主版主 / 版主, rendered as RolePill after a lead's name. */
+  leadRoles?: LeadRoles;
   onCountChange: (delta: number) => void;
 }) {
   const t = useTranslations('zones');
@@ -269,6 +273,7 @@ export function PostComments({
                 canModerate={canModerate}
                 canReply={composerAllowed}
                 focus={focus}
+                leadRoles={leadRoles}
                 onReplyPosted={(c) => addReply(thread.id, c)}
                 onReplies={(replies) => setThreads((prev) => prev.map((th) => (th.id === thread.id ? { ...th, replies } : th)))}
                 onRemoved={(commentId, tombstoned, prunedParent) => removeComment(thread.id, commentId, tombstoned, prunedParent)}
@@ -301,6 +306,7 @@ function ThreadBlock({
   canModerate,
   canReply,
   focus,
+  leadRoles,
   onReplyPosted,
   onReplies,
   onRemoved,
@@ -313,6 +319,7 @@ function ThreadBlock({
   canModerate: boolean;
   canReply: boolean;
   focus: CommentFocus;
+  leadRoles?: LeadRoles;
   onReplyPosted: (c: ZoneCommentView) => void;
   onReplies: (replies: ZoneCommentView[]) => void;
   onRemoved: (commentId: string, tombstoned: boolean, prunedParent: boolean) => void;
@@ -353,6 +360,7 @@ function ThreadBlock({
         canModerate={canModerate}
         canReply={canReply}
         focus={focus}
+        leadRoles={leadRoles}
         onReply={() => setReplyTo(thread)}
         onRemoved={onRemoved}
         onEdited={onEdited}
@@ -373,6 +381,7 @@ function ThreadBlock({
                 canModerate={canModerate}
                 canReply={canReply}
                 focus={focus}
+                leadRoles={leadRoles}
                 onReply={() => setReplyTo(r)}
                 onRemoved={onRemoved}
                 onEdited={onEdited}

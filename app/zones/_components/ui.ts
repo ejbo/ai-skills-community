@@ -44,6 +44,21 @@ export function chipCls(active: boolean): string {
   }`;
 }
 
+/** 栏目 chip — human text, so NOT the uppercase mono pill the taxonomy chips use. */
+export const PILL_COLUMN =
+  'inline-flex max-w-[12rem] shrink-0 items-center gap-1 rounded-full border border-zinc-300 px-2 py-0.5 text-[11px] font-medium text-zinc-600 transition hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-zinc-500 dark:hover:text-zinc-100';
+
+/** Member-created 栏目: same shape, dashed — never a hue in navigation chrome. */
+export const PILL_COLUMN_MEMBER = `${PILL_COLUMN} border-dashed`;
+
+/** 32 px round ghost icon button (panel header, context strip, rail strip, ⋯ triggers). */
+export const BTN_ICON =
+  'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100';
+
+/** Edge fade for internal scrollers (TOC, dock body lists) — one mask layer, no backdrop-filter. */
+export const FADE_Y_CLASS =
+  '[mask-image:linear-gradient(to_bottom,transparent,black_16px,black_calc(100%_-_24px),transparent)] [-webkit-mask-image:linear-gradient(to_bottom,transparent,black_16px,black_calc(100%_-_24px),transparent)]';
+
 export const CARD_CLS =
   'rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950';
 

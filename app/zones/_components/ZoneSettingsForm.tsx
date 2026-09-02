@@ -1,9 +1,13 @@
 'use client';
 
-// 技术专区 — settings surface: TabBar (基本信息 | 权限与加入 | 角色 | 危险操作), each
-// tab gated by the pre-decided ZoneAccess. All tab drafts live in THIS component
-// so a `?tab=` soft navigation keeps unsaved edits. `LinksField` and
-// `AccessOptions` are exported for the create wizard.
+// 技术专区 — settings surface: TabBar (基本信息 | 权限与加入 | 栏目 | 角色 | 危险操作),
+// each tab gated by the pre-decided ZoneAccess (settingsTabsFor). All tab drafts
+// live in THIS component so a `?tab=` soft navigation keeps unsaved edits; the
+// 栏目 tab is the exception — ColumnsEditor owns its list and re-reads the
+// server after every mutation, so it seeds from `zone` and needs no draft here.
+// It also gets `access.canManage`: the tab admits `moderate`, but its
+// 允许成员自建栏目 switch PATCHes the zone row, which needs `manage`.
+// `LinksField` and `AccessOptions` are exported for the create wizard.
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -22,6 +26,7 @@ import {
   type ZoneLink,
 } from '@/lib/zones/shared';
 import type { ZoneDetailView, ZoneJoinPolicyView, ZoneVisibilityView } from '@/lib/zones/types';
+import { ColumnsEditor } from './ColumnsEditor';
 import { DangerZone } from './DangerZone';
 import { RolesEditor } from './RolesEditor';
 import { ZoneCoverUploader } from './ZoneCoverUploader';
@@ -432,6 +437,16 @@ export function ZoneSettingsForm({
               </button>
             </div>
           </form>
+        )}
+
+        {active === 'columns' && (
+          <ColumnsEditor
+            zoneSlug={zone.slug}
+            initialColumns={zone.columns}
+            initialAllowMemberColumns={zone.allowMemberColumns}
+            postCount={zone.postCount}
+            canManage={zone.access.canManage}
+          />
         )}
 
         {active === 'roles' && <RolesEditor zoneSlug={zone.slug} initialRoles={zone.roles} />}

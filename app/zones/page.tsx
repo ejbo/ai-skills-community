@@ -2,15 +2,17 @@
 //
 // /zones no longer opens on a grid of 版块. Three URL-driven tabs:
 //   动态 (default) — the cross-zone post feed: only what this viewer may see,
-//                    最新 | 最热, filtered by 研究所 → 部门 / 栏目 / 类型 /
-//                    keyword. Page 1 is rendered here (listZoneFeed); the
-//                    client leaf appends through GET /api/zones/feed.
+//                    最新 | 最热, filtered by 研究所 → 部门 / 栏目 / keyword
+//                    (post types are hidden everywhere — owner decision).
+//                    Page 1 is rendered here (listZoneFeed); the client leaf
+//                    appends through GET /api/zones/feed.
 //   版块          — every readable 版块, grouped under its 研究所, filtered by
 //                    the same 研究所 → 部门 rail (multi-select on both levels).
 //   我的版块       — unchanged: the zones the viewer owns or belongs to.
 //
-// All state lives in the URL (?tab=&sort=&lab=a,b&department=x,y&column=&type=
-// &q=) so every view is linkable and back-button friendly.
+// All state lives in the URL (?tab=&sort=&lab=a,b&department=x,y&column=&q=)
+// so every view is linkable and back-button friendly. A stale `?type=` is
+// ignored here (the feed API still parses it for old bookmarks).
 //
 // `listZones` filters by a SINGLE lab/department, so the 版块 tab loads the
 // readable set (bounded, BOARD_MAX pages of 60) and applies the multi-select
@@ -25,13 +27,11 @@ import { canUserCreateZone, zoneSiteViewer, type ZoneSiteViewer } from '@/lib/zo
 import { featuredZones, listMyZones, listZones } from '@/lib/zones/queries';
 import { listZoneFeed, zoneHubFacets } from '@/lib/zones/post-queries';
 import {
-  isZonePostType,
   parseMultiParam,
   parseZoneFeedSort,
   parseZoneSort,
   serializeMultiParam,
   type OrgLabNode,
-  type ZonePostTypeValue,
 } from '@/lib/zones/shared';
 import type { ZoneCardView } from '@/lib/zones/types';
 import { StaggerGrid, TabBar } from '@/components/motion';
@@ -56,7 +56,6 @@ interface SearchParams {
   lab?: string | string[];
   department?: string | string[];
   column?: string | string[];
-  type?: string | string[];
   sort?: string | string[];
 }
 
@@ -173,23 +172,22 @@ export default async function ZonesHubPage({ searchParams }: { searchParams: Sea
   const labs = parseMultiParam(firstParam(searchParams.lab));
   const departments = parseMultiParam(firstParam(searchParams.department));
   const columns = parseMultiParam(firstParam(searchParams.column));
-  const types = parseMultiParam(firstParam(searchParams.type)).filter(isZonePostType) as ZonePostTypeValue[];
   const rawSort = firstParam(searchParams.sort);
   const feedSort = parseZoneFeedSort(rawSort);
   const zoneSort = parseZoneSort(rawSort);
 
   const orgFiltered = labs.length > 0 || departments.length > 0;
-  const feedFiltered = orgFiltered || columns.length > 0 || types.length > 0 || Boolean(q);
+  const feedFiltered = orgFiltered || columns.length > 0 || Boolean(q);
   const boardsFiltered = orgFiltered || Boolean(q);
 
   // ── Per-tab data (only the active tab is queried) ──────────────────────────
   const showFeatured = tab === 'boards' && !boardsFiltered;
   const [canCreate, facets, feed, board, mine, featured] = await Promise.all([
     canUserCreateZone(session.user),
-    // 栏目 / 类型 facets only narrow the feed; the 版块 rail is built from its own set.
+    // The 栏目 facet only narrows the feed; the 版块 rail is built from its own set.
     tab === 'feed' ? zoneHubFacets(viewer) : Promise.resolve({ org: [], columns: [] }),
     tab === 'feed'
-      ? listZoneFeed({ viewer, sort: feedSort, labs, departments, columns, types, q, limit: FEED_PAGE_SIZE })
+      ? listZoneFeed({ viewer, sort: feedSort, labs, departments, columns, q, limit: FEED_PAGE_SIZE })
       : Promise.resolve(null),
     tab === 'boards' ? loadBoardZones({ viewer, q, sort: zoneSort }) : Promise.resolve(null),
     tab === 'mine' ? listMyZones(viewer) : Promise.resolve(null),
@@ -223,7 +221,6 @@ export default async function ZonesHubPage({ searchParams }: { searchParams: Sea
     ...carry,
     sort: feedSort === 'new' ? '' : feedSort,
     column: serializeMultiParam(columns),
-    type: serializeMultiParam(types),
   };
   const tabs = [
     { key: 'feed', label: t('hub_tab_feed'), href: hrefWith('/zones', { ...feedCarry, tab: '' }) },
@@ -238,7 +235,7 @@ export default async function ZonesHubPage({ searchParams }: { searchParams: Sea
       : t('hub_result_count', { count: visibleZones });
 
   return (
-    <div className="container py-8">
+    <div className="container py-6">
       <ZoneHubHeader
         canCreate={canCreate}
         searchMode={railMode}
@@ -246,7 +243,7 @@ export default async function ZonesHubPage({ searchParams }: { searchParams: Sea
         postCount={tab === 'feed' ? (feed?.total ?? 0) : undefined}
       />
 
-      <div className="mt-8 flex flex-wrap items-end justify-between gap-4">
+      <div className="mt-6 flex flex-wrap items-end justify-between gap-4">
         <TabBar tabs={tabs} active={tab} id="zones-hub-tabs" ariaLabel={t('hub_title')} />
         <p className="font-mono text-xs tabular-nums text-zinc-500">{resultLabel}</p>
       </div>
@@ -295,11 +292,11 @@ export default async function ZonesHubPage({ searchParams }: { searchParams: Sea
             <div className="mt-5">
               {tab === 'feed' && feed ? (
                 <HubFeed
-                  key={`${feedSort}|${q}|${carry.lab}|${carry.department}|${feedCarry.column}|${feedCarry.type}`}
+                  key={`${feedSort}|${q}|${carry.lab}|${carry.department}|${feedCarry.column}`}
                   initialItems={feed.items}
                   initialHasMore={feed.hasMore}
                   initialCursor={feed.nextCursor}
-                  query={{ sort: feedSort, q, labs, departments, columns, types }}
+                  query={{ sort: feedSort, q, labs, departments, columns }}
                   filtered={feedFiltered}
                 />
               ) : (

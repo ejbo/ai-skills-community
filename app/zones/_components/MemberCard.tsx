@@ -1,8 +1,11 @@
 'use client';
 
-// 技术专区 — member card for the directory. Identity via the house contract
-// (Avatar + DeptTag, no @handle text for private users). Manager actions ride
-// PATCH/DELETE /members/[userId]; the owner row is untouchable (主版主 pill).
+// 技术专区 — member card for the directory: a PROFILE card first (Avatar +
+// DeptTag, no @handle text for private users, RolePill / role name, 头衔, post
+// count, joined), with management (role select · 设置头衔 · 移除) behind the ⋯
+// MemberMenu — rendered only when the viewer may manage this row. Pending
+// cards keep 通过 / 驳回 inline: a decision is the card's whole purpose there.
+// Manager actions ride PATCH/DELETE /members/[userId]; the owner row is untouchable.
 
 import { useState } from 'react';
 import Link from 'next/link';
@@ -12,10 +15,15 @@ import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { pushToast } from '@/components/Toaster';
 import { relativeTime } from '@/lib/i18n-date';
-import { ZONE_MEMBER_ROLE_KEY, canAssignZoneRole } from '@/lib/zones/permissions';
+import { ZONE_MEMBER_ROLE_KEY, ZONE_MODERATOR_ROLE_KEY, canAssignZoneRole } from '@/lib/zones/permissions';
 import { ZONE_LIMITS } from '@/lib/zones/shared';
 import type { ZoneAccess, ZoneMemberView, ZoneRoleView } from '@/lib/zones/types';
-import { BTN_DANGER, BTN_GHOST, BTN_PRIMARY, BTN_SECONDARY, CARD_CLS, INPUT_CLS, PILL_INK, PILL_MONO, SELECT_CLS, readError } from './ui';
+import { MemberMenu } from './MemberMenu';
+import { RolePill } from './RolePill';
+import { BTN_DANGER, BTN_GHOST, BTN_PRIMARY, BTN_SECONDARY, CARD_CLS, INPUT_CLS, PILL_MONO, SELECT_CLS, readError } from './ui';
+
+const MENU_ITEM_CLS =
+  'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-zinc-700 outline-none transition hover:bg-zinc-100 focus-visible:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:focus-visible:bg-zinc-800';
 
 export function MemberCard({
   member,
@@ -35,7 +43,6 @@ export function MemberCard({
   onRemove: (userId: string) => void;
 }) {
   const t = useTranslations('zones');
-  const tl = useTranslations('labels');
   const locale = useLocale();
   const [busy, setBusy] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -125,6 +132,17 @@ export function MemberCard({
     }
   }
 
+  // Role pill: lead roles through RolePill (the ONE way a lead role reaches a
+  // byline); other named roles as the mono pill; plain 成员 shows nothing — the
+  // group header already says it.
+  const pill = member.isOwner ? (
+    <RolePill role="owner" />
+  ) : member.roleKey === ZONE_MODERATOR_ROLE_KEY ? (
+    <RolePill role="moderator" />
+  ) : member.roleKey !== ZONE_MEMBER_ROLE_KEY ? (
+    <span className={PILL_MONO}>{member.roleName}</span>
+  ) : null;
+
   return (
     <article className={`${CARD_CLS} card-hover flex h-full flex-col p-4`}>
       <div className="flex items-start gap-3">
@@ -132,21 +150,76 @@ export function MemberCard({
           <Avatar name={member.user.displayName} src={member.user.avatarUrl} size="lg" handle={member.user.handle} />
         </Link>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
             <Link
               href={`/users/${member.user.handle}`}
-              className="truncate text-sm font-semibold text-zinc-900 hover:underline dark:text-zinc-50"
+              className="max-w-full truncate text-sm font-semibold text-zinc-900 hover:underline dark:text-zinc-50"
             >
               {member.user.displayName}
             </Link>
             {isSelf && <span className="shrink-0 text-[11px] text-zinc-400">{t('members_you')}</span>}
+            {pill}
           </div>
           {!member.user.isPrivate && <div className="truncate font-mono text-xs text-zinc-400">@{member.user.handle}</div>}
           <DeptTag department={member.user.department} lab={member.user.lab} className="mt-1" />
         </div>
-        <span className={member.isOwner ? PILL_INK : PILL_MONO}>
-          {member.isOwner ? tl('zoneRole.owner') : member.roleName}
-        </span>
+        {manageable && member.status === 'active' && (
+          <MemberMenu label={t('members_menu')} disabled={busy} onClose={() => setConfirmRemove(false)}>
+            {(close) => (
+              <div className="space-y-1">
+                <label className="block px-2.5 pt-1 text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+                  {t('members_assign_role')}
+                  <select
+                    value={currentRole?.id ?? ''}
+                    onChange={(e) => void changeRole(e.target.value)}
+                    disabled={busy || roleLocked}
+                    className={`${SELECT_CLS} mt-1 h-8 w-full text-xs`}
+                  >
+                    {currentRole && !assignable.some((r) => r.id === currentRole.id) && (
+                      <option value={currentRole.id}>{currentRole.name}</option>
+                    )}
+                    {assignable.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    close();
+                    setEditingTitle(true);
+                  }}
+                  className={MENU_ITEM_CLS}
+                >
+                  <Pencil className="h-4 w-4 text-zinc-500" />
+                  {t('members_set_title')}
+                </button>
+                {confirmRemove ? (
+                  <div className="flex items-center gap-2 px-2.5 py-1.5">
+                    <button type="button" onClick={remove} disabled={busy} className={`${BTN_DANGER} h-8 flex-1 px-2.5 text-xs`}>
+                      {t('members_remove_confirm')}
+                    </button>
+                    <button type="button" onClick={() => setConfirmRemove(false)} className={`${BTN_GHOST} h-8 px-2 text-xs`}>
+                      {t('cancel')}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmRemove(true)}
+                    disabled={busy || isSelf}
+                    className={`${MENU_ITEM_CLS} text-danger hover:bg-danger/10 dark:text-danger dark:hover:bg-danger/10`}
+                  >
+                    <UserMinus className="h-4 w-4" />
+                    {t('members_remove')}
+                  </button>
+                )}
+              </div>
+            )}
+          </MemberMenu>
+        )}
       </div>
 
       <div className="mt-3 min-h-[1.25rem] text-xs text-zinc-600 dark:text-zinc-400">
@@ -181,25 +254,10 @@ export function MemberCard({
               <X className="h-3.5 w-3.5" />
             </button>
           </form>
+        ) : member.title ? (
+          <span className="italic">{member.title}</span>
         ) : (
-          <span className="inline-flex items-center gap-1.5">
-            {member.title ? (
-              <span className="italic">{member.title}</span>
-            ) : (
-              <span className="text-zinc-400">{t('members_no_title')}</span>
-            )}
-            {manageable && (
-              <button
-                type="button"
-                onClick={() => setEditingTitle(true)}
-                aria-label={t('members_set_title')}
-                title={t('members_set_title')}
-                className="text-zinc-400 transition hover:text-zinc-900 dark:hover:text-zinc-100"
-              >
-                <Pencil className="h-3 w-3" />
-              </button>
-            )}
-          </span>
+          <span className="text-zinc-400">{t('members_no_title')}</span>
         )}
       </div>
 
@@ -232,48 +290,6 @@ export function MemberCard({
             <X className="h-3.5 w-3.5" />
             {t('members_reject')}
           </button>
-        </div>
-      )}
-
-      {member.status === 'active' && manageable && (
-        <div className="mt-3 flex items-center gap-2 border-t border-zinc-200 pt-3 dark:border-zinc-800">
-          <select
-            value={currentRole?.id ?? ''}
-            onChange={(e) => void changeRole(e.target.value)}
-            disabled={busy || roleLocked}
-            aria-label={t('members_assign_role')}
-            className={`${SELECT_CLS} h-8 min-w-0 flex-1 text-xs`}
-          >
-            {currentRole && !assignable.some((r) => r.id === currentRole.id) && (
-              <option value={currentRole.id}>{currentRole.name}</option>
-            )}
-            {assignable.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </select>
-          {confirmRemove ? (
-            <>
-              <button type="button" onClick={remove} disabled={busy} className={`${BTN_DANGER} h-8 px-2.5 text-xs`}>
-                {t('members_remove_confirm')}
-              </button>
-              <button type="button" onClick={() => setConfirmRemove(false)} className={`${BTN_GHOST} h-8 px-2 text-xs`}>
-                {t('cancel')}
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirmRemove(true)}
-              disabled={busy || isSelf}
-              title={t('members_remove')}
-              aria-label={t('members_remove')}
-              className={`${BTN_GHOST} h-8 w-8 justify-center px-0`}
-            >
-              <UserMinus className="h-3.5 w-3.5" />
-            </button>
-          )}
         </div>
       )}
     </article>

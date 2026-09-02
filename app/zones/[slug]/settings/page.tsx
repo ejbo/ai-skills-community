@@ -1,5 +1,9 @@
-// 版块设置 (canManage | canManageRoles | owner | site admin): TabBar-driven
-// ZoneSettingsForm — 基本信息 / 权限与加入 / 角色 / 危险操作.
+// 版块设置 (canManage | canModerate | canManageRoles | owner | site admin):
+// TabBar-driven ZoneSettingsForm — 基本信息 / 权限与加入 / 栏目 / 角色 / 危险操作.
+//
+// `canModerate` admits the page for the 栏目 tab alone: the column routes gate on
+// `moderate`, not `manage`, so a 版主 without `manage` still curates the taxonomy
+// and lands on 栏目 (`allowed[0]` — settingsTabsFor pushes nothing before it).
 
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
@@ -23,7 +27,7 @@ function firstParam(v: string | string[] | undefined): string {
   return (Array.isArray(v) ? v[0] : (v ?? '')).trim();
 }
 
-const TABS: readonly SettingsTab[] = ['basic', 'access', 'roles', 'danger'];
+const TABS: readonly SettingsTab[] = ['basic', 'access', 'columns', 'roles', 'danger'];
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const [t, session] = await Promise.all([getTranslations('zones'), auth()]);
@@ -44,7 +48,9 @@ export default async function ZoneSettingsPage({
   const ctx = await zoneContext(params.slug, session);
   if (!ctx) notFound();
   const { access, viewer } = ctx;
-  if (!(access.canManage || access.canManageRoles || access.isOwner || access.siteAdmin)) redirect(base);
+  if (!(access.canManage || access.canModerate || access.canManageRoles || access.isOwner || access.siteAdmin)) {
+    redirect(base);
+  }
 
   const [t, zone, facets] = await Promise.all([getTranslations('zones'), getZoneDetail(params.slug, viewer), zoneFacets()]);
   if (!zone) notFound();

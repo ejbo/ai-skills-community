@@ -1,9 +1,12 @@
 'use client';
 
-// One comment row (root or reply): author + DeptTag + time, markdown body
-// (tombstone when deleted), ♡ like toggle (authoritative reconcile), 回复,
-// 编辑 (own comment within 15 min, or moderators), 删除 (own or moderators →
-// tombstone contract). Implements the ?focus=<id> deep link: scroll + flash.
+// One comment row (root or reply): author + lead-role pill + DeptTag + time,
+// markdown body (tombstone when deleted), ♡ like toggle (authoritative
+// reconcile), 回复, 编辑 (own comment within 15 min, or moderators), 删除 (own
+// or moderators → tombstone contract). Implements the ?focus=<id> deep link:
+// scroll + flash. A 主版主 / 版主 comment gets ONLY the RolePill — no border or
+// background: staff choose when to speak as staff (a per-comment flag is a
+// later column).
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -15,8 +18,10 @@ import { DeptTag } from '@/components/DeptTag';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { pushToast } from '@/components/Toaster';
 import type { ZoneCommentView, ZoneCurrentUser } from '@/lib/zones/types';
+import { leadRoleOf, type LeadRoles } from '@/lib/zones/lead-roles';
 import { currentLoginHref } from '@/lib/auth/callback-path';
 import { RelTime } from '../RelTime';
+import { RolePill } from '../RolePill';
 import { CommentBox } from './CommentBox';
 
 /** Own comments stay editable this long after posting (mirrors the API rule). */
@@ -36,6 +41,7 @@ export function CommentBlock({
   canModerate,
   canReply,
   focus,
+  leadRoles,
   onReply,
   onRemoved,
   onEdited,
@@ -48,6 +54,8 @@ export function CommentBlock({
   canModerate: boolean;
   canReply: boolean;
   focus: CommentFocus;
+  /** handle → 主版主 / 版主 (built by the RSC page). */
+  leadRoles?: LeadRoles;
   onReply: () => void;
   onRemoved: (commentId: string, tombstoned: boolean, prunedParent: boolean) => void;
   onEdited: (c: ZoneCommentView) => void;
@@ -65,6 +73,7 @@ export function CommentBlock({
   const ref = useRef<HTMLDivElement>(null);
 
   const isTombstone = comment.status === 'deleted';
+  const leadRole = leadRoleOf(leadRoles, comment.author.handle);
   const isOwn = comment.isMine || (!!currentUser && currentUser.handle === comment.author.handle);
   const canDelete = !isTombstone && (isOwn || canModerate);
   const withinWindow = now - new Date(comment.createdAt).getTime() < COMMENT_EDIT_WINDOW_MS;
@@ -147,6 +156,7 @@ export function CommentBlock({
             <Link href={`/users/${comment.author.handle}`} className="font-medium text-zinc-900 hover:underline dark:text-white">
               {comment.author.displayName}
             </Link>
+            {leadRole && <RolePill role={leadRole} />}
             <DeptTag department={comment.author.department} lab={comment.author.lab} />
             <RelTime at={comment.createdAt} className="text-muted" />
             {comment.editedAt && !isTombstone && <span className="text-muted">{t('comment_edited')}</span>}

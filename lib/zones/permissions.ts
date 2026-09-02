@@ -19,7 +19,7 @@ export const ZONE_PERMISSIONS: readonly ZonePermissionDef[] = [
   { key: 'manage', label: '版块设置', description: '编辑版块名称、简介、封面、组织归属、外链、可见性与加入方式。' },
   { key: 'roles', label: '角色配置', description: '新建 / 编辑 / 删除版块角色并设置其权限（主版主始终拥有；可指派任意角色）。' },
   { key: 'members', label: '成员管理', description: '添加 / 移除成员，审核加入申请，为成员指派角色（不能指派含「角色配置」的角色）。' },
-  { key: 'post', label: '发布内容', description: '在本版块发布帖子（文章、研究报告、论文、演示、链接）。' },
+  { key: 'post', label: '发布内容', description: '在本版块发布帖子并归入栏目；上传附件或在正文中插入文件。' },
   { key: 'moderate', label: '内容治理', description: '置顶、锁定、编辑或删除本版块任意帖子与评论；发布版块公告。' },
   { key: 'wiki', label: '编辑 Wiki', description: '新建、编辑、移动、删除本版块 Wiki 页面并恢复历史版本。' },
   { key: 'comment', label: '评论互动', description: '在本版块的帖子下评论、回复。' },

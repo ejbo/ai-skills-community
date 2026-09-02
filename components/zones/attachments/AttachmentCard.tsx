@@ -1,9 +1,10 @@
 'use client';
 
 // One attachment tile: icon by extension (or the image thumbnail), name,
-// size, preview state badge. Click → the preview drawer (`file` kind) when the
-// attachment has an id (saved rows); composer drafts without an id open the
-// raw file in a new tab instead.
+// size, preview state badge. Click → the preview panel (`file` kind) by row id
+// when saved, else by STORAGE KEY (the embed contract accepts both — a
+// composer draft previews before it has a row). `active` marks the row that
+// is open in the docked panel (aria-current + ink border).
 
 import type { MouseEvent } from 'react';
 import { useTranslations } from 'next-intl';
@@ -23,6 +24,7 @@ import { withBasePath } from '@/lib/base-path';
 import { formatBytes, isOfficePreviewable } from '@/lib/zones/shared';
 import type { ZoneAttachmentView } from '@/lib/zones/types';
 import { usePreview } from '@/components/zones/preview/PreviewProvider';
+import { zoneMediaKeyFromPublicUrl } from './upload-core';
 
 export function attachmentIconFor(a: { kind: ZoneAttachmentView['kind']; ext: string }): LucideIcon {
   if (a.kind === 'image') return ImageIcon;
@@ -63,17 +65,25 @@ export function attachmentPreviewBadgeKey(a: ZoneAttachmentView): string | null 
   return null;
 }
 
+/** The preview ref of an attachment: the row id, else its storage key. */
+export function attachmentPreviewRef(a: ZoneAttachmentView): string | null {
+  return a.id || zoneMediaKeyFromPublicUrl(a.url);
+}
+
 export function AttachmentCard({
   attachment,
   onRemove,
   onOpen,
   compact = false,
+  active = false,
 }: {
   attachment: ZoneAttachmentView;
   onRemove?: () => void;
-  /** Override the default open behaviour (drawer / new tab). */
-  onOpen?: () => void;
+  /** Override the default open behaviour. `via` is 'keyboard' for an Enter/Space click (event.detail === 0). */
+  onOpen?: (via: 'pointer' | 'keyboard') => void;
   compact?: boolean;
+  /** The row that is open in the preview panel — aria-current + ink border. */
+  active?: boolean;
 }) {
   const t = useTranslations('zones');
   const preview = usePreview();
@@ -81,19 +91,24 @@ export function AttachmentCard({
   const badgeKey = attachmentPreviewBadgeKey(attachment);
   const url = withBasePath(attachment.url);
 
-  const open = () => {
-    if (onOpen) return onOpen();
-    if (attachment.id) preview.open({ kind: 'file', ref: attachment.id, title: attachment.name });
+  const open = (e: MouseEvent<HTMLButtonElement>) => {
+    const via: 'pointer' | 'keyboard' = e.detail === 0 ? 'keyboard' : 'pointer';
+    if (onOpen) return onOpen(via);
+    const ref = attachmentPreviewRef(attachment);
+    if (ref) preview.open({ kind: 'file', ref, title: attachment.name, via });
     else window.open(url, '_blank', 'noopener');
   };
 
   return (
     <div
-      className={`group relative flex items-center gap-3 rounded-xl border border-zinc-200 bg-white text-left transition hover:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-zinc-600 ${
-        compact ? 'p-2' : 'p-2.5'
-      }`}
+      aria-current={active ? 'true' : undefined}
+      className={`group relative flex items-center gap-3 rounded-xl border bg-white text-left transition dark:bg-zinc-950 ${
+        active
+          ? 'border-zinc-900 dark:border-zinc-100'
+          : 'border-zinc-200 hover:border-zinc-400 dark:border-zinc-800 dark:hover:border-zinc-600'
+      } ${compact ? 'p-2' : 'p-2.5'}`}
     >
-      <button type="button" onClick={open} className="flex min-w-0 flex-1 items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 rounded-lg">
+      <button type="button" onClick={open} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-zinc-400">
         {attachment.kind === 'image' ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={url} alt="" loading="lazy" className={`shrink-0 rounded-md bg-zinc-100 object-cover dark:bg-zinc-900 ${compact ? 'h-9 w-9' : 'h-12 w-12'}`} />

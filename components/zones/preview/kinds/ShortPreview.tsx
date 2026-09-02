@@ -1,8 +1,10 @@
 'use client';
 
-// A 随刷 short in the drawer: a plain <video controls playsInline> in a 9:16
+// A 随刷 short in the panel: a plain <video controls playsInline> in a 9:16
 // box — deliberately NOT ShortsCell (its rail/view-ping/like wiring belongs to
-// the feed; the drawer is a reading aid). 打开随刷 jumps to the real player.
+// the feed; the panel is a reading aid). 打开随刷 jumps to the real player.
+// `fill` (the dock) caps the box by the panel's height instead of the viewport
+// so the meta below stays reachable in a 520 px column.
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
@@ -12,7 +14,7 @@ import { withBasePath } from '@/lib/base-path';
 import type { EmbedShortData } from '@/lib/zones/types';
 import { fmtCount, fmtDuration } from '@/components/zones/embeds/EmbedCard';
 
-export function ShortPreview({ data }: { data: EmbedShortData }) {
+export function ShortPreview({ data, fill = false }: { data: EmbedShortData; fill?: boolean }) {
   const t = useTranslations('zones');
   const poster = data.posterUrl ? withBasePath(data.posterUrl) : undefined;
   const src = data.videoUrl ? withBasePath(data.videoUrl) : undefined;
@@ -20,7 +22,7 @@ export function ShortPreview({ data }: { data: EmbedShortData }) {
   return (
     <div className="space-y-4">
       <div
-        className="mx-auto overflow-hidden rounded-2xl bg-black"
+        className={`mx-auto overflow-hidden rounded-2xl bg-black ${fill ? 'max-h-[calc(100dvh-14rem)]' : ''}`}
         style={{ height: 'min(70vh, 640px)', aspectRatio: '9 / 16', maxWidth: '100%' }}
       >
         {src ? (

@@ -11,9 +11,14 @@
 // Attachments live in `<LOCAL_STORAGE_DIR>/zone-media` (lib/zones/storage.ts);
 // a key is accepted only when it has the right shape, exists on disk and is not
 // already attached to ANOTHER post (keys are visible in every download URL, so
-// key format alone does not prove ownership). Edits replace the attachment set
-// wholesale and unlink the files (plus their PDF previews / posters) that no
-// row references any more.
+// key format alone does not prove ownership). Counts are unlimited (product
+// decision 2026-09-01); only the hidden MAX_ATTACHMENT_ROWS_PER_POST sanity cap
+// bounds one request. Edits replace the attachment set wholesale and unlink
+// the files (plus their PDF previews / posters) that no row references any
+// more. Every `[embed:file:<storage key>]` token in the body is UNIONED into
+// the attachment set before validation (`resolvePostAttachments`), so a file
+// dropped into the 正文 is never an orphan — a body key another post already
+// owns (or that is not on disk) is simply not claimed, never a save failure.
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Prisma } from '@prisma/client';
@@ -37,12 +42,13 @@ import { readableZoneWhere, zoneOrgTree } from './queries';
 import {
   ACCESS_CODE_ALPHABET,
   ACCESS_CODE_LENGTH,
-  MAX_ZONE_ATTACHMENTS,
+  MAX_ATTACHMENT_ROWS_PER_POST,
   MAX_ZONE_POST_TAGS,
-  ZONE_ATTACHMENT_LIMITS,
+  UNCATEGORIZED_COLUMN_PARAM,
   ZONE_LIMITS,
   ZONE_POST_TYPES,
   ZONE_POST_VISIBILITIES,
+  bodyFileKeys,
   collectEmbedRefs,
   decodeOffsetCursor,
   decodeTimeCursor,
@@ -53,6 +59,7 @@ import {
   extractHeadings,
   isOfficePreviewable,
   isValidAccessCode,
+  mergeBodyFileKeys,
   normalizeAccessCode,
   normalizeHttpUrl,
   normalizeTags,
@@ -131,7 +138,9 @@ export const ZONE_POST_CARD_SELECT = {
     select: { userId: true, sortOrder: true, user: AUTHOR_IDENTITY_SELECT },
   },
   attachments: { orderBy: { sortOrder: 'asc' as const }, select: { kind: true } },
-  zone: { select: { id: true, slug: true, name: true } },
+  // `iconUrl` is PUBLIC zone metadata (the hub shows every readable zone's
+  // icon) — the only zone field beyond identity a feed row ships.
+  zone: { select: { id: true, slug: true, name: true, iconUrl: true } },
 } satisfies Prisma.ZonePostSelect;
 
 export type ZonePostCardRow = Prisma.ZonePostGetPayload<{ select: typeof ZONE_POST_CARD_SELECT }>;
@@ -331,7 +340,7 @@ export function toZonePostCardView(row: ZonePostCardRow, ctx: PostCardContext): 
   const accessLocked = ctx.lockedIds?.has(row.id) ?? false;
   return {
     id: row.id,
-    zone: { id: row.zone.id, slug: row.zone.slug, name: row.zone.name },
+    zone: { id: row.zone.id, slug: row.zone.slug, name: row.zone.name, iconUrl: row.zone.iconUrl ?? null },
     type: row.type,
     title: row.title,
     // A locked stub never carries content: the summary is an excerpt of the
@@ -407,7 +416,10 @@ export interface ListZonePostsOptions {
   limit?: number;
   /** Primary author OR co-author handle. */
   authorHandle?: string;
-  /** 栏目 filter — the column's slug (what `?column=` carries) or its id. */
+  /**
+   * 栏目 filter — the column's slug (what `?column=` carries), its id, or
+   * `UNCATEGORIZED_COLUMN_PARAM` (`_none`) for the 未归栏 posts (columnId IS NULL).
+   */
   column?: string;
 }
 
@@ -442,7 +454,10 @@ export async function listZonePosts(
   ];
   if (o.type) and.push({ type: o.type });
   if (tag) and.push({ tags: { has: tag } });
-  if (column) and.push({ OR: [{ column: { is: { slug: column } } }, { columnId: column }] });
+  // `_none` is collision-proof (COLUMN_SLUG_RE admits no `_`), so it can never
+  // shadow a real column — and it must be tested BEFORE the slug/id OR-clause.
+  if (column === UNCATEGORIZED_COLUMN_PARAM) and.push({ columnId: null });
+  else if (column) and.push({ OR: [{ column: { is: { slug: column } } }, { columnId: column }] });
   if (authorHandle) {
     and.push({ OR: [{ author: { handle: authorHandle } }, { coauthors: { some: { user: { handle: authorHandle } } } }] });
   }
@@ -884,6 +899,10 @@ export const attachmentInputSchema = z.object({
 }) satisfies z.ZodType<AttachmentInput, z.ZodTypeDef, unknown>;
 
 export interface ZonePostInput {
+  /**
+   * Hidden from the UI (2026-09): the column stays, the schema defaults it to
+   * `article`, and `announcement` is a moderator flag flipped from the ⋯ menu.
+   */
   type: ZonePostTypeValue;
   title: string;
   summary: string;
@@ -906,7 +925,7 @@ export interface ZonePostInput {
 }
 
 export const zonePostInputSchema = z.object({
-  type: z.enum(ZONE_POST_TYPES),
+  type: z.enum(ZONE_POST_TYPES).default('article'),
   title: z.string().trim().min(ZONE_LIMITS.postTitleMin).max(ZONE_LIMITS.postTitleMax),
   summary: z.string().trim().max(ZONE_LIMITS.postSummaryMax).default(''),
   bodyMd: z.string().max(ZONE_LIMITS.postBodyMax).default(''),
@@ -914,7 +933,7 @@ export const zonePostInputSchema = z.object({
   linkUrl: z.string().trim().max(2048).nullable().default(null),
   tags: z.array(z.string().max(64)).max(MAX_ZONE_POST_TAGS * 2).default([]),
   coauthorIds: z.array(z.string().min(1).max(64)).max(ZONE_LIMITS.maxCoauthors).default([]),
-  attachments: z.array(attachmentInputSchema).max(MAX_ZONE_ATTACHMENTS).default([]),
+  attachments: z.array(attachmentInputSchema).max(MAX_ATTACHMENT_ROWS_PER_POST).default([]),
   status: z.enum(['draft', 'published']).default('draft'),
   columnId: z.string().trim().max(64).nullable().default(null),
   columnName: z.string().trim().max(ZONE_LIMITS.columnNameMax * 2).nullable().default(null),
@@ -961,19 +980,20 @@ function cleanName(raw: string, fallbackKey: string): string {
 
 /**
  * Validate the attachments echoed by a composer: key shape (kind by prefix),
- * per-kind caps, files on disk, and — since keys are visible in every URL —
- * not already attached to a different post. Sizes come from the disk stat, not
- * the client. Returns null on ANY invalid item (the route 400s).
+ * files on disk, and — since keys are visible in every URL — not already
+ * attached to a different post. Sizes come from the disk stat, not the client.
+ * No per-kind count caps (unlimited by product decision); the only bound is
+ * the hidden MAX_ATTACHMENT_ROWS_PER_POST sanity cap on one request. Returns
+ * null on ANY invalid item (the route 400s).
  */
 export async function resolveAttachmentInputs(
   items: AttachmentInput[],
   opts: { excludePostId?: string } = {},
 ): Promise<ResolvedAttachment[] | null> {
-  if (items.length > MAX_ZONE_ATTACHMENTS) return null;
+  if (items.length > MAX_ATTACHMENT_ROWS_PER_POST) return null;
   const out: ResolvedAttachment[] = [];
   const seen = new Set<string>();
   const posterKeys: string[] = [];
-  const counts = { image: 0, video: 0, file: 0 };
 
   for (const item of items) {
     const key = (item.key ?? '').trim();
@@ -982,7 +1002,6 @@ export async function resolveAttachmentInputs(
     if (!kind) return null;
     if (seen.has(key)) return null;
     seen.add(key);
-    counts[kind]++;
 
     let posterUrl: string | null = null;
     const posterKey = (item.posterKey ?? '').trim();
@@ -1011,13 +1030,6 @@ export async function resolveAttachmentInputs(
     });
   }
 
-  if (
-    counts.image > ZONE_ATTACHMENT_LIMITS.images ||
-    counts.video > ZONE_ATTACHMENT_LIMITS.videos ||
-    counts.file > ZONE_ATTACHMENT_LIMITS.files
-  ) {
-    return null;
-  }
   if (out.length === 0) return out;
 
   const [stats, posterStats] = await Promise.all([
@@ -1085,11 +1097,63 @@ function summaryOf(summary: string, bodyMd: string): string {
   return s || excerptOf(bodyMd, 200);
 }
 
-function resolveLinkUrl(type: ZonePostTypeValue, raw: string | null): string | null {
+/** A URL is always optional (types are hidden, so `link_required` is gone); a non-empty one must parse. */
+function resolveLinkUrl(raw: string | null): string | null {
   const url = normalizeHttpUrl(raw);
-  if (type === 'link' && !url) throw new ZoneError('link_required', 400);
   if (raw && raw.trim() && !url) throw new ZoneError('link_invalid', 400);
   return url;
+}
+
+/**
+ * Body-key union: every `[embed:file:<storage key>]` token in the body joins
+ * the attachment set BEFORE validation, so a file dropped into the 正文 is never
+ * an orphan the attachments panel cannot list — and never a file that
+ * `deleteUnreferencedZoneFiles` reclaims out from under a rendering token. A
+ * stub row carries only the key: `cleanName` falls back to the key's file name
+ * and the disk stat supplies the size, exactly as for a ledger row the client
+ * sent with blanks. Row-id tokens (`[embed:file:<id>]`) are skipped — they
+ * already prove a row exists.
+ *
+ * A body key is a REFERENCE, not a claim. The ledger is validated strictly
+ * (any bad row ⇒ `attachments_invalid`), but a key that only the body names is
+ * unioned ONLY when this post can actually own it: not attached to another
+ * post (a block pasted out of that post's editor carries its key-form tokens)
+ * and present on disk. Anything else is left out and the token simply renders
+ * under the embed gate as 无权访问 / 内容不可用 — one pasted card must never
+ * fail the whole save with an error that names none of it. The hidden row cap
+ * is re-checked AFTER the union (zod only saw the ledger) under its own code.
+ */
+export async function resolvePostAttachments(
+  items: AttachmentInput[],
+  bodyMd: string,
+  opts: { excludePostId?: string } = {},
+): Promise<ResolvedAttachment[]> {
+  const ledgerKeys = new Set(items.map((i) => (i.key ?? '').trim()));
+  const candidates = bodyFileKeys(bodyMd).filter((k) => !ledgerKeys.has(k) && isValidZoneMediaKey(k));
+  const claimable = new Set<string>();
+  if (candidates.length > 0) {
+    const [foreign, stats] = await Promise.all([
+      prisma.zonePostAttachment.findMany({
+        where: {
+          key: { in: candidates },
+          ...(opts.excludePostId ? { postId: { not: opts.excludePostId } } : {}),
+        },
+        select: { key: true },
+      }),
+      Promise.all(candidates.map((k) => statZoneMediaAsync(k))),
+    ]);
+    const taken = new Set(foreign.map((f) => f.key));
+    candidates.forEach((k, i) => {
+      if (!taken.has(k) && stats[i]) claimable.add(k);
+    });
+  }
+  const merged = mergeBodyFileKeys(items, bodyMd, (key) => ({ key, name: '', mimeType: '', sizeBytes: 0 })).filter(
+    (i) => ledgerKeys.has((i.key ?? '').trim()) || claimable.has(i.key),
+  );
+  if (merged.length > MAX_ATTACHMENT_ROWS_PER_POST) throw new ZoneError('attachments_too_many', 400);
+  const resolved = await resolveAttachmentInputs(merged, opts);
+  if (!resolved) throw new ZoneError('attachments_invalid', 400);
+  return resolved;
 }
 
 /**
@@ -1131,12 +1195,11 @@ export async function createZonePost(
   const visibility: ZonePostVisibilityValue = input.visibility ?? 'zone';
   const [coauthorIds, attachments, cover, columnId] = await Promise.all([
     validateCoauthors(zone, authorId, input.coauthorIds ?? []),
-    resolveAttachmentInputs(input.attachments ?? []),
+    resolvePostAttachments(input.attachments ?? [], bodyMd),
     validateCover(input.coverKey),
     resolvePostColumn(zone, input, { userId: authorId, canModerate: opts.canModerate }),
   ]);
-  if (!attachments) throw new ZoneError('attachments_invalid', 400);
-  const linkUrl = resolveLinkUrl(input.type, input.linkUrl);
+  const linkUrl = resolveLinkUrl(input.linkUrl);
   const publish = input.status === 'published';
   const now = new Date();
   // 指定成员可见: the grants and the share code are born with the post.
@@ -1240,6 +1303,11 @@ export async function updateZonePost(
   if (!existing || existing.deletedAt) throw new ZoneError('not_found', 404);
   const actorId = opts.actorId ?? existing.authorId;
 
+  // Backstop for the route gate: the stored type only ever changes by a
+  // moderator's 设为公告 / 取消公告 (the composer never sends it).
+  if (patch.type !== undefined && patch.type !== existing.type && !opts.canModerate) {
+    throw new ZoneError('announcement_forbidden', 403);
+  }
   const type = patch.type ?? existing.type;
   const title = patch.title !== undefined ? patch.title.trim() : existing.title;
   if (title.length < ZONE_LIMITS.postTitleMin) throw new ZoneError('title_required', 400);
@@ -1247,13 +1315,15 @@ export async function updateZonePost(
 
   const [coauthorIds, attachments, cover, nextColumnId] = await Promise.all([
     patch.coauthorIds !== undefined ? validateCoauthors(existing.zone, existing.authorId, patch.coauthorIds) : Promise.resolve(null),
+    // The composer always sends the WHOLE ledger, so that is when the body's
+    // file keys are unioned in. A patch carrying `bodyMd` but no `attachments`
+    // (API / CLI clients editing only the text) leaves the rows untouched.
     patch.attachments !== undefined
-      ? resolveAttachmentInputs(patch.attachments, { excludePostId: existing.id })
+      ? resolvePostAttachments(patch.attachments, bodyMd, { excludePostId: existing.id })
       : Promise.resolve(undefined),
     patch.coverKey !== undefined ? validateCover(patch.coverKey) : Promise.resolve(null),
     resolvePostColumn(existing.zone, patch, { userId: actorId, canModerate: opts.canModerate }),
   ]);
-  if (attachments === null) throw new ZoneError('attachments_invalid', 400);
 
   // 可见性: switching AWAY from `restricted` drops the code AND every grant —
   // a post that later comes back to 指定成员可见 starts from a clean sheet.
@@ -1269,12 +1339,9 @@ export async function updateZonePost(
       : existing.accessCode
     : null;
   const codeChanged = accessCode !== (existing.accessCode ?? null);
-  // Re-validate the link whenever it or the type is part of the patch (a
-  // switch TO `link` must bring a URL along); otherwise the stored one stays.
-  const linkUrl =
-    patch.linkUrl !== undefined || patch.type !== undefined
-      ? resolveLinkUrl(type, patch.linkUrl !== undefined ? patch.linkUrl : existing.linkUrl)
-      : undefined;
+  // A URL is optional whatever the (hidden) type says, so only a patch that
+  // carries `linkUrl` re-validates it; otherwise the stored one stays.
+  const linkUrl = patch.linkUrl !== undefined ? resolveLinkUrl(patch.linkUrl) : undefined;
 
   const contentChanged = title !== existing.title || bodyMd !== existing.bodyMd;
   const now = new Date();

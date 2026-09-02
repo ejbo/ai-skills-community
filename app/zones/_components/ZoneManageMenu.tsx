@@ -1,7 +1,9 @@
 'use client';
 
-// 技术专区 — 管理 dropdown in the zone header (settings / members / roles /
-// danger). Renders null when the viewer holds none of those permissions.
+// 技术专区 — 管理 dropdown in the zone header (settings / members / columns /
+// roles / danger). Renders null when the viewer holds none of those permissions.
+// 栏目 gates on `canModerate` like the column routes do — a 版主 without `manage`
+// still reaches 版块设置 → 栏目 from here.
 //
 // The panel is PORTALED to <body> and positioned from the trigger's
 // getBoundingClientRect() — see `useAnchoredPanel`, which owns the placement,
@@ -21,7 +23,7 @@ import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { AlertTriangle, ChevronDown, Settings, ShieldCheck, Users } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Columns3, Settings, ShieldCheck, Users } from 'lucide-react';
 import { zoneHref } from '@/lib/zones/shared';
 import type { ZoneAccess } from '@/lib/zones/types';
 import { BTN_SECONDARY } from './ui';
@@ -68,6 +70,9 @@ export function ZoneManageMenu({
         badge: pendingCount,
       });
     }
+    if (access.canModerate) {
+      list.push({ key: 'columns', href: `${base}/settings?tab=columns`, icon: <Columns3 className="h-4 w-4" />, label: t('manage_columns') });
+    }
     if (access.canManageRoles) {
       list.push({ key: 'roles', href: `${base}/settings?tab=roles`, icon: <ShieldCheck className="h-4 w-4" />, label: t('manage_roles') });
     }
@@ -75,7 +80,7 @@ export function ZoneManageMenu({
       list.push({ key: 'danger', href: `${base}/settings?tab=danger`, icon: <AlertTriangle className="h-4 w-4" />, label: t('manage_danger') });
     }
     return list;
-  }, [access.canManage, access.canManageMembers, access.canManageRoles, access.isOwner, access.siteAdmin, pendingCount, slug, t]);
+  }, [access.canManage, access.canManageMembers, access.canModerate, access.canManageRoles, access.isOwner, access.siteAdmin, pendingCount, slug, t]);
 
   const hintShown = access.siteAdmin && !access.isMember;
   // First-paint estimate; the hook's layout pass replaces it with the real box.

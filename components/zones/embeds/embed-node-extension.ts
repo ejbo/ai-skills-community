@@ -1,5 +1,6 @@
 // In-editor 技术专区 embed node — the editor-side half of the
-// `[embed:<kind>:<ref>]` token contract (lib/zones/shared.ts). Published content
+// `[embed:<kind>:<ref>]` token contract (lib/zones/shared.ts; a `file` ref is a
+// row id OR a storage key — the upload plugin inserts the KEY). Published content
 // keeps the plain own-line token (markdown serialization below), so
 // ZoneMarkdown / EmbedCard and every stored body are untouched; INSIDE the
 // editor the token materializes as an atom node rendered by the EmbedNodeView
@@ -18,11 +19,38 @@ import { Plugin } from '@tiptap/pm/state';
 import type { EditorState } from '@tiptap/pm/state';
 import type { NodeType, Node as PMNode } from '@tiptap/pm/model';
 import { EMBED_KINDS, embedToken, isEmbedKind, normalizeEmbedRef, type EmbedKind, type EmbedRef } from '@/lib/zones/shared';
+import type { EmbedData, ZoneAttachmentView } from '@/lib/zones/types';
 
 /** Exact in-doc text form (escaping only exists in serialized markdown). */
 const IN_DOC_TOKEN = new RegExp(`^\\[embed:(${EMBED_KINDS.join('|')}):([^\\n\\]]{1,512}?)\\]$`);
 
 export const CONTENT_EMBED_NODE = 'contentEmbed';
+
+/**
+ * Local-first attachment lookup handed in by the editor: every saved
+ * attachment (by row id AND storage key) plus the composer's unsaved drafts
+ * (by key), so a `file` card renders from memory — no `/api/zones/embed`
+ * round trip, and never a `not_found` for a key whose row does not exist yet.
+ */
+export interface ContentEmbedLocal {
+  map: ReadonlyMap<string, ZoneAttachmentView>;
+  zoneSlug: string;
+}
+
+/** What the in-editor 「预览」 button hands back to the editor (→ usePreview().open). */
+export interface ContentEmbedPreviewTarget {
+  kind: 'file';
+  ref: string;
+  title?: string;
+  data?: EmbedData;
+  via?: 'pointer' | 'keyboard';
+}
+
+/** Read through `props.extension.options` by the React nodeview (types only — this module stays React-free). */
+export interface ContentEmbedOptions {
+  getLocal?: () => ContentEmbedLocal;
+  onPreview?: (target: ContentEmbedPreviewTarget) => void;
+}
 
 /** Parses a paragraph's text; null unless it is exactly a token with a valid ref. */
 export function parseInDocEmbedToken(text: string): EmbedRef | null {
@@ -47,12 +75,16 @@ function buildNormalizeTr(state: EditorState, type: NodeType) {
   return tr;
 }
 
-export const ContentEmbedBase = Node.create({
+export const ContentEmbedBase = Node.create<ContentEmbedOptions>({
   name: CONTENT_EMBED_NODE,
   group: 'block',
   atom: true,
   selectable: true,
   draggable: true,
+
+  addOptions() {
+    return { getLocal: undefined, onPreview: undefined };
+  },
 
   addAttributes() {
     return {
@@ -98,7 +130,12 @@ export const ContentEmbedBase = Node.create({
           queueMicrotask(() => {
             if (view.isDestroyed) return;
             const tr = buildNormalizeTr(view.state, type);
-            if (tr) view.dispatch(tr);
+            // `preventUpdate`: this is the LOADED content taking its in-editor
+            // shape, not an edit — without it the editor emitted `update` on
+            // mount, the composer's onChange replaced bodyMd with the
+            // re-serialized text and a pristine post was "dirty" (autosave +
+            // a 恢复 banner on the next visit) before anyone typed.
+            if (tr) view.dispatch(tr.setMeta('preventUpdate', true));
           });
           return {};
         },

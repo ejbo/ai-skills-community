@@ -1,32 +1,33 @@
 'use client';
 
-// 技术专区 — ONE post row, reused by the zone home list, the hub's 最新发布 band,
-// the right rail's drafts and U2/U3's related/recent lists. Contract shape:
-// ({ post: ZonePostCardView; compact?: boolean; showZone?: boolean }).
+// 技术专区 — ONE post row, reused by the zone home list, the hub 动态 feed,
+// the rail's drafts and the related/recent lists. Contract shape:
+// ({ post: ZonePostCardView; compact?; showZone?; leadRoles? }).
 // The whole row is a stretched link to zonePostHref; inner links (zone, author
-// profile, tag filter) sit above the overlay with `relative z-[1]`.
+// profile, column, tag filter) sit above the overlay with `relative z-[1]`.
+//
+// Types are hidden everywhere (owner decision): the leading chip is the 栏目
+// (dashed when member-created), never a format pill. A lead's name carries the
+// `RolePill` when the surface passes `leadRoles` (zone-scoped lists only — the
+// cross-zone feed passes none, a 版主 of one zone is nobody in another).
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Clock, Eye, FolderOpen, Heart, Lock, MessageCircle, Paperclip, Pin } from 'lucide-react';
+import { Clock, Eye, FileText, FolderOpen, Heart, Image as ImageIcon, Lock, MessageCircle, Paperclip, Pin, Video } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { GlareHover } from '@/components/motion';
 import { withBasePath } from '@/lib/base-path';
-import { zoneHref, zonePostHref, type ZonePostTypeValue } from '@/lib/zones/shared';
-import type { ZonePostCardView } from '@/lib/zones/types';
+import { leadRoleOf, type LeadRoles } from '@/lib/zones/lead-roles';
+import { zoneHref, zonePostHref } from '@/lib/zones/shared';
+import type { ZoneAttachmentKindView, ZonePostCardView } from '@/lib/zones/types';
 import { RelTime } from './RelTime';
+import { RolePill } from './RolePill';
 import { VISIBILITY_ICONS } from './post/VisibilityPicker';
-import { PILL_INK, PILL_MONO } from './ui';
+import { PILL_COLUMN, PILL_COLUMN_MEMBER, PILL_INK, PILL_MONO } from './ui';
 
-/** 栏目 chip — human text, so NOT the uppercase mono pill the taxonomy chips use. */
-const PILL_COLUMN =
-  'inline-flex max-w-[12rem] shrink-0 items-center gap-1 rounded-full border border-zinc-300 px-2 py-0.5 text-[11px] font-medium text-zinc-600 transition dark:border-zinc-700 dark:text-zinc-400';
-
-export function PostTypePill({ type, className = '' }: { type: ZonePostTypeValue; className?: string }) {
-  const tl = useTranslations('labels');
-  return <span className={`${PILL_MONO} ${className}`}>{tl(`zonePostType.${type}`)}</span>;
-}
+const KIND_ICONS: Record<ZoneAttachmentKindView, typeof FileText> = { image: ImageIcon, video: Video, file: FileText };
+const MAX_KIND_GLYPHS = 3;
 
 function Stat({ icon, value, label }: { icon: React.ReactNode; value: number; label: string }) {
   return (
@@ -37,14 +38,30 @@ function Stat({ icon, value, label }: { icon: React.ReactNode; value: number; la
   );
 }
 
+/** 20 px zone icon (or the ink monogram) — the feed's "which board" cue. */
+function ZoneIcon({ zone }: { zone: ZonePostCardView['zone'] }) {
+  if (zone.iconUrl) {
+    // eslint-disable-next-line @next/next/no-img-element -- stored root-relative media URL
+    return <img src={withBasePath(zone.iconUrl)} alt="" loading="lazy" className="h-5 w-5 shrink-0 rounded-md object-cover" />;
+  }
+  return (
+    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-zinc-900 font-mono text-[10px] font-semibold uppercase text-white dark:bg-zinc-100 dark:text-zinc-900">
+      {zone.name.trim().charAt(0) || 'Z'}
+    </span>
+  );
+}
+
 export function PostRow({
   post,
   compact = false,
   showZone = false,
+  leadRoles,
 }: {
   post: ZonePostCardView;
   compact?: boolean;
   showZone?: boolean;
+  /** handle → 主版主/版主 of THIS zone; omitted on cross-zone surfaces. */
+  leadRoles?: LeadRoles;
 }) {
   const t = useTranslations('zones');
   const tl = useTranslations('labels');
@@ -56,21 +73,21 @@ export function PostRow({
   const moreAuthors = authors.length - shownAuthors.length;
   const when = post.publishedAt ?? post.updatedAt;
   const thumb = compact ? 'h-11 w-16' : 'h-16 w-24';
+  const kindGlyphs = [...new Set(post.attachmentKinds)].slice(0, MAX_KIND_GLYPHS);
 
   return (
     <article
-      className={`group relative flex gap-4 border-b border-zinc-200 last:border-b-0 dark:border-zinc-800 ${
+      className={`group relative -mx-3 flex gap-4 rounded-xl border-b border-zinc-200 px-3 transition-colors last:border-b-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900/60 ${
         compact ? 'py-3' : 'py-4'
       }`}
     >
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
-          <PostTypePill type={post.type} />
           {post.column && (
             <Link
               href={`${zoneHref(post.zone.slug)}?column=${encodeURIComponent(post.column.slug)}`}
               aria-label={t('post_column_aria', { name: post.column.name })}
-              className={`${PILL_COLUMN} relative z-[1] hover:border-zinc-500 hover:text-zinc-900 dark:hover:border-zinc-500 dark:hover:text-zinc-100`}
+              className={`${post.column.official ? PILL_COLUMN : PILL_COLUMN_MEMBER} relative z-[1]`}
             >
               <FolderOpen className="h-3 w-3 shrink-0" aria-hidden />
               <span className="truncate">{post.column.name}</span>
@@ -98,9 +115,10 @@ export function PostRow({
           {showZone && (
             <Link
               href={zoneHref(post.zone.slug)}
-              className="relative z-[1] max-w-[12rem] truncate text-xs text-zinc-500 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
+              className="relative z-[1] inline-flex max-w-[14rem] items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
             >
-              {post.zone.name}
+              <ZoneIcon zone={post.zone} />
+              <span className="truncate hover:underline">{post.zone.name}</span>
             </Link>
           )}
         </div>
@@ -133,17 +151,21 @@ export function PostRow({
               ))}
             </span>
             <span className="inline-flex min-w-0 items-center gap-1">
-              {shownAuthors.map((a, i) => (
-                <span key={a.handle} className="inline-flex min-w-0 items-center">
-                  {i > 0 && <span className="mr-1 text-zinc-300 dark:text-zinc-600">·</span>}
-                  <Link
-                    href={`/users/${a.handle}`}
-                    className="relative z-[1] max-w-[8rem] truncate text-zinc-700 hover:text-zinc-900 hover:underline dark:text-zinc-300 dark:hover:text-zinc-100"
-                  >
-                    {a.displayName}
-                  </Link>
-                </span>
-              ))}
+              {shownAuthors.map((a, i) => {
+                const role = leadRoleOf(leadRoles, a.handle);
+                return (
+                  <span key={a.handle} className="inline-flex min-w-0 items-center gap-1">
+                    {i > 0 && <span className="text-zinc-300 dark:text-zinc-600">·</span>}
+                    <Link
+                      href={`/users/${a.handle}`}
+                      className="relative z-[1] max-w-[8rem] truncate text-zinc-700 hover:text-zinc-900 hover:underline dark:text-zinc-300 dark:hover:text-zinc-100"
+                    >
+                      {a.displayName}
+                    </Link>
+                    {role && <RolePill role={role} />}
+                  </span>
+                );
+              })}
               {moreAuthors > 0 && <span>{t('post_row_authors_more', { count: moreAuthors })}</span>}
             </span>
             {!compact && (
@@ -161,7 +183,17 @@ export function PostRow({
           <Stat icon={<MessageCircle className="h-3 w-3" />} value={post.commentCount} label={t('post_row_comments')} />
           {!compact && <Stat icon={<Eye className="h-3 w-3" />} value={post.viewCount} label={t('post_row_views')} />}
           {post.attachmentCount > 0 && (
-            <Stat icon={<Paperclip className="h-3 w-3" />} value={post.attachmentCount} label={t('post_row_attachments')} />
+            <span className="inline-flex items-center gap-1.5">
+              <Stat icon={<Paperclip className="h-3 w-3" />} value={post.attachmentCount} label={t('post_row_attachments')} />
+              {kindGlyphs.length > 0 && (
+                <span className="inline-flex items-center gap-0.5 text-zinc-400" aria-hidden>
+                  {kindGlyphs.map((k) => {
+                    const Icon = KIND_ICONS[k];
+                    return <Icon key={k} className="h-3 w-3" />;
+                  })}
+                </span>
+              )}
+            </span>
           )}
           {!compact && post.tags.length > 0 && (
             <span className="inline-flex flex-wrap items-center gap-1">

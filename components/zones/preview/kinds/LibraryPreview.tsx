@@ -22,7 +22,7 @@ type LoadState =
   | { status: 'missing' }
   | { status: 'error' };
 
-export function LibraryPreview({ data }: { data: EmbedLibraryData }) {
+export function LibraryPreview({ data }: { data: EmbedLibraryData; fill?: boolean }) {
   const t = useTranslations('zones');
   const tl = useTranslations('labels');
   const [chapter, setChapter] = useState(0);

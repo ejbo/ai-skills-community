@@ -6,7 +6,13 @@ import { rateLimit } from '@/lib/rate-limit';
 import { zoneContext } from '@/lib/zones/access';
 import { ZoneError } from '@/lib/zones/queries';
 import { createZonePost, listMyDrafts, listZonePosts, zonePostInputSchema } from '@/lib/zones/post-queries';
-import { MAX_ZONE_COLUMNS, ZONE_LIMITS, isZonePostType, parseZonePostSort } from '@/lib/zones/shared';
+import {
+  MAX_ATTACHMENT_ROWS_PER_POST,
+  MAX_ZONE_COLUMNS,
+  ZONE_LIMITS,
+  isZonePostType,
+  parseZonePostSort,
+} from '@/lib/zones/shared';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,10 +23,11 @@ const POSTS_PER_HOUR = 20;
 const REASONED_CODES: ReadonlySet<string> = new Set([
   'coauthor_not_member',
   'cover_invalid',
-  'link_required',
   'link_invalid',
   'title_required',
   'attachments_invalid',
+  'attachments_too_many',
+  'announcement_forbidden',
   'not_published',
   'too_many_pinned',
   'invalid_input',
@@ -36,10 +43,14 @@ const REASONED_CODES: ReadonlySet<string> = new Set([
 
 async function zoneErrorResponse(e: unknown): Promise<NextResponse | null> {
   if (e instanceof ZoneError) {
-    // `{max}` = 置顶上限, `{limit}` = 栏目上限 — distinct placeholders, so one
-    // values object serves every reasoned code.
+    // `{max}` = 置顶上限, `{limit}` = 栏目上限, `{rows}` = 附件行上限 — distinct
+    // placeholders, so one values object serves every reasoned code.
     const reason = REASONED_CODES.has(e.code)
-      ? await apiReason(`zone_${e.code}`, { max: ZONE_LIMITS.maxPinnedPosts, limit: MAX_ZONE_COLUMNS })
+      ? await apiReason(`zone_${e.code}`, {
+          max: ZONE_LIMITS.maxPinnedPosts,
+          limit: MAX_ZONE_COLUMNS,
+          rows: MAX_ATTACHMENT_ROWS_PER_POST,
+        })
       : undefined;
     return NextResponse.json({ error: e.code, ...(reason ? { reason } : {}) }, { status: e.status });
   }
@@ -104,6 +115,9 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
 
 // POST /api/zones/[slug]/posts  { ...ZonePostInput }  (access.canPost; announcement ⇒ canModerate)
 //   → 201 { id }
+// `type` is optional (defaults to `article`); the UI never sends it — types are
+// hidden and `announcement` is only ever set by a moderator through PATCH.
+// `linkUrl` is optional for every type (no `link_required` any more).
 export async function POST(req: Request, { params }: { params: { slug: string } }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });

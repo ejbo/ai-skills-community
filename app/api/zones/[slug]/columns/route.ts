@@ -1,6 +1,8 @@
-// 技术专区 — 栏目 (ask #2). Zone-scoped content taxonomy, orthogonal to the post
-// TYPE (文章/研究报告/…): 版主 curates the official 栏目 here, members may add
-// their own when `Zone.allowMemberColumns`.
+// 技术专区 — 栏目 (ask #2). THE per-zone content taxonomy (2026-09: the
+// ZonePostType column stays in the schema but is hidden from every UI and
+// defaults to `article`; `announcement` is a moderator flag set from the post's
+// ⋯ menu, not a choice — see lib/zones/shared.ts). 版主 curates the official
+// 栏目 here, members may add their own when `Zone.allowMemberColumns`.
 //
 // The composer's create-on-the-fly path does NOT come through this route — it
 // rides `columnName` on the post payload, which `createZonePost` resolves via

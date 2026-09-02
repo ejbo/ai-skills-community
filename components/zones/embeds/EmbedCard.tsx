@@ -6,8 +6,12 @@
 // `/api/zones/embed?kind&ref` itself (editor nodeview, stale caches). Every
 // kind renders the SAME monochrome shell (kind icon + cover/poster + title +
 // meta + author) so a post body reads as one material; a click opens the
-// preview drawer (usePreview), a `link` embed is an external anchor with a
-// 预览 button next to it.
+// preview panel (usePreview) — handing it the already-resolved `data` so the
+// panel paints without a spinner, and `via: 'keyboard'` when the click came
+// from Enter/Space (`event.detail === 0`) so focus lands on the panel's ✕ and
+// returns here on close; a `link` embed is an external anchor with a 预览
+// button next to it. `aria-expanded` mirrors "this card's target is the one
+// open in the panel".
 
 import { useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { useTranslations } from 'next-intl';
@@ -221,7 +225,8 @@ export function describeEmbed(
         description: d.summary,
         image: null,
         imageShape: 'square',
-        meta: [tl(`zonePostType.${d.type}`), `♡ ${fmtCount(d.likeCount)}`, `💬 ${fmtCount(d.commentCount)}`],
+        // No type label: the type is hidden everywhere; `subtitle` already names the zone.
+        meta: [`♡ ${fmtCount(d.likeCount)}`, `💬 ${fmtCount(d.commentCount)}`],
         author: d.author,
         href: d.href,
         external: false,
@@ -330,16 +335,26 @@ export function EmbedCard({
 
   const model = useMemo(() => (embed && embed.ok ? describeEmbed(embed, t, tl) : null), [embed, t, tl]);
 
-  const openPreview = () => {
-    if (isStatic || !model) return;
-    preview.open({ kind, ref: embedRef, title: model.title });
+  const openPreview = (via: 'pointer' | 'keyboard' = 'pointer') => {
+    if (isStatic || !model || !embed) return;
+    preview.open({ kind, ref: embedRef, title: model.title, data: embed, via });
+  };
+  // `detail === 0` ⇒ a keyboard-activated click (Enter/Space on a button).
+  // A click whose DOM target is not inside the card reached us through the
+  // React tree only — the author avatar's hover card is PORTALED to <body>
+  // and its events still bubble here; clicking the name in that card must
+  // navigate to the profile, not also open the preview.
+  const onClickOpen = (e: MouseEvent<HTMLElement>) => {
+    if (!e.currentTarget.contains(e.target as Node)) return;
+    openPreview(e.detail === 0 ? 'keyboard' : 'pointer');
   };
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      openPreview();
+      openPreview('keyboard');
     }
   };
+  const expanded = !isStatic && preview.current?.kind === kind && preview.current.ref === embedRef;
 
   const shell = `${compact ? 'my-2 p-2.5' : 'my-4 p-3.5'} rounded-xl border border-zinc-200 bg-white text-left dark:border-zinc-800 dark:bg-zinc-950 ${className}`;
 
@@ -451,7 +466,8 @@ export function EmbedCard({
           {interactive && (
             <button
               type="button"
-              onClick={openPreview}
+              onClick={onClickOpen}
+              aria-expanded={expanded}
               className="rounded-md border border-zinc-200 px-2 py-0.5 text-[11px] font-medium text-zinc-700 transition hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-zinc-500"
             >
               {t('embed_preview_button')}
@@ -466,9 +482,10 @@ export function EmbedCard({
     <div
       role={interactive ? 'button' : undefined}
       tabIndex={interactive ? 0 : undefined}
-      onClick={interactive ? openPreview : undefined}
+      onClick={interactive ? onClickOpen : undefined}
       onKeyDown={interactive ? onKey : undefined}
       aria-label={interactive ? t('embed_open_preview_aria', { title: model.title }) : undefined}
+      aria-expanded={interactive ? expanded : undefined}
       data-embed-kind={kind}
       data-embed-ref={embedRef}
       className={`${shell} group flex items-center gap-3 outline-none ${

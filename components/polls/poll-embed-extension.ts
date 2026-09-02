@@ -96,7 +96,12 @@ export const PollEmbedBase = Node.create<PollEmbedOptions>({
           queueMicrotask(() => {
             if (view.isDestroyed) return;
             const tr = buildNormalizeTr(view.state, type);
-            if (tr) view.dispatch(tr);
+            // `preventUpdate`: this is LOADED content taking its in-editor shape,
+            // not an edit — without it the editor emitted `update` on mount and a
+            // pristine post carrying a `[poll:…]` token was "dirty" (autosave + a
+            // 恢复 banner on the next visit) before anyone typed. Same fix as the
+            // 技术专区 embed normalizer.
+            if (tr) view.dispatch(tr.setMeta('preventUpdate', true));
           });
           return {};
         },

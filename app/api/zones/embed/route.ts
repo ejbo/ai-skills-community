@@ -15,8 +15,12 @@ const EMBEDS_PER_MINUTE = 240;
 // `link` is the only kind that makes the server fetch an ARBITRARY url (through
 // the SSRF-guarded fetchPage), so it gets its own, much tighter budget than the
 // in-DB kinds — otherwise the route is a 240/min outbound fetch primitive any
-// logged-in user can drive. Kept above MAX_EMBEDS_PER_CONTENT (20) so one post
-// full of link embeds still resolves inside a single window.
+// logged-in user can drive. The general budget sits above MAX_EMBEDS_PER_CONTENT
+// (200) — and the detail page pre-resolves every token server-side, so a reader
+// fetches ~0 of them client-side; this route serves the composer's live
+// previews and the preview panel, not the reading path. The link budget stays
+// at 30: link previews are cached in ZoneLinkPreview, so a body full of links
+// costs one outbound fetch per NEW url, not per render.
 const LINK_EMBEDS_PER_MINUTE = 30;
 
 // GET /api/zones/embed?kind=<EmbedKind>&ref=<ref> (login) → { embed: EmbedData }

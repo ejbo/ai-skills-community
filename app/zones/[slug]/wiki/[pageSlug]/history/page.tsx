@@ -68,7 +68,7 @@ export default async function ZoneWikiHistoryPage({
     : null;
 
   return (
-    <div className="container max-w-6xl py-8">
+    <div className="container max-w-7xl py-6">
       <ZoneHeader zone={zone} activeTab="wiki" currentUser={currentUser} />
       <div className="mt-6">
         <WikiHistory

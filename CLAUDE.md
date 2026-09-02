@@ -752,6 +752,42 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   更换封面图 uploads immediately, crop saves via PATCH). The creator upload route's
   response entry must carry posterAspect/posterPos (a missing field seeds the editor with
   undefined → NaN frame geometry).
+  **作品卡片 = Geek Videos 卡片 (2026-08-31, migration `20260831000000_vote_entry_previews_views`)**:
+  网格卡片改成和 `components/video/VideoCard.tsx` 同一套版式 —— 画面框里**不再压播放按钮**，
+  鼠标悬停直接播片，作品名/作者/统计挪到框**下面**，投票行 `mt-auto` 贴底（同一行里标题
+  一行和两行的卡片，按钮仍然对齐，不会在卡片之间留出参差的空档）。三条新契约：
+  - **画面框比例只有一份**：`voteCardAspectRatio`/`voteCardAspectClass`（lib/votes/shared.ts）
+    —— 横版视频 16:9（对齐 Geek Videos，抓帧封面本来就是这个比例，4:3 框会裁掉两边）、
+    横版图片 4:3、竖版一律 3:4。`PosterCropEditor` 的取景框和它的「实际展示预览」小图**必须**
+    走同一个函数：取景框比例和卡片对不上，创作者拖出来的 `posterPos` 落到卡片上就是另一块
+    画面。加新的卡片尺寸时改这一处，别在调用点重写比例。
+  - **悬停只播生成的短片**。`VoteEntry.previewKey/previewUrl` 是 `makeVotePreviewClip`
+    （lib/votes/storage.ts，ffmpeg `-ss 0 -t 6`、≤640px 长边、静音、`+faststart`、偶数边
+    强制 `trunc(iw/2)*2` —— `force_original_aspect_ratio=decrease` 会给出奇数边，libx264 直接
+    报 `width not divisible by 2`）在两条上传路径的 finalize 段生成的；best-effort，没有
+    ffmpeg / 排不上队 ⇒ 没有 preview，卡片就只显示封面。老作品用
+    `pnpm votes:backfill-previews` 回填。**决定悬停播什么的只有 `pickHoverPreview`**
+    （lib/votes/shared.ts）：有 preview 就播 preview；没有时只有原片 ≤ `VOTE_HOVER_SOURCE_MAX_BYTES`
+    (64 MB) 才回退播原片，并且只循环开头 8 秒。这是对 Video delivery 那条「绝不回退播原片」
+    的**有闸门的**例外，成立的前提是四件事一起在：400ms 悬停延迟、`<video>` 元素**只在悬停
+    时才挂载**（画廊的渲染窗口只增不减，滚到底会有上千张卡，常驻媒体元素毫无意义）、
+    模块级 `activePreview` 保证全站同一时刻只有一张卡在播、以及 `pause()+removeAttribute('src')+load()`
+    的硬卸载。删掉其中任何一件，闸门就不成立了。
+  - **浏览数只给发起人/管理员**。`VoteEntry.viewCount` + `VoteEntryVisit`（sessionHash 按
+    (viewer, entry, **UTC** 日) 去重 —— 注意这和投票预算的 `voteDayKey` 北京时间日桶是两回事）。
+    打开灯箱触发 `POST /api/votes/[id]/entries/[entryId]/view`，计数闸门与阅读闸门一致
+    （草稿活动 / hidden / 非 approved 一律 404，且校验作品属于 URL 里的活动）。
+    `toVoteEntryView` 按 `isOwner` 裁成 `viewCount: number | null`，和 `voteCount` 同一套家法：
+    **服务端裁剪，绝不发了再前端隐藏**。路由回 `{counted}`，客户端只在真记上时才就地 +1
+    （去重命中时不动，否则发起人会看到数据库里没有的数字）。发起人自己的打开**不计数**
+    （`counted:false, reason:'self'`）—— 这个数字是给他读的，把他自己逐件审稿的痕迹算进去
+    就没法看了。前端的计数 effect **必须带停留延迟**（`VIEW_DWELL_MS`）：它的触发单位是
+    `lightboxId` 变化，而 ←/→ 正是改这个 id，不 debounce 的话按住方向键就是每秒 ~30 个
+    POST，既打爆 240/min 限流，也会给一堆只掠过 300ms 的作品记上浏览。
+  - **另外**：`GET /api/votes/[id]` 以前**匿名可读**，而这个 payload 在 实名展示（默认开）
+    下带着 作品名/作者名/**工号** —— `/votes` 的页面有 layout 登录墙，这条路由却没有，等于
+    绕过墙拿一份工号名册（`/api/search` 同样匿名，能从关键词直接搜到活动 id，链路是通的）。
+    现在补了 401。前端唯一的调用方在登录墙里面，没有匿名消费者。
 - **技术专区 (Tech Zones, migration `20260826000000_add_tech_zones`)**: team boards at `/zones`
   (`Zone`/`ZoneRole`/`ZoneMember`/`ZonePost`/`ZonePostAuthor`/`ZonePostAttachment`/`ZonePostLike`/
   `ZonePostBookmark`/`ZonePostComment`/`ZonePostCommentLike`/`ZonePostView`/`ZoneWikiPage`/
@@ -829,6 +865,81 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   (+ `labels.zonePostType/zoneVisibility/zoneJoinPolicy/zoneRole`, `api_errors.zone_*`); merge
   fragments with `scripts/zones-i18n-merge.mjs` (also `--check` for parity). Admin `/manage/zones`
   (精选/转让/软删除/恢复/新建); search bucket `zones`; docs `/docs/zones`.
+  **v3 (2026-09-01, NO migration) — 类型隐藏、栏目即分类、版主可见、并排阅读、正文内上传.**
+  - **帖子类型是隐藏的，不是删除的.** The `ZonePostType` column stays; zod `type` defaults `article`, PATCH keeps
+    the existing value, `link_required` is gone (linkUrl is always optional), and NO surface renders a type pill.
+    The one surviving value is `announcement` = a 版主 FLAG set from the post's ⋯ menu (`PATCH {type}` under
+    `canModerate`) that renders the 版主公告 band at the top of the zone home (`ZoneNotice`: newest published
+    announcement on the unfiltered stream, removed from the list below, dismissed per zone through the
+    `aic.zone-notice` cookie scoped to `<basePath>/` — `lib/zones/notice-cookie.ts`). Do not resurrect a type
+    picker or a 类型 filter; `labels.zonePostType.*` stays only for that pill.
+  - **栏目 IS the taxonomy.** Zone home = left `ColumnRail` (xl; chip row below) + `ColumnBand` for `?column=<slug>`
+    (description, ✕); `?column=_none` (`UNCATEGORIZED_COLUMN_PARAM` — `_` can never be a slug) = 未归栏
+    (`columnId IS NULL` branch in `listZonePosts`); 版块设置 → 栏目 (`ColumnsEditor`, gate `canModerate` like the
+    column routes: create / rename / describe / reorder by drag + ↑↓ / 官方 toggle / delete-with-move /
+    允许成员自建); the composer's first control is the inline `ColumnPicker` and it stays OPTIONAL on publish.
+  - **版主 presence is rendered, never implied.** `lib/zones/lead-roles.ts` (`buildLeadRoles(ownerHandle,
+    moderatorHandles)` from a DEDICATED `listZoneMembers({ roleKey: 'moderator' })` query — never derived from the
+    12-avatar wall) → `app/zones/_components/RolePill.tsx`, the ONLY way a lead role reaches a byline (rows, post
+    header, comments, notice, moderators card). Handles only — department / lab / email never enter it. Zone home:
+    compact header (`LeadsStack` + policy sentence, no metrics row), `PinnedBand`, fixed-order right rail
+    (关于 → 本周动态 `zoneActivityPulse` omitted at zero → 版规 = wiki page `rules` (`lib/zones/rules.ts`; `deleteWikiPage`
+    releases the slug as `<slug>~del-<id>` so `rules` can be recreated) → 成员 → 版主 + 联系版主 → 外链),
+    `OnboardingChecklist` for managers of an empty zone; members grouped by role with management behind ⋯ +
+    paging. Hub: no 类型 facet; feed rows carry `zone.iconUrl` (public metadata on `ZonePostCardView.zone`).
+  - **并排阅读面板 (`components/motion/DockShell.tsx` + `components/zones/preview/*`).** `PreviewProvider
+    mode="dock"` (zones layout; 讨论区 keeps `modal` = the untouched `DrawerShell`) renders an in-flow `sticky h-dvh`
+    aside: NO scrim, NO body scroll lock, NO aria-modal — parallel reading is the point, never add a scrim "for
+    consistency". The navbar is HELD VISIBLE while docked (`holdNavBarVisible()` in `lib/nav-chrome.ts`;
+    precedence `hidden = heldHidden || (autoHidden && !heldVisible)`; `NavBarShell` also publishes `--nav-offset`
+    68px/0px on `<html>`) and the aside starts at `marginTop: -68` so it spans the viewport. Sash =
+    `useSplitResize` (pointer capture, rAF/MotionValue writes — no React state per move, a transient
+    `fixed inset-0` shield; NEVER `pointer-events:none` on the iframe — Chrome then breaks wheel scrolling — the
+    iframe goes `visibility:hidden` during the drag instead), bounds in `split-shared.ts` (380 / 520 default /
+    `min(760, vw − 640)`, rubber-band ≤ 40 px then `SPRING_DRAWER` snap-back, persisted `zones:dock:w`, width only —
+    never "open"), keyboard ←/→ (Shift ×4) / Home / End / Enter, double-click reset. ⤢ expand = aside 100 % + page
+    wrapper `inert=""` + navbar held hidden. ⛶ = `useFullscreen` on a STABLE wrapper inside `PreviewBody` (never the
+    animated aside — unmounting exits fullscreen), `requestFullscreen` called synchronously in the click (an
+    `await` first loses user activation), state ONLY from `fullscreenchange`, iPhone / blocked frame → the
+    permanent `fixed inset-0 z-[96]` maximize fallback; anything portaled must target `usePortalHost()`
+    (`fullscreenElement ?? body` — `Toaster` does, or toasts vanish under the top layer). Two-stage ESC:
+    fullscreen → panel, and ignored while an `[aria-modal]` dialog is open or focus sits in an input /
+    contenteditable outside the aside (the comment box keeps its ESC). `PreviewTarget` carries `data`
+    (pre-resolved embed → no refetch), `siblings` (↑/↓ through a post's attachments) and `via`
+    ('keyboard' moves focus to ✕ and back); `usePreview()` exposes `current` / `isDocked`; `usePageBand()`
+    ('wide' ⇔ page column ≥ 1008 px, measured by a ResizeObserver) drives the post-page grid — NEVER `xl:`
+    (the viewport does not shrink when the dock takes 520 px of it). A route change clears the stack, the
+    width survives. Below lg / coarse pointer → the modal drawer, with ⛶ (maximize) in its header.
+  - **正文内上传.** `[embed:file:<ref>]` accepts a ROW ID or a STORAGE KEY (`EMBED_FILE_KEY_RE`,
+    `image|video|file/<nanoid>.<ext>` only); `resolveFile` answers by id OR key under the SAME `canSeeZonePost`
+    gate (keys are already visible in every media URL, so the key form widens nothing). The editor
+    (`RichTextEditor` `embedPicker.upload` — zones only; 讨论区 passes none and still ignores non-image drops)
+    inserts a WIDGET-DECORATION placeholder (`components/zones/embeds/file-upload-plugin.ts`: the doc is unchanged
+    while uploading, progress writes `--p`, a per-view sequential queue, 429 → wait `retry-after` ≤ 3 retries, then
+    ONE undoable insert of `contentEmbed{kind:'file', ref:<key>}`), cards render local-first through `getLocal()`
+    (ledger drafts keyed by id AND key — no `not_found` flash), the composer appends every upload to the ledger
+    and the server unions `bodyFileKeys(bodyMd)` into the attachment set on create and on update-with-attachments
+    (`mergeBodyFileKeys` — a body file is never an orphan; a bodyMd-only PATCH leaves rows alone); removing a
+    ledger row strips its own-line token. Attachment COUNTS are unlimited by product decision (byte caps + the
+    30/min limiter stay; hidden `MAX_ATTACHMENT_ROWS_PER_POST` 500 only bounds the disk-stat fan-out;
+    `MAX_EMBEDS_PER_CONTENT` 200). **Tables round-trip now** (`@tiptap/extension-table*` registered; before this a
+    markdown table was flattened to text the moment a post was re-opened in the editor).
+  - **Composer is document-first**: `ComposerTopBar` holds the navbar hidden and sits in its slot via
+    `marginTop: -68`; `RichTextEditor chrome="document" size="article"` (the reader's `ARTICLE_PROSE_CLASS`,
+    `lib/zones/prose.ts`, 17 px / 1.75 — writing measure = reading measure); non-text settings in
+    `ComposerSettingsSheet` (sticky column on xl, drawer below); `DRAFT_VERSION` 3 strips `type` from stored
+    drafts; the embed AND poll normalizers dispatch their initial transaction with `preventUpdate`, else a pristine
+    post is "dirty" on open (autosave + a 恢复 banner nobody asked for). Reading page: `MarkdownRenderer
+    size="article"`, `PostRail` (240 px rail ↔ 40 px strip whose hover/tap opens an OVERLAY — never a width tween
+    while someone is mid-sentence), `PostContextStrip` (`top-[var(--nav-offset)]`), `ReadProgress` hairline,
+    `useLikeBookmark` shared by the action bar and the strip, `BodyImageLightbox` (ONE delegated click on
+    `ZoneMarkdown`; stickers by RAW src prefix, linked images and embed thumbnails are skipped).
+  - **Motion grammar** = `lib/motion.ts` `TWEEN_FAST` / `TWEEN` / `TWEEN_PANE` (+ the used-for / never-for table
+    there); the whole budget is the M1–M27 table in the redesign spec — titles, prose, avatars, first-paint
+    counts, route changes, menus, typing and page appends never animate. `DockShell` and `DrawerShell` are
+    deliberately two components (non-modal vs modal). i18n prefixes added this round: `panel_*`, `columns_*`,
+    `home_*`, `column_rail_*`, `column_band_*`, `notice_*`, `rules_*`, `mods_*`, `onboard_*`, `composer_*`
+    (new), `attach_*` (new), `post_*` (new), `rail_strip_*`, `strip_aria`, `ui.rte_table_*`, `ui.rte_upload_file`.
 - **员工名单 (Employee Directory)**: admin roster at `/manage/employees` (`EmployeeDirectory` model;
   bulk import via paste / CSV / XLSX — parsers in `lib/employee-import.ts`, merge rules in
   `lib/employee-admin.ts`; 工号 canonicalized to lowercase at write time — the DB unique index is
@@ -981,7 +1092,9 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   `VIDEO_X_ACCEL_REDIRECT=true` + add the internal `/_video/` nginx location (see deploy conf)
   to offload byte-serving to nginx `sendfile` (Node only does `auth()` then returns the header).
   Card/hero hover previews use ONLY the dedicated short `preview` clip (never the full source) —
-  don't reintroduce a `?? videoUrl` fallback. Not yet done (needs ffmpeg on the box): `+faststart`
+  don't reintroduce a `?? videoUrl` fallback. (The 投票活动 gallery has a deliberately gated
+  exception — see 作品卡片 = Geek Videos 卡片 above — and unlike this board it GENERATES its clips
+  server-side; `Video.previewKey` here is still a second file an admin uploads by hand.) Not yet done (needs ffmpeg on the box): `+faststart`
   remux on upload (fixes tail-`moov` first-frame delay) and HLS/adaptive transcoding.
 - **知识库 (Library)**: Readwise-style reading library at `/library` (migrations
   `20260729120000_add_library` + `20260729150000_extend_library`). Users submit URL/PDF/EPUB (NO

@@ -1,5 +1,9 @@
 // 成员目录: ZoneHeader (成员 tab) + MembersDirectory. `?tab=pending` (members-
 // managers only) lists join requests; `?role=` and `?q=` filter the active list.
+// The RSC renders page 1 (PAGE_TAKE); the directory appends through
+// GET /api/zones/[slug]/members with skip/take (owner-first paging is handled
+// by listZoneMembers; the directory's `skip` is the count of server rows it
+// holds — see members-paging.ts — never the local list length).
 
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -23,7 +27,7 @@ function firstParam(v: string | string[] | undefined): string {
   return (Array.isArray(v) ? v[0] : (v ?? '')).trim();
 }
 
-const PAGE_TAKE = 200;
+const PAGE_TAKE = 60;
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const [t, session] = await Promise.all([getTranslations('zones'), auth()]);
@@ -65,7 +69,7 @@ export default async function ZoneMembersPage({
   if (!zone) notFound();
 
   return (
-    <div className="container max-w-6xl py-6">
+    <div className="container max-w-7xl py-6">
       <ZoneHeader zone={zone} activeTab="members" />
       <div className="mt-6">
         <MembersDirectory
@@ -80,6 +84,7 @@ export default async function ZoneMembersPage({
           roleKey={roleKey}
           pendingCount={zone.pendingCount}
           currentUserId={viewer.id}
+          pageTake={PAGE_TAKE}
         />
       </div>
     </div>

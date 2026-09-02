@@ -128,7 +128,8 @@ export interface ZoneAttachmentView {
 
 export interface ZonePostCardView {
   id: string;
-  zone: { id: string; slug: string; name: string };
+  /** `iconUrl` is public zone metadata (every logged-in viewer sees zone icons on the hub). */
+  zone: { id: string; slug: string; name: string; iconUrl: string | null };
   type: ZonePostTypeValue;
   title: string;
   summary: string;
@@ -172,7 +173,10 @@ export interface ZonePostDetailView extends ZonePostCardView {
   accessCode: string | null;
   attachments: ZoneAttachmentView[];
   headings: MdHeading[];
-  /** Resolved `[embed:…]` tokens keyed by `embedKey(kind, ref)`. */
+  /**
+   * Resolved `[embed:…]` tokens keyed by `embedKey(kind, ref)`. A `link` token
+   * past the per-render live-fetch budget has NO entry (the card fetches it).
+   */
   embeds: Record<string, EmbedData>;
 }
 
@@ -218,6 +222,7 @@ export interface WikiPageView {
   createdBy: PublicAuthor;
   updatedBy: PublicAuthor;
   headings: MdHeading[];
+  /** Same contract as `ZonePostDetailView.embeds` (deferred links are absent). */
   embeds: Record<string, EmbedData>;
 }
 

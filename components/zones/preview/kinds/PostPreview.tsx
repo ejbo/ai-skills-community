@@ -1,8 +1,9 @@
 'use client';
 
-// Another zone post inside the drawer: the card summary immediately, then the
+// Another zone post inside the panel: the card summary immediately, then the
 // full body fetched from GET /api/zones/<slug>/posts/<id> (same gate as the
-// page) rendered through ZoneMarkdown so nested embeds stay live.
+// page) rendered through ZoneMarkdown so nested embeds stay live. The post
+// TYPE is hidden everywhere (栏目 is the taxonomy) — the eyebrow is the zone.
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -16,9 +17,8 @@ import type { EmbedPostData, ZonePostDetailView } from '@/lib/zones/types';
 import { ZoneMarkdown } from '@/components/zones/ZoneMarkdown';
 import { fmtCount } from '@/components/zones/embeds/EmbedCard';
 
-export function PostPreview({ data }: { data: EmbedPostData }) {
+export function PostPreview({ data }: { data: EmbedPostData; fill?: boolean }) {
   const t = useTranslations('zones');
-  const tl = useTranslations('labels');
   const locale = useLocale();
   const [body, setBody] = useState<{ status: 'loading' } | { status: 'ready'; post: ZonePostDetailView } | { status: 'failed' }>({
     status: 'loading',
@@ -49,10 +49,10 @@ export function PostPreview({ data }: { data: EmbedPostData }) {
     <div className="space-y-4">
       <div>
         <div className="flex flex-wrap items-center gap-2 text-[11px]">
-          <span className="rounded-full border border-zinc-300 px-2 py-px font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
-            {tl(`zonePostType.${data.type}`)}
-          </span>
-          <Link href={zoneHref(data.zoneSlug)} className="text-muted hover:underline">
+          <Link
+            href={zoneHref(data.zoneSlug)}
+            className="rounded-full border border-zinc-300 px-2 py-px font-medium text-zinc-700 transition hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:text-zinc-100"
+          >
             {data.zoneName}
           </Link>
         </div>

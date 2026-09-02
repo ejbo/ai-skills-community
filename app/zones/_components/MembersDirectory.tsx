@@ -1,21 +1,46 @@
 'use client';
 
 // 技术专区 — members directory: 全部 / 待审核 tabs (TabBar, URL-driven), role
-// chips, search, 添加成员, StaggerGrid of MemberCard. The RSC loads the page
-// for the current URL; mutations patch the local list and `router.refresh()`.
+// chips, search, 添加成员, then the ACTIVE list GROUPED BY ROLE (版主 first —
+// owner leading — then every other role by sortOrder, 成员 last) as one
+// StaggerGrid per group, so the page reads as "who runs this, who writes
+// here, who reads here". The pending tab stays flat. The RSC renders page 1;
+// 加载更多 appends via GET /api/zones/[slug]/members (skip/take) while the
+// server offset (`loaded`, members-paging.ts — never `items.length`) is short
+// of the total. Mutations patch the local list and `router.refresh()`. Only the
+// server-rendered page 1 rises in through StaggerGrid; once a page has been
+// appended the groups render as plain grids — page appends never animate.
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Search, UserPlus, Users, X } from 'lucide-react';
+import { Loader2, Search, UserPlus, Users, X } from 'lucide-react';
+import { pushToast } from '@/components/Toaster';
 import { StaggerGrid, TabBar } from '@/components/motion';
+import { ZONE_MEMBER_ROLE_KEY, ZONE_MODERATOR_ROLE_KEY } from '@/lib/zones/permissions';
 import { zoneHref } from '@/lib/zones/shared';
 import type { ZoneAccess, ZoneMemberView, ZoneRoleView } from '@/lib/zones/types';
 import { AddMemberDialog } from './AddMemberDialog';
 import { MemberCard } from './MemberCard';
-import { BTN_PRIMARY, INPUT_CLS, chipCls } from './ui';
+import {
+  appendMembersPage,
+  canLoadMoreMembers,
+  dropMember,
+  initialMembersPage,
+  prependMember,
+  replaceMember,
+} from './members-paging';
+import { BTN_PRIMARY, BTN_SECONDARY, INPUT_CLS, SECTION_TITLE_CLS, chipCls, readError } from './ui';
 
 export type MembersTab = 'all' | 'pending';
+
+interface MemberGroup {
+  key: string;
+  label: string;
+  members: ZoneMemberView[];
+}
+
+const GROUP_GRID_CLS = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3';
 
 export function MembersDirectory({
   zone,
@@ -28,6 +53,7 @@ export function MembersDirectory({
   roleKey,
   pendingCount,
   currentUserId,
+  pageTake = 60,
 }: {
   zone: { id: string; slug: string; name: string; memberCount: number };
   access: ZoneAccess;
@@ -39,15 +65,19 @@ export function MembersDirectory({
   roleKey: string;
   pendingCount: number;
   currentUserId: string | null;
+  /** Page size the RSC used — 加载更多 asks for the same. */
+  pageTake?: number;
 }) {
   const t = useTranslations('zones');
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
   const [, startTransition] = useTransition();
-  const [items, setItems] = useState(initialItems);
+  const [page, setPage] = useState(() => initialMembersPage(initialItems));
+  const items = page.items;
   const [query, setQuery] = useState(q);
   const [adding, setAdding] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   // Badge counts move with the local list so an approve / reject / remove is
   // visible immediately; `router.refresh()` then re-seeds them from the server,
   // which is also what keeps every other mutation path honest.
@@ -83,7 +113,88 @@ export function MembersDirectory({
     startTransition(() => router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false }));
   }
 
-  const sortedRoles = [...roles].sort((a, b) => a.sortOrder - b.sortOrder);
+  async function loadMore() {
+    if (loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const params = new URLSearchParams({
+        status: tab === 'pending' ? 'pending' : 'active',
+        skip: String(page.loaded),
+        take: String(pageTake),
+      });
+      if (q) params.set('q', q);
+      if (roleKey) params.set('role', roleKey);
+      const res = await fetch(`/api/zones/${encodeURIComponent(zone.slug)}/members?${params.toString()}`);
+      if (!res.ok) {
+        const err = await readError(res);
+        pushToast('error', err.reason ?? t('action_failed'));
+        return;
+      }
+      const data = (await res.json()) as { items?: ZoneMemberView[]; total?: number };
+      const rows = Array.isArray(data.items) ? data.items : [];
+      setPage((s) => appendMembersPage(s, rows));
+      if (typeof data.total === 'number') setCounts((c) => ({ ...c, listed: data.total as number }));
+    } catch {
+      pushToast('error', t('action_failed'));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  const sortedRoles = useMemo(() => [...roles].sort((a, b) => a.sortOrder - b.sortOrder), [roles]);
+
+  // 版主 (owner first) → each other role by sortOrder → 成员. Empty groups vanish;
+  // a role the catalogue no longer knows still lands in 成员 rather than nowhere.
+  const groups = useMemo<MemberGroup[]>(() => {
+    if (tab !== 'all') return [{ key: 'pending', label: '', members: items }];
+    const leads = items.filter((m) => m.isOwner || m.roleKey === ZONE_MODERATOR_ROLE_KEY);
+    leads.sort((a, b) => Number(b.isOwner) - Number(a.isOwner));
+    const out: MemberGroup[] = [];
+    if (leads.length > 0) out.push({ key: 'leads', label: t('mods_title'), members: leads });
+    const known = new Set<string>([ZONE_MODERATOR_ROLE_KEY, ZONE_MEMBER_ROLE_KEY]);
+    for (const role of sortedRoles) {
+      if (known.has(role.key)) continue;
+      known.add(role.key);
+      const members = items.filter((m) => !m.isOwner && m.roleKey === role.key);
+      if (members.length > 0) out.push({ key: role.key, label: t('members_group', { role: role.name }), members });
+    }
+    const rest = items.filter(
+      (m) => !m.isOwner && m.roleKey !== ZONE_MODERATOR_ROLE_KEY && (m.roleKey === ZONE_MEMBER_ROLE_KEY || !known.has(m.roleKey)),
+    );
+    if (rest.length > 0) {
+      const memberRole = sortedRoles.find((r) => r.key === ZONE_MEMBER_ROLE_KEY);
+      out.push({ key: 'members', label: t('members_group', { role: memberRole?.name ?? rest[0].roleName }), members: rest });
+    }
+    return out;
+  }, [items, sortedRoles, t, tab]);
+
+  const canLoadMore = canLoadMoreMembers(page, counts.listed);
+
+  const card = (m: ZoneMemberView) => (
+    <MemberCard
+      member={m}
+      roles={roles}
+      access={access}
+      zoneSlug={zone.slug}
+      currentUserId={currentUserId}
+      onChange={(next) => {
+        // An approved join request is no longer pending — drop it from
+        // the 待审核 list instead of leaving a stale row behind.
+        if (tab === 'pending' && next.status === 'active') {
+          if (items.some((x) => x.id === next.id)) dropped(true);
+          setPage((s) => dropMember(s, next.userId));
+        } else {
+          setPage((s) => replaceMember(s, next));
+        }
+        router.refresh();
+      }}
+      onRemove={(userId) => {
+        if (items.some((x) => x.userId === userId)) dropped(false);
+        setPage((s) => dropMember(s, userId));
+        router.refresh();
+      }}
+    />
+  );
 
   return (
     <div className="space-y-5">
@@ -161,39 +272,49 @@ export function MembersDirectory({
           </h3>
         </div>
       ) : (
-        <StaggerGrid
-          items={items}
-          keyOf={(m) => m.id}
-          render={(m) => (
-            <MemberCard
-              member={m}
-              roles={roles}
-              access={access}
-              zoneSlug={zone.slug}
-              currentUserId={currentUserId}
-              onChange={(next) => {
-                // An approved join request is no longer pending — drop it from
-                // the 待审核 list instead of leaving a stale row behind.
-                if (tab === 'pending' && next.status === 'active') {
-                  if (items.some((x) => x.id === next.id)) dropped(true);
-                  setItems((list) => list.filter((x) => x.id !== next.id));
-                } else {
-                  setItems((list) => list.map((x) => (x.id === next.id ? next : x)));
-                }
-                router.refresh();
-              }}
-              onRemove={(userId) => {
-                if (items.some((x) => x.userId === userId)) dropped(false);
-                setItems((list) => list.filter((x) => x.userId !== userId));
-                router.refresh();
-              }}
-            />
-          )}
-          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
-          itemClassName="min-w-0"
-          stagger={0.04}
-          cascade={9}
-        />
+        <div className="space-y-8">
+          {groups.map((g) => (
+            <section key={g.key} aria-label={g.label || undefined}>
+              {g.label && (
+                <h3 className={`${SECTION_TITLE_CLS} mb-3 flex items-center gap-1.5`}>
+                  {g.label}
+                  <span className="font-mono tabular-nums">{g.members.length}</span>
+                </h3>
+              )}
+              {page.appended ? (
+                // Page appends do not animate (§11): once anything was loaded
+                // on top of page 1 the group is a plain grid — the rows that
+                // already rose in are long settled, the new ones simply exist.
+                <ul className={GROUP_GRID_CLS}>
+                  {g.members.map((m) => (
+                    <li key={m.id} className="min-w-0">
+                      {card(m)}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <StaggerGrid
+                  items={g.members}
+                  keyOf={(m) => m.id}
+                  render={card}
+                  className={GROUP_GRID_CLS}
+                  itemClassName="min-w-0"
+                  stagger={0.04}
+                  cascade={9}
+                />
+              )}
+            </section>
+          ))}
+        </div>
+      )}
+
+      {canLoadMore && (
+        <div className="flex justify-center">
+          <button type="button" onClick={() => void loadMore()} disabled={loadingMore} className={BTN_SECONDARY}>
+            {loadingMore && <Loader2 className="h-4 w-4 animate-spin" />}
+            {t('members_load_more')}
+          </button>
+        </div>
       )}
 
       {adding && (
@@ -203,10 +324,8 @@ export function MembersDirectory({
           access={access}
           onClose={() => setAdding(false)}
           onAdded={(member) => {
-            setItems((list) => {
-              const rest = list.filter((x) => x.userId !== member.userId);
-              return tab === 'pending' ? rest : [member, ...rest];
-            });
+            // 待审核: the added user's join request (if listed) is resolved — the row leaves.
+            setPage((s) => (tab === 'pending' ? dropMember(s, member.userId) : prependMember(s, member)));
             router.refresh();
           }}
         />

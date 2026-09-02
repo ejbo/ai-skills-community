@@ -3,7 +3,9 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslations } from 'next-intl';
+import { usePortalHost } from '@/components/usePortalHost';
 
 type ToastKind = 'success' | 'error' | 'info';
 interface Toast {
@@ -26,6 +28,11 @@ export function pushToast(kind: ToastKind, message: string) {
 export function Toaster() {
   const t = useTranslations('common');
   const [toasts, setToasts] = useState<Toast[]>([]);
+  // Portaled to the fullscreen element when there is one: a toast fired from
+  // inside a fullscreen PDF (下载已开始 / an error) would otherwise sit under the
+  // top layer, invisible. Nothing renders until mounted (host is null on the
+  // server and in the first client render — hydration-identical).
+  const host = usePortalHost();
 
   const remove = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -42,7 +49,9 @@ export function Toaster() {
     };
   }, [remove]);
 
-  return (
+  if (!host) return null;
+
+  return createPortal(
     <div
       role="status"
       aria-live="polite"
@@ -74,7 +83,8 @@ export function Toaster() {
           </motion.div>
         ))}
       </AnimatePresence>
-    </div>
+    </div>,
+    host,
   );
 }
 

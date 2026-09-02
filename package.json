@@ -18,6 +18,7 @@
     "admin:promote": "tsx scripts/promote-admin.ts",
     "refresh-trending": "tsx scripts/refresh-trending.ts",
     "backfill:files": "tsx scripts/backfill-skill-files.ts",
+    "votes:backfill-previews": "tsx scripts/backfill-vote-previews.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -30,6 +31,10 @@
     "@tiptap/extension-image": "^2.27.2",
     "@tiptap/extension-link": "^2.27.2",
     "@tiptap/extension-placeholder": "^2.27.2",
+    "@tiptap/extension-table": "2.27.2",
+    "@tiptap/extension-table-cell": "2.27.2",
+    "@tiptap/extension-table-header": "2.27.2",
+    "@tiptap/extension-table-row": "2.27.2",
     "@tiptap/pm": "2.27.2",
     "@tiptap/react": "^2.27.2",
     "@tiptap/starter-kit": "^2.27.2",

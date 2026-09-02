@@ -748,6 +748,25 @@ export async function recountZone(zoneId: string, tx?: Prisma.TransactionClient)
   await db.zone.update({ where: { id: zoneId }, data: { memberCount: others + 1, postCount } });
 }
 
+// ─── Activity pulse ─────────────────────────────────────────────────────────
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * 本周动态 for the zone home rail: two count()s over the last 7 days. Kept OUT
+ * of getZoneDetail on purpose — that payload rides every zone route (wiki,
+ * members, settings) and none of them shows the pulse; the zone home RSC calls
+ * this once and passes the figures down.
+ */
+export async function zoneActivityPulse(zoneId: string): Promise<{ postsThisWeek: number; newMembersThisWeek: number }> {
+  const since = new Date(Date.now() - WEEK_MS);
+  const [postsThisWeek, newMembersThisWeek] = await Promise.all([
+    prisma.zonePost.count({ where: { zoneId, status: 'published', deletedAt: null, publishedAt: { gte: since } } }),
+    prisma.zoneMember.count({ where: { zoneId, status: 'active', joinedAt: { gte: since } } }),
+  ]);
+  return { postsThisWeek, newMembersThisWeek };
+}
+
 // ─── Members ────────────────────────────────────────────────────────────────
 
 export interface ListMembersOptions {

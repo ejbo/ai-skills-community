@@ -4,7 +4,6 @@ import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { loginHref } from '@/lib/auth/callback-path';
 import { prisma } from '@/lib/db';
-import { BackButton } from '@/components/BackButton';
 import { loadZoneBySlug, resolveZoneAccess, zoneSiteViewer } from '@/lib/zones/access';
 import { listZoneColumns } from '@/lib/zones/columns';
 import { zoneHref } from '@/lib/zones/shared';
@@ -18,6 +17,8 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t('composer_new_title') };
 }
 
+// Document-first composer: the page is only the container — the composer's own
+// top bar carries the back link, the zone name and the actions (no page h1).
 export default async function NewZonePostPage({ params }: { params: { slug: string } }) {
   const session = await auth();
   if (!session?.user) redirect(loginHref(`${zoneHref(params.slug)}/posts/new`));
@@ -28,8 +29,7 @@ export default async function NewZonePostPage({ params }: { params: { slug: stri
   if (!access.canPost) redirect(zoneHref(zone.slug));
   // 栏目 (ask #2): the composer needs the zone's columns and whether members may
   // add one — neither rides on ZONE_ACCESS_SELECT.
-  const [t, columns, options] = await Promise.all([
-    getTranslations('zones'),
+  const [columns, options] = await Promise.all([
     listZoneColumns(zone.id),
     prisma.zone.findUnique({ where: { id: zone.id }, select: { allowMemberColumns: true } }),
   ]);
@@ -42,21 +42,14 @@ export default async function NewZonePostPage({ params }: { params: { slug: stri
   };
 
   return (
-    <div className="container max-w-3xl py-8">
-      <div className="mb-5">
-        <BackButton fallbackHref={zoneHref(zone.slug)} />
-      </div>
-      <h1 className="text-2xl font-semibold tracking-tight">{t('composer_new_title')}</h1>
-      <p className="mt-1 text-sm text-muted">{t('composer_new_subtitle', { zone: zone.name })}</p>
-      <div className="mt-6">
-        <PostComposer
-          zone={{ id: zone.id, slug: zone.slug, name: zone.name }}
-          access={access}
-          currentUser={currentUser}
-          columns={columns}
-          allowMemberColumns={options?.allowMemberColumns ?? true}
-        />
-      </div>
+    <div className="container max-w-6xl py-0">
+      <PostComposer
+        zone={{ id: zone.id, slug: zone.slug, name: zone.name }}
+        access={access}
+        currentUser={currentUser}
+        columns={columns}
+        allowMemberColumns={options?.allowMemberColumns ?? true}
+      />
     </div>
   );
 }

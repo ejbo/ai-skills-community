@@ -17,7 +17,7 @@ import {
   type ZonePostInput,
 } from '@/lib/zones/post-queries';
 import {
-  MAX_ZONE_ATTACHMENTS,
+  MAX_ATTACHMENT_ROWS_PER_POST,
   MAX_ZONE_COLUMNS,
   ZONE_LIMITS,
   ZONE_MEDIA_KEY_RE,
@@ -32,10 +32,11 @@ export const dynamic = 'force-dynamic';
 const REASONED_CODES: ReadonlySet<string> = new Set([
   'coauthor_not_member',
   'cover_invalid',
-  'link_required',
   'link_invalid',
   'title_required',
   'attachments_invalid',
+  'attachments_too_many',
+  'announcement_forbidden',
   'not_published',
   'too_many_pinned',
   'invalid_input',
@@ -51,10 +52,14 @@ const REASONED_CODES: ReadonlySet<string> = new Set([
 
 async function zoneErrorResponse(e: unknown): Promise<NextResponse | null> {
   if (e instanceof ZoneError) {
-    // `{max}` = 置顶上限, `{limit}` = 栏目上限 — distinct placeholders, so one
-    // values object serves every reasoned code.
+    // `{max}` = 置顶上限, `{limit}` = 栏目上限, `{rows}` = 附件行上限 — distinct
+    // placeholders, so one values object serves every reasoned code.
     const reason = REASONED_CODES.has(e.code)
-      ? await apiReason(`zone_${e.code}`, { max: ZONE_LIMITS.maxPinnedPosts, limit: MAX_ZONE_COLUMNS })
+      ? await apiReason(`zone_${e.code}`, {
+          max: ZONE_LIMITS.maxPinnedPosts,
+          limit: MAX_ZONE_COLUMNS,
+          rows: MAX_ATTACHMENT_ROWS_PER_POST,
+        })
       : undefined;
     return NextResponse.json({ error: e.code, ...(reason ? { reason } : {}) }, { status: e.status });
   }
@@ -88,7 +93,8 @@ const patchSchema = z
     linkUrl: z.string().max(2048).nullable().optional(),
     tags: z.array(z.string().max(64)).max(64).optional(),
     coauthorIds: z.array(z.string().min(1).max(64)).max(ZONE_LIMITS.maxCoauthors).optional(),
-    attachments: z.array(attachmentSchema).max(MAX_ZONE_ATTACHMENTS).optional(),
+    // Unlimited by product decision — the cap is the hidden sanity bound only.
+    attachments: z.array(attachmentSchema).max(MAX_ATTACHMENT_ROWS_PER_POST).optional(),
     status: z.enum(['draft', 'published']).optional(),
     // 栏目 (ask #2): an existing id, null for 未归栏, or a typed name that is
     // created on the fly (`columnName` wins over `columnId` — the lib decides).
@@ -133,6 +139,13 @@ export async function GET(_req: Request, { params }: { params: { slug: string; p
 // PATCH /api/zones/[slug]/posts/[postId]
 //   content fields (author / co-author OR canModerate) and/or { pinned, locked } (canModerate)
 //   → { ok: true }
+// `type` is hidden from the composer; the only UI sender is the moderator's
+// 设为公告 / 取消公告 (`{ type: 'announcement' | 'article' }`) — so every change
+// of `type`, in either direction, needs canModerate (gated below). `linkUrl`
+// is optional whatever the type (no `link_required`).
+// `attachments` replaces the WHOLE ledger and is unioned with the body's
+// `[embed:file:<key>]` tokens in the lib; a patch carrying only `bodyMd`
+// leaves the rows alone.
 export async function PATCH(req: Request, { params }: { params: { slug: string; postId: string } }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
@@ -180,11 +193,21 @@ export async function PATCH(req: Request, { params }: { params: { slug: string; 
       { status: 403 },
     );
   }
-  if ((content.type === 'announcement' || (publishes && nextType === 'announcement')) && !ctx.access.canModerate) {
+  // `type` is hidden from every author-facing UI; the only sender is the
+  // moderator's 设为公告 / 取消公告. So ANY change of the stored type — into
+  // `announcement` AND out of it — is a moderator act: an author must not be
+  // able to drop the zone notice a 版主 pinned on their post by PATCHing
+  // `{ type: 'article' }` (the pre-2026-09 gate only checked the NEW value).
+  const typeChanges = content.type !== undefined && content.type !== post.type;
+  const touchesAnnouncement = typeChanges && (content.type === 'announcement' || post.type === 'announcement');
+  if ((touchesAnnouncement || (publishes && nextType === 'announcement')) && !ctx.access.canModerate) {
     return NextResponse.json(
       { error: 'forbidden', reason: await apiReason('zone_announcement_forbidden') },
       { status: 403 },
     );
+  }
+  if (typeChanges && !ctx.access.canModerate) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
   // Build the partial input with only the keys that were sent; normalize the

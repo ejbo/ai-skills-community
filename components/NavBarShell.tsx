@@ -1,7 +1,7 @@
 'use client';
 
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { useNavBarHeldHidden } from '@/lib/nav-chrome';
+import { NAV_BAR_HEIGHT_PX, setNavBarVisible, useNavBarHeldHidden, useNavBarHeldVisible } from '@/lib/nav-chrome';
 
 // Client chrome around the (server-rendered) nav header:
 //   - `.container` makes the bar align edge-to-edge with every content section
@@ -9,11 +9,19 @@ import { useNavBarHeldHidden } from '@/lib/nav-chrome';
 //   - Auto-hide: slide the bar up when the reader scrolls down (gets out of the
 //     way of content) and bring it back the moment they scroll up.
 //   - A page can HOLD it hidden (lib/nav-chrome.ts) while its own sticky bar
-//     is pinned to the top, so the scroll-up reveal never stacks on that bar.
+//     is pinned to the top, so the scroll-up reveal never stacks on that bar;
+//     the docked reading panel HOLDS it visible instead, so the bar stays
+//     usable beside the panel. `hidden = heldHidden || (autoHidden && !heldVisible)`
+//     — an explicit hide (expand / maximize / composer) beats a visible hold.
+//   - The resolved state is published back (`setNavBarVisible`) and mirrored
+//     into `--nav-offset` on <html> for the ONE consumer that must follow the
+//     bar's slide (PostContextStrip). Rails, the dock and the TOC use constant
+//     offsets and never move on scroll reversal.
 export function NavBarShell({ children }: { children: ReactNode }) {
   const [autoHidden, setHidden] = useState(false);
-  const held = useNavBarHeldHidden();
-  const hidden = autoHidden || held;
+  const heldHidden = useNavBarHeldHidden();
+  const heldVisible = useNavBarHeldVisible();
+  const hidden = heldHidden || (autoHidden && !heldVisible);
   const lastY = useRef(0);
   const ticking = useRef(false);
 
@@ -35,6 +43,11 @@ export function NavBarShell({ children }: { children: ReactNode }) {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  useEffect(() => {
+    setNavBarVisible(!hidden);
+    document.documentElement.style.setProperty('--nav-offset', hidden ? '0px' : `${NAV_BAR_HEIGHT_PX}px`);
+  }, [hidden]);
 
   return (
     <div

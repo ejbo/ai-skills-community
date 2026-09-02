@@ -79,7 +79,7 @@ export default async function ZoneWikiPage({ params }: { params: { slug: string;
     : null;
 
   return (
-    <div className="container max-w-6xl py-8">
+    <div className="container max-w-7xl py-6">
       <ZoneHeader zone={zone} activeTab="wiki" currentUser={currentUser} />
       <div className="mt-6">
         <WikiLayout zoneSlug={zone.slug} tree={tree} activeId={page.id} canWiki={zone.access.canWiki}>

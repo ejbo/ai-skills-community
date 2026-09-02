@@ -42,13 +42,18 @@ export function isValidWikiSlug(slug: string): boolean {
 
 // ── Enumerations (DB values; display through `labels.zone*` i18n keys) ───────
 
+/**
+ * The `ZonePostType` column stays in the schema but is HIDDEN from every UI
+ * (2026-09): the input schema defaults it to `article`, no composer offers a
+ * choice, no pill renders it. `announcement` is the one value still written —
+ * a moderator flag flipped from the post's ⋯ menu (PATCH, `moderate`-gated).
+ * 栏目 (below) is the per-zone taxonomy readers actually navigate by.
+ */
 export const ZONE_POST_TYPES = ['article', 'report', 'paper', 'slides', 'link', 'announcement'] as const;
 export type ZonePostTypeValue = (typeof ZONE_POST_TYPES)[number];
 export function isZonePostType(v: unknown): v is ZonePostTypeValue {
   return typeof v === 'string' && (ZONE_POST_TYPES as readonly string[]).includes(v);
 }
-/** Types a plain `post` holder may choose; `announcement` needs `moderate`. */
-export const ZONE_POST_TYPES_FOR_AUTHORS: readonly ZonePostTypeValue[] = ['article', 'report', 'paper', 'slides', 'link'];
 
 export const ZONE_VISIBILITIES = ['public', 'members'] as const;
 export const ZONE_JOIN_POLICIES = ['open', 'approval', 'invite'] as const;
@@ -139,12 +144,17 @@ export function normalizeTags(input: unknown): string[] {
 
 // ── 栏目 (ZoneColumn) ────────────────────────────────────────────────────────
 //
-// Zone-scoped content taxonomy, ORTHOGONAL to ZonePostType (which is the content
-// FORMAT: 文章/研究报告/论文/…). 版主 curates `official` columns in 版块设置 → 栏目;
-// members may create their own from the composer when `allowMemberColumns`.
+// THE per-zone content taxonomy (2026-09: the ZonePostType column stays in the
+// schema but is hidden from every UI and defaults to `article`; `announcement`
+// is a moderator flag, not a choice). 版主 curates `official` columns in 版块设置
+// → 栏目 (rail order = sortOrder); members may create their own from the
+// composer when `allowMemberColumns`. A 栏目 is OPTIONAL on publish — posts
+// without one list under 未归栏 (`?column=_none`).
 
 export const COLUMN_SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
 export const MAX_ZONE_COLUMNS = 60;
+/** `?column=_none` ⇒ posts with no 栏目 (columnId IS NULL). Collision-proof: COLUMN_SLUG_RE admits no `_`. */
+export const UNCATEGORIZED_COLUMN_PARAM = '_none';
 
 export function isValidColumnSlug(slug: string): boolean {
   return COLUMN_SLUG_RE.test(slug);
@@ -226,9 +236,14 @@ export function serializeMultiParam(values: readonly string[]): string {
 }
 
 // ── Attachments ──────────────────────────────────────────────────────────────
+//
+// Counts are UNLIMITED by product decision (2026-09-01) — there is no per-kind
+// cap and no per-post total any more; only the byte caps below and the upload
+// route's 30/min limiter remain. The one number left is a hidden sanity bound
+// on a single request's `attachments[]`, so a hostile body cannot fan out
+// hundreds of thousands of disk stats — never surfaced in UI copy.
 
-export const ZONE_ATTACHMENT_LIMITS = { images: 12, videos: 2, files: 8 } as const;
-export const MAX_ZONE_ATTACHMENTS = ZONE_ATTACHMENT_LIMITS.images + ZONE_ATTACHMENT_LIMITS.videos + ZONE_ATTACHMENT_LIMITS.files;
+export const MAX_ATTACHMENT_ROWS_PER_POST = 500;
 
 export const MAX_ZONE_IMAGE_BYTES = 20 * 1024 * 1024; // 20 MB
 export const MAX_ZONE_VIDEO_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
@@ -288,12 +303,15 @@ export function formatBytes(n: number): string {
 //
 // Own-line tokens, fence-aware (same contract as lib/polls-shared.ts). Refs:
 //   library:<doc slug>   short:<video id>   video:<video slug>   skill:<slug>
-//   pack:<slug>          event:<event id>   post:<zone post id>  file:<attachment id>
-//   link:<http(s) url>
+//   pack:<slug>          event:<event id>   post:<zone post id>
+//   file:<attachment id | storage key>      link:<http(s) url>
 // tiptap-markdown escapes the brackets on serialize (`\[embed:…\]`), so both
 // forms match. Rendering: components/zones/ZoneMarkdown.tsx splits and mounts an
 // EmbedCard per token; the server resolves every token in one pass
-// (lib/zones/embeds.ts) with the source domain's own visibility gate.
+// (lib/zones/embeds.ts) with the source domain's own visibility gate. A `file`
+// ref is a row id OR a storage key (EMBED_FILE_KEY_RE) — the editor inserts the
+// KEY at upload time, before the post exists; `bodyFileKeys` / `mergeBodyFileKeys`
+// below are how the server joins those keys to the attachment set on save.
 
 export const EMBED_KINDS = ['library', 'short', 'video', 'skill', 'pack', 'event', 'post', 'file', 'link'] as const;
 export type EmbedKind = (typeof EMBED_KINDS)[number];
@@ -313,7 +331,19 @@ export const EMBED_TOKEN_RE = new RegExp(`^ {0,3}\\\\?\\[embed:(${KIND_ALT}):([^
 /** Global strip/excerpt sibling (both escaped and plain forms). */
 export const EMBED_TOKEN_GLOBAL_RE = new RegExp(`\\\\?\\[embed:(?:${KIND_ALT}):[^\\n\\]]{1,512}?\\\\?\\]`, 'g');
 export const EMBED_REF_RE = /^[A-Za-z0-9_-]{1,80}$/;
-export const MAX_EMBEDS_PER_CONTENT = 20;
+/**
+ * `file` refs may also be a storage KEY (`file/<nanoid>.<ext>`, `image/…`, `video/…`):
+ * a body-inserted upload exists on disk before the post — and therefore its
+ * ZonePostAttachment row — does. Only the three attachment kinds qualify
+ * (cover/icon/poster/preview never have a row, so they could never pass the
+ * server gate anyway). The server resolves keys through `ZonePostAttachment.key`
+ * (@unique) under the SAME `canSeeZonePost` gate as ids.
+ */
+export const EMBED_FILE_KEY_RE = /^(image|video|file)\/[A-Za-z0-9_-]{1,80}\.[a-z0-9]{2,5}$/;
+export function isEmbedFileKey(ref: string): boolean {
+  return EMBED_FILE_KEY_RE.test(ref);
+}
+export const MAX_EMBEDS_PER_CONTENT = 200;
 
 export interface EmbedRef {
   kind: EmbedKind;
@@ -332,6 +362,7 @@ export function embedKey(kind: EmbedKind, ref: string): string {
 export function normalizeEmbedRef(kind: EmbedKind, raw: string): string | null {
   const ref = raw.trim();
   if (kind === 'link') return normalizeHttpUrl(ref);
+  if (kind === 'file' && EMBED_FILE_KEY_RE.test(ref)) return ref;
   return EMBED_REF_RE.test(ref) ? ref : null;
 }
 
@@ -400,6 +431,30 @@ export function collectEmbedRefs(content: string): EmbedRef[] {
   return splitEmbedSegments(content)
     .filter((s): s is Extract<EmbedSegment, { type: 'embed' }> => s.type === 'embed')
     .map((s) => ({ kind: s.kind, ref: s.ref }));
+}
+
+/** Distinct `[embed:file:<key>]` refs of a body that are storage KEYS (row ids skipped), in render order. */
+export function bodyFileKeys(bodyMd: string): string[] {
+  return collectEmbedRefs(bodyMd)
+    .filter((r) => r.kind === 'file' && isEmbedFileKey(r.ref))
+    .map((r) => r.ref);
+}
+
+/**
+ * Union of the composer's attachment ledger with every storage key embedded in
+ * the body, so a file dropped into the 正文 is never an orphan at save time.
+ * `make` builds the stub row for a key the ledger did not carry (the server
+ * fills name/size from disk). Existing items keep their order; new keys append.
+ */
+export function mergeBodyFileKeys<T extends { key: string }>(items: readonly T[], bodyMd: string, make: (key: string) => T): T[] {
+  const seen = new Set(items.map((i) => i.key));
+  const out = [...items];
+  for (const key of bodyFileKeys(bodyMd)) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(make(key));
+  }
+  return out;
 }
 
 // ── Excerpts ─────────────────────────────────────────────────────────────────
