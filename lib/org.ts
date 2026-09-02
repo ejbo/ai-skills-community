@@ -44,18 +44,22 @@ export interface Institute {
  * To add a 实验室: add a string to `labs`; the create-zone form offers it at once.
  * To give a 研究所 a picture: drop a file in `public/labs/` and set `image`.
  *
- * The two institutes with real 版块 today are listed first with the second-level
- * values those 版块 actually carry. Those look like 事业部/产品线 rather than
- * laboratories — they are what the rows say, so they are seeded here verbatim
- * and should be corrected to the real 实验室 names when they are known.
+ * 温哥华 leads by owner decision. Only 温哥华 has its 实验室 filled in so far;
+ * the other five carry an empty list, which is a valid state — the create form
+ * falls back to free text for an institute with no 实验室 configured yet, so
+ * nobody is blocked while the chart is filled in.
  */
 export const INSTITUTES: Institute[] = [
-  { name: '计算视觉研究所', labs: ['AI事业部', '智能终端'] }, // image: '/labs/vision.jpg'
-  { name: '网络技术研究所', labs: ['云核心网'] }, // image: '/labs/network.jpg'
-  { name: '3 号研究所（待填写）', labs: [] }, // image: '/labs/lab-3.jpg'
-  { name: '4 号研究所（待填写）', labs: [] }, // image: '/labs/lab-4.jpg'
-  { name: '5 号研究所（待填写）', labs: [] }, // image: '/labs/lab-5.jpg'
-  { name: '6 号研究所（待填写）', labs: [] }, // image: '/labs/lab-6.jpg'
+  {
+    name: '温哥华研究所',
+    labs: ['Computing Data Application Acceleration Laboratory', 'Graphics Technology Laboratory'],
+    image: '/labs/vancouver.jpg',
+  },
+  { name: '多伦多研究所', labs: [], image: '/labs/toronto.jpg' },
+  { name: '渥太华研究所', labs: [], image: '/labs/ottawa.jpg' },
+  { name: '滑铁卢研究所', labs: [], image: '/labs/waterloo.jpg' },
+  { name: '埃德蒙顿研究所', labs: [], image: '/labs/edmonton.jpg' },
+  { name: '蒙特利尔研究所', labs: [], image: '/labs/montreal.jpg' },
 ];
 
 /** How many 研究所 tiles the navbar grid will ever show. */
