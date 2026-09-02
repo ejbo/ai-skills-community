@@ -25,12 +25,13 @@ import {
   zoneHref,
   type ZoneLink,
 } from '@/lib/zones/shared';
+import type { ZoneOrgOptions } from '@/lib/zones/queries';
 import type { ZoneDetailView, ZoneJoinPolicyView, ZoneVisibilityView } from '@/lib/zones/types';
 import { ColumnsEditor } from './ColumnsEditor';
 import { DangerZone } from './DangerZone';
 import { RolesEditor } from './RolesEditor';
 import { ZoneCoverUploader } from './ZoneCoverUploader';
-import { BTN_PRIMARY, BTN_SECONDARY, CARD_CLS, HINT_CLS, INPUT_CLS, LABEL_CLS, readError } from './ui';
+import { BTN_PRIMARY, BTN_SECONDARY, CARD_CLS, HINT_CLS, INPUT_CLS, LABEL_CLS, SELECT_CLS, readError } from './ui';
 import { settingsTabsFor, type SettingsTab } from './settings-tabs';
 
 
@@ -207,6 +208,164 @@ export function AccessOptions({ value, onChange }: { value: AccessValue; onChang
   );
 }
 
+// ── 组织归属: 研究所 → 实验室 ──────────────────────────────────────────────────
+//
+// A 研究所 is COMPOSED OF 实验室, so these are two DEPENDENT selects, not two
+// free-text boxes — free text is why three 版块 ended up with three spellings of
+// the second level. The values are stored in the backwards-named columns
+// (`Zone.lab` = 研究所, `Zone.department` = 实验室 — see lib/org.ts) and stay
+// Chinese: only the LABELS are translated, never the org values.
+//
+// Two things keep it from becoming a whitelist, which lib/org.ts forbids:
+//  • 「其他（手动输入）」 reveals a free-text box, because the configured tree is
+//    half filled in and nobody may be blocked from creating a 版块 today; and
+//  • a value that is not in the options is NEVER silently dropped — the field
+//    switches itself into the custom box holding it, so an existing 版块 always
+//    survives a settings round trip.
+
+export interface OrgValue {
+  /** `Zone.lab` — the 研究所. */
+  lab: string;
+  /** `Zone.department` — the 实验室. */
+  department: string;
+}
+
+/** Sentinel option value; not a legal org name (they are stored verbatim). */
+const ORG_OTHER = '__other__';
+
+export function OrgFields({
+  value,
+  options,
+  onChange,
+  idPrefix,
+}: {
+  value: OrgValue;
+  options: ZoneOrgOptions;
+  onChange: (next: OrgValue) => void;
+  idPrefix: string;
+}) {
+  const t = useTranslations('zones');
+  const tl = useTranslations('labels');
+  // Explicit 「其他」 picks. An off-tree VALUE forces custom mode on its own, so
+  // this state only has to remember a deliberate choice made on an empty field.
+  const [instituteOther, setInstituteOther] = useState(false);
+  const [labOther, setLabOther] = useState(false);
+
+  const institute = value.lab.trim();
+  const lab = value.department.trim();
+  const instituteCustom = instituteOther || (!!institute && !options.institutes.includes(institute));
+  const labOptions = !instituteCustom && institute ? (options.labsByInstitute[institute] ?? []) : [];
+  // No institute and no saved 实验室 ⇒ nothing to choose from yet: locked.
+  const labMode: 'select' | 'custom' | 'locked' =
+    labOther || instituteCustom || (lab && !labOptions.includes(lab))
+      ? 'custom'
+      : institute && labOptions.length
+        ? 'select'
+        : institute
+          ? 'custom' // a configured 研究所 whose 实验室 are not filled in yet
+          : 'locked';
+
+  function pickInstitute(next: string) {
+    if (next === ORG_OTHER) {
+      setInstituteOther(true);
+      setLabOther(false);
+      onChange({ lab: '', department: '' });
+      return;
+    }
+    setInstituteOther(false);
+    setLabOther(false);
+    // A 实验室 belongs to exactly one 研究所 — drop it unless the new one has it.
+    const keep = lab && (options.labsByInstitute[next] ?? []).includes(lab) ? lab : '';
+    onChange({ lab: next, department: keep });
+  }
+
+  function pickLab(next: string) {
+    if (next === ORG_OTHER) {
+      setLabOther(true);
+      onChange({ ...value, department: '' });
+      return;
+    }
+    setLabOther(false);
+    onChange({ ...value, department: next });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className={LABEL_CLS} htmlFor={`${idPrefix}-institute`}>
+            {tl('orgInstitute')}
+          </label>
+          <select
+            id={`${idPrefix}-institute`}
+            value={instituteCustom ? ORG_OTHER : institute}
+            onChange={(e) => pickInstitute(e.target.value)}
+            className={`${SELECT_CLS} w-full`}
+          >
+            <option value="">{t('create_org_none')}</option>
+            {options.institutes.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+            <option value={ORG_OTHER}>{t('create_org_other')}</option>
+          </select>
+          {instituteCustom && (
+            <input
+              value={value.lab}
+              maxLength={ZONE_LIMITS.labMax}
+              onChange={(e) => onChange({ lab: e.target.value, department: value.department })}
+              placeholder={t('create_org_institute_placeholder')}
+              className={`${INPUT_CLS} mt-2`}
+              aria-label={tl('orgInstitute')}
+            />
+          )}
+        </div>
+        <div>
+          <label className={LABEL_CLS} htmlFor={`${idPrefix}-lab`}>
+            {tl('orgLab')}
+          </label>
+          {labMode === 'select' ? (
+            <select
+              id={`${idPrefix}-lab`}
+              value={lab}
+              onChange={(e) => pickLab(e.target.value)}
+              className={`${SELECT_CLS} w-full`}
+            >
+              <option value="">{t('create_org_none')}</option>
+              {labOptions.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+              <option value={ORG_OTHER}>{t('create_org_other')}</option>
+            </select>
+          ) : (
+            <>
+              <input
+                id={`${idPrefix}-lab`}
+                list={`${idPrefix}-lab-list`}
+                value={value.department}
+                disabled={labMode === 'locked'}
+                maxLength={ZONE_LIMITS.departmentMax}
+                onChange={(e) => onChange({ ...value, department: e.target.value })}
+                placeholder={labMode === 'locked' ? t('create_org_lab_needs_institute') : t('create_org_lab_placeholder')}
+                className={INPUT_CLS}
+              />
+              <datalist id={`${idPrefix}-lab-list`}>
+                {(labOptions.length ? labOptions : options.labs).map((v) => (
+                  <option key={v} value={v} />
+                ))}
+              </datalist>
+            </>
+          )}
+        </div>
+      </div>
+      <p className={HINT_CLS}>{t('create_org_hint')}</p>
+    </div>
+  );
+}
+
 // ── Settings form ─────────────────────────────────────────────────────────────
 
 interface BasicDraft {
@@ -226,7 +385,7 @@ export function ZoneSettingsForm({
   tab,
 }: {
   zone: ZoneDetailView;
-  facets: { labs: string[]; departments: string[] };
+  facets: ZoneOrgOptions;
   tab: SettingsTab;
 }) {
   const t = useTranslations('zones');
@@ -341,38 +500,12 @@ export function ZoneSettingsForm({
                   className={INPUT_CLS}
                 />
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className={LABEL_CLS}>{t('create_lab')}</label>
-                  <input
-                    list="zone-labs"
-                    value={basic.lab}
-                    maxLength={ZONE_LIMITS.labMax}
-                    onChange={(e) => setBasic((b) => ({ ...b, lab: e.target.value }))}
-                    className={INPUT_CLS}
-                  />
-                  <datalist id="zone-labs">
-                    {facets.labs.map((v) => (
-                      <option key={v} value={v} />
-                    ))}
-                  </datalist>
-                </div>
-                <div>
-                  <label className={LABEL_CLS}>{t('create_department')}</label>
-                  <input
-                    list="zone-departments"
-                    value={basic.department}
-                    maxLength={ZONE_LIMITS.departmentMax}
-                    onChange={(e) => setBasic((b) => ({ ...b, department: e.target.value }))}
-                    className={INPUT_CLS}
-                  />
-                  <datalist id="zone-departments">
-                    {facets.departments.map((v) => (
-                      <option key={v} value={v} />
-                    ))}
-                  </datalist>
-                </div>
-              </div>
+              <OrgFields
+                value={{ lab: basic.lab, department: basic.department }}
+                options={facets}
+                onChange={(org) => setBasic((b) => ({ ...b, lab: org.lab, department: org.department }))}
+                idPrefix={`zone-org-${zone.slug}`}
+              />
             </section>
 
             <section className={`${CARD_CLS} grid gap-5 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:p-5`}>

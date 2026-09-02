@@ -1,11 +1,22 @@
 'use client';
 
-// 技术专区 hub — the 研究所 → 部门 filter tree (asks #6 and #8).
+// 技术专区 hub — the 研究所 → 实验室 filter tree (asks #6 and #8).
 //
-// Two levels, both MULTI-select. A 研究所 row toggles that lab; its 部门 are
-// revealed indented underneath (a chevron peeks at them without selecting, so
-// you can look before you commit). Names are rendered in FULL and wrap — the
+// THE HIERARCHY, MADE VISIBLE. A 研究所 is the top level and is COMPOSED OF
+// 实验室 — that is the org model, and this rail is where a visitor can see it.
+// The columns behind it read backwards and are deliberately not renamed
+// (`OrgLabNode.lab` = 研究所, `OrgDeptNode.department` = 实验室; see lib/org.ts),
+// so read the vocabulary from the labels, never from the field names.
+//
+// Two levels, both MULTI-select. A 研究所 row toggles that institute; its 实验室
+// are revealed indented underneath (a chevron peeks at them without selecting,
+// so you can look before you commit). Names are rendered in FULL and wrap — the
 // org path is the important metadata here, never a truncated pill.
+//
+// An EMPTY 研究所 (no 版块 filed under it yet — four of six are placeholders
+// today) is still listed, dimmed and counted 0, and stays clickable: it leads
+// to the 版块 tab's institute-specific empty state, which names it. Present and
+// obviously empty beats silently missing.
 //
 // Purely presentational: selection lives in the URL and is written by
 // `useHubFilters` (ZoneFilters.tsx), so the very same tree drives the 动态 feed
@@ -23,7 +34,7 @@ export interface OrgFilterPanelProps {
   selectedDepartments: readonly string[];
   onToggleLab: (lab: string) => void;
   onToggleDepartment: (lab: string, department: string) => void;
-  /** Show the in-tree filter box once there are more labs than this. */
+  /** Show the in-tree filter box once there are more 研究所 than this. */
   searchThreshold?: number;
   className?: string;
 }
@@ -43,8 +54,15 @@ function Box({ on }: { on: boolean }) {
   );
 }
 
-function Count({ value }: { value: number }) {
-  return <span className="mt-0.5 shrink-0 font-mono text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">{value}</span>;
+function Count({ value, title }: { value: number; title?: string }) {
+  return (
+    <span
+      title={title}
+      className="mt-0.5 shrink-0 font-mono text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500"
+    >
+      {value}
+    </span>
+  );
 }
 
 export function OrgFilterPanel({
@@ -65,13 +83,13 @@ export function OrgFilterPanel({
 
   const query = needle.trim().toLowerCase();
   const rows = useMemo(() => {
-    if (!query) return org.map((lab) => ({ lab, matchedDepartments: false }));
-    const out: { lab: OrgLabNode; matchedDepartments: boolean }[] = [];
+    if (!query) return org.map((lab) => ({ lab, matchedLabs: false }));
+    const out: { lab: OrgLabNode; matchedLabs: boolean }[] = [];
     for (const lab of org) {
-      const labHit = lab.lab.toLowerCase().includes(query);
+      const instituteHit = lab.lab.toLowerCase().includes(query);
       const hits = lab.departments.filter((d) => d.department.toLowerCase().includes(query));
-      if (labHit) out.push({ lab, matchedDepartments: false });
-      else if (hits.length > 0) out.push({ lab: { ...lab, departments: hits }, matchedDepartments: true });
+      if (instituteHit) out.push({ lab, matchedLabs: false });
+      else if (hits.length > 0) out.push({ lab: { ...lab, departments: hits }, matchedLabs: true });
     }
     return out;
   }, [org, query]);
@@ -119,10 +137,13 @@ export function OrgFilterPanel({
         <p className="py-2 text-xs text-muted">{t('hub_org_no_match')}</p>
       ) : (
         <ul className="-mx-1.5">
-          {rows.map(({ lab, matchedDepartments }) => {
+          {rows.map(({ lab, matchedLabs }) => {
             const on = labSet.has(lab.lab);
-            const open = on || expanded.has(lab.lab) || matchedDepartments;
-            const hasDepartments = lab.departments.length > 0;
+            const open = on || expanded.has(lab.lab) || matchedLabs;
+            const hasLabs = lab.departments.length > 0;
+            // No 版块 filed here yet: dim it, keep it clickable. The click lands
+            // on an empty state that names the 研究所, which is the honest answer.
+            const empty = lab.zoneCount === 0;
             return (
               <li key={lab.lab}>
                 <div className="flex items-start gap-1">
@@ -131,19 +152,23 @@ export function OrgFilterPanel({
                     onClick={() => onToggleLab(lab.lab)}
                     aria-pressed={on}
                     className={`flex min-w-0 flex-1 items-start gap-2 rounded-lg px-1.5 py-1.5 text-left text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-900 ${
-                      on ? 'text-zinc-900 dark:text-zinc-50' : 'text-zinc-600 dark:text-zinc-400'
+                      on
+                        ? 'text-zinc-900 dark:text-zinc-50'
+                        : empty
+                          ? 'text-zinc-400 dark:text-zinc-500'
+                          : 'text-zinc-600 dark:text-zinc-400'
                     }`}
                   >
                     <Box on={on} />
                     <span className={`min-w-0 flex-1 break-words leading-5 ${on ? 'font-medium' : ''}`}>{lab.lab}</span>
-                    <Count value={lab.zoneCount} />
+                    <Count value={lab.zoneCount} title={empty ? t('hub_org_no_zones') : undefined} />
                   </button>
-                  {hasDepartments && (
+                  {hasLabs && (
                     <button
                       type="button"
                       onClick={() => toggleExpanded(lab.lab)}
                       aria-expanded={open}
-                      aria-label={t('hub_org_toggle_departments', { lab: lab.lab })}
+                      aria-label={t('hub_org_expand', { institute: lab.lab })}
                       className="mt-1 shrink-0 rounded-md p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-900 dark:hover:text-zinc-200"
                     >
                       <ChevronRight className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-90' : ''}`} />
@@ -151,10 +176,11 @@ export function OrgFilterPanel({
                   )}
                 </div>
 
-                {open && hasDepartments && (
+                {open && hasLabs && (
                   <ul className="ml-[15px] border-l border-zinc-200 pl-2 dark:border-zinc-800">
                     {lab.departments.map((d) => {
                       const dOn = deptSet.has(d.department);
+                      const dEmpty = d.zoneCount === 0;
                       return (
                         <li key={d.department}>
                           <button
@@ -162,14 +188,18 @@ export function OrgFilterPanel({
                             onClick={() => onToggleDepartment(lab.lab, d.department)}
                             aria-pressed={dOn}
                             className={`flex w-full items-start gap-2 rounded-lg px-1.5 py-1 text-left text-[13px] transition hover:bg-zinc-100 dark:hover:bg-zinc-900 ${
-                              dOn ? 'text-zinc-900 dark:text-zinc-50' : 'text-zinc-500 dark:text-zinc-400'
+                              dOn
+                                ? 'text-zinc-900 dark:text-zinc-50'
+                                : dEmpty
+                                  ? 'text-zinc-400 dark:text-zinc-600'
+                                  : 'text-zinc-500 dark:text-zinc-400'
                             }`}
                           >
                             <Box on={dOn} />
                             <span className={`min-w-0 flex-1 break-words leading-5 ${dOn ? 'font-medium' : ''}`}>
                               {d.department}
                             </span>
-                            <Count value={d.zoneCount} />
+                            <Count value={d.zoneCount} title={dEmpty ? t('hub_org_no_zones') : undefined} />
                           </button>
                         </li>
                       );

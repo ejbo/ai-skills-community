@@ -14,17 +14,17 @@ import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
 import { Magnetic, Stepper } from '@/components/motion';
 import { ZONE_LIMITS, isValidZoneSlug, slugifyAscii, zoneHref, type ZoneLink } from '@/lib/zones/shared';
-import { AccessOptions, LinksField, type AccessValue } from './ZoneSettingsForm';
+import type { ZoneOrgOptions } from '@/lib/zones/queries';
+import { AccessOptions, LinksField, OrgFields, type AccessValue } from './ZoneSettingsForm';
 import { BTN_PRIMARY, BTN_SECONDARY, CARD_CLS, HINT_CLS, INPUT_CLS, LABEL_CLS, PILL_MONO, readError } from './ui';
 
-interface ZoneMeta {
-  labs: string[];
-  departments: string[];
+interface ZoneMeta extends ZoneOrgOptions {
   canCreate: boolean;
+  /** The creator's own affiliation: `lab` = 研究所, `department` = 实验室. */
   me: { lab: string; department: string };
 }
 
-export function CreateZoneWizard({ facets }: { facets: { labs: string[]; departments: string[] } }) {
+export function CreateZoneWizard({ facets }: { facets: ZoneOrgOptions }) {
   const t = useTranslations('zones');
   const tl = useTranslations('labels');
   const router = useRouter();
@@ -40,8 +40,7 @@ export function CreateZoneWizard({ facets }: { facets: { labs: string[]; departm
   const [access, setAccess] = useState<AccessValue>({ visibility: 'public', joinPolicy: 'approval', allowGuestComments: true });
   const [descriptionMd, setDescriptionMd] = useState('');
   const [links, setLinks] = useState<ZoneLink[]>([]);
-  const [labs, setLabs] = useState(facets.labs);
-  const [departments, setDepartments] = useState(facets.departments);
+  const [org, setOrg] = useState<ZoneOrgOptions>(facets);
   const [busy, setBusy] = useState(false);
   const [slugError, setSlugError] = useState<string | null>(null);
 
@@ -53,8 +52,13 @@ export function CreateZoneWizard({ facets }: { facets: { labs: string[]; departm
         if (!res.ok) return;
         const meta = (await res.json()) as Partial<ZoneMeta>;
         if (cancelled) return;
-        if (Array.isArray(meta.labs) && meta.labs.length) setLabs(meta.labs);
-        if (Array.isArray(meta.departments) && meta.departments.length) setDepartments(meta.departments);
+        if (Array.isArray(meta.institutes) && meta.institutes.length) {
+          setOrg({
+            institutes: meta.institutes,
+            labsByInstitute: meta.labsByInstitute ?? {},
+            labs: Array.isArray(meta.labs) ? meta.labs : [],
+          });
+        }
         if (meta.me && !orgTouched) {
           setLab((v) => v || meta.me?.lab || '');
           setDepartment((v) => v || meta.me?.department || '');
@@ -184,45 +188,16 @@ export function CreateZoneWizard({ facets }: { facets: { labs: string[]; departm
       content: (
         <section className={`${CARD_CLS} space-y-4 p-4 sm:p-5`}>
           <p className="text-sm text-zinc-600 dark:text-zinc-400">{t('create_org_intro')}</p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className={LABEL_CLS}>{t('create_lab')}</label>
-              <input
-                list="create-zone-labs"
-                value={lab}
-                maxLength={ZONE_LIMITS.labMax}
-                onChange={(e) => {
-                  setOrgTouched(true);
-                  setLab(e.target.value);
-                }}
-                className={INPUT_CLS}
-              />
-              <datalist id="create-zone-labs">
-                {labs.map((v) => (
-                  <option key={v} value={v} />
-                ))}
-              </datalist>
-            </div>
-            <div>
-              <label className={LABEL_CLS}>{t('create_department')}</label>
-              <input
-                list="create-zone-departments"
-                value={department}
-                maxLength={ZONE_LIMITS.departmentMax}
-                onChange={(e) => {
-                  setOrgTouched(true);
-                  setDepartment(e.target.value);
-                }}
-                className={INPUT_CLS}
-              />
-              <datalist id="create-zone-departments">
-                {departments.map((v) => (
-                  <option key={v} value={v} />
-                ))}
-              </datalist>
-            </div>
-          </div>
-          <p className={HINT_CLS}>{t('create_org_hint')}</p>
+          <OrgFields
+            value={{ lab, department }}
+            options={org}
+            onChange={(next) => {
+              setOrgTouched(true);
+              setLab(next.lab);
+              setDepartment(next.department);
+            }}
+            idPrefix="create-zone-org"
+          />
         </section>
       ),
     },

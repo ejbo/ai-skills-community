@@ -2,6 +2,7 @@
 // in tests/zones-shared.test.ts). No env, no prisma, no next-intl here.
 
 import { POLL_TOKEN_GLOBAL_RE } from '@/lib/polls-shared';
+import { labsOf, mergeInstitutes } from '@/lib/org';
 
 // ── Slugs ────────────────────────────────────────────────────────────────────
 
@@ -205,6 +206,45 @@ export function isValidAccessCode(raw: string): boolean {
 // The hub filters zones/posts by 研究所 (top level) → 部门 (its children), both
 // MULTI-select. Values are the free-text Zone.lab / Zone.department strings, so
 // the tree is derived from live rows (lib/zones/queries.ts#zoneOrgTree).
+
+/**
+ * Merge the configured org tree (lib/org.ts) into a tree built from live 版块
+ * rows. THE one implementation — `zoneOrgTree` (the DB groupBy) and the hub's
+ * boards rail (an in-memory list) both go through it, so the two can never
+ * disagree about which 研究所 exist or what order their 实验室 come in.
+ *
+ * The rule: the org chart is the STRUCTURE and the rows only fill it in.
+ * Every configured 研究所 appears even at zero 版块, in configured order, and
+ * inside it every configured 实验室 appears in configured order; anything the
+ * rows carry that the config does not know is appended after, busiest first.
+ * Nothing is ever dropped — an off-tree 研究所 or 实验室 stays filterable.
+ */
+export function withConfiguredInstitutes(tree: readonly OrgLabNode[]): OrgLabNode[] {
+  const collate = (a: string, b: string) => a.localeCompare(b, 'zh-CN');
+  const byCount = (a: OrgDeptNode, b: OrgDeptNode) => b.zoneCount - a.zoneCount || collate(a.department, b.department);
+
+  const merge = (institute: string, live: OrgLabNode | undefined): OrgLabNode => {
+    const liveLabs = new Map((live?.departments ?? []).map((d) => [d.department, d.zoneCount] as const));
+    const departments: OrgDeptNode[] = [];
+    const taken = new Set<string>();
+    for (const lab of labsOf(institute)) {
+      const l = lab.trim();
+      if (!l || taken.has(l)) continue;
+      taken.add(l);
+      departments.push({ department: l, zoneCount: liveLabs.get(l) ?? 0 });
+    }
+    const extras = [...liveLabs.entries()]
+      .filter(([d]) => !taken.has(d))
+      .map(([department, zoneCount]) => ({ department, zoneCount }))
+      .sort(byCount);
+    return { lab: institute, zoneCount: live?.zoneCount ?? 0, departments: [...departments, ...extras] };
+  };
+
+  return mergeInstitutes(
+    tree.map((node) => ({ name: node.lab, node })),
+    (name, hit) => ({ name, node: merge(name, hit?.node) }),
+  ).map((e) => e.node);
+}
 
 export interface OrgDeptNode {
   department: string;

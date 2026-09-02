@@ -1,6 +1,7 @@
 // 技术专区 — zone home right rail (server component), FIXED order — Reddit's
 // rule that a board's sidebar reads the same everywhere:
-//   1. 关于     owner byline · excerpt · 更多 · facts · policy sentence · 加入
+//   1. 关于     owner byline · excerpt · 更多 · facts (研究所 / 实验室 / 创建于) ·
+//              policy sentence · 加入
 //   2. 本周动态  (ZonePulse — omitted when both counts are 0)
 //   3. 版规     (RulesAccordion — the `rules` wiki page; 添加版规 for wiki editors)
 //   4. 成员     count → /members · avatar wall · 本周新增
@@ -77,17 +78,20 @@ export async function ZoneSidebar({
           {t('sidebar_about_more')}
           <ArrowRight className="h-3 w-3 transition-transform duration-200 group-hover:translate-x-0.5" />
         </Link>
-        {/* 研究所 / 部门 in full — the grid's `minmax(0,1fr)` value column wraps, never truncates. */}
+        {/* 研究所 / 实验室 in full — the grid's `minmax(0,1fr)` value column wraps,
+            never truncates. The columns read backwards (`zone.lab` IS the 研究所,
+            `zone.department` the 实验室 under it — lib/org.ts), so the LABELS are
+            what carry the vocabulary; the stored Chinese values are never translated. */}
         <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-t border-zinc-200 pt-3 text-xs dark:border-zinc-800">
           {zone.lab && (
             <>
-              <dt className="text-zinc-400">{t('create_lab')}</dt>
+              <dt className="text-zinc-400">{t('home_org_institute')}</dt>
               <dd className="min-w-0 break-words text-zinc-700 dark:text-zinc-300">{zone.lab}</dd>
             </>
           )}
           {zone.department && (
             <>
-              <dt className="text-zinc-400">{t('create_department')}</dt>
+              <dt className="text-zinc-400">{t('home_org_laboratory')}</dt>
               <dd className="min-w-0 break-words text-zinc-700 dark:text-zinc-300">{zone.department}</dd>
             </>
           )}

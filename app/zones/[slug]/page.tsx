@@ -307,9 +307,10 @@ export default async function ZoneHomePage({
           <section className={`${CARD_CLS} p-5 sm:p-6`}>
             <h2 className={SECTION_TITLE_CLS}>{t('about_facts')}</h2>
             <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[10rem_minmax(0,1fr)]">
-              <dt className="text-zinc-500">{t('create_lab')}</dt>
+              {/* 研究所 → 实验室: `zone.lab` is the TOP level (lib/org.ts). */}
+              <dt className="text-zinc-500">{t('home_org_institute')}</dt>
               <dd>{zone.lab || <span className="text-zinc-400">—</span>}</dd>
-              <dt className="text-zinc-500">{t('create_department')}</dt>
+              <dt className="text-zinc-500">{t('home_org_laboratory')}</dt>
               <dd>{zone.department || <span className="text-zinc-400">—</span>}</dd>
               <dt className="text-zinc-500">{t('zone_visibility_label')}</dt>
               <dd>

@@ -15,6 +15,7 @@ import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { distinctDirectoryValues } from '@/lib/employee-directory';
+import { allLabs, instituteNames, labsOf, mergeInstitutes } from '@/lib/org';
 import { AUTHOR_IDENTITY_FIELDS, AUTHOR_IDENTITY_SELECT, toPublicAuthor, type PublicAuthor } from '@/lib/user-identity';
 import { resolveZoneAccess, type ZoneAccessRow, type ZoneSiteViewer } from './access';
 import { listZoneColumns } from './columns';
@@ -34,9 +35,11 @@ import {
   ZONE_VISIBILITIES,
   isValidZoneSlug,
   parseZoneLinks,
+  type OrgDeptNode,
   type OrgLabNode,
   type ZoneLink,
   type ZoneSort,
+  withConfiguredInstitutes,
 } from './shared';
 import { deleteZoneMediaFile, isValidZoneMediaKey, zoneMediaPublicUrl } from './storage';
 import type { ZoneCardView, ZoneDetailView, ZoneMemberView, ZoneMembershipView, ZoneRoleView } from './types';
@@ -437,36 +440,82 @@ export async function getZoneDetail(slug: string, viewer: ZoneSiteViewer): Promi
   };
 }
 
-/** Distinct 研究所 / 部门 values: live zones ∪ the employee roster. */
-export async function zoneFacets(): Promise<{ labs: string[]; departments: string[] }> {
-  const [zoneLabs, zoneDepts, dirLabs, dirDepts] = await Promise.all([
-    prisma.zone.findMany({
-      where: { deletedAt: null, lab: { not: '' } },
-      select: { lab: true },
-      distinct: ['lab'],
-    }),
-    prisma.zone.findMany({
-      where: { deletedAt: null, department: { not: '' } },
-      select: { department: true },
-      distinct: ['department'],
-    }),
-    distinctDirectoryValues('lab').catch(() => [] as string[]),
-    distinctDirectoryValues('department').catch(() => [] as string[]),
-  ]);
-  const collate = (a: string, b: string) => a.localeCompare(b, 'zh-CN');
-  const uniq = (values: string[]) => [...new Set(values.map((v) => v.trim()).filter(Boolean))].sort(collate);
-  return {
-    labs: uniq([...zoneLabs.map((r) => r.lab), ...dirLabs]),
-    departments: uniq([...zoneDepts.map((r) => r.department), ...dirDepts]),
-  };
+// ─── 组织架构 (研究所 → 实验室) ────────────────────────────────────────────────
+//
+// The vocabulary here is the one the owner uses: a 研究所 is the TOP level and
+// is COMPOSED OF 实验室. The columns are named the other way round for
+// historical reasons and are NOT being renamed (they are already in URLs,
+// bookmarks and notification links):
+//
+//   Zone.lab        = 研究所  (top level, `?lab=`,        OrgLabNode.lab)
+//   Zone.department = 实验室  (under it,  `?department=`, OrgDeptNode.department)
+//
+// `lib/org.ts` is the configured tree; live rows are the other half. Both
+// helpers below MERGE the two so an empty 研究所 is still visible (the org chart
+// exists before the 版块 do) and a value nobody configured still works — it just
+// sorts after the configured ones. Neither is a whitelist: nothing here can
+// refuse a save.
+
+interface OrgPair {
+  /** Zone.lab — the 研究所. */
+  lab: string;
+  /** Zone.department — the 实验室. */
+  department: string;
+}
+
+const collateOrg = (a: string, b: string) => a.localeCompare(b, 'zh-CN');
+
+/** Configured names first (in config order), then everything else, zh-CN sorted. */
+function configuredFirst(configured: readonly string[], extra: readonly string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const v of configured) {
+    const s = v.trim();
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  const rest = [...new Set(extra.map((v) => v.trim()).filter((v) => v && !seen.has(v)))].sort(collateOrg);
+  return [...out, ...rest];
 }
 
 /**
- * 研究所 → 部门 tree over the zones this viewer may read (ask #8 / the hub
- * filter rail). One groupBy: a zone carries exactly one (lab, department) pair,
- * so a lab's count is the sum of its departments' counts plus the rows that
- * name no 部门. Empty strings are dropped; both levels sort by count desc, then
- * name.
+ * The org tree from live 版块 rows, with the configured chart merged in.
+ *
+ * Building and merging are deliberately SEPARATE: this counts what the rows
+ * actually carry, and `withConfiguredInstitutes` (lib/zones/shared.ts) applies
+ * the org chart — the same function the hub's boards rail uses on an in-memory
+ * list, so a 研究所 can never appear in one rail and not the other.
+ */
+export function buildZoneOrgTree(rows: readonly (OrgPair & { count: number })[]): OrgLabNode[] {
+  const live = new Map<string, { zoneCount: number; departments: Map<string, number> }>();
+  for (const r of rows) {
+    const lab = (r.lab ?? '').trim();
+    if (!lab) continue; // a 版块 with no 研究所 belongs to no branch of the tree
+    const entry = live.get(lab) ?? { zoneCount: 0, departments: new Map<string, number>() };
+    entry.zoneCount += r.count;
+    const department = (r.department ?? '').trim();
+    if (department) entry.departments.set(department, (entry.departments.get(department) ?? 0) + r.count);
+    live.set(lab, entry);
+  }
+
+  const raw: OrgLabNode[] = [...live.entries()]
+    .map(([lab, entry]) => ({
+      lab,
+      zoneCount: entry.zoneCount,
+      departments: [...entry.departments.entries()].map(([department, zoneCount]) => ({ department, zoneCount })),
+    }))
+    // Busiest first, so an UNCONFIGURED 研究所 (appended by the merge) lands in
+    // a sensible order rather than whatever the groupBy happened to return.
+    .sort((a, b) => b.zoneCount - a.zoneCount || collateOrg(a.lab, b.lab));
+
+  return withConfiguredInstitutes(raw);
+}
+
+/**
+ * 研究所 → 实验室 tree over the zones this viewer may read (the hub filter rail).
+ * One groupBy: a zone carries exactly one (研究所, 实验室) pair, so an institute's
+ * count is the sum of its labs' counts plus the rows that name no 实验室.
  */
 export async function zoneOrgTree(viewer: ZoneSiteViewer): Promise<OrgLabNode[]> {
   const rows = await prisma.zone.groupBy({
@@ -474,29 +523,66 @@ export async function zoneOrgTree(viewer: ZoneSiteViewer): Promise<OrgLabNode[]>
     where: readableZoneWhere(viewer),
     _count: { _all: true },
   });
+  return buildZoneOrgTree(rows.map((r) => ({ lab: r.lab ?? '', department: r.department ?? '', count: r._count._all })));
+}
 
-  const labs = new Map<string, { zoneCount: number; departments: Map<string, number> }>();
-  for (const r of rows) {
-    const lab = (r.lab ?? '').trim();
-    if (!lab) continue;
-    const n = r._count._all;
-    const entry = labs.get(lab) ?? { zoneCount: 0, departments: new Map<string, number>() };
-    entry.zoneCount += n;
-    const department = (r.department ?? '').trim();
-    if (department) entry.departments.set(department, (entry.departments.get(department) ?? 0) + n);
-    labs.set(lab, entry);
+/**
+ * Option lists for the 组织归属 fields of the create wizard and 版块设置 — the
+ * configured tree first, widened by whatever live rows and the employee roster
+ * actually carry so no existing value is ever dropped from the picker.
+ */
+export interface ZoneOrgOptions {
+  /** 研究所 options (stored in `Zone.lab`), configured order first. */
+  institutes: string[];
+  /** 研究所 → its 实验室 (stored in `Zone.department`), configured order first. */
+  labsByInstitute: Record<string, string[]>;
+  /** Every 实验室 known anywhere — the datalist behind the 「其他」 escape hatch. */
+  labs: string[];
+}
+
+/** Pure half of `zoneFacets` (see tests/zones-org-tree.test.ts). */
+export function buildZoneOrgOptions(
+  pairs: readonly OrgPair[],
+  rosterInstitutes: readonly string[],
+  rosterLabs: readonly string[],
+): ZoneOrgOptions {
+  const liveLabsOf = new Map<string, Set<string>>();
+  const liveInstitutes: string[] = [];
+  const liveLabs: string[] = [];
+  for (const p of pairs) {
+    const institute = (p.lab ?? '').trim();
+    const lab = (p.department ?? '').trim();
+    if (institute) {
+      liveInstitutes.push(institute);
+      if (!liveLabsOf.has(institute)) liveLabsOf.set(institute, new Set());
+    }
+    if (lab) {
+      liveLabs.push(lab);
+      if (institute) liveLabsOf.get(institute)!.add(lab);
+    }
   }
 
-  const collate = (a: string, b: string) => a.localeCompare(b, 'zh-CN');
-  return [...labs.entries()]
-    .map(([lab, entry]) => ({
-      lab,
-      zoneCount: entry.zoneCount,
-      departments: [...entry.departments.entries()]
-        .map(([department, zoneCount]) => ({ department, zoneCount }))
-        .sort((a, b) => b.zoneCount - a.zoneCount || collate(a.department, b.department)),
-    }))
-    .sort((a, b) => b.zoneCount - a.zoneCount || collate(a.lab, b.lab));
+  const institutes = configuredFirst(instituteNames(), [...liveInstitutes, ...rosterInstitutes]);
+  const labsByInstitute: Record<string, string[]> = {};
+  for (const institute of institutes) {
+    labsByInstitute[institute] = configuredFirst(labsOf(institute), [...(liveLabsOf.get(institute) ?? [])]);
+  }
+  return { institutes, labsByInstitute, labs: configuredFirst(allLabs(), [...liveLabs, ...rosterLabs]) };
+}
+
+/** 研究所 / 实验室 pickers: the configured tree ∪ live 版块 ∪ the employee roster. */
+export async function zoneFacets(): Promise<ZoneOrgOptions> {
+  const [pairs, rosterInstitutes, rosterLabs] = await Promise.all([
+    prisma.zone.groupBy({ by: ['lab', 'department'], where: { deletedAt: null } }),
+    // The roster's own columns follow the same mapping: `lab` is the 研究所.
+    distinctDirectoryValues('lab').catch(() => [] as string[]),
+    distinctDirectoryValues('department').catch(() => [] as string[]),
+  ]);
+  return buildZoneOrgOptions(
+    pairs.map((p) => ({ lab: p.lab ?? '', department: p.department ?? '' })),
+    rosterInstitutes,
+    rosterLabs,
+  );
 }
 
 // ─── Zone CRUD ──────────────────────────────────────────────────────────────

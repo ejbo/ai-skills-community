@@ -6,21 +6,24 @@ import { zoneFacets } from '@/lib/zones/queries';
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/zones/meta — prefill for the create wizard: 研究所/部门 option lists
-// (existing zones ∪ the employee directory) and the viewer's own affiliation.
+// GET /api/zones/meta — prefill for the create wizard: the 研究所 → 实验室 tree
+// (lib/org.ts ∪ live 版块 ∪ the employee roster) and the viewer's own affiliation.
+// `me.lab` is the viewer's 研究所 and `me.department` their 实验室 — the same
+// backwards-reading columns the 版块 rows use (see lib/org.ts).
 export async function GET() {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
-  const [facets, canCreate, me] = await Promise.all([
+  const [org, canCreate, me] = await Promise.all([
     zoneFacets(),
     canUserCreateZone(session.user),
     prisma.user.findUnique({ where: { id: session.user.id }, select: { lab: true, department: true } }),
   ]);
 
   return NextResponse.json({
-    labs: facets.labs,
-    departments: facets.departments,
+    institutes: org.institutes,
+    labsByInstitute: org.labsByInstitute,
+    labs: org.labs,
     canCreate,
     me: { lab: me?.lab ?? '', department: me?.department ?? '' },
   });

@@ -2,12 +2,12 @@
 //
 // /zones no longer opens on a grid of 版块. Three URL-driven tabs:
 //   动态 (default) — the cross-zone post feed: only what this viewer may see,
-//                    最新 | 最热, filtered by 研究所 → 部门 / 栏目 / keyword
+//                    最新 | 最热, filtered by 研究所 → 实验室 / 栏目 / keyword
 //                    (post types are hidden everywhere — owner decision).
 //                    Page 1 is rendered here (listZoneFeed); the client leaf
 //                    appends through GET /api/zones/feed.
 //   版块          — every readable 版块, grouped under its 研究所, filtered by
-//                    the same 研究所 → 部门 rail (multi-select on both levels).
+//                    the same 研究所 → 实验室 rail (multi-select on both levels).
 //   我的版块       — unchanged: the zones the viewer owns or belongs to.
 //
 // All state lives in the URL (?tab=&sort=&lab=a,b&department=x,y&column=&q=)
@@ -18,12 +18,22 @@
 // readable set (bounded, BOARD_MAX pages of 60) and applies the multi-select
 // in memory — see the report note about pushing `labs[]`/`departments[]` down
 // into lib/zones/queries.ts if a deployment ever grows past a few hundred 版块.
+//
+// ORG VOCABULARY (lib/org.ts): a 研究所 is the TOP level and is composed of
+// 实验室. The columns read backwards and are NOT renamed — `Zone.lab` /
+// `?lab=` is the 研究所, `Zone.department` / `?department=` is the 实验室 —
+// because those params are already in bookmarks and notification links. Both
+// rails are passed through `withConfiguredInstitutes`, so a 研究所 that has no
+// 版块 yet is still listed (present and empty beats silently missing) and its
+// tile in the navbar leads somewhere that says so.
 
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { Star } from 'lucide-react';
 import { auth } from '@/lib/auth';
+import { labsOf } from '@/lib/org';
 import { canUserCreateZone, zoneSiteViewer, type ZoneSiteViewer } from '@/lib/zones/access';
+import { withConfiguredInstitutes } from '@/lib/zones/labs';
 import { featuredZones, listMyZones, listZones } from '@/lib/zones/queries';
 import { listZoneFeed, zoneHubFacets } from '@/lib/zones/post-queries';
 import {
@@ -36,7 +46,7 @@ import {
 import type { ZoneCardView } from '@/lib/zones/types';
 import { StaggerGrid, TabBar } from '@/components/motion';
 import { HubFeed } from './_components/HubFeed';
-import { ZoneBoards, type ZoneBoardGroup } from './_components/ZoneBoards';
+import { ZoneBoards, type EmptyInstitute, type ZoneBoardGroup } from './_components/ZoneBoards';
 import { ZoneCard } from './_components/ZoneCard';
 import { HubActiveChips, HubFilterRail, HubSortToggle } from './_components/ZoneFilters';
 import { ZoneHubHeader } from './_components/ZoneHubHeader';
@@ -118,6 +128,9 @@ function matchesQuery(zone: ZoneCardView, needle: string): boolean {
  * discoverable zone (a `members` zone is visible as a card you can ask to join),
  * so deriving the tree from the loaded set is what keeps the rail's numbers and
  * the grid in agreement — and it follows the search box for free.
+ *
+ * Only 研究所 that actually have a 版块 come out of here; the configured ones
+ * that do not are folded in afterwards by `withConfiguredInstitutes`.
  */
 function orgTreeFromZones(zones: ZoneCardView[]): OrgLabNode[] {
   const labs = new Map<string, { zoneCount: number; departments: Map<string, number> }>();
@@ -142,7 +155,7 @@ function orgTreeFromZones(zones: ZoneCardView[]): OrgLabNode[] {
     .sort((a, b) => b.zoneCount - a.zoneCount || collate(a.lab, b.lab));
 }
 
-/** Group by 研究所, biggest first; the unnamed bucket always sinks to the bottom. */
+/** Group by 研究所 (`Zone.lab`), biggest first; the unnamed bucket sinks to the bottom. */
 function groupByLab(zones: ZoneCardView[]): ZoneBoardGroup[] {
   const map = new Map<string, ZoneCardView[]>();
   for (const zone of zones) {
@@ -196,9 +209,12 @@ export default async function ZonesHubPage({ searchParams }: { searchParams: Sea
 
   let groups: ZoneBoardGroup[] = [];
   let visibleZones = 0;
-  let railOrg: OrgLabNode[] = facets.org;
+  // Both rails go through the same merge, and it is idempotent: whichever half
+  // of the tree the query already returned, every configured 研究所 ends up in
+  // the rail exactly once, in configured order, live extras after them.
+  let railOrg: OrgLabNode[] = withConfiguredInstitutes(facets.org);
   if (tab === 'boards' && board) {
-    railOrg = orgTreeFromZones(board.zones);
+    railOrg = withConfiguredInstitutes(orgTreeFromZones(board.zones));
     const filtered = filterZonesByOrg(board.zones, labs, departments);
     visibleZones = filtered.length;
     groups = groupByLab(filtered);
@@ -207,6 +223,15 @@ export default async function ZonesHubPage({ searchParams }: { searchParams: Sea
     visibleZones = filtered.length;
     groups = filtered.length > 0 ? [{ lab: '', zones: filtered }] : [];
   }
+
+  // A navbar tile for a 研究所 with no 版块 lands here. Only when the view is
+  // narrowed to exactly that one 研究所 (no 实验室, no keyword) is "this 研究所 is
+  // empty" the true answer — with anything else in play the generic
+  // 「没有符合当前筛选条件的版块」 is the honest one.
+  const emptyInstitute: EmptyInstitute | null =
+    tab === 'boards' && visibleZones === 0 && labs.length === 1 && departments.length === 0 && !q
+      ? { name: labs[0], labs: labsOf(labs[0]) }
+      : null;
 
   // ── Chrome ─────────────────────────────────────────────────────────────────
   // `sort` is shared but means different things per tab, so each href carries it
@@ -323,7 +348,7 @@ export default async function ZonesHubPage({ searchParams }: { searchParams: Sea
                   filtered={feedFiltered}
                 />
               ) : (
-                <ZoneBoards groups={groups} filtered={boardsFiltered} />
+                <ZoneBoards groups={groups} filtered={boardsFiltered} emptyInstitute={emptyInstitute} />
               )}
             </div>
           </div>

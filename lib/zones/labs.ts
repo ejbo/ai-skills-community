@@ -1,19 +1,42 @@
 // 研究所 tiles for the navbar's 技术专区 mega-menu.
 //
-// There is no 研究所 table: `Zone.lab` is free text (schema comment: "Display
-// only; never a join key"), so nothing in the database can carry an institute's
-// running order or its artwork. This module is the one place that gap is
-// closed — a curated list supplies the order and the picture, live rows supply
-// the counts, and either half works alone.
+// THIS MODULE NO LONGER OWNS THE LIST. `lib/org.ts` is the single source of
+// truth for the org tree — 研究所 (top level) → 实验室 (the labs that make one
+// up) — and this file only DRESSES it for the navbar: live 版块 counts, a
+// borrowed cover, the process-wide memo. It used to carry its own
+// `CURATED_LABS` array, which was a second list of the same six 研究所 that
+// could silently disagree with the filter rail and the create form.
+//
+// The columns still read backwards and are deliberately NOT renamed:
+//   Zone.lab        = 研究所 (the tile, the `?lab=` filter value)
+//   Zone.department = 实验室 (the level under it, `?department=`)
+// See the header of lib/org.ts. To add, rename or picture a 研究所, edit
+// `INSTITUTES` there — nothing in this file needs to change.
 
 import { prisma } from '@/lib/db';
+// The config↔live merge lives in lib/zones/shared.ts so the rails and the DB
+// tree cannot drift; re-exported here because the hub already imports it from
+// this module.
+export { withConfiguredInstitutes } from '@/lib/zones/shared';
+import { INSTITUTES, INSTITUTE_TILE_MAX, labsOf, mergeInstitutes } from '@/lib/org';
+import type { OrgLabNode } from '@/lib/zones/shared';
 
 export interface ZoneLabCard {
+  /**
+   * 研究所 name — stored verbatim in `Zone.lab`, and the `?lab=` filter value
+   * the tile links to. (The field keeps the column's historical name.)
+   */
   lab: string;
+  /**
+   * The 实验室 that make up this 研究所: the configured ones from lib/org.ts
+   * first, then any extra second-level value live 版块 actually carry. Shown
+   * under the tile's name so the grid reads as a hierarchy, not a flat list.
+   */
+  labs: string[];
   /** 版块 filed under this 研究所 — matches what `/zones?tab=boards&lab=…` renders. */
   zoneCount: number;
   /**
-   * Artwork. Either a curated public asset (`/labs/vision.jpg`) or a
+   * Artwork. Either a configured public asset (`/labs/vision.jpg`) or a
    * representative 版块 cover (`/api/zones/media/…`) — both root-relative, so
    * the renderer MUST wrap them in `withBasePath()` (CLAUDE.md pitfall #9:
    * `<img src>` is not covered by the fetch shim). Null ⇒ generated cover.
@@ -21,66 +44,24 @@ export interface ZoneLabCard {
   imageUrl: string | null;
   /** Where a borrowed cover came from, for the tile's alt text. */
   sampleZoneName: string | null;
-  /** Curated entries hold their slot even at zero 版块. */
-  curated: boolean;
+  /** In lib/org.ts's `INSTITUTES` — holds its slot even at zero 版块. */
+  configured: boolean;
 }
-
-/**
- * ─── EDIT ME ──────────────────────────────────────────────────────────────
- * 「技术专区」下拉里的六个研究所 —— 这里就是填的地方。 This array is the whole
- * answer: the six tiles below are what the navbar shows, in this order.
- *
- * TO RENAME A 研究所: change its `lab` string. That is the only edit needed —
- * the tile, its link and its 版块 count all follow.
- *
- *     { lab: '智能网络研究所' },
- *
- * TO GIVE IT A PICTURE: drop the file in `public/labs/` (see the README there
- * for the filenames these entries expect) and uncomment its `image` line:
- *
- *     { lab: '智能网络研究所', image: '/labs/network.jpg' },
- *
- * TO ADD OR REMOVE ONE: add or delete a line. `LAB_TILE_MAX` caps the grid at
- * six, so a seventh entry is simply never shown.
- *
- * Two rules that bite:
- *  • `lab` must match `Zone.lab` EXACTLY — it is compared as a string and it is
- *    what `/zones?lab=…` filters on, so a stray space makes a different bucket
- *    and the tile reads 「0 个版块」. Copy the value from a 版块's 研究所 field.
- *  • A 研究所 with no 版块 yet STILL gets a tile (curated entries hold their
- *    slot at `zoneCount: 0`), which is why the grid is six from day one and the
- *    names below can be filled in before any 版块 exists. Only the artwork
- *    degrades: `image` → a representative 版块 cover → a generated one.
- *
- * Leave the array empty and the grid is purely data-driven: every 研究所 that
- * has a 版块 today, busiest first.
- */
-export const CURATED_LABS: { lab: string; image?: string }[] = [
-  // ── The two that exist in the data today ──────────────────────────────────
-  { lab: '计算视觉研究所' }, // image: '/labs/vision.jpg'
-  { lab: '网络技术研究所' }, // image: '/labs/network.jpg'
-
-  // ── PLACEHOLDERS — rename these four ──────────────────────────────────────
-  // They are deliberately live (not commented out) so the grid is six tiles
-  // from the first day; each renders as an empty 研究所 until it is renamed and
-  // a 版块 is filed under it. Replace the string, keep the line.
-  // The leading digit is not decoration: with no picture a tile draws its own
-  // first character, and four 「研究所…」 placeholders would draw four identical
-  // 「研」 squares. Numbered, they read as the empty slots they are.
-  { lab: '3 号研究所（待填写）' }, // image: '/labs/lab-3.jpg'
-  { lab: '4 号研究所（待填写）' }, // image: '/labs/lab-4.jpg'
-  { lab: '5 号研究所（待填写）' }, // image: '/labs/lab-5.jpg'
-  { lab: '6 号研究所（待填写）' }, // image: '/labs/lab-6.jpg'
-];
 
 /** 版块 are team boards — the table is small by construction. Bounded anyway. */
 const LAB_SCAN_MAX = 500;
-/** How many tiles the grid will ever show. */
-export const LAB_TILE_MAX = 6;
+/**
+ * How many tiles the grid will ever show. Defers to the org config so the
+ * navbar can never disagree with `INSTITUTES` about how many 研究所 there are.
+ */
+export const LAB_TILE_MAX = INSTITUTE_TILE_MAX;
 const TTL_MS = 5 * 60_000;
+
+const collate = (a: string, b: string) => a.localeCompare(b, 'zh-CN');
 
 let cache: { at: number; data: ZoneLabCard[] } | null = null;
 let inflight: Promise<ZoneLabCard[]> | null = null;
+
 
 /**
  * The DISCOVERABLE gate (`deletedAt: null`), not `readableZoneWhere(viewer)`.
@@ -101,47 +82,59 @@ async function loadLabs(): Promise<ZoneLabCard[]> {
       { id: 'asc' },
     ],
     take: LAB_SCAN_MAX,
-    select: { lab: true, name: true, coverUrl: true },
+    select: { lab: true, department: true, name: true, coverUrl: true },
   });
 
-  const live = new Map<string, { zoneCount: number; coverUrl: string | null; sample: string | null }>();
+  const live = new Map<
+    string,
+    { zoneCount: number; coverUrl: string | null; sample: string | null; labs: Set<string> }
+  >();
   for (const r of rows) {
-    const lab = r.lab.trim();
-    if (!lab) continue; // same rule as zoneOrgTree
-    const e = live.get(lab) ?? { zoneCount: 0, coverUrl: null, sample: null };
+    const institute = r.lab.trim();
+    if (!institute) continue; // same rule as zoneOrgTree
+    const e = live.get(institute) ?? { zoneCount: 0, coverUrl: null, sample: null, labs: new Set<string>() };
     e.zoneCount += 1;
+    const lab = (r.department ?? '').trim();
+    if (lab) e.labs.add(lab);
     if (!e.coverUrl && r.coverUrl) {
       e.coverUrl = r.coverUrl;
       e.sample = r.name;
     }
-    live.set(lab, e);
+    live.set(institute, e);
   }
 
   const cards: ZoneLabCard[] = [];
   const taken = new Set<string>();
-  for (const c of CURATED_LABS) {
-    const lab = c.lab.trim();
-    if (!lab || taken.has(lab)) continue;
-    taken.add(lab);
-    const l = live.get(lab);
+  for (const inst of INSTITUTES) {
+    const institute = inst.name.trim();
+    if (!institute || taken.has(institute)) continue;
+    taken.add(institute);
+    const l = live.get(institute);
+    // Configured 实验室 lead (that is the org chart); anything the rows carry
+    // and the config does not name follows, so a tile never hides real data.
+    const configuredLabs = inst.labs.map((s) => s.trim()).filter(Boolean);
+    const known = new Set(configuredLabs);
+    const extras = [...(l?.labs ?? [])].filter((x) => !known.has(x)).sort(collate);
     cards.push({
-      lab,
+      lab: institute,
+      labs: [...configuredLabs, ...extras],
       zoneCount: l?.zoneCount ?? 0,
-      imageUrl: c.image ?? l?.coverUrl ?? null,
-      sampleZoneName: c.image ? null : (l?.sample ?? null),
-      curated: true,
+      imageUrl: inst.image ?? l?.coverUrl ?? null,
+      sampleZoneName: inst.image ? null : (l?.sample ?? null),
+      configured: true,
     });
   }
-  // Anything live that the curated list did not name, busiest first.
+  // Anything live that the org config did not name, busiest first.
   const rest = [...live.entries()]
-    .filter(([lab]) => !taken.has(lab))
-    .sort((a, b) => b[1].zoneCount - a[1].zoneCount || a[0].localeCompare(b[0], 'zh-CN'))
-    .map(([lab, l]) => ({
-      lab,
+    .filter(([institute]) => !taken.has(institute))
+    .sort((a, b) => b[1].zoneCount - a[1].zoneCount || collate(a[0], b[0]))
+    .map(([institute, l]) => ({
+      lab: institute,
+      labs: [...l.labs].sort(collate),
       zoneCount: l.zoneCount,
       imageUrl: l.coverUrl,
       sampleZoneName: l.sample,
-      curated: false,
+      configured: false,
     }));
 
   return [...cards, ...rest].slice(0, LAB_TILE_MAX);

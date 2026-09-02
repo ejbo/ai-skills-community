@@ -5,13 +5,19 @@
 // ALL state lives in the URL (`?tab=&sort=&lab=a,b&department=x,y&column=…&q=`)
 // through `serializeMultiParam`, so every view is linkable and the back button
 // works. There is no 类型 facet: post types are hidden everywhere (owner
-// decision) — the rail is 研究所/部门 + 栏目. One hook (`useHubFilters`) owns the read/write: it mirrors
+// decision) — the rail is 研究所/实验室 + 栏目. One hook (`useHubFilters`) owns the read/write: it mirrors
 // the URL into local state so a click flips instantly, then pushes inside a
 // transition — `pending` dims the results instead of blocking them.
 //
+// VOCABULARY: a 研究所 is the TOP level and is composed of 实验室. The params
+// keep the historical column names — `?lab=` is the 研究所 and `?department=`
+// is the 实验室 (lib/org.ts) — because they are already in bookmarks and
+// notification links. Only the LABELS say 实验室; the stored Chinese values are
+// never translated.
+//
 // Exports, all consumed by app/zones/page.tsx:
 //   HubSearchBox    — the single search box (posts in 动态, 版块 in 版块)
-//   HubFilterRail   — 研究所→部门 tree + 栏目, collapsible on mobile
+//   HubFilterRail   — 研究所→实验室 tree + 栏目, collapsible on mobile
 //   HubActiveChips  — removable chips for everything currently selected
 //   HubSortToggle   — 最新 / 最热 (feed) and 最近活跃 / 最新创建 / 成员最多 (版块)
 
@@ -185,9 +191,11 @@ export function HubFilterRail({
   const { state, commit, clearAll } = useHubFilters();
   const [open, setOpen] = useState(false);
   // Only count what this rail can actually change — 栏目 is feed-only.
+  // (`labs` = selected 研究所, `departments` = selected 实验室.)
   const active = state.labs.length + state.departments.length + (mode === 'feed' ? state.columns.length : 0);
 
-  const departmentsOf = useMemo(() => {
+  /** 研究所 → its 实验室, for the "dropping a parent drops its children" rule. */
+  const labsOfInstitute = useMemo(() => {
     const map = new Map<string, string[]>();
     for (const lab of org) map.set(lab.lab, lab.departments.map((d) => d.department));
     return map;
@@ -199,10 +207,10 @@ export function HubFilterRail({
       commit({ labs: [...state.labs, lab] });
       return;
     }
-    // Dropping a 研究所 drops the 部门 that only lived under it.
-    const owned = new Set(departmentsOf.get(lab) ?? []);
+    // Dropping a 研究所 drops the 实验室 that only lived under it.
+    const owned = new Set(labsOfInstitute.get(lab) ?? []);
     const stillReachable = new Set(
-      state.labs.filter((l) => l !== lab).flatMap((l) => departmentsOf.get(l) ?? []),
+      state.labs.filter((l) => l !== lab).flatMap((l) => labsOfInstitute.get(l) ?? []),
     );
     commit({
       labs: state.labs.filter((l) => l !== lab),
@@ -211,7 +219,7 @@ export function HubFilterRail({
   }
 
   function toggleDepartment(lab: string, department: string) {
-    // Picking a 部门 implies its 研究所 — otherwise the AND would return nothing.
+    // Picking a 实验室 implies its 研究所 — otherwise the AND would return nothing.
     const labs = state.labs.includes(lab) ? state.labs : [...state.labs, lab];
     commit({ labs, departments: toggle(state.departments, department) });
   }
@@ -302,14 +310,14 @@ export function HubActiveChips({ mode, className = '' }: { mode: 'feed' | 'board
   for (const lab of state.labs) {
     chips.push({
       key: `lab:${lab}`,
-      label: t('hub_chip_lab', { value: lab }),
+      label: t('hub_chip_institute', { value: lab }),
       remove: () => commit({ labs: state.labs.filter((v) => v !== lab) }),
     });
   }
   for (const d of state.departments) {
     chips.push({
       key: `dept:${d}`,
-      label: t('hub_chip_department', { value: d }),
+      label: t('hub_chip_laboratory', { value: d }),
       remove: () => commit({ departments: state.departments.filter((v) => v !== d) }),
     });
   }

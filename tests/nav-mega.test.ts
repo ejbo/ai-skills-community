@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { NAV_MEGA, labHref } from '@/components/nav-mega-items';
+import { INSTITUTES, INSTITUTE_TILE_MAX, instituteNames, labsOf } from '@/lib/org';
 import { PRIMARY_NAV } from '@/components/nav-items';
 import { CLIENT_MESSAGE_NAMESPACES } from '@/lib/i18n-client-namespaces';
 
@@ -150,22 +151,42 @@ describe('every label resolves in all three locales', () => {
   });
 });
 
-describe('CURATED_LABS answers 「这里我在哪里填一下」', () => {
-  it('ships six tiles, unique and trimmed, within the grid cap', async () => {
-    // lib/zones/labs.ts reaches Prisma for the live counts; the curated half is
-    // plain data, so stub the db rather than skip the check.
+describe('the 研究所 grid answers 「这里我在哪里填一下」', () => {
+  it('takes its list from lib/org.ts, not a second copy in lib/zones/labs.ts', async () => {
+    // The tile list USED to live in lib/zones/labs.ts as `CURATED_LABS` — a
+    // second source of truth for the same six 研究所, free to disagree with the
+    // hub rail and the create form. It now defers to `INSTITUTES`.
     vi.doMock('@/lib/db', () => ({ prisma: {} }));
-    const { CURATED_LABS, LAB_TILE_MAX } = await import('@/lib/zones/labs');
-    expect(CURATED_LABS.length).toBe(6);
-    expect(CURATED_LABS.length).toBeLessThanOrEqual(LAB_TILE_MAX);
-    const names = CURATED_LABS.map((l) => l.lab);
+    const labs = await import('@/lib/zones/labs');
+    expect('CURATED_LABS' in labs, 'CURATED_LABS must not come back').toBe(false);
+    expect(labs.LAB_TILE_MAX).toBe(INSTITUTE_TILE_MAX);
+    expect(INSTITUTES.length).toBeLessThanOrEqual(INSTITUTE_TILE_MAX);
+  });
+
+  it('ships six 研究所, unique and trimmed, each with its 实验室', () => {
+    expect(INSTITUTES.length).toBe(6);
+    const names = instituteNames();
     expect(new Set(names).size).toBe(names.length);
     for (const n of names) {
       expect(n).toBe(n.trim()); // a stray space is a different `Zone.lab` bucket
       expect(n.length).toBeGreaterThan(0);
     }
-    for (const l of CURATED_LABS) {
-      if (l.image) expect(l.image.startsWith('/labs/'), l.image).toBe(true);
+    for (const inst of INSTITUTES) {
+      if (inst.image) expect(inst.image.startsWith('/labs/'), inst.image).toBe(true);
+      for (const lab of inst.labs) expect(lab).toBe(lab.trim());
+      expect(labsOf(inst.name)).toEqual(inst.labs);
+    }
+  });
+
+  it('the panel reserves exactly one skeleton per configured 研究所', () => {
+    // NavMegaPanel cannot import lib/zones/labs.ts (Prisma), so it reads the cap
+    // from lib/org.ts instead of hard-coding 6. Pin that it still does.
+    const src = readFileSync(resolve(__dirname, '..', 'components', 'NavMegaPanel.tsx'), 'utf8');
+    expect(src).toContain('const LAB_SKELETONS = INSTITUTE_TILE_MAX;');
+    // lib/zones/labs.ts may only be reached for its TYPE (erased at build) —
+    // a value import would pull Prisma into the client bundle.
+    for (const line of src.split('\n').filter((l) => l.includes("from '@/lib/zones/labs'"))) {
+      expect(line.trim().startsWith('import type '), line).toBe(true);
     }
   });
 });

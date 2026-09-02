@@ -34,6 +34,7 @@ import { useTranslations } from 'next-intl';
 import { identityColor } from '@/components/Avatar';
 import { withBasePath } from '@/lib/base-path';
 import { useFinePointer } from '@/lib/motion';
+import { INSTITUTE_TILE_MAX } from '@/lib/org';
 import { NAV_MEGA, labHref, type MegaColumn, type MegaMenu } from '@/components/nav-mega-items';
 import type { ZoneLabCard } from '@/lib/zones/labs';
 
@@ -44,13 +45,13 @@ const CLOSE_DELAY = 180;
 const EDGE_PX = 12;
 const GAP_PX = 10;
 /**
- * Placeholder tiles shown while `/api/zones/labs` is in flight. Matches
- * `LAB_TILE_MAX` / the curated list in lib/zones/labs.ts by hand — that module
- * imports Prisma, so importing the constant from it would drag the whole client
- * bundle into the database layer. Wrong by one is cosmetic (the panel resizes,
- * and the ResizeObserver below re-centres it); an import would not be.
+ * Placeholder tiles shown while `/api/zones/labs` is in flight — one per
+ * configured 研究所. The count comes from lib/org.ts, which is import-free (no
+ * Prisma, no next-intl) exactly so the client may read the org tree.
+ * lib/zones/labs.ts — which DRESSES that tree with live counts — may still not
+ * be imported here: it reaches the database layer.
  */
-const LAB_SKELETONS = 6;
+const LAB_SKELETONS = INSTITUTE_TILE_MAX;
 
 /** Shared across every mount — the lab grid is fetched once per page load. */
 let labCache: ZoneLabCard[] | null = null;
@@ -371,9 +372,9 @@ function LabGrid() {
         {t('mega_labs')}
       </div>
       {/* Wrap rather than a fixed column count: a 3-column grid reserves empty
-          tracks when fewer 研究所 are curated than the cap, which stretched the
-          panel around nothing. `max-w` caps it at three per row, so the six
-          curated tiles land as two rows of three. */}
+          tracks when fewer 研究所 are configured than the cap, which stretched
+          the panel around nothing. `max-w` caps it at three per row, so the six
+          configured tiles land as two rows of three. */}
       <div className="flex max-w-[33rem] flex-wrap gap-2">
         {(labs ?? Array.from({ length: LAB_SKELETONS }, () => null)).map((lab, i) =>
           lab ? <LabTile key={lab.lab} lab={lab} /> : <LabSkeleton key={i} />,
@@ -389,13 +390,16 @@ function LabTile({ lab }: { lab: ZoneLabCard }) {
   // fallback: a name-hashed hue from the identity palette plus the first
   // character. Stable per 研究所, and colour on material is the contract.
   const hue = identityColor(lab.lab);
-  // A curated `image` in lib/zones/labs.ts is a filename someone types by hand
+  // A configured `image` in lib/org.ts is a filename someone types by hand
   // (public/labs/README.md names them), so a typo — or a picture not dropped in
   // yet — is the expected state, not an accident. Falling back to the generated
   // cover keeps a half-filled six-tile grid looking finished instead of showing
   // six broken-image glyphs. Reset on `imageUrl` so a later fix repaints.
   const [broken, setBroken] = useState(false);
   useEffect(() => setBroken(false), [lab.imageUrl]);
+  // Chinese org VALUES are never translated (the EVENT_CITIES precedent) — only
+  // the label around them is.
+  const labs = lab.labs.join(' · ');
   return (
     <Link
       href={labHref(lab.lab)}
@@ -422,8 +426,20 @@ function LabTile({ lab }: { lab: ZoneLabCard }) {
           </span>
         )}
       </div>
+      {/* A 研究所 is COMPOSED OF 实验室, so the tile says which ones — that
+          second line is what makes the grid read as a hierarchy instead of six
+          unrelated names. It is rendered even when empty (「实验室待补充」) so a
+          placeholder tile keeps the same height as a filled one; the full list
+          is in the `title` because it truncates at 168px. */}
       <div className="px-2.5 py-2">
         <div className="truncate text-[13px] font-medium">{lab.lab}</div>
+        <div
+          className="mt-0.5 truncate text-[11px] text-muted"
+          title={labs || undefined}
+        >
+          <span className="sr-only">{t('mega_lab_labs')}: </span>
+          {labs || t('mega_lab_labs_empty')}
+        </div>
         <div className="mt-0.5 text-[11px] tabular-nums text-muted">
           {t('mega_lab_zones', { count: lab.zoneCount })}
         </div>
@@ -438,6 +454,7 @@ function LabSkeleton() {
       <div className="shimmer aspect-[16/9]" />
       <div className="space-y-1.5 px-2.5 py-2">
         <div className="shimmer h-3 w-2/3 rounded" />
+        <div className="shimmer h-2.5 w-4/5 rounded" />
         <div className="shimmer h-2.5 w-1/3 rounded" />
       </div>
     </div>

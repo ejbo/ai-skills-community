@@ -16,7 +16,7 @@
 //   • /videos     — Geek Videos and Shorts (two boards, one nav link).
 //   • /discussion — 动态 (feed) and 讨论帖 (forum), the page's own two tabs.
 //   • /zones      — the 研究所 grid, which is a picture-led INDEX that exists
-//                   nowhere else in the chrome (edit lib/zones/labs.ts).
+//                   nowhere else in the chrome (edit `INSTITUTES` in lib/org.ts).
 // /skills, /library and /events have NO entry here on purpose, and a section
 // with no entry must behave as a plain link: `useNavMega` bails on an href it
 // cannot find, so hovering opens nothing. Adding a key back is a product
@@ -88,9 +88,10 @@ export const NAV_MEGA: Record<string, MegaMenu> = {
     ],
   },
 
-  // The 研究所 tiles come from lib/zones/labs.ts (curated order + artwork,
-  // live counts). The three links beside them are the hub's own tabs, the same
-  // "this section's real halves" rule the two panels above follow.
+  // The 研究所 tiles come from `INSTITUTES` in lib/org.ts (order, 实验室 and
+  // artwork), dressed with live 版块 counts by lib/zones/labs.ts. The three
+  // links beside them are the hub's own tabs, the same "this section's real
+  // halves" rule the two panels above follow.
   '/zones': {
     kind: 'labs',
     columns: [
@@ -105,7 +106,16 @@ export const NAV_MEGA: Record<string, MegaMenu> = {
   },
 };
 
-/** `/zones?tab=boards&lab=<name>` — comma-joined param, encoded once. */
+/**
+ * A 研究所 tile's destination: `/zones?tab=boards&lab=<研究所>`.
+ *
+ * `lab` is the 研究所 name — `Zone.lab` holds the TOP level (the column names
+ * read backwards; see lib/org.ts). Comma-joined and singular, never a repeated
+ * key: the hub reads it through `firstParam`, which drops everything after the
+ * first value. An institute with no 版块 yet lands on the boards tab's
+ * institute-specific empty state, which names it — that is deliberate, and it
+ * is why a placeholder tile is still a link.
+ */
 export function labHref(lab: string): string {
   const p = new URLSearchParams({ tab: 'boards', lab });
   return `/zones?${p.toString()}`;

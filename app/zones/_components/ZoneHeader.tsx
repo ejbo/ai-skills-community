@@ -1,6 +1,6 @@
 // 技术专区 — zone header band (server component), compact: cover (GlareHover)
 // or HairlineGrid fallback, icon, name (plain text — the title deliberately
-// does NOT animate), the 研究所 · 部门 line, tagline, ONE policy sentence, and
+// does NOT animate), the 研究所 · 实验室 line, tagline, ONE policy sentence, and
 // ZoneTabs (which carry the counts). Right cluster = LeadsStack (who runs this
 // place — rendered on locked zones too, unlinked there because the members
 // directory bounces a non-reader back here) · JoinButton · ZoneManageMenu. The old
@@ -41,6 +41,9 @@ export interface ZoneHeaderProps {
 
 export async function ZoneHeader({ zone, activeTab, leadCount }: ZoneHeaderProps) {
   const t = await getTranslations('zones');
+  // 研究所 · 实验室 — `zone.lab` is the TOP level and `zone.department` the
+  // 实验室 under it (lib/org.ts: the column names read backwards). Values are
+  // stored Chinese and are never translated; only the sr-only label is.
   const org = [zone.lab, zone.department].filter(Boolean).join(' · ');
   const policy = t(`home_policy_${zone.visibility}_${zone.joinPolicy}`);
 
@@ -87,7 +90,7 @@ export async function ZoneHeader({ zone, activeTab, leadCount }: ZoneHeaderProps
           </div>
         </div>
 
-        {/* 研究所 · 部门 — its own full-width row right under the name so the whole
+        {/* 研究所 · 实验室 — its own full-width row right under the name so the whole
             path fits and simply wraps. It sits OUTSIDE the name block on purpose:
             that block is bottom-aligned with the icon that overlaps the cover, so a
             third line there would push the title up onto the cover image. */}

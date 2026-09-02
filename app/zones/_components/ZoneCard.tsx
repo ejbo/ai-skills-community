@@ -30,6 +30,7 @@ export function ZoneCard({ zone, variant = 'grid' }: { zone: ZoneCardView; varia
   const tl = useTranslations('labels');
   const locale = useLocale();
   const href = zoneHref(zone.slug);
+  // [研究所, 实验室] — stored Chinese values, never translated.
   const org = [zone.lab, zone.department].filter(Boolean);
   const hue = zoneHue(zone.name);
 
@@ -108,7 +109,11 @@ export function ZoneCard({ zone, variant = 'grid' }: { zone: ZoneCardView; varia
         {org.length > 0 && (
           <p className="mt-2.5 flex items-start gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
             <Building2 className="mt-[3px] h-3.5 w-3.5 shrink-0" />
-            {/* 研究所 · 部门 in full — the org path is the metadata people scan for (ask #3). */}
+            {/* 研究所 · 实验室 in full — the org path is the metadata people scan
+                for (ask #3). `zone.lab` is the 研究所 and `zone.department` the
+                实验室 under it (lib/org.ts); the icon alone says nothing to a
+                screen reader, so the row carries the header's own label. */}
+            <span className="sr-only">{t('zone_org_label')}: </span>
             <span className="min-w-0 break-words">{org.join(' · ')}</span>
           </p>
         )}
