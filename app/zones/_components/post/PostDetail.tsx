@@ -1,7 +1,7 @@
 'use client';
 
 // Post detail composition: article column (draft banner, the sticky
-// PostContextStrip, PostHeader, body via ZoneMarkdown size="article",
+// PostHeader, body via ZoneMarkdown size="article",
 // attachments on mobile, PostActionBar, comments, related) and the xl: right
 // rail (PostRail — the full rail, or a 40 px strip while the docked preview
 // panel narrows the page). The grid follows the page BAND the preview host
@@ -24,7 +24,6 @@ import type { ZoneAccess, ZoneCurrentUser, ZonePostCardView, ZonePostDetailView 
 import { PostActionBar } from './PostActionBar';
 import { PostAttachmentsPanel } from './PostAttachmentsPanel';
 import { PostComments } from './PostComments';
-import { PostContextStrip } from './PostContextStrip';
 import { PostHeader } from './PostHeader';
 import { PostRail } from './PostRail';
 import { PostUnlock } from './PostUnlock';
@@ -96,7 +95,6 @@ export function PostDetail({
         )}
 
         {/* First in the column so `sticky` pins it at the top; zero-height until the h1 leaves. */}
-        <PostContextStrip post={post} zoneSlug={zone.slug} titleRef={titleRef} lb={lb} commentCount={commentCount} onCommentJump={jumpToComments} />
 
         <PostHeader post={post} zone={zone} leadRoles={leadRoles} titleRef={titleRef} />
 

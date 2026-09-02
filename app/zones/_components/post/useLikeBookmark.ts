@@ -2,7 +2,7 @@
 
 // ONE optimistic like / bookmark state per post page, shared by every surface
 // that can toggle it (the end-of-article PostActionBar and the sticky
-// PostContextStrip). Lifted verbatim from the action bar: optimistic paint →
+// the action bar). Lifted verbatim from it: optimistic paint →
 // authoritative reconcile from the route's re-read → rollback on failure;
 // 401 rolls back and sends the viewer to login; bookmarking toasts. Created
 // once in PostDetail and handed DOWN — a second instance would let the two

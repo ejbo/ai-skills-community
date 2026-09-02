@@ -6,7 +6,7 @@
 // scroll-down and returns on scroll-up (M14) — inline on desktop.
 //
 // Like / bookmark state is NOT owned here: `lb` is the page's single
-// optimistic useLikeBookmark state, shared with the sticky PostContextStrip,
+// optimistic useLikeBookmark state (a hook so a second surface could share it),
 // so a tap on either surface paints both.
 //
 // 设为公告 / 取消公告 is the ONE place the UI still writes `type`: `announcement`

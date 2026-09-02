@@ -42,7 +42,7 @@ export function PostHeader({
   zone: { slug: string; name: string };
   /** handle → 主版主 / 版主 (built by the RSC page). */
   leadRoles?: LeadRoles;
-  /** Handed to the <h1> so PostContextStrip can watch it leave the viewport. */
+  /** Optional ref on the <h1>, kept for callers that want to observe it. */
   titleRef?: RefObject<HTMLHeadingElement>;
 }) {
   const t = useTranslations('zones');

@@ -14,9 +14,10 @@ import { NAV_BAR_HEIGHT_PX, setNavBarVisible, useNavBarHeldHidden, useNavBarHeld
 //     usable beside the panel. `hidden = heldHidden || (autoHidden && !heldVisible)`
 //     — an explicit hide (expand / maximize / composer) beats a visible hold.
 //   - The resolved state is published back (`setNavBarVisible`) and mirrored
-//     into `--nav-offset` on <html> for the ONE consumer that must follow the
-//     bar's slide (PostContextStrip). Rails, the dock and the TOC use constant
-//     offsets and never move on scroll reversal.
+//     into `--nav-offset` on <html> for any surface that must follow the bar's
+//     slide. Nothing reads it today (the 帖子 scroll strip that did is gone);
+//     it stays because it is the one correct hook for that. Rails, the dock and
+//     the TOC use constant offsets and never move on scroll reversal.
 export function NavBarShell({ children }: { children: ReactNode }) {
   const [autoHidden, setHidden] = useState(false);
   const heldHidden = useNavBarHeldHidden();

@@ -11,8 +11,12 @@
 //     is open (search / avatar / bell stay reachable beside the panel, and the
 //     panel's top offset is a constant instead of a bobbing rail).
 //   - The resolved visibility, published by NavBarShell alone (`setNavBarVisible`),
-//     for the few surfaces that follow the bar (`PostContextStrip` via the
-//     `--nav-offset` CSS variable NavBarShell writes next to it).
+//     for any surface that has to follow the bar's slide, alongside the
+//     `--nav-offset` CSS variable NavBarShell writes next to it. Nothing
+//     consumes either today: the帖子 scroll strip that did was removed (a second
+//     sticky bar over an article is chrome the reader did not ask for). Both are
+//     kept because they are the only correct way to follow the bar — a new
+//     surface must read them rather than re-derive scroll direction.
 // Precedence, in NavBarShell: `hidden = heldHidden || (autoHidden && !heldVisible)`
 // — an explicit hide always wins over a visible hold. Holds are counted so
 // nested / overlapping holders compose; each release is idempotent.
