@@ -521,6 +521,25 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
     `--reader-accent-rgb` in `read/reader.css` (a deep book-blue, lifted for the dark page) drive
     in-article links, blockquote rules, prose selection and citation chips. They follow the READER
     theme, never the site's — a wall of ink is the wrong answer for a reading surface.
+  - **投票活动 (`/votes`) is the second such surface** (2026-09-02, owner decision 「投票这里主要是
+    黑白色，不太符合投票的这个风格」). Its palette is `app/votes/_components/vote-theme.ts` — the
+    ONLY place a vote colour is defined — and there the colour is SEMANTIC, one state per card, not
+    decoration: 玫红 rose = 投票这个动作 (未投的 CTA + 提交投票 + 剩余票数), 琥珀 amber = 选了还没
+    提交 / 还没开投, 翠绿 emerald = 已提交, 金 gold = 名次与荣誉 (奖牌用渐变，所以琥珀不会同时表示
+    「待提交」和「第一名」). Discipline is what keeps it from looking cheap: **only the CTA is a solid
+    saturated block**, both feedback states are tinted-fill + strong text, and the rule chips /
+    search / sort stay ink — metadata never takes colour, which is what leaves the coloured things
+    meaning something. The card 投票 button is `h-9/13px` on purpose (the old `h-8/11px` ink pill
+    was invisible in a grid of forty). Do NOT "restore" these to zinc-900 for consistency with the
+    rest of the app, and do not add a fifth hue.
+  - Adding a vote fires ONE 620ms confetti burst (`VoteBurst.tsx` + the `vote-confetti` /
+    `vote-ripple` / `vote-pop` keyframes in `globals.css` — keyframes must live there, not in
+    tailwind.config, or they are silently dropped). It fires only on a real `+1` (never on 撤票,
+    提交 or paging), the 12 particles are hard-coded rather than random (identical every time =
+    designed, not jittery), it only flies UPWARD because the card's `.cv-auto` paint containment
+    clips anything leaving the card box, and it renders nothing under `prefers-reduced-motion`.
+    The `popId` window in `VoteGallery` (700 ms) must stay longer than the animation or particles
+    are unmounted mid-flight.
 - **首页 (signed-in home)**: `app/_components/CommunityHome.tsx`. Band order is
   hero (greeting + 今日 figures, **GitHub 热榜**, shorts player) → 社区此刻 → 热门 Skills → 热门视频;
   热门 Skills deliberately sits BELOW 社区此刻 (it used to own the hero-left slot the 热榜 now has).

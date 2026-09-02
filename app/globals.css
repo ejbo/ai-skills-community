@@ -139,6 +139,38 @@
   .animate-grid-drift {
     animation: grid-drift 60s linear infinite;
   }
+
+  /* ── 投票庆祝 (app/votes) ──────────────────────────────────────────────
+     投一票是这个产品里少数几个「值得庆祝一下」的动作，所以它有一发 620ms 的
+     纸屑。三条约束让它不至于变成廉价特效：只在**真的加了一票**时放（撤票、
+     提交、翻页都不放）、粒子是**写死的 12 颗**（不是 random —— 每次一样才像
+     设计过的，而不是抖动）、并且整发动画都在卡片自己的盒子里向上炸，因为
+     `.cv-auto` 的 paint containment 会把越界的粒子裁掉。
+     动画类必须写在这里而不是 tailwind.config：keyframes 只有在对应的
+     `animate-*` 类被扫到时才会被生成，config 里那份会静默丢失（见 shimmer）。 */
+  .vote-burst {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    height: 0;
+    width: 0;
+    pointer-events: none;
+  }
+  .vote-burst > i {
+    position: absolute;
+    left: 0;
+    top: 0;
+    display: block;
+    opacity: 0;
+    animation: vote-confetti 620ms cubic-bezier(0.16, 0.8, 0.36, 1) both;
+    animation-delay: var(--vb-delay, 0ms);
+  }
+  .vote-ripple {
+    animation: vote-ripple 560ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+  }
+  .animate-vote-pop {
+    animation: vote-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
 }
 
 @keyframes rise {
@@ -149,6 +181,53 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* Keyframes for the 投票庆祝 classes above (app/votes/_components/VoteBurst).
+   `--vb-dx/--vb-dy/--vb-rot` are set inline per particle; the 60% → 100% leg is
+   the little fall-back-down that keeps it reading as 纸屑 rather than a starburst. */
+@keyframes vote-confetti {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.3) rotate(0deg);
+  }
+  14% {
+    opacity: 1;
+  }
+  60% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--vb-dx)), calc(-50% + var(--vb-dy))) scale(1)
+      rotate(calc(var(--vb-rot) * 0.7));
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--vb-dx) * 1.14), calc(-50% + var(--vb-dy) + 16px))
+      scale(0.86) rotate(var(--vb-rot));
+  }
+}
+
+@keyframes vote-ripple {
+  from {
+    opacity: 0.55;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+
+@keyframes vote-pop {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.16);
+  }
+  70% {
+    transform: scale(0.97);
   }
 }
 

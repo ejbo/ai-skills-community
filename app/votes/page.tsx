@@ -103,7 +103,7 @@ export default async function VotesPage({ searchParams }: { searchParams: Search
       {showFeatured && featured.length > 0 && (
         <section className="mb-8">
           <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
-            <Star className="h-4 w-4" />
+            <Star className="h-4 w-4 fill-current text-amber-500" />
             {t('featured')}
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

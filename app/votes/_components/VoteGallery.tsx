@@ -69,6 +69,23 @@ import {
   type BallotRules,
 } from '@/lib/votes/shared';
 import { Countdown } from './Countdown';
+import { VoteBurst } from './VoteBurst';
+import {
+  BADGE_DONE,
+  BADGE_PENDING,
+  BUDGET_LEFT,
+  BUDGET_OUT,
+  RANK_MEDAL,
+  RANK_PLAIN,
+  STATUS_LIVE,
+  STATUS_OVER,
+  STATUS_SOON,
+  VOTE_CTA,
+  VOTE_DONE,
+  VOTE_LOCKED,
+  VOTE_PENDING,
+  VOTE_PENDING_DASHED,
+} from './vote-theme';
 import { EntryComments } from './EntryComments';
 import { SubmitDialog } from './SubmitDialog';
 import { loginHref } from '@/lib/auth/callback-path';
@@ -179,12 +196,6 @@ function mergeView(prev: VoteActivityView, next: VoteActivityView): VoteActivity
   return { ...next, entries };
 }
 
-const RANK_STYLES: Record<number, string> = {
-  1: 'bg-amber-400 text-zinc-900',
-  2: 'bg-zinc-300 text-zinc-900',
-  3: 'bg-amber-700/80 text-white',
-};
-
 // Module-level leaves — defining these inside VoteGallery would mint a new
 // component type per render and remount their subtrees on every state change.
 
@@ -276,15 +287,10 @@ interface VoteButtonProps {
   onStep: StepFn;
 }
 
-// Three-level visual language: light outline = 投票 (not selected) → strong
-// black outline = 已选 (in the draft, not yet submitted) → solid black = 已投
-// (submitted). Pending 撤回 is a dashed outline with an undo affordance.
-const BTN_NONE =
-  'border border-zinc-300 bg-white/90 text-zinc-800 hover:border-zinc-500 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900/90 dark:text-zinc-100 dark:hover:border-zinc-400';
-const BTN_PENDING =
-  'border-2 border-zinc-900 bg-white text-zinc-900 hover:bg-zinc-100 dark:border-zinc-100 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:bg-zinc-900';
-const BTN_COMMITTED = 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900';
-
+// 四态视觉语言（配色语义见 ./vote-theme）：实心玫红 = 投票（未投，整屏唯一的
+// 高饱和 CTA）→ 淡琥珀 = 已选（在草稿里，还没提交）→ 淡翠绿 = 已投（已落库）；
+// 待撤回是琥珀虚线 + 恢复入口。**不要**把这四态改回黑白：一页几十张卡全是墨色
+// 按钮时，既看不出哪张投过，也看不出主行动在哪 —— 这正是这次改版要修的。
 function VoteButton({ entry, draftCount, ctx, pop, size = 'sm', onStep }: VoteButtonProps) {
   const t = useTranslations('votes');
   const committed = entry.myVotes;
@@ -294,135 +300,149 @@ function VoteButton({ entry, draftCount, ctx, pop, size = 'sm', onStep }: VoteBu
   // committed count is 撤票 and needs allowRevoke.
   const canRemove =
     ctx.open && ctx.canVote && draftCount > 0 && (draftCount > committed || ctx.allowRevoke) && !ctx.submitting;
-  const base = size === 'lg' ? 'h-10 px-5 text-sm rounded-full' : 'h-8 px-3 text-xs rounded-full';
+  // 卡片上的按钮做到 h-9/13px：原来的 h-8/11px 在一屏几十张卡里根本不显眼，
+  // 而这一格就是整个页面唯一要人点的东西。三种状态共用同一尺寸，切换时不跳版。
+  const base = size === 'lg' ? 'h-10 px-5 text-sm rounded-full' : 'h-9 px-4 text-[13px] rounded-full';
+  // 加票那一下的按钮自身弹跳。纸屑归 <VoteBurst/>，两者共用同一个 pop 窗口。
+  const popClass = pop ? 'animate-vote-pop' : '';
 
-  if (!ctx.open) {
-    if (committed > 0) {
-      // Ended / not started: state only, no action.
-      return (
-        <span className={`inline-flex items-center gap-1 ${base} ${BTN_COMMITTED} font-medium`}>
-          <Check className="h-3.5 w-3.5" />
-          {t('my_votes_n', { count: committed })}
-        </span>
-      );
-    }
-    // 未开始：留一个置灰的按钮位，让人看得出“到点就能投”，而不是以为这个活动
-    // 根本不能投票。已结束则什么都不显示（名次/票数已经说明一切）。
-    return ctx.notStarted ? (
-      <button
-        type="button"
-        disabled
-        title={t('not_started_hint')}
-        // 自己的一套 class，不复用 BTN_NONE —— 那上面挂了 hover: 变体，禁用态跟着
-        // 亮一下会让人以为还能点。
-        className={`inline-flex cursor-not-allowed items-center gap-1.5 ${base} border border-dashed border-zinc-300 font-medium text-zinc-400 dark:border-zinc-700 dark:text-zinc-500`}
-      >
-        <Clock className="h-3.5 w-3.5" />
-        {t('vote_not_started')}
-      </button>
-    ) : null;
-  }
-
-  // 撤回待提交：the committed vote(s) are dropped in the draft — offer 恢复.
-  if (draftCount === 0 && committed > 0) {
-    return (
-      <button
-        type="button"
-        title={t('restore_vote')}
-        disabled={ctx.submitting}
-        onClick={(e) => {
-          e.stopPropagation();
-          onStep(entry.id, 1);
-        }}
-        className={`inline-flex items-center gap-1.5 ${base} border border-dashed border-zinc-400 text-zinc-500 transition hover:border-zinc-700 hover:text-zinc-800 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-400 dark:hover:border-zinc-300 dark:hover:text-zinc-100`}
-      >
-        <RotateCcw className="h-3.5 w-3.5" />
-        {t('revoke_pending')}
-      </button>
-    );
-  }
-
-  if (ctx.maxPerEntry > 1 && draftCount > 0) {
-    return (
-      <span
-        className={`inline-flex items-center gap-1 rounded-full transition ${pending ? BTN_PENDING : BTN_COMMITTED} ${
-          size === 'lg' ? 'h-10 px-2' : 'h-8 px-1.5'
-        }`}
-        title={pending ? t('selected_pending') : undefined}
-      >
+  const content = (() => {
+    if (!ctx.open) {
+      if (committed > 0) {
+        // Ended / not started: state only, no action.
+        return (
+          <span className={`inline-flex items-center gap-1 ${base} ${VOTE_DONE} font-semibold`}>
+            <Check className="h-3.5 w-3.5" />
+            {t('my_votes_n', { count: committed })}
+          </span>
+        );
+      }
+      // 未开始：留一个置灰的按钮位，让人看得出“到点就能投”，而不是以为这个活动
+      // 根本不能投票。已结束则什么都不显示（名次/票数已经说明一切）。
+      return ctx.notStarted ? (
         <button
           type="button"
-          aria-label={t('revoke')}
-          disabled={!canRemove}
-          onClick={(e) => {
-            e.stopPropagation();
-            onStep(entry.id, -1);
-          }}
-          className="flex h-6 w-6 items-center justify-center rounded-full transition hover:bg-black/10 disabled:opacity-40 dark:hover:bg-white/15"
+          disabled
+          title={t('not_started_hint')}
+          // 自己的一套 class，不复用 VOTE_CTA —— 那上面挂了 hover: 变体，禁用态跟着
+          // 亮一下会让人以为还能点。
+          className={`inline-flex items-center gap-1.5 ${base} ${VOTE_LOCKED} font-medium`}
         >
-          <Minus className="h-3.5 w-3.5" />
+          <Clock className="h-3.5 w-3.5" />
+          {t('vote_not_started')}
         </button>
-        <span className={`min-w-[1ch] text-center text-xs font-semibold tabular-nums ${pop ? 'animate-pulse' : ''}`}>
-          {draftCount}
-        </span>
+      ) : null;
+    }
+
+    // 撤回待提交：the committed vote(s) are dropped in the draft — offer 恢复.
+    if (draftCount === 0 && committed > 0) {
+      return (
         <button
           type="button"
-          aria-label={t('vote')}
-          disabled={!canAdd}
+          title={t('restore_vote')}
+          disabled={ctx.submitting}
           onClick={(e) => {
             e.stopPropagation();
             onStep(entry.id, 1);
           }}
-          className="flex h-6 w-6 items-center justify-center rounded-full transition hover:bg-black/10 disabled:opacity-40 dark:hover:bg-white/15"
+          className={`inline-flex items-center gap-1.5 ${base} ${VOTE_PENDING_DASHED} font-medium`}
         >
-          <Plus className="h-3.5 w-3.5" />
+          <RotateCcw className="h-3.5 w-3.5" />
+          {t('revoke_pending')}
         </button>
-      </span>
-    );
-  }
+      );
+    }
 
-  if (draftCount > 0) {
+    if (ctx.maxPerEntry > 1 && draftCount > 0) {
+      return (
+        <span
+          className={`inline-flex items-center gap-1 rounded-full transition ${pending ? VOTE_PENDING : VOTE_DONE} ${
+            size === 'lg' ? 'h-10 px-2' : 'h-9 px-2'
+          } ${popClass}`}
+          title={pending ? t('selected_pending') : undefined}
+        >
+          <button
+            type="button"
+            aria-label={t('revoke')}
+            disabled={!canRemove}
+            onClick={(e) => {
+              e.stopPropagation();
+              onStep(entry.id, -1);
+            }}
+            className="flex h-6 w-6 items-center justify-center rounded-full transition hover:bg-black/10 disabled:opacity-40 dark:hover:bg-white/15"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          <span className="min-w-[1ch] text-center text-[13px] font-bold tabular-nums">{draftCount}</span>
+          <button
+            type="button"
+            aria-label={t('vote')}
+            disabled={!canAdd}
+            onClick={(e) => {
+              e.stopPropagation();
+              onStep(entry.id, 1);
+            }}
+            className="flex h-6 w-6 items-center justify-center rounded-full transition hover:bg-black/10 disabled:opacity-40 dark:hover:bg-white/15"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </span>
+      );
+    }
+
+    if (draftCount > 0) {
+      return (
+        <button
+          type="button"
+          disabled={!canRemove}
+          title={canRemove ? (pending ? t('unselect') : t('revoke')) : t('rule_no_revoke')}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (canRemove) onStep(entry.id, -1);
+          }}
+          className={`inline-flex items-center gap-1.5 ${base} font-semibold transition ${
+            pending ? VOTE_PENDING : `${VOTE_DONE} ${canRemove ? '' : 'cursor-default'}`
+          } ${popClass} disabled:opacity-100`}
+        >
+          <Check className="h-3.5 w-3.5" />
+          {pending ? t('selected') : t('voted')}
+        </button>
+      );
+    }
+
     return (
       <button
         type="button"
-        disabled={!canRemove}
-        title={canRemove ? (pending ? t('unselect') : t('revoke')) : t('rule_no_revoke')}
+        // 匿名用户保持可点（/votes 有登录墙，纯防御）— 点击走 step 的登录跳转；
+        // 已登录但无 W3 才置灰并提示。
+        disabled={ctx.loggedIn && !canAdd}
+        title={
+          ctx.loggedIn && !ctx.canVote
+            ? t('toast_huawei_required')
+            : ctx.loggedIn && !canAdd && !ctx.budgetLeft
+              ? t('toast_budget_exhausted')
+              : undefined
+        }
         onClick={(e) => {
           e.stopPropagation();
-          if (canRemove) onStep(entry.id, -1);
+          onStep(entry.id, 1);
         }}
-        className={`inline-flex items-center gap-1.5 ${base} font-medium transition duration-200 ${
-          pending ? BTN_PENDING : `${BTN_COMMITTED} ${canRemove ? 'hover:bg-zinc-700 dark:hover:bg-zinc-300' : 'cursor-default'}`
-        } ${pop ? 'scale-110' : 'scale-100'} disabled:opacity-100`}
+        className={`inline-flex items-center gap-1.5 ${base} ${VOTE_CTA} font-semibold`}
       >
-        <Check className="h-3.5 w-3.5" />
-        {pending ? t('selected') : t('voted')}
+        <Plus className="h-3.5 w-3.5" />
+        {t('vote')}
       </button>
     );
-  }
+  })();
 
+  if (!content) return null;
+  // 纸屑要盖在按钮上、又不能吃掉点击，所以外面套一层 relative 壳。壳是
+  // inline-flex 且零内边距，不改变原来的行内排版。
   return (
-    <button
-      type="button"
-      // 匿名用户保持可点（/votes 有登录墙，纯防御）— 点击走 step 的登录跳转；
-      // 已登录但无 W3 才置灰并提示。
-      disabled={ctx.loggedIn && !canAdd}
-      title={
-        ctx.loggedIn && !ctx.canVote
-          ? t('toast_huawei_required')
-          : ctx.loggedIn && !canAdd && !ctx.budgetLeft
-            ? t('toast_budget_exhausted')
-            : undefined
-      }
-      onClick={(e) => {
-        e.stopPropagation();
-        onStep(entry.id, 1);
-      }}
-      className={`inline-flex items-center gap-1.5 ${base} ${BTN_NONE} font-medium transition`}
-    >
-      <Plus className="h-3.5 w-3.5" />
-      {t('vote')}
-    </button>
+    <span className="relative inline-flex shrink-0">
+      {content}
+      {pop && <VoteBurst />}
+    </span>
   );
 }
 
@@ -615,18 +635,18 @@ const EntryCard = memo(function EntryCard({ entry, draftCount, ctx, pop, onOpen,
             </span>
             {ctx.over && ctx.resultsVisible && (entry.rank ?? 99) <= 3 && (entry.voteCount ?? 0) > 0 && (
               <span
-                className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${RANK_STYLES[entry.rank ?? 3]}`}
+                className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${RANK_MEDAL[entry.rank ?? 3]}`}
               >
                 {entry.rank}
               </span>
             )}
           </span>
           {draftCount > 0 && (
+            // 投过的作品在网格里要一眼看见 —— 琥珀 = 选了没交，翠绿 = 已落库，
+            // 和下面的按钮同一套语义色。
             <span
-              className={`absolute right-2 top-2 flex h-5 items-center gap-0.5 rounded-full px-1.5 text-[10px] font-semibold ${
-                pending
-                  ? 'border-2 border-zinc-900 bg-white text-zinc-900 dark:border-white dark:bg-zinc-900 dark:text-white'
-                  : 'bg-zinc-900/90 text-white dark:bg-white/90 dark:text-zinc-900'
+              className={`absolute right-2 top-2 flex h-5 items-center gap-0.5 rounded-full px-1.5 text-[10px] font-bold ${
+                pending ? BADGE_PENDING : BADGE_DONE
               }`}
             >
               <Check className="h-3 w-3" />
@@ -909,8 +929,10 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
         return next;
       });
       if (delta > 0) {
+        // 只有「加票」才庆祝。窗口要盖住纸屑的全程（620ms 动画 + 44ms 错开），
+        // 提前收掉的话粒子会在半空被卸载，看起来像卡了一下。
         setPopId(entryId);
-        setTimeout(() => setPopId((p) => (p === entryId ? null : p)), 450);
+        setTimeout(() => setPopId((p) => (p === entryId ? null : p)), 700);
       }
     },
     [router],
@@ -1347,20 +1369,23 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
 
       {/* window + rules */}
       <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+        {/* 状态药丸带色（进行中=玫红 / 未开始=琥珀 / 已结束=中性）；下面那排
+            规则药丸继续保持墨色描边 —— 元数据不上色，颜色才留得住意义。 */}
         {view.over ? (
-          <span className="rounded-full bg-zinc-900 px-3 py-1.5 font-medium text-white dark:bg-zinc-100 dark:text-zinc-900">
-            {t('badge_ended')}
-          </span>
+          <span className={`rounded-full px-3 py-1.5 font-semibold ${STATUS_OVER}`}>{t('badge_ended')}</span>
         ) : !view.started && view.startAt ? (
-          <span className="rounded-full bg-zinc-900 px-3 py-1.5 font-medium tabular-nums text-white dark:bg-zinc-100 dark:text-zinc-900">
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-semibold tabular-nums ${STATUS_SOON}`}>
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden />
             <Countdown target={view.startAt} prefix={t('cd_to_start')} endedText={t('badge_ongoing')} />
           </span>
         ) : view.endAt ? (
-          <span className="rounded-full bg-zinc-900 px-3 py-1.5 font-medium tabular-nums text-white dark:bg-zinc-100 dark:text-zinc-900">
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-semibold tabular-nums ${STATUS_LIVE}`}>
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-500" aria-hidden />
             <Countdown target={view.endAt} prefix={t('cd_to_end')} endedText={t('badge_ended')} />
           </span>
         ) : (
-          <span className="rounded-full bg-zinc-900 px-3 py-1.5 font-medium text-white dark:bg-zinc-100 dark:text-zinc-900">
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-semibold ${STATUS_LIVE}`}>
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-500" aria-hidden />
             {t('badge_no_deadline')}
           </span>
         )}
@@ -1386,7 +1411,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
       {podium.length > 0 && (
         <section className="mt-8">
           <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
-            <Trophy className="h-4 w-4" />
+            <Trophy className="h-4 w-4 text-amber-500" />
             {t('podium_title')}
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -1399,12 +1424,18 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
                   setQ('');
                   setLightboxId(entry.id);
                 }}
-                className="group overflow-hidden rounded-2xl border border-zinc-200/70 text-left transition hover:border-zinc-400 dark:border-zinc-800/70 dark:hover:border-zinc-600"
+                className={`group overflow-hidden rounded-2xl border text-left transition ${
+                  entry.rank === 1
+                    ? 'border-amber-300/80 bg-amber-50/40 hover:border-amber-400 dark:border-amber-500/35 dark:bg-amber-500/[0.06] dark:hover:border-amber-500/60'
+                    : entry.rank === 2
+                      ? 'border-zinc-300/80 hover:border-zinc-400 dark:border-zinc-700 dark:hover:border-zinc-500'
+                      : 'border-orange-300/60 bg-orange-50/30 hover:border-orange-400/80 dark:border-orange-500/30 dark:bg-orange-500/[0.05] dark:hover:border-orange-500/50'
+                }`}
               >
                 <div className={`relative overflow-hidden bg-zinc-100 dark:bg-zinc-900 ${aspectClass(entry)}`}>
                   <EntryMedia entry={entry} alt={entryTitle(entry, t)} eager />
                   <span
-                    className={`absolute left-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${RANK_STYLES[entry.rank ?? 3] ?? RANK_STYLES[3]}`}
+                    className={`absolute left-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${RANK_MEDAL[entry.rank ?? 3] ?? RANK_MEDAL[3]}`}
                   >
                     {entry.rank}
                   </span>
@@ -1445,9 +1476,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
           {showBudget && (
             <span
               className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold tabular-nums ${
-                budgetLeft
-                  ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
-                  : 'border border-zinc-300 text-zinc-600 dark:border-zinc-700 dark:text-zinc-300'
+                budgetLeft ? BUDGET_LEFT : BUDGET_OUT
               }`}
             >
               {view.budgetPeriod === 'daily'
@@ -1457,7 +1486,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
           )}
           {showBudget && dirty && (
             <>
-              <span className="text-xs font-medium tabular-nums text-zinc-700 dark:text-zinc-300">
+              <span className="text-xs font-semibold tabular-nums text-amber-700 dark:text-amber-300">
                 {[
                   budget.adds > 0 ? t('pending_adds', { count: budget.adds }) : null,
                   budget.removes > 0 ? t('pending_removes', { count: budget.removes }) : null,
@@ -1469,7 +1498,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
                 type="button"
                 onClick={() => void submit()}
                 disabled={submitting}
-                className="inline-flex h-8 items-center gap-1.5 rounded-full bg-zinc-900 px-4 text-xs font-semibold text-white transition hover:bg-zinc-700 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+                className={`inline-flex h-8 items-center gap-1.5 rounded-full px-4 text-xs font-semibold ${VOTE_CTA}`}
               >
                 {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                 {submitting ? t('submitting_votes') : t('submit_votes')}
@@ -1564,8 +1593,8 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
               <span
                 className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold tabular-nums ${
                   (entry.rank ?? 99) <= 3 && (entry.voteCount ?? 0) > 0
-                    ? RANK_STYLES[entry.rank ?? 3]
-                    : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400'
+                    ? RANK_MEDAL[entry.rank ?? 3]
+                    : RANK_PLAIN
                 }`}
               >
                 {entry.rank ?? idx + 1}
@@ -1585,7 +1614,15 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
                   </span>
                 )}
               </span>
-              {draftCountOf(entry) > 0 && <Check className="h-4 w-4 shrink-0 text-zinc-400" />}
+              {draftCountOf(entry) > 0 && (
+                <Check
+                  className={`h-4 w-4 shrink-0 ${
+                    draftCountOf(entry) !== entry.myVotes
+                      ? 'text-amber-500'
+                      : 'text-emerald-500 dark:text-emerald-400'
+                  }`}
+                />
+              )}
               {entry.viewCount !== null && (
                 <span
                   className="hidden shrink-0 items-center gap-1 text-xs text-muted sm:inline-flex"
@@ -1824,7 +1861,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
                   type="button"
                   onClick={() => void submit()}
                   disabled={submitting}
-                  className="inline-flex h-10 items-center gap-1.5 rounded-full border border-white/30 px-4 text-sm font-medium text-white transition hover:bg-white/15 disabled:opacity-60"
+                  className={`inline-flex h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold ${VOTE_CTA}`}
                 >
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   {t('submit_votes_n', { count: budget.adds + budget.removes })}

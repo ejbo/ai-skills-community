@@ -6,40 +6,38 @@ import { DeptTag } from '@/components/DeptTag';
 import { withBasePath } from '@/lib/base-path';
 import type { PublicVoteCard } from '@/lib/vote-queries';
 import { Countdown } from './Countdown';
+import { COVER_LIVE, COVER_OVER, COVER_SOON } from './vote-theme';
 
 export async function VoteCard({ vote }: { vote: PublicVoteCard }) {
   const t = await getTranslations('votes');
 
   const cover = vote.over && vote.winnerThumbUrl ? vote.winnerThumbUrl : vote.coverUrl;
 
+  // 封面角标按状态上色（进行中=玫红 / 未开始=琥珀 / 已结束·草稿=中性），这样
+  // 一屏活动卡不用读字就知道哪些还能投。色值语义见 ./vote-theme。
+  const chip = 'rounded-full px-2.5 py-1 text-xs font-semibold';
   let stateChip: React.ReactNode;
   if (vote.status === 'draft') {
-    stateChip = (
-      <span className="rounded-full bg-zinc-900/80 px-2.5 py-1 text-xs font-medium text-white">
-        {t('badge_draft')}
-      </span>
-    );
+    stateChip = <span className={`${chip} ${COVER_OVER}`}>{t('badge_draft')}</span>;
   } else if (vote.over) {
-    stateChip = (
-      <span className="rounded-full bg-zinc-900/80 px-2.5 py-1 text-xs font-medium text-white">
-        {t('badge_ended')}
-      </span>
-    );
+    stateChip = <span className={`${chip} ${COVER_OVER}`}>{t('badge_ended')}</span>;
   } else if (!vote.started && vote.startAt) {
     stateChip = (
-      <span className="rounded-full bg-zinc-900/80 px-2.5 py-1 text-xs font-medium text-white">
+      <span className={`${chip} ${COVER_SOON} tabular-nums`}>
         <Countdown target={vote.startAt} prefix={t('cd_to_start')} endedText={t('badge_ongoing')} />
       </span>
     );
   } else if (vote.endAt) {
     stateChip = (
-      <span className="rounded-full bg-zinc-900/80 px-2.5 py-1 text-xs font-medium tabular-nums text-white">
+      <span className={`inline-flex items-center gap-1.5 ${chip} ${COVER_LIVE} tabular-nums`}>
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/90" aria-hidden />
         <Countdown target={vote.endAt} prefix={t('cd_to_end')} endedText={t('badge_ended')} />
       </span>
     );
   } else {
     stateChip = (
-      <span className="rounded-full bg-zinc-900/80 px-2.5 py-1 text-xs font-medium text-white">
+      <span className={`inline-flex items-center gap-1.5 ${chip} ${COVER_LIVE}`}>
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/90" aria-hidden />
         {t('badge_no_deadline')}
       </span>
     );
@@ -67,13 +65,13 @@ export async function VoteCard({ vote }: { vote: PublicVoteCard }) {
         <div className="absolute left-3 top-3 flex items-center gap-2">{stateChip}</div>
         <div className="absolute right-3 top-3 flex items-center gap-2">
           {vote.over && vote.winnerThumbUrl && (
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-400/90 text-zinc-900">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-amber-200 to-amber-500 text-amber-950 shadow-sm shadow-black/20">
               <Trophy className="h-4 w-4" />
             </span>
           )}
           {vote.featured && (
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-900/80 text-white">
-              <Star className="h-4 w-4" />
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-900/80 text-amber-300">
+              <Star className="h-4 w-4 fill-current" />
             </span>
           )}
         </div>
