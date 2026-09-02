@@ -2,9 +2,15 @@
 
 // One attachment tile: icon by extension (or the image thumbnail), name,
 // size, preview state badge. Click → the preview panel (`file` kind) by row id
-// when saved, else by STORAGE KEY (the embed contract accepts both — a
-// composer draft previews before it has a row). `active` marks the row that
-// is open in the docked panel (aria-current + ink border).
+// when saved, else by STORAGE KEY. `active` marks the row that is open in the
+// docked panel (aria-current + ink border).
+//
+// A key-form ref only RESOLVES once the post is saved: `/api/zones/embed`
+// answers a `file` key through `ZonePostAttachment`, and a composer draft has
+// no row — the panel used to open on 内容不存在或已删除 while the row itself
+// advertised 可预览. So a caller that owns unsaved drafts passes `zoneSlug` and
+// the card hands the panel the data it already has (the same synthesis
+// EmbedNodeView does for an in-body card).
 
 import type { MouseEvent } from 'react';
 import { useTranslations } from 'next-intl';
@@ -22,7 +28,7 @@ import {
 } from 'lucide-react';
 import { withBasePath } from '@/lib/base-path';
 import { formatBytes, isOfficePreviewable } from '@/lib/zones/shared';
-import type { ZoneAttachmentView } from '@/lib/zones/types';
+import type { EmbedData, ZoneAttachmentView } from '@/lib/zones/types';
 import { usePreview } from '@/components/zones/preview/PreviewProvider';
 import { zoneMediaKeyFromPublicUrl } from './upload-core';
 
@@ -76,6 +82,7 @@ export function AttachmentCard({
   onOpen,
   compact = false,
   active = false,
+  zoneSlug,
 }: {
   attachment: ZoneAttachmentView;
   onRemove?: () => void;
@@ -84,6 +91,8 @@ export function AttachmentCard({
   compact?: boolean;
   /** The row that is open in the preview panel — aria-current + ink border. */
   active?: boolean;
+  /** Composer ledger: the zone an UNSAVED row (no id) belongs to, so its preview is synthesized locally. */
+  zoneSlug?: string;
 }) {
   const t = useTranslations('zones');
   const preview = usePreview();
@@ -95,8 +104,16 @@ export function AttachmentCard({
     const via: 'pointer' | 'keyboard' = e.detail === 0 ? 'keyboard' : 'pointer';
     if (onOpen) return onOpen(via);
     const ref = attachmentPreviewRef(attachment);
-    if (ref) preview.open({ kind: 'file', ref, title: attachment.name, via });
-    else window.open(url, '_blank', 'noopener');
+    if (!ref) {
+      window.open(url, '_blank', 'noopener');
+      return;
+    }
+    // No row id ⇒ the ref is a storage key the embed API cannot resolve yet.
+    const local: EmbedData | undefined =
+      attachment.id || zoneSlug === undefined
+        ? undefined
+        : { kind: 'file', ref, ok: true, data: { ...attachment, postId: '', zoneSlug } };
+    preview.open({ kind: 'file', ref, title: attachment.name, via, data: local });
   };
 
   return (

@@ -1,13 +1,19 @@
 'use client';
 
-// Grouped list of attachments (images → videos → files) as AttachmentCards.
+// Grouped list of attachments (images → videos → files) as AttachmentCards —
+// the READING page's panel. The composer's LEDGER is deliberately not this
+// component: its rows animate through `LiveList` (M21) and stay in insertion
+// order, so AttachmentUploader renders them itself. A trailing per-row `extra`
+// slot used to live here for that ledger and never had a caller; it was
+// removed rather than left to suggest otherwise.
+//
 // Counts are unlimited now, so the list WINDOWS itself: the first WINDOW rows
 // render, an IntersectionObserver sentinel appends the next WINDOW (the votes
 // gallery pattern — DOM count, not payload, is the cost), and every row is
 // `.cv-auto`. `limitPerGroup` is the reading-page variant: N rows per group
 // and a <details> 「还有 {count} 个」 for the rest.
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import type { ZoneAttachmentView } from '@/lib/zones/types';
 import { AttachmentCard, attachmentPreviewRef } from './AttachmentCard';
@@ -24,10 +30,9 @@ export function AttachmentList({
   activeRef = null,
   onOpenItem,
   limitPerGroup,
-  extra,
 }: {
   items: ZoneAttachmentView[];
-  /** Composer: remove by index in `items`. */
+  /** Remove by index in `items` (the reading panel passes none). */
   onRemove?: (index: number) => void;
   compact?: boolean;
   className?: string;
@@ -37,8 +42,6 @@ export function AttachmentList({
   onOpenItem?: (item: ZoneAttachmentView, index: number, via?: 'pointer' | 'keyboard') => void;
   /** Render N per group + a 「还有 {count} 个」 disclosure for the rest. */
   limitPerGroup?: number;
-  /** Trailing per-row slot (composer: 在正文插入 / 正文中). */
-  extra?: (item: ZoneAttachmentView, index: number) => ReactNode;
 }) {
   const t = useTranslations('zones');
   const [shown, setShown] = useState(WINDOW);
@@ -79,18 +82,13 @@ export function AttachmentList({
 
   const renderRow = ({ item, index }: Row) => (
     <li key={item.id || `${item.url}:${index}`} className="cv-auto">
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1">
-          <AttachmentCard
-            attachment={item}
-            compact={compact}
-            active={isActive(item)}
-            onRemove={onRemove ? () => onRemove(index) : undefined}
-            onOpen={onOpenItem ? (via) => onOpenItem(item, index, via) : undefined}
-          />
-        </div>
-        {extra && <div className="shrink-0">{extra(item, index)}</div>}
-      </div>
+      <AttachmentCard
+        attachment={item}
+        compact={compact}
+        active={isActive(item)}
+        onRemove={onRemove ? () => onRemove(index) : undefined}
+        onOpen={onOpenItem ? (via) => onOpenItem(item, index, via) : undefined}
+      />
     </li>
   );
 

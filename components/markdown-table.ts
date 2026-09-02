@@ -4,7 +4,8 @@
 // components/zones/embeds/embed-node-extension.ts is a plain module.
 
 import { getHTMLFromFragment } from '@tiptap/core';
-import { Fragment, type Node as PMNode } from '@tiptap/pm/model';
+import { Fragment, type Node as PMNode, type Slice } from '@tiptap/pm/model';
+import type { EditorState } from '@tiptap/pm/state';
 import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableHeader from '@tiptap/extension-table-header';
@@ -90,4 +91,63 @@ const MarkdownTable = Table.extend({
 
 const TABLE_EXTENSIONS = [MarkdownTable.configure({ resizable: false }), TableRow, TableHeader, TableCell];
 
-export { MarkdownTable, TABLE_EXTENSIONS, isGfmTable };
+// ── Keeping BLOCK atoms out of cells ─────────────────────────────────────────
+// A GFM cell is inline-only, but tiptap's cells are `block+`: an image pasted
+// with the caret in a cell, or an embed / poll card dragged into one, is a
+// legal document that markdown cannot say. `isGfmTable` then refuses the table
+// and the WHOLE thing is stored as raw `<table style=…>` HTML — and an embed
+// inside a cell is no longer an own-line token, so the reader never resolves
+// it (silently invisible). Narrowing the cells to `paragraph+` was measured and
+// rejected: ProseMirror then TEARS an already-stored table apart at the offending
+// cell when it parses it, which loses more than it saves. The editor instead
+// keeps block atoms out at the three doors they can come through — insertion
+// (`tableEscapePos`), an in-editor drag (`isInsideTable` + `sliceHasBlockAtom`)
+// and a PASTE (`pasteEscapePos`): a markdown `![x](…)` pasted as TEXT is parsed
+// by tiptap-markdown into a block image before `handlePaste` ever sees it, so
+// ProseMirror's own paste drops it straight into the cell.
+
+/**
+ * Where a BLOCK insert must go when the caret sits inside a table: right after
+ * the table. null when the selection is not in one (insert at the caret).
+ */
+function tableEscapePos(state: EditorState): number | null {
+  const { $to } = state.selection;
+  for (let depth = $to.depth; depth > 0; depth -= 1) {
+    if ($to.node(depth).type.spec.tableRole === 'table') return $to.after(depth);
+  }
+  return null;
+}
+
+/** True when `pos` resolves inside a table (any cell / row / the table itself). */
+function isInsideTable(state: EditorState, pos: number): boolean {
+  const clamped = Math.max(0, Math.min(pos, state.doc.content.size));
+  const $pos = state.doc.resolve(clamped);
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    if ($pos.node(depth).type.spec.tableRole === 'table') return true;
+  }
+  return false;
+}
+
+/**
+ * Where a PASTED slice must go when it carries a block atom and the caret sits
+ * in a table cell: right after the table. null ⇒ paste where the caret is.
+ * The same lift as `tableEscapePos`, for the door the caret rule cannot cover —
+ * the slice is already parsed by the time `handlePaste` runs, so the check has
+ * to be on the slice, not on what was typed.
+ */
+function pasteEscapePos(state: EditorState, slice: Slice): number | null {
+  return sliceHasBlockAtom(slice) ? tableEscapePos(state) : null;
+}
+
+/** True when a dragged slice carries a block atom (image / embed card / poll). */
+function sliceHasBlockAtom(slice: Slice): boolean {
+  let found = false;
+  slice.content.descendants((node) => {
+    if (found) return false;
+    if (node.isBlock && node.isAtom) found = true;
+    return !found;
+  });
+  return found;
+}
+
+export { MarkdownTable, TABLE_EXTENSIONS, isGfmTable, isInsideTable, pasteEscapePos, sliceHasBlockAtom, tableEscapePos };

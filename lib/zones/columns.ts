@@ -1,7 +1,9 @@
 // 技术专区 栏目 (ZoneColumn) — the zone-scoped content taxonomy.
 //
-// ORTHOGONAL to ZonePostType (which is the FORMAT: 文章 / 研究报告 / 论文 / …):
-// a 栏目 is what the 版块 itself calls that stream of posts. 版主 curates the
+// 栏目 IS the taxonomy a reader sees: what the 版块 itself calls that stream of
+// posts. `ZonePostType` still exists as a column but is HIDDEN — it defaults to
+// `article` and no surface renders it; its one live value is `announcement`, a
+// moderator flag (see lib/zones/shared.ts). 版主 curates the
 // `official` ones in 版块设置; members may add their own from the composer when
 // `Zone.allowMemberColumns` — which is why `getOrCreateColumn` takes an explicit
 // `allowCreate` instead of re-deriving policy here (house rule: policy is

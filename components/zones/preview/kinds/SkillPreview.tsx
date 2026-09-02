@@ -39,7 +39,7 @@ export function InstallSnippet({ cmd }: { cmd: string }) {
   );
 }
 
-export function SkillPreview({ data }: { data: EmbedSkillData; fill?: boolean }) {
+export function SkillPreview({ data }: { data: EmbedSkillData }) {
   const t = useTranslations('zones');
   return (
     <div className="space-y-4">

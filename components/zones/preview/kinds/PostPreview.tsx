@@ -17,7 +17,7 @@ import type { EmbedPostData, ZonePostDetailView } from '@/lib/zones/types';
 import { ZoneMarkdown } from '@/components/zones/ZoneMarkdown';
 import { fmtCount } from '@/components/zones/embeds/EmbedCard';
 
-export function PostPreview({ data }: { data: EmbedPostData; fill?: boolean }) {
+export function PostPreview({ data }: { data: EmbedPostData }) {
   const t = useTranslations('zones');
   const locale = useLocale();
   const [body, setBody] = useState<{ status: 'loading' } | { status: 'ready'; post: ZonePostDetailView } | { status: 'failed' }>({

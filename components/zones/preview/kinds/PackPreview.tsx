@@ -7,7 +7,7 @@ import type { EmbedPackData } from '@/lib/zones/types';
 import { fmtCount } from '@/components/zones/embeds/EmbedCard';
 import { InstallSnippet } from './SkillPreview';
 
-export function PackPreview({ data }: { data: EmbedPackData; fill?: boolean }) {
+export function PackPreview({ data }: { data: EmbedPackData }) {
   const t = useTranslations('zones');
   return (
     <div className="space-y-4">

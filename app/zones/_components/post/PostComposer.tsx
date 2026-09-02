@@ -12,9 +12,10 @@
 // Files: dropping / pasting / 📎 in the body uploads AT THE CARET as
 // `[embed:file:<key>]` and the finished draft is appended to `attachments`
 // here (the ledger). The ledger's 在正文插入 inserts a card for an unreferenced
-// row through `editorRef`; removing a row that is in the body strips its
-// own-line token too. On save the server unions body keys with the ledger
-// (mergeBodyFileKeys), so nothing can be orphaned either way.
+// row through `editorRef`; removing a row that is in the body deletes its card
+// through `editorRef` too (never by rewriting `bodyMd` — see onLedgerRemove).
+// On save the server unions body keys with the ledger (mergeBodyFileKeys), so
+// nothing can be orphaned either way.
 //
 // The draft autosaves to localStorage `zones:draft:<zoneSlug>:<postId|new>`
 // (debounced) and offers 恢复 on the next visit; a successful save clears it.
@@ -58,7 +59,7 @@ import {
   zoneMediaKeyFromPublicUrl,
   type AttachmentDraft,
 } from '@/components/zones/attachments/AttachmentUploader';
-import { insertContentEmbed } from '@/components/zones/embeds/embed-node-extension';
+import { insertContentEmbed, removeContentEmbeds } from '@/components/zones/embeds/embed-node-extension';
 import { attachmentPreviewRef } from '@/components/zones/attachments/AttachmentCard';
 import { ComposerTopBar } from './ComposerTopBar';
 import { ComposerSettingsSheet } from './ComposerSettingsSheet';
@@ -452,7 +453,18 @@ export function PostComposer({
     }
   }
 
+  // 恢复 / 重置 replace the whole draft — including `bodyMd`, which the editor
+  // answers with a whole-document `setContent` that drops every in-flight upload
+  // placeholder (the card vanishes mid-progress and the finished file loses its
+  // place). Both wait for the queues instead of quietly eating them.
+  function uploadsBusy(): boolean {
+    if (uploading <= 0) return false;
+    pushToast('info', t('composer_uploads_busy', { count: uploading }));
+    return true;
+  }
+
   function reset() {
+    if (uploadsBusy()) return;
     if (JSON.stringify(draft) === initialJson || confirm(t('composer_reset_confirm'))) {
       setDraft(initial);
       setRegenerateCode(false);
@@ -468,10 +480,19 @@ export function PostComposer({
     if (ref) insertContentEmbed(ed, 'file', ref);
   }
 
-  // A removed ledger row takes its body card with it (both ref forms).
+  // A removed ledger row takes its body card with it (both ref forms). The
+  // deletion goes THROUGH the editor: rewriting `bodyMd` here would come back as
+  // an external `value`, and the controlled sync answers that with a whole-
+  // document `setContent` — which drops the upload placeholders of every OTHER
+  // file still in the queue (a 35-file drop sits in 排队中 for the whole
+  // rate-limit window). The string strip stays as the fallback for a body with
+  // no live editor (or a token that never became a node).
   function onLedgerRemove(_index: number, gone: AttachmentDraft) {
     const refs = [gone.key, ...(gone.id ? [gone.id] : [])];
-    setDraft((d) => (insertedRefs.size === 0 ? d : { ...d, bodyMd: stripFileEmbedTokens(d.bodyMd, refs) }));
+    if (!refs.some((r) => insertedRefs.has(r))) return;
+    const ed = editorRef.current;
+    if (ed && removeContentEmbeds(ed, 'file', refs) > 0) return; // the editor's onUpdate rewrites bodyMd
+    setDraft((d) => ({ ...d, bodyMd: stripFileEmbedTokens(d.bodyMd, refs) }));
   }
 
   const onTitleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -518,6 +539,7 @@ export function PostComposer({
                 <button
                   type="button"
                   onClick={() => {
+                    if (uploadsBusy()) return;
                     setDraft(pending.draft);
                     setPending(null);
                   }}
@@ -625,7 +647,10 @@ export function PostComposer({
               <AttachmentUploader
                 zoneSlug={zone.slug}
                 value={draft.attachments}
-                onChange={(attachments) => patch({ attachments })}
+                // An UPDATER, never a snapshot: a body upload appends through
+                // `setDraft(s => …)` at the same time, and a wholesale replace
+                // built from the ledger's last render would drop it.
+                onChange={(update) => setDraft((s) => ({ ...s, attachments: update(s.attachments) }))}
                 onUploadingChange={setAttachmentUploading}
                 disabled={disabled}
                 insertedRefs={insertedRefs}

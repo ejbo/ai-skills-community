@@ -9,7 +9,7 @@
 // Portaled to <body> (the editor root is overflow-hidden) above the drawer,
 // below Toaster.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { LayoutGroup, motion, useReducedMotion } from 'framer-motion';
 import { useTranslations } from 'next-intl';
@@ -148,6 +148,16 @@ export function EmbedPickerDialog({
   // A new tab or a new result set starts at the top.
   useEffect(() => setActive(0), [tab, q, setActive]);
 
+  // The listbox keys are bound to the DIALOG (so ↑/↓ work wherever focus sits),
+  // but the dialog also holds ordinary controls: 关闭, the tabs, 上传文件, 插入.
+  // Enter must activate the FOCUSED control — routed to the listbox it inserted
+  // the highlighted row and closed the dialog instead (and `preventDefault`
+  // swallowed the button's own click).
+  const onDialogKeyDown = (e: ReactKeyboardEvent<HTMLElement>) => {
+    if (e.key === 'Enter' && e.target instanceof Element && e.target.closest('button,[role="tab"],a[href]')) return;
+    nav.onKeyDown(e);
+  };
+
   if (!open || !mounted) return null;
 
   const rowCls =
@@ -172,7 +182,7 @@ export function EmbedPickerDialog({
         aria-modal="true"
         aria-label={t('embed_picker_title')}
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={nav.onKeyDown}
+        onKeyDown={onDialogKeyDown}
         className="flex max-h-[88dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl dark:border-zinc-800 dark:bg-zinc-950"
       >
         <div className="flex items-center justify-between gap-3 px-4 pt-3">

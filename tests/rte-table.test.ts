@@ -10,18 +10,35 @@
 import { describe, expect, it } from 'vitest';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
+import Image from '@tiptap/extension-image';
 import { Markdown } from 'tiptap-markdown';
-import { TABLE_EXTENSIONS } from '@/components/markdown-table';
+import { TABLE_EXTENSIONS, isInsideTable, pasteEscapePos, sliceHasBlockAtom, tableEscapePos } from '@/components/markdown-table';
+import { ContentEmbedBase } from '@/components/zones/embeds/embed-node-extension';
 
 function makeEditor(content: string) {
   return new Editor({
     extensions: [
       StarterKit,
+      Image,
+      ContentEmbedBase,
       ...TABLE_EXTENSIONS,
       Markdown.configure({ html: true, transformPastedText: true, breaks: false }),
     ],
     content,
   });
+}
+
+const TABLE_MD = '| a | b |\n| --- | --- |\n| 1 | 2 |\n';
+
+/** Caret inside the first data cell. */
+function caretInFirstCell(ed: Editor): number {
+  let at = -1;
+  ed.state.doc.descendants((n, pos) => {
+    if (at < 0 && n.type.name === 'tableCell') at = pos + 2;
+    return true;
+  });
+  ed.commands.setTextSelection(at);
+  return at;
 }
 
 const typeNames = (ed: Editor) => {
@@ -100,6 +117,110 @@ describe('GFM tables in the editor', () => {
       return true;
     });
     expect(cells).toEqual(['a | b']);
+    ed.destroy();
+  });
+});
+
+// A GFM cell is inline-only, but tiptap cells are `block+`: a screenshot pasted
+// with the caret in a cell used to land INSIDE it, `isGfmTable` then refused the
+// table and the whole thing was stored as raw `<table style=…>` HTML. An embed
+// card there is worse — it stops being an own-line token, so the reader never
+// resolves it and it is silently invisible.
+describe('block atoms and table cells', () => {
+  it('tableEscapePos is null outside a table and the position after the table inside one', () => {
+    const plain = makeEditor('hello');
+    expect(tableEscapePos(plain.state)).toBeNull();
+    plain.destroy();
+
+    // A doc that STARTS with a table puts the initial caret in its first cell.
+    const ed = makeEditor(`intro\n\n${TABLE_MD}`);
+    ed.commands.setTextSelection(2);
+    expect(tableEscapePos(ed.state)).toBeNull();
+    caretInFirstCell(ed);
+    const after = tableEscapePos(ed.state);
+    expect(after).not.toBeNull();
+    // Right after the table node: nothing of the table is left beyond it.
+    expect(ed.state.doc.resolve(after as number).depth).toBe(0);
+    expect(ed.state.doc.resolve(after as number).nodeBefore?.type.name).toBe('table');
+    ed.destroy();
+  });
+
+  it('an image inserted at the caret inside a cell degrades the table to raw HTML (the bug)', () => {
+    const ed = makeEditor(TABLE_MD);
+    caretInFirstCell(ed);
+    ed.chain().setImage({ src: '/x.png', alt: 'x' }).run();
+    const out = ed.storage.markdown.getMarkdown();
+    expect(out).toContain('<table');
+    expect(out).not.toContain('| a | b |');
+    ed.destroy();
+  });
+
+  it('the same image inserted at tableEscapePos keeps the table GFM and lands after it', () => {
+    const ed = makeEditor(TABLE_MD);
+    caretInFirstCell(ed);
+    const escape = tableEscapePos(ed.state) as number;
+    ed.chain().insertContentAt(escape, { type: 'image', attrs: { src: '/x.png', alt: 'x' } }).run();
+    const out = ed.storage.markdown.getMarkdown();
+    expect(out).not.toContain('<table');
+    expect(out).toContain('| a | b |');
+    expect(out).toContain('| 1 | 2 |');
+    expect(out.trimEnd().endsWith('![x](/x.png)')).toBe(true);
+    ed.destroy();
+  });
+
+  it('isInsideTable answers for a cell position and not for one outside', () => {
+    const ed = makeEditor(`intro\n\n${TABLE_MD}`);
+    const inCell = caretInFirstCell(ed);
+    expect(isInsideTable(ed.state, inCell)).toBe(true);
+    expect(isInsideTable(ed.state, 2)).toBe(false); // inside 'intro'
+    expect(isInsideTable(ed.state, 10 ** 6)).toBe(false); // clamped to the doc end
+    ed.destroy();
+  });
+
+  // The third door: a markdown `![x](…)` pasted as TEXT is already a BLOCK image
+  // by the time `handlePaste` runs (tiptap-markdown parses the clipboard), so the
+  // caret rule cannot see it coming — the check has to be on the parsed slice.
+  // Confirmed live in Chrome before the fix: the <img> landed inside the <td>.
+  it('pasteEscapePos lifts a block-atom slice out of a cell and leaves every other paste alone', () => {
+    const ed = makeEditor(`intro\n\n${TABLE_MD}`);
+    // An image slice + a plain-text slice, both taken from a real document.
+    ed.commands.insertContentAt(ed.state.doc.content.size, { type: 'image', attrs: { src: '/x.png' } });
+    let imgAt = -1;
+    ed.state.doc.descendants((n, pos) => {
+      if (n.type.name === 'image') imgAt = pos;
+      return true;
+    });
+    const imageSlice = ed.state.doc.slice(imgAt, imgAt + 1);
+    const textSlice = ed.state.doc.slice(1, 3);
+
+    ed.commands.setTextSelection(2); // in 'intro', outside the table
+    expect(pasteEscapePos(ed.state, imageSlice)).toBeNull();
+
+    caretInFirstCell(ed);
+    expect(pasteEscapePos(ed.state, textSlice)).toBeNull(); // ordinary text still pastes at the caret
+    const escape = pasteEscapePos(ed.state, imageSlice);
+    expect(escape).toBe(tableEscapePos(ed.state));
+    expect(escape).not.toBeNull();
+
+    // And the lift keeps the table plain GFM (the un-lifted paste does not).
+    ed.view.dispatch(ed.state.tr.insert(escape as number, imageSlice.content));
+    const out = ed.storage.markdown.getMarkdown();
+    expect(out).not.toContain('<table');
+    expect(out).toContain('| a | b |');
+    ed.destroy();
+  });
+
+  it('sliceHasBlockAtom sees a dragged image / embed card but not dragged text', () => {
+    const ed = makeEditor('one\n\n[embed:file:file/abc.pdf]');
+    ed.commands.insertContentAt(ed.state.doc.content.size, { type: 'image', attrs: { src: '/x.png' } });
+    const positions: Record<string, { from: number; to: number }> = {};
+    ed.state.doc.descendants((n, pos) => {
+      if (n.type.name === 'image' || n.type.name === 'contentEmbed') positions[n.type.name] = { from: pos, to: pos + n.nodeSize };
+      return true;
+    });
+    expect(sliceHasBlockAtom(ed.state.doc.slice(positions.image.from, positions.image.to))).toBe(true);
+    expect(sliceHasBlockAtom(ed.state.doc.slice(positions.contentEmbed.from, positions.contentEmbed.to))).toBe(true);
+    expect(sliceHasBlockAtom(ed.state.doc.slice(1, 3))).toBe(false); // 'on' out of the first paragraph
     ed.destroy();
   });
 });

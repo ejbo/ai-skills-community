@@ -35,6 +35,7 @@ import { TWEEN_FAST } from '@/lib/motion';
 import { formatBytes } from '@/lib/zones/shared';
 import type { EmbedData } from '@/lib/zones/types';
 import { describeEmbed, fetchEmbed } from '@/components/zones/embeds/EmbedCard';
+import { previewShellClasses } from './panel-shared';
 import type { PreviewTarget } from './PreviewProvider';
 import type { FullscreenMode } from './useFullscreen';
 import { PreviewToolbar } from './PreviewToolbar';
@@ -79,8 +80,6 @@ function Skeleton({ fill }: { fill: boolean }) {
   );
 }
 
-const FLEX_COLUMN = 'flex min-h-0 flex-1 flex-col';
-
 export function PreviewBody({
   target,
   onResolved,
@@ -96,7 +95,11 @@ export function PreviewBody({
   onResolved: (info: PreviewResolvedInfo) => void;
   /** Dock host, file kinds: the media owns the height chain (no 72vh boxes, no inline footer). */
   fill: boolean;
-  /** Docked (non-modal) host: media kinds cap their box by the panel instead of the viewport. */
+  /**
+   * Docked (non-modal) host. It reaches the two kinds that actually cap a media
+   * box by the panel instead of the viewport (short / video) — the rest read
+   * nothing from it, so they are not handed a prop they ignore.
+   */
   docked: boolean;
   /** The stable fullscreen wrapper the provider's ⛶ targets. */
   fsRef: RefObject<HTMLDivElement>;
@@ -161,17 +164,15 @@ export function PreviewBody({
   }
 
   const fileFill = embed.kind === 'file' && (fill || isFull);
-  // `fixed` ONLY for the maximize fallback — in native mode the UA stylesheet sizes the element.
-  const rootClass = maximized
-    ? 'fixed inset-0 z-[96] flex flex-col bg-white dark:bg-zinc-950'
-    : isFull
-      ? 'relative flex h-full flex-col bg-white dark:bg-zinc-950'
-      : fileFill
-        ? 'relative flex min-h-0 flex-1 flex-col bg-white dark:bg-zinc-950'
-        : 'px-5 py-5';
-  // The inner scroller (fullscreen) / height-chain link (file fill) / plain wrapper (dock body scrolls).
-  const innerClass = fileFill ? FLEX_COLUMN : isFull ? 'min-h-0 flex-1 overflow-y-auto scroll-thin' : undefined;
-  const contentClass = fileFill ? FLEX_COLUMN : isFull ? `mx-auto w-full px-6 py-10 ${readingMeasure(embed.kind)}` : undefined;
+  // `fixed` ONLY for the maximize fallback — in native mode the UA stylesheet
+  // sizes the element. The chain (and the "the wrapper never scrolls" rule the
+  // exit control depends on) is decided in panel-shared, where a test pins it.
+  const { root: rootClass, inner: innerClass, content: contentClass } = previewShellClasses({
+    maximized,
+    isFull,
+    fileFill,
+    measure: readingMeasure(embed.kind),
+  });
 
   const fileUrl = embed.kind === 'file' ? withBasePath(embed.data.url) : null;
   const openHref = model?.href ? (model.external ? model.href : withBasePath(model.href)) : null;
@@ -191,13 +192,13 @@ export function PreviewBody({
     <div ref={fsRef} className={rootClass}>
       <div className={innerClass}>
         <motion.div className={contentClass} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={TWEEN_FAST}>
-          {embed.kind === 'library' && <LibraryPreview data={embed.data} fill={docked} />}
+          {embed.kind === 'library' && <LibraryPreview data={embed.data} />}
           {embed.kind === 'short' && <ShortPreview data={embed.data} fill={docked} />}
           {embed.kind === 'video' && <VideoPreview data={embed.data} fill={docked} />}
-          {embed.kind === 'skill' && <SkillPreview data={embed.data} fill={docked} />}
-          {embed.kind === 'pack' && <PackPreview data={embed.data} fill={docked} />}
-          {embed.kind === 'event' && <EventPreview data={embed.data} fill={docked} />}
-          {embed.kind === 'post' && <PostPreview data={embed.data} fill={docked} />}
+          {embed.kind === 'skill' && <SkillPreview data={embed.data} />}
+          {embed.kind === 'pack' && <PackPreview data={embed.data} />}
+          {embed.kind === 'event' && <EventPreview data={embed.data} />}
+          {embed.kind === 'post' && <PostPreview data={embed.data} />}
           {embed.kind === 'file' && <FilePreview data={embed.data} fill={fileFill} isFull={isFull} onFullscreenable={onFullscreenable} />}
           {embed.kind === 'link' && <LinkPreview data={embed.data} />}
         </motion.div>

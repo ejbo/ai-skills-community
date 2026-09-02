@@ -33,7 +33,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
-import { TABLE_EXTENSIONS } from '@/components/markdown-table';
+import { TABLE_EXTENSIONS, isInsideTable, pasteEscapePos, sliceHasBlockAtom, tableEscapePos } from '@/components/markdown-table';
 import { Markdown } from 'tiptap-markdown';
 import {
   BarChart3,
@@ -742,9 +742,25 @@ export function RichTextEditor({
         class: `rte-content ${proseClass} ${contentBox} focus:outline-none`,
         ...(ariaLabel ? { 'aria-label': ariaLabel } : {}),
       },
-      handlePaste: (view, event) => {
+      handlePaste: (view, event, slice) => {
         const files = Array.from(event.clipboardData?.files ?? []);
-        if (files.length === 0) return false; // let tiptap-markdown handle pasted text
+        if (files.length === 0) {
+          // Not a file paste — but the slice ProseMirror is about to drop in has
+          // already been parsed, so a markdown `![x](…)` pasted as TEXT is a
+          // BLOCK image by now and would land inside a table cell (the whole
+          // table then serializes as raw HTML — components/markdown-table.ts).
+          // Land it after the table instead, the same lift the caret rule does.
+          const escape = pasteEscapePos(view.state, slice);
+          if (escape != null) {
+            try {
+              view.dispatch(view.state.tr.insert(escape, slice.content));
+              return true;
+            } catch {
+              return false; // an open slice that will not fit at depth 0 — let ProseMirror paste it
+            }
+          }
+          return false; // let tiptap-markdown handle pasted text
+        }
         const images = files.filter(isImageFile);
         const others = uploadEnabledRef.current ? files.filter((f) => !isImageFile(f)) : [];
         if (images.length === 0 && others.length === 0) return false;
@@ -753,8 +769,16 @@ export function RichTextEditor({
         if (others.length > 0) insertFilesRef.current(others, view.state.selection.to);
         return true;
       },
-      handleDrop: (view, event, _slice, moved) => {
-        if (moved) return false; // an atom (embed / poll card) being dragged — ProseMirror moves it
+      handleDrop: (view, event, slice, moved) => {
+        if (moved) {
+          // An atom (image / embed / poll card) dragged INTO a table cell is a
+          // document markdown cannot say: the whole table would be stored as raw
+          // HTML and an embed inside a cell is no longer an own-line token, so
+          // the reader never resolves it. Refuse that one move (the card stays
+          // where it was); every other in-editor drag is ProseMirror's.
+          const drop = view.posAtCoords({ left: (event as DragEvent).clientX, top: (event as DragEvent).clientY });
+          return drop != null && sliceHasBlockAtom(slice) && isInsideTable(view.state, drop.pos);
+        }
         const files = Array.from((event as DragEvent).dataTransfer?.files ?? []);
         if (files.length === 0) return false;
         const images = files.filter(isImageFile);
@@ -794,7 +818,14 @@ export function RichTextEditor({
       try {
         const url = await uploadImage(file);
         if (url) {
-          editor.chain().focus().setImage({ src: url, alt: file.name.replace(/\.[^.]+$/, '') }).run();
+          const attrs = { src: url, alt: file.name.replace(/\.[^.]+$/, '') };
+          // A GFM cell is inline-only: an image dropped at a caret inside a table
+          // degraded the whole table to raw HTML (components/markdown-table.ts).
+          // Land it right after the table instead — the same lift the embed and
+          // poll inserts already do for a nested caret.
+          const escape = tableEscapePos(editor.state);
+          if (escape == null) editor.chain().focus().setImage(attrs).run();
+          else editor.chain().focus().insertContentAt(escape, { type: 'image', attrs }).run();
         }
       } finally {
         setUploading((n) => n - 1);

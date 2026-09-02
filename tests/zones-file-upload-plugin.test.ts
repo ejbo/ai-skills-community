@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
-import { ContentEmbedBase } from '@/components/zones/embeds/embed-node-extension';
+import { ContentEmbedBase, removeContentEmbeds } from '@/components/zones/embeds/embed-node-extension';
 import {
   FileUploadPlaceholder,
   blockPosFor,
@@ -234,6 +234,76 @@ describe('upload placeholder', () => {
     await tick();
     expect(nodes(ed).map((n) => n.ref)).toEqual(['file/a.pdf', 'file/b.pdf']);
     expect(placeholders(ed)).toBe(0);
+    ed.destroy();
+  });
+});
+
+// Why the composer's ledger deletes a body card through the editor instead of
+// rewriting `bodyMd`: an external `value` change is answered by a whole-document
+// `setContent`, and DecorationSet.map drops every widget inside the replaced
+// range — the in-flight upload of ANOTHER file loses its placeholder, and when
+// it lands `findPlaceholderPos` is null so the file never reaches the position
+// its author picked. A 35-file drop sits in 排队中 for the whole rate-limit
+// window, so this is a routine collision, not a corner case.
+// A caret inside the 'tail' paragraph — the placeholder lands on the block
+// boundary after it, in the MIDDLE of the document.
+const midPos = (ed: Editor) => {
+  let at = 0;
+  ed.state.doc.descendants((n, pos) => {
+    if (n.isTextblock && n.textContent === 'tail') at = pos + 2;
+    return true;
+  });
+  return at;
+};
+
+describe('removing a body card while another file is still uploading', () => {
+  it('setContent (the controlled sync) drops the in-flight placeholder', async () => {
+    const ed = makeEditor('[embed:file:file/first.pdf]\n\ntail\n\nmore');
+    await tick();
+    const up = deferred<{ key: string; draft: AttachmentDraft }>();
+    const { d, done } = deps(() => up.promise);
+    // Dropped mid-document, the way a caret drop lands (a placeholder pinned at
+    // the very end of the doc happens to survive the replace — most do not).
+    const { id } = startFileUpload(ed.view, file(), midPos(ed), d);
+    expect(findPlaceholderPos(ed.state, id)).not.toBeNull();
+
+    // What a `bodyMd` rewrite comes back as.
+    ed.commands.setContent(ed.storage.markdown.getMarkdown(), false);
+    expect(placeholders(ed)).toBe(0);
+    expect(findPlaceholderPos(ed.state, id)).toBeNull();
+
+    up.resolve({ key: KEY, draft: draft() });
+    await tick();
+    await tick();
+    // The ledger still gets the row, but the body lost the author's position.
+    expect(done).toHaveLength(1);
+    expect(nodes(ed).map((n) => n.ref)).toEqual(['file/first.pdf']);
+    ed.destroy();
+  });
+
+  it('removeContentEmbeds deletes the card and the queued upload still lands where it was dropped', async () => {
+    const ed = makeEditor('[embed:file:file/first.pdf]\n\ntail\n\nmore');
+    await tick();
+    const up = deferred<{ key: string; draft: AttachmentDraft }>();
+    const { d, done } = deps(() => up.promise);
+    const { id } = startFileUpload(ed.view, file(), midPos(ed), d);
+    const posBefore = findPlaceholderPos(ed.state, id);
+    expect(posBefore).not.toBeNull();
+
+    expect(removeContentEmbeds(ed, 'file', ['file/first.pdf'])).toBe(1);
+    expect(placeholders(ed)).toBe(1);
+    // The placeholder MAPPED through the deletion instead of vanishing.
+    expect(findPlaceholderPos(ed.state, id)).toBe((posBefore as number) - 1);
+
+    up.resolve({ key: KEY, draft: draft() });
+    await tick();
+    await tick();
+    expect(done).toHaveLength(1);
+    expect(nodes(ed).map((n) => n.ref)).toEqual([KEY]);
+    const out = ed.storage.markdown.getMarkdown();
+    expect(out).toContain(`[embed:file:${KEY}]`);
+    expect(out).not.toContain('file/first.pdf');
+    expect(out).toContain('tail');
     ed.destroy();
   });
 });

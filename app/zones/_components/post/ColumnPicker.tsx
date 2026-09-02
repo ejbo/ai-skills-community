@@ -129,7 +129,14 @@ export function ColumnPicker({
     else createTyped();
   }
 
-  const nav = useListboxNav(rows.length, (i) => pickRow(rows[i]));
+  const nav = useListboxNav(rows.length, (i) => {
+    const row = rows[i];
+    // With text typed and nothing to match or create, the highlight falls back
+    // to 未归栏 — but Enter there would silently DISCARD the column the author
+    // already chose. The row stays clickable; the keyboard just does nothing.
+    if (typed && row?.kind === 'none') return;
+    pickRow(row);
+  });
   const { setActive } = nav;
   // The best row for what was typed: the exact match, else the create row, else the first hit.
   useEffect(() => {

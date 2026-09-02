@@ -79,7 +79,13 @@ export function AttachmentUploader({
 }: {
   zoneSlug: string;
   value: AttachmentDraft[];
-  onChange: (next: AttachmentDraft[]) => void;
+  /**
+   * Applies a PURE updater to the host's list. An updater, not a snapshot: the
+   * editor's own upload queue appends to the same array through its own
+   * functional setState, and a wholesale replace built from this component's
+   * last render would silently drop whichever landed first.
+   */
+  onChange: (update: (prev: AttachmentDraft[]) => AttachmentDraft[]) => void;
   /** Reports the number of in-flight uploads so the parent can gate submit. */
   onUploadingChange?: (count: number) => void;
   disabled?: boolean;
@@ -110,10 +116,12 @@ export function AttachmentUploader({
   }
   useEffect(() => () => onUploadingChangeRef.current?.(0), []);
 
+  // `mutate` must be pure: it runs once on the local mirror (so two commits in
+  // the same tick compose before React re-renders) and once on the host's own
+  // latest state.
   function commit(mutate: (d: AttachmentDraft[]) => AttachmentDraft[]) {
-    const next = mutate(draftRef.current);
-    draftRef.current = next;
-    onChange(next);
+    draftRef.current = mutate(draftRef.current);
+    onChange(mutate);
   }
 
   async function uploadOne(file: File, kind: UploadKind) {
@@ -132,7 +140,11 @@ export function AttachmentUploader({
         attempts += 1;
         try {
           const r = await uploadRaw(file, uploadEndpoint(zoneSlug), { 'x-upload-kind': kind }, (pct) => setRow({ pct, queued: false }));
-          commit((d) => [...d, draftFromUpload(file, kind, r, name)]);
+          // Built ONCE, outside the mutator: `commit` runs it on the mirror and
+          // React runs it again on the host (twice more under StrictMode), and a
+          // row must be the same object every time.
+          const row = draftFromUpload(file, kind, r, name);
+          commit((d) => [...d, row]);
           return;
         } catch (e) {
           // Same policy as the editor's queue: a 429 parks the file, then retries it.
@@ -254,7 +266,14 @@ export function AttachmentUploader({
             return (
               <div className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">
-                  <AttachmentCard attachment={view} compact={compact} onRemove={disabled ? undefined : () => remove(index)} />
+                  {/* `zoneSlug`: an unsaved row has no ZonePostAttachment row, so its
+                      preview can only be synthesized locally (AttachmentCard). */}
+                  <AttachmentCard
+                    attachment={view}
+                    zoneSlug={zoneSlug}
+                    compact={compact}
+                    onRemove={disabled ? undefined : () => remove(index)}
+                  />
                 </div>
                 {inBody ? (
                   <span className={chip}>{t('composer_attach_in_body')}</span>

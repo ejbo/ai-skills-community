@@ -42,7 +42,9 @@
 // long list. Presses landing while a PATCH is in flight mark the session dirty:
 // that response is NOT applied (it would clobber the order on screen) and
 // another commit is scheduled, so the server always ends on what the user sees;
-// a failure rolls back to the last server-confirmed order.
+// a failure rolls back to the last server-confirmed order AND repeats the
+// server's own reason — a rollback discards every press the run had coalesced,
+// so "排序未保存" alone would not say that the limiter clears in a minute.
 //
 // Motion (spec §11): M22 — the lifted row rides `Reorder.Item`'s own `layout`
 // on SPRING_SNAPPY with `shadow-sm scale-[1.01]`; M21 — rows enter/leave the
@@ -473,6 +475,7 @@ export function ColumnsEditor({
     orderDirtyRef.current = false;
     let ok = false;
     let items: ZoneColumnView[] | null = null;
+    let reason: string | null = null;
     try {
       const res = await request(`/api/zones/${zoneSlug}/columns`, json({ orderedIds: current.map((c) => c.id) }, 'PATCH'));
       if (res?.ok) {
@@ -480,6 +483,12 @@ export function ColumnsEditor({
         // The reorder response IS listZoneColumns() — the same list GET returns.
         const data = (await res.json().catch(() => ({}))) as { items?: ZoneColumnView[] };
         if (Array.isArray(data.items)) items = data.items;
+      } else if (res) {
+        // A rollback throws away every press the run had coalesced, so it has to
+        // say WHY — `zone_rate_limited_column` (30/min, shared by every column
+        // write) is the one a long reorder run can still hit, and "wait a moment"
+        // is not something "已恢复原顺序" conveys on its own.
+        reason = (await readError(res)).reason ?? null;
       }
     } finally {
       orderInFlightRef.current = false;
@@ -487,7 +496,7 @@ export function ColumnsEditor({
     switch (planOrderResponse(ok, orderDirtyRef.current)) {
       case 'rollback':
         setColumns((cs) => [...serverOrder, ...splitColumns(cs).member]);
-        pushToast('error', t('columns_reorder_failed'));
+        pushToast('error', reason ? t('columns_reorder_failed_reason', { reason }) : t('columns_reorder_failed'));
         endOrderSession();
         return;
       case 'reschedule':

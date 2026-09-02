@@ -7,6 +7,7 @@ import {
   officeNoteKey,
   officePreviewPlan,
   officeShouldPoll,
+  previewShellClasses,
 } from '@/components/zones/preview/panel-shared';
 
 describe('dockTopOffset', () => {
@@ -77,5 +78,53 @@ describe('officeNoteKey / officeCanRetry / officeShouldPoll', () => {
     expect(officeShouldPoll({ ...base, loading: true })).toBe(false);
     expect(officeShouldPoll({ ...base, status: 'failed' })).toBe(false);
     expect(officeShouldPoll({ ...base, polls: 24 })).toBe(false);
+  });
+});
+
+describe('previewShellClasses', () => {
+  const shell = (o: Partial<Parameters<typeof previewShellClasses>[0]>) =>
+    previewShellClasses({ maximized: false, isFull: false, fileFill: false, measure: 'max-w-2xl', ...o });
+  const scrolls = (cls: string | undefined) => !!cls && /overflow-(y-)?(auto|scroll)/.test(cls);
+
+  it('never lets the wrapper that hosts the exit toolbar scroll itself', () => {
+    // Every state in which PreviewBody renders PreviewToolbar inside the wrapper.
+    for (const fileFill of [false, true]) {
+      for (const [maximized, isFull] of [
+        [true, true], // maximize fallback (phone: no ESC, no Fullscreen API)
+        [false, true], // native fullscreen
+      ] as const) {
+        const { root, inner } = shell({ maximized, isFull, fileFill });
+        expect(scrolls(root)).toBe(false);
+        expect(root).toContain('flex');
+        // …and the scrolling lives one level in (the file kinds scroll deeper still).
+        expect(inner).toBeTruthy();
+        if (!fileFill) expect(scrolls(inner)).toBe(true);
+      }
+    }
+  });
+
+  it('draws the wrapper itself only for the maximize fallback', () => {
+    expect(shell({ maximized: true, isFull: true }).root).toContain('fixed inset-0');
+    // Native fullscreen is sized by the UA stylesheet — a `fixed` box would fight it.
+    expect(shell({ isFull: true }).root).not.toContain('fixed');
+    expect(shell({ isFull: true }).root).toContain('h-full');
+  });
+
+  it('gives the file kind the height chain in the dock and the reading column to the rest', () => {
+    const file = shell({ fileFill: true });
+    expect(file.root).toContain('min-h-0');
+    expect(file.inner).toBe(file.content);
+    expect(scrolls(file.inner)).toBe(false); // FilePreview's own branch scrolls
+
+    const reading = shell({ isFull: true, measure: 'max-w-[720px]' });
+    expect(reading.content).toContain('max-w-[720px]');
+    expect(reading.content).toContain('mx-auto');
+  });
+
+  it('leaves the resting dock body alone (the shell adds no scroller there — DockShell owns it)', () => {
+    const rest = shell({});
+    expect(rest.root).toBe('px-5 py-5');
+    expect(rest.inner).toBeUndefined();
+    expect(rest.content).toBeUndefined();
   });
 });

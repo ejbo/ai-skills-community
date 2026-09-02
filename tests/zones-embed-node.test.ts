@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
-import { ContentEmbedBase, insertContentEmbed, parseInDocEmbedToken } from '@/components/zones/embeds/embed-node-extension';
+import { ContentEmbedBase, insertContentEmbed, parseInDocEmbedToken, removeContentEmbeds } from '@/components/zones/embeds/embed-node-extension';
 import { EMBED_TOKEN_RE, splitEmbedSegments } from '@/lib/zones/shared';
 
 function makeEditor(content: string) {
@@ -122,6 +122,48 @@ describe('contentEmbed node', () => {
     const out = ed.storage.markdown.getMarkdown();
     expect(ownLine(out)).toBe(true);
     expect(out).not.toMatch(/^[-*] .*embed/m);
+    ed.destroy();
+  });
+});
+
+// The composer's attachment ledger removes a row's body card THROUGH the editor
+// (a bodyMd rewrite would come back as a whole-document setContent and take the
+// other files' in-flight upload placeholders with it — tests/zones-file-upload-plugin.test.ts).
+describe('removeContentEmbeds', () => {
+  it('deletes both ref forms of one attachment and leaves every other card standing', async () => {
+    const ed = makeEditor('a\n\n[embed:file:file/abc.pdf]\n\nb\n\n[embed:file:cm123]\n\n[embed:skill:my-skill]\n\nc');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(nodes(ed)).toHaveLength(3);
+    expect(removeContentEmbeds(ed, 'file', ['file/abc.pdf', 'cm123'])).toBe(2);
+    expect(nodes(ed)).toEqual([{ kind: 'skill', ref: 'my-skill' }]);
+    const out = ed.storage.markdown.getMarkdown();
+    expect(out).not.toContain('[embed:file:');
+    expect(out).toContain('[embed:skill:my-skill]');
+    expect(out).toContain('a');
+    expect(out).toContain('c');
+    ed.destroy();
+  });
+
+  it('only touches the given kind, ignores unknown refs and reports how many it removed', async () => {
+    // Same ref string under two kinds — a `file` removal must not take the library card.
+    const ed = makeEditor('[embed:file:cm123]\n\n[embed:library:cm123]');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(removeContentEmbeds(ed, 'file', ['nope'])).toBe(0);
+    expect(removeContentEmbeds(ed, 'file', [])).toBe(0);
+    expect(nodes(ed)).toHaveLength(2);
+    expect(removeContentEmbeds(ed, 'file', ['cm123'])).toBe(1);
+    expect(nodes(ed)).toEqual([{ kind: 'library', ref: 'cm123' }]);
+    ed.destroy();
+  });
+
+  it('removes every occurrence of a repeated ref in one transaction (undoable as one step)', async () => {
+    const ed = makeEditor('[embed:file:file/abc.pdf]\n\nmiddle\n\n[embed:file:file/abc.pdf]');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(removeContentEmbeds(ed, 'file', ['file/abc.pdf'])).toBe(2);
+    expect(nodes(ed)).toEqual([]);
+    expect(ed.storage.markdown.getMarkdown()).toContain('middle');
+    ed.commands.undo();
+    expect(nodes(ed)).toHaveLength(2);
     ed.destroy();
   });
 });

@@ -166,3 +166,33 @@ export function insertContentEmbed(editor: Editor, kind: EmbedKind, ref: string)
     ])
     .run();
 }
+
+/**
+ * Deletes every `contentEmbed` of `kind` whose ref is listed — the surgical
+ * counterpart of `insertContentEmbed`, used when the composer's attachment
+ * ledger drops a row the body references. It MUST go through the editor:
+ * rewriting `bodyMd` instead comes back as an external `value`, and the
+ * controlled sync answers that with a whole-document `setContent` — which drops
+ * every in-flight upload placeholder (widget decorations inside the replaced
+ * range), so a card vanishes mid-progress and the finished file loses the
+ * position its author chose. Returns how many nodes were removed (0 ⇒ nothing
+ * matched and the caller may fall back to a string edit).
+ */
+export function removeContentEmbeds(editor: Editor, kind: EmbedKind, refs: readonly string[]): number {
+  const drop = new Set(refs.filter(Boolean));
+  if (drop.size === 0 || editor.isDestroyed) return 0;
+  const hits: { pos: number; size: number }[] = [];
+  editor.state.doc.descendants((node: PMNode, pos: number) => {
+    if (node.type.name !== CONTENT_EMBED_NODE) return true;
+    if (String(node.attrs.kind ?? '') === kind && drop.has(String(node.attrs.ref ?? ''))) {
+      hits.push({ pos, size: node.nodeSize });
+    }
+    return false; // an atom has no children to walk
+  });
+  if (hits.length === 0) return 0;
+  const tr = editor.state.tr;
+  // Descending, so an earlier deletion never shifts a later position.
+  for (const h of hits.reverse()) tr.delete(h.pos, h.pos + h.size);
+  editor.view.dispatch(tr);
+  return hits.length;
+}
