@@ -44,10 +44,11 @@ import {
   type OrgLabNode,
 } from '@/lib/zones/shared';
 import type { ZoneCardView } from '@/lib/zones/types';
-import { StaggerGrid, TabBar } from '@/components/motion';
+import { TabBar } from '@/components/motion';
 import { HubFeed } from './_components/HubFeed';
 import { ZoneBoards, type EmptyInstitute, type ZoneBoardGroup } from './_components/ZoneBoards';
 import { ZoneCard } from './_components/ZoneCard';
+import { ZoneFeaturedStrip } from './_components/ZoneFeaturedStrip';
 import { HubActiveChips, HubFilterRail, HubSortToggle } from './_components/ZoneFilters';
 import { ZoneHubHeader } from './_components/ZoneHubHeader';
 import { SECTION_TITLE_CLS, hrefWith, loginHref } from './_components/ui';
@@ -292,15 +293,7 @@ export default async function ZonesHubPage({ searchParams }: { searchParams: Sea
               {t('hub_featured')}
             </h2>
           </div>
-          <StaggerGrid
-            items={featured}
-            keyOf={(z) => z.id}
-            render={(z) => <ZoneCard zone={z} variant="featured" />}
-            className="-mx-6 flex snap-x snap-mandatory gap-4 overflow-x-auto px-6 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            itemClassName="w-80 shrink-0 snap-start"
-            stagger={0.06}
-            cascade={6}
-          />
+          <ZoneFeaturedStrip zones={featured} />
         </section>
       )}
 
