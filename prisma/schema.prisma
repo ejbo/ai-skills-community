@@ -1040,6 +1040,8 @@ enum NotificationType {
   event_reminder // an event you joined (我要参加) starts within ~30 minutes
   zone_member // 技术专区：你被加入某版块 / 加入申请已通过（或被拒绝）
   zone_request // 技术专区：有人申请加入你管理的版块
+  mention // 有人在帖子、评论或回复里 @ 了你
+  coauthor // 有人把你加为某篇内容的合著者（发布时才通知）
 }
 
 // One row per recipient. title/body/link are rendered at creation time so the

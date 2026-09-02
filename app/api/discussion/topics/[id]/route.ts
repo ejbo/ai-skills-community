@@ -18,6 +18,7 @@ import {
   mediaKeysAvailable,
   resolveMedia,
 } from '@/lib/discussion-media';
+import { notifyMentions } from '@/lib/mention-notify';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,6 +62,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       id: true,
       authorId: true,
       title: true,
+      // bodyMd = the PREVIOUS body an edit diffs its @人 against.
+      bodyMd: true,
       pinned: true,
       locked: true,
       media: { select: { kind: true, key: true } },
@@ -132,6 +135,17 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   // Refcounted: a key still referenced by any post/topic keeps its file.
   void deleteUnreferencedMediaFiles(removedKeys);
+
+  // @人 — only handles the edit ADDED get pinged.
+  if (bodyMd !== undefined) {
+    void notifyMentions({
+      bodyMd,
+      prevMd: topic.bodyMd,
+      actorId: session.user.id,
+      actorName: session.user.displayName,
+      site: { what: '帖子', title: updated.title, link: `/discussion/topics/${topic.id}` },
+    });
+  }
 
   if (moderates) {
     await logAdmin({

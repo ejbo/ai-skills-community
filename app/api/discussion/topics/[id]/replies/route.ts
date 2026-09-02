@@ -7,6 +7,7 @@ import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import { notifyTopicReply } from '@/lib/notifications';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
+import { notifyMentions } from '@/lib/mention-notify';
 
 export const dynamic = 'force-dynamic';
 
@@ -134,6 +135,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       isReplyToComment: false,
     });
   }
+
+  // @人 — 讨论区 topics are readable by anyone, so no visibility gate.
+  void notifyMentions({
+    bodyMd,
+    actorId: session.user.id,
+    actorName: session.user.displayName,
+    site: {
+      what: '帖子',
+      title: topic.title,
+      link: `/discussion/topics/${topic.id}?focus=${reply.id}`,
+    },
+  });
 
   return NextResponse.json({
     ok: true,

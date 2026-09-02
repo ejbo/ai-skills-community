@@ -30,6 +30,11 @@ vi.mock('@/lib/zones/access', () => ({
 vi.mock('@/lib/zones/queries', async () => ({ ZoneError: (await import('@/lib/zones/errors')).ZoneError }));
 vi.mock('@/lib/zones/post-queries', () => ({
   MAX_DESIGNATED_VIEWERS: 50,
+  // The real pure policy (lib/zones/post-queries.ts) — a co-author edits only
+  // while the zone gate lets them read; it is unit-tested in
+  // tests/zones-coauthor-notify.test.ts.
+  canEditZonePostContent: (o: { viewerId: string | null; authorId: string; coauthorIds: readonly string[]; canRead: boolean; canModerate: boolean }) =>
+    o.canModerate || (!!o.viewerId && (o.viewerId === o.authorId || (o.canRead && o.coauthorIds.includes(o.viewerId)))),
   getZonePostDetail: vi.fn(),
   softDeleteZonePost: vi.fn(),
   updateZonePost: lib.updateZonePost,

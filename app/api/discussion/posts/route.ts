@@ -8,6 +8,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { listPosts } from '@/lib/discussion-queries';
 import { mediaArraySchema, mediaKeysAvailable, resolveMedia } from '@/lib/discussion-media';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
+import { notifyMentions } from '@/lib/mention-notify';
 
 export const dynamic = 'force-dynamic';
 
@@ -111,6 +112,15 @@ export async function POST(req: Request) {
         },
       },
     },
+  });
+
+  // @人 — 讨论区 is readable by every member (the feed is not login-walled at
+  // all), so a feed post needs no visibility gate. Best-effort, never blocks.
+  void notifyMentions({
+    bodyMd,
+    actorId: session.user.id,
+    actorName: session.user.displayName,
+    site: { what: '动态', link: `/discussion/posts/${created.id}` },
   });
 
   return NextResponse.json({

@@ -43,6 +43,14 @@ const OPEN_DELAY = 120;
 const CLOSE_DELAY = 180;
 const EDGE_PX = 12;
 const GAP_PX = 10;
+/**
+ * Placeholder tiles shown while `/api/zones/labs` is in flight. Matches
+ * `LAB_TILE_MAX` / the curated list in lib/zones/labs.ts by hand — that module
+ * imports Prisma, so importing the constant from it would drag the whole client
+ * bundle into the database layer. Wrong by one is cosmetic (the panel resizes,
+ * and the ResizeObserver below re-centres it); an import would not be.
+ */
+const LAB_SKELETONS = 6;
 
 /** Shared across every mount — the lab grid is fetched once per page load. */
 let labCache: ZoneLabCard[] | null = null;
@@ -182,6 +190,7 @@ function MegaPanel({
   onPointerLeave: () => void;
 }) {
   const reduce = useReducedMotion();
+  const label = useLabel();
   const menu = NAV_MEGA[href];
   const ref = useRef<HTMLDivElement>(null);
   const [left, setLeft] = useState<number | null>(null);
@@ -217,7 +226,7 @@ function MegaPanel({
 
   if (!menu) return null;
 
-  const hasHeading = menu.kind === 'labs' || menu.columns.some((c) => c.t);
+  const hasHeading = menu.columns.some((c) => c.t);
 
   return (
     <motion.div
@@ -251,43 +260,57 @@ function MegaPanel({
       {/* Bridges the gap between the bar and the panel so the pointer never
           crosses dead space and triggers the close timer. */}
       <span aria-hidden className="absolute inset-x-0 -top-3 h-3" />
-      <motion.div layout={!reduce} className="flex items-start gap-7">
-        {menu.kind === 'labs' && <LabGrid />}
-        {menu.columns.map((col, i) => (
-          // A column with no heading still reserves the heading row, so its
-          // first link lines up with its neighbours' first links instead of
-          // riding up into their headings.
-          <Column key={i} col={col} reserveHeading={hasHeading} />
-        ))}
-      </motion.div>
+      {menu.kind === 'labs' ? (
+        // The 研究所 grid is two rows of three, so a link COLUMN beside it would
+        // leave a half-panel of dead space under three short links. They sit
+        // under the grid instead, as a hairline-separated footer row.
+        <motion.div layout={!reduce} className="min-w-0">
+          <LabGrid />
+          <div className="mt-3 flex flex-wrap items-center gap-1 border-t border-zinc-200/70 pt-2 dark:border-zinc-800/80">
+            {menu.columns.flatMap((c) => c.links).map((l) => (
+              <Link
+                key={`${l.href}|${l.t}`}
+                href={l.href}
+                className="rounded-lg px-2.5 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-zinc-900 hover:text-white dark:text-zinc-300 dark:hover:bg-zinc-100 dark:hover:text-zinc-900"
+              >
+                {label(l.t)}
+              </Link>
+            ))}
+          </div>
+        </motion.div>
+      ) : (
+        <motion.div layout={!reduce} className="flex items-start gap-7">
+          {menu.columns.map((col, i) => (
+            // A column with no heading still reserves the heading row, so its
+            // first link lines up with its neighbours' first links instead of
+            // riding up into their headings.
+            <Column key={i} col={col} reserveHeading={hasHeading} />
+          ))}
+        </motion.div>
+      )}
     </motion.div>
   );
 }
 
-/** Resolves a `<namespace>:<key>` label. Every namespace is client-allowlisted. */
+/**
+ * Resolves a `<namespace>:<key>` label. Every namespace is client-allowlisted.
+ *
+ * Only the namespaces NAV_MEGA actually names are hooked: a `useTranslations`
+ * for an unused one is a namespace this component would keep alive in
+ * `CLIENT_MESSAGE_NAMESPACES` (tests/i18n-client-namespaces.test.ts reads the
+ * client module graph) for nothing. Add the hook back beside the label.
+ */
 function useLabel() {
   const nav = useTranslations('nav');
-  const labels = useTranslations('labels');
-  const browse = useTranslations('browse');
   const shorts = useTranslations('shorts');
-  const libraryCards = useTranslations('library_cards');
-  const events = useTranslations('events');
   const discussion = useTranslations('discussion');
   return (spec: string) => {
     const i = spec.indexOf(':');
     const ns = spec.slice(0, i);
     const key = spec.slice(i + 1);
     switch (ns) {
-      case 'labels':
-        return labels(key);
-      case 'browse':
-        return browse(key);
       case 'shorts':
         return shorts(key);
-      case 'library_cards':
-        return libraryCards(key);
-      case 'events':
-        return events(key);
       case 'discussion':
         return discussion(key);
       default:
@@ -347,11 +370,12 @@ function LabGrid() {
       <div className="mb-2 px-1 text-[11px] font-medium uppercase tracking-wide text-muted">
         {t('mega_labs')}
       </div>
-      {/* Wrap rather than a fixed column count: a 3-column grid reserves an
-          empty third track when only two 研究所 exist, which pushed the links
-          column half a panel to the right. `max-w` caps it at three per row. */}
+      {/* Wrap rather than a fixed column count: a 3-column grid reserves empty
+          tracks when fewer 研究所 are curated than the cap, which stretched the
+          panel around nothing. `max-w` caps it at three per row, so the six
+          curated tiles land as two rows of three. */}
       <div className="flex max-w-[33rem] flex-wrap gap-2">
-        {(labs ?? Array.from({ length: 3 }, () => null)).map((lab, i) =>
+        {(labs ?? Array.from({ length: LAB_SKELETONS }, () => null)).map((lab, i) =>
           lab ? <LabTile key={lab.lab} lab={lab} /> : <LabSkeleton key={i} />,
         )}
       </div>
@@ -365,19 +389,27 @@ function LabTile({ lab }: { lab: ZoneLabCard }) {
   // fallback: a name-hashed hue from the identity palette plus the first
   // character. Stable per 研究所, and colour on material is the contract.
   const hue = identityColor(lab.lab);
+  // A curated `image` in lib/zones/labs.ts is a filename someone types by hand
+  // (public/labs/README.md names them), so a typo — or a picture not dropped in
+  // yet — is the expected state, not an accident. Falling back to the generated
+  // cover keeps a half-filled six-tile grid looking finished instead of showing
+  // six broken-image glyphs. Reset on `imageUrl` so a later fix repaints.
+  const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [lab.imageUrl]);
   return (
     <Link
       href={labHref(lab.lab)}
       className="card-hover group block w-[10.5rem] overflow-hidden rounded-xl border border-zinc-200/80 bg-white dark:border-zinc-800 dark:bg-zinc-900"
     >
       <div className="relative aspect-[16/9] overflow-hidden bg-zinc-100 dark:bg-zinc-800">
-        {lab.imageUrl ? (
+        {lab.imageUrl && !broken ? (
           <img
             // Root-relative storage URL: withBasePath is required here — the
             // fetch shim does not cover <img src> (CLAUDE.md pitfall #9).
             src={withBasePath(lab.imageUrl)}
             alt={lab.sampleZoneName ?? lab.lab}
             loading="lazy"
+            onError={() => setBroken(true)}
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
           />
         ) : (

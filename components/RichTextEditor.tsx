@@ -21,6 +21,12 @@
 //   reader's own prose, lib/zones/prose.ts) make the composer look like the
 //   page it produces.
 //
+// @人 is wired here for EVERY call site (no prop, no opt-in): typing `@` opens
+// components/mention/MentionPicker, and the pick lands as the stored markdown
+// link contract `[@显示名](/users/<handle>)` (lib/mentions.ts) — ordinary text
+// wearing the ordinary Link mark, so nothing about serialization, sanitizing or
+// the other embed nodes changes.
+//
 // Usage:
 //   <RichTextEditor value={md} onChange={setMd} placeholder="…" variant="full" />
 
@@ -71,6 +77,8 @@ import { MAX_EMBEDS_PER_CONTENT, ZONE_FILE_ACCEPT, ZONE_VIDEO_TYPES, formatBytes
 import type { ZoneAttachmentView } from '@/lib/zones/types';
 import { pushToast } from '@/components/Toaster';
 import { StickerPicker } from '@/components/stickers/StickerPicker';
+import { MentionPicker } from '@/components/mention/MentionPicker';
+import { MentionSuggestion, type MentionSession } from '@/components/mention/mention-suggestion';
 import { PollComposerDialog } from '@/components/polls/PollComposerDialog';
 import { PollEmbedBase } from '@/components/polls/poll-embed-extension';
 import { PollEmbedView } from '@/components/polls/PollEmbedView';
@@ -675,6 +683,12 @@ export function RichTextEditor({
     openPollEditRef.current = (pollId) => setPollDialog({ open: true, pollId });
   }, []);
 
+  // @人 — the suggestion plugin publishes the live `@…` session here and asks
+  // `mentionKeyRef` whether the popup swallowed a key. Both are ref/stable-setter
+  // backed because the extension list is wired once, at editor creation.
+  const [mention, setMention] = useState<MentionSession | null>(null);
+  const mentionKeyRef = useRef<(event: KeyboardEvent) => boolean>(() => false);
+
   // Keep the latest onChange without re-creating the editor.
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -718,6 +732,10 @@ export function RichTextEditor({
         openOnClick: false,
         autolink: true,
         HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: '_blank' },
+      }),
+      MentionSuggestion.configure({
+        onSession: setMention,
+        onKeyDown: (event) => mentionKeyRef.current(event),
       }),
       ...TABLE_EXTENSIONS,
       BasePathImage,
@@ -1021,6 +1039,8 @@ export function RichTextEditor({
         onOpenEmbed={embedPicker && embedEnabledRef.current ? () => setEmbedDialog(true) : undefined}
       />
       <EditorContent editor={editor} style={maxHeight ? { maxHeight, overflowY: 'auto' } : undefined} />
+      {/* @人 — portals itself; renders nothing until an `@…` session is live. */}
+      <MentionPicker session={mention} keyRef={mentionKeyRef} />
       <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={onFileChange} />
       {uploadOn && (
         <input
@@ -1190,6 +1210,26 @@ export function RichTextEditor({
         .rte .ProseMirror a {
           color: rgb(var(--accent));
           text-decoration: underline;
+        }
+        /* @人 — the SAME ink chip the reader paints (components/mention/chip.ts),
+           so the composer shows what the post will look like. The selector is
+           the stored href: the doc keeps mentions root-relative (only the image
+           node applies withBasePath), so it matches under /ai-community too. */
+        .rte .ProseMirror a[href^='/users/'] {
+          color: inherit;
+          text-decoration: none;
+          font-weight: 500;
+          /* Same geometry as MENTION_CHIP_CLASS (px-1 / -mx-0.5) so the chip is
+             the same size in the composer as on the page. */
+          border-radius: 0.25rem;
+          padding: 0 0.25rem;
+          margin: 0 -0.125rem;
+          background: rgb(113 113 122 / 0.1);
+        }
+        /* The live @查询 decoration, so it is visible which text is matching. */
+        .rte .rte-mention-query {
+          border-radius: 0.25rem;
+          background: rgb(var(--text) / 0.06);
         }
         /* GFM tables — hairline ink grid, header row on zinc-100 / zinc-800. */
         .rte .ProseMirror .tableWrapper {

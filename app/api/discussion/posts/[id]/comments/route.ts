@@ -8,6 +8,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { notifyPostReply } from '@/lib/notifications';
 import { listPostComments } from '@/lib/discussion-queries';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
+import { notifyMentions } from '@/lib/mention-notify';
 
 export const dynamic = 'force-dynamic';
 
@@ -163,6 +164,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       isReplyToComment: false,
     });
   }
+
+  // @人 — no gate: 讨论区 是公开可读的，任何成员都能打开这条动态。
+  // An image-only post has no excerpt to name it by, and 「动态「动态」」 reads
+  // like a bug — leave the title off and let the body snippet carry it.
+  void notifyMentions({
+    bodyMd,
+    actorId: session.user.id,
+    actorName: session.user.displayName,
+    site: {
+      what: '动态',
+      title: post.bodyMd.trim() ? postExcerpt(post.bodyMd) : null,
+      link: `/discussion/posts/${post.id}?focus=${comment.id}`,
+    },
+  });
 
   return NextResponse.json({
     ok: true,

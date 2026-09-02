@@ -5,9 +5,22 @@ import { auth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
-const schema = z.object({ id: z.string().optional(), all: z.boolean().optional() });
+/**
+ * A dwell over the bell list marks items read (`ids`), so one flush can carry
+ * several at once — the cap keeps a crafted body from turning into an unbounded
+ * `IN (…)`. The bell only ever holds 20 rows, so 100 is generous.
+ */
+const MAX_IDS = 100;
 
-// POST /api/notifications/read — mark one ({id}) or every ({all:true}) read.
+const schema = z.object({
+  id: z.string().min(1).optional(),
+  ids: z.array(z.string().min(1)).min(1).max(MAX_IDS).optional(),
+  all: z.boolean().optional(),
+});
+
+// POST /api/notifications/read — mark one ({id}), several ({ids}) or every
+// ({all:true}) notification read. Always answers with the authoritative unread
+// count so the client can reconcile its optimistic paint.
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
@@ -22,14 +35,14 @@ export async function POST(req: Request) {
       where: { recipientId, readAt: null },
       data: { readAt: now },
     });
-  } else if (parsed.data.id) {
+  } else {
+    const ids = [...new Set([...(parsed.data.ids ?? []), ...(parsed.data.id ? [parsed.data.id] : [])])];
+    if (ids.length === 0) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
     // Scope to the recipient so you can't mark someone else's notification read.
     await prisma.notification.updateMany({
-      where: { id: parsed.data.id, recipientId, readAt: null },
+      where: { id: { in: ids }, recipientId, readAt: null },
       data: { readAt: now },
     });
-  } else {
-    return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
   }
 
   const unreadCount = await prisma.notification.count({ where: { recipientId, readAt: null } });

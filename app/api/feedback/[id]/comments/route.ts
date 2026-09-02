@@ -6,6 +6,7 @@ import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import { notifyFeedbackReply } from '@/lib/notifications';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
+import { notifyMentions } from '@/lib/mention-notify';
 
 const createSchema = z.object({
   bodyMd: z.string().trim().min(1).max(2000),
@@ -127,6 +128,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       isReplyToComment: false,
     });
   }
+
+  // @人 — no gate: every member can open any feedback thread.
+  void notifyMentions({
+    bodyMd,
+    actorId: session.user.id,
+    actorName: session.user.displayName,
+    site: {
+      what: '反馈',
+      title: feedback.title,
+      link: `/feedback/${feedback.id}?focus=${comment.id}`,
+    },
+  });
 
   return NextResponse.json({
     ok: true,

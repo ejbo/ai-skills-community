@@ -1,6 +1,7 @@
 {
   "notifications": {
     "title": "Notifications",
+    "unread": "Non lu",
     "mark_all_read": "Tout marquer comme lu",
     "empty": "Aucune notification"
   },
@@ -47,20 +48,10 @@
     "shelf": "Mon étagère",
     "zones": "Espaces techniques",
     "search_zones": "Espaces techniques",
-    "mega_browse": "Parcourir",
-    "mega_more": "Plus",
-    "mega_type": "Type",
-    "mega_topics": "Thèmes",
-    "mega_kind": "Catégorie",
-    "mega_shorts": "Clips",
-    "mega_shorts_feed": "Fil immersif",
-    "mega_hot_posts": "Publications populaires",
-    "mega_hot_topics": "Sujets populaires",
     "mega_labs": "Instituts",
     "mega_zone_feed": "Publications",
     "mega_zone_boards": "Tous les espaces",
     "mega_zone_mine": "Mes espaces",
-    "mega_event_mine": "Mes inscriptions",
     "mega_lab_zones": "{count, plural, one {# espace} other {# espaces}}"
   },
   "home": {
@@ -759,7 +750,11 @@
     "rte_table_add_col": "Ajouter une colonne",
     "rte_table_del_row": "Supprimer la ligne",
     "rte_table_del_col": "Supprimer la colonne",
-    "rte_table_delete": "Supprimer le tableau"
+    "rte_table_delete": "Supprimer le tableau",
+    "mention_label": "Mentionner un membre",
+    "mention_hint": "Saisissez un nom ou un matricule",
+    "mention_loading": "Recherche…",
+    "mention_empty": "Aucun membre correspondant"
   },
   "discussion_pages": {
     "title": "Discussions",
@@ -3299,7 +3294,11 @@
     "composer_coauthor_remove": "Retirer le co-auteur {name}",
     "composer_coauthor_search": "Rechercher des membres",
     "composer_coauthor_empty": "Aucun membre correspondant",
-    "composer_coauthor_hint": "Seuls les membres de cet espace peuvent être co-auteurs.",
+    "composer_coauthor_hint": "N’importe quel membre de la plateforme peut être co-auteur ; il en est notifié à la publication. Un co-auteur qui n’est pas membre de cet espace peut lire la publication, mais pas la modifier.",
+    "composer_coauthor_search_site": "Rechercher par nom ou matricule",
+    "composer_coauthor_prompt": "Saisissez un nom ou un matricule pour rechercher",
+    "composer_coauthor_no_match": "Aucune personne correspondante",
+    "composer_coauthor_full": "Jusqu’à {max} co-auteurs",
     "composer_wait_uploads": "{count, plural, one {# téléversement en cours} other {# téléversements en cours}}",
     "composer_uploads_busy": "{count, plural, one {# téléversement est} other {# téléversements sont}} encore en cours — attendez la fin avant de continuer",
     "composer_reset": "Réinitialiser",

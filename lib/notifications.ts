@@ -653,3 +653,88 @@ export async function notifyZoneJoinRequest(opts: {
     console.error('[notify] zone join request failed (is the migration applied?):', e);
   }
 }
+
+// ── @人 / 合著者 ─────────────────────────────────────────────────────────────
+
+/** Where a mention happened, for the notification copy and the deep link. */
+export interface MentionSite {
+  /** 帖子 / 评论 / 回复 / 动态 …, already localized to the house Chinese copy. */
+  what: string;
+  /** Title of the thing that contains the mention ('' when it has none). */
+  title?: string | null;
+  /** In-app link, root-relative; `appUrl()` prefixes it for email. */
+  link: string;
+}
+
+/**
+ * Someone @-ed people in a body. In-app ONLY and deliberately NOT gated by
+ * NotificationPreference: a mention is addressed to you personally, like a
+ * membership decision — the comment-reply preference is about threads you
+ * happen to be in, which is a different question.
+ *
+ * The caller resolves handles to ids (lib/mentions.ts extracts the handles);
+ * this fans out one row per recipient, skipping the actor. Failures are
+ * swallowed per recipient so one bad row never costs the others their ping,
+ * and never fails the write that triggered it.
+ */
+export async function notifyMention(opts: {
+  recipientIds: readonly string[];
+  actorId: string;
+  actorName: string;
+  site: MentionSite;
+  bodyMd: string;
+}): Promise<void> {
+  const recipients = [...new Set(opts.recipientIds)].filter((id) => id && id !== opts.actorId);
+  if (recipients.length === 0) return;
+  const snippet = truncate(opts.bodyMd);
+  const where = opts.site.title ? `${opts.site.what}「${truncate(opts.site.title, 40)}」` : opts.site.what;
+  await Promise.all(
+    recipients.map(async (recipientId) => {
+      try {
+        await createInApp({
+          recipientId,
+          actorId: opts.actorId,
+          type: 'mention',
+          title: `${opts.actorName} 在${where}中提到了你`,
+          body: snippet,
+          link: opts.site.link,
+        });
+      } catch (e) {
+        console.error('[notify] mention failed:', e);
+      }
+    }),
+  );
+}
+
+/**
+ * You were added as a 合著者 and the content just went LIVE. Deliberately fired
+ * on publish, not on save: a draft's co-author list churns while the author is
+ * still writing, and being told about a draft you cannot see yet is noise.
+ * In-app only, not preference-gated (it is a fact about your own byline).
+ */
+export async function notifyCoauthor(opts: {
+  recipientIds: readonly string[];
+  actorId: string;
+  actorName: string;
+  title: string;
+  link: string;
+}): Promise<void> {
+  const recipients = [...new Set(opts.recipientIds)].filter((id) => id && id !== opts.actorId);
+  if (recipients.length === 0) return;
+  await Promise.all(
+    recipients.map(async (recipientId) => {
+      try {
+        await createInApp({
+          recipientId,
+          actorId: opts.actorId,
+          type: 'coauthor',
+          title: `${opts.actorName} 把你列为合著者`,
+          body: truncate(opts.title, 80),
+          link: opts.link,
+        });
+      } catch (e) {
+        console.error('[notify] coauthor failed:', e);
+      }
+    }),
+  );
+}

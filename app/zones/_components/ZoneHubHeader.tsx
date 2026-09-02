@@ -1,7 +1,11 @@
 // 技术专区 — hub header band (server component), compact: ONE row on lg —
 // plain-text h1 (no BlurText, no per-char reveal), one sentence, the search
 // box (search is the landing's main verb) and the Magnetic 创建 CTA — over the
-// HairlineGrid backdrop. Counts sit under the search as mono text.
+// HairlineGrid backdrop.
+//
+// It carries NO counts. 「9 篇内容」 used to sit under the search box, attached
+// to nothing and repeated at the far right of the tab row below (owner ask #1);
+// the single count now captions the list itself, in the list's own column.
 
 import Link from 'next/link';
 import { Plus } from 'lucide-react';
@@ -13,18 +17,11 @@ import { BTN_PRIMARY } from './ui';
 export async function ZoneHubHeader({
   canCreate,
   searchMode,
-  zoneCount,
-  postCount,
 }: {
   canCreate: boolean;
   searchMode: 'feed' | 'boards';
-  zoneCount?: number;
-  postCount?: number;
 }) {
   const t = await getTranslations('zones');
-  const stats: string[] = [];
-  if (typeof zoneCount === 'number') stats.push(t('hub_zone_count', { count: zoneCount }));
-  if (typeof postCount === 'number') stats.push(t('hub_post_count', { count: postCount }));
 
   return (
     <section className="relative overflow-hidden rounded-2xl border border-zinc-200 bg-white px-6 py-6 dark:border-zinc-800 dark:bg-zinc-950">
@@ -37,9 +34,6 @@ export async function ZoneHubHeader({
         <div className="flex flex-wrap items-center gap-x-4 gap-y-3 lg:shrink-0">
           <div className="w-full sm:w-80">
             <HubSearchBox mode={searchMode} />
-            {stats.length > 0 && (
-              <p className="mt-1.5 font-mono text-xs tabular-nums text-zinc-500 dark:text-zinc-500">{stats.join(' · ')}</p>
-            )}
           </div>
           {canCreate && (
             <Magnetic>

@@ -12,6 +12,7 @@ import {
   sanitizeTopicTags,
   tagErrorReason,
 } from '@/lib/discussion-tags';
+import { notifyMentions } from '@/lib/mention-notify';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,6 +89,14 @@ export async function POST(req: Request) {
       media: { create: media },
     },
     select: { id: true },
+  });
+
+  // @人 — 讨论区 topics are readable by anyone, so no visibility gate.
+  void notifyMentions({
+    bodyMd: parsed.data.bodyMd,
+    actorId: session.user.id,
+    actorName: session.user.displayName,
+    site: { what: '帖子', title: parsed.data.title, link: `/discussion/topics/${created.id}` },
   });
 
   return NextResponse.json({ ok: true, topic: created });

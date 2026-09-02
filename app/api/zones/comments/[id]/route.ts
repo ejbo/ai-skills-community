@@ -5,6 +5,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { apiReason } from '@/lib/api-errors';
 import { logAdmin } from '@/lib/audit';
+import { notifyMentions, zonePostMentionGate } from '@/lib/mention-notify';
 import { ZONE_ACCESS_SELECT, resolveZoneAccess, zoneSiteViewer } from '@/lib/zones/access';
 import { ZONE_LIMITS } from '@/lib/zones/shared';
 
@@ -23,11 +24,20 @@ const COMMENT_SELECT = {
   replyCount: true,
   status: true,
   createdAt: true,
+  // bodyMd is the PREVIOUS body an edit diffs its @人 against (newMentionHandles);
+  // title/visibility/authorId/coauthors are what the mention gate needs to decide
+  // who may read the post the comment hangs under.
+  bodyMd: true,
   post: {
     select: {
       id: true,
       zoneId: true,
+      title: true,
+      status: true,
       deletedAt: true,
+      authorId: true,
+      visibility: true,
+      coauthors: { select: { userId: true } },
       zone: { select: ZONE_ACCESS_SELECT },
     },
   },
@@ -73,6 +83,31 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     where: { id: comment.id },
     data: { bodyMd: parsed.data.bodyMd, editedAt: new Date() },
     select: { id: true, bodyMd: true, editedAt: true },
+  });
+
+  // @人 — an EDIT only pings handles it ADDED (prevMd), so fixing a typo does
+  // not re-notify the thread. Same post-visibility gate as the create path.
+  void notifyMentions({
+    bodyMd: updated.bodyMd,
+    prevMd: comment.bodyMd,
+    actorId: session.user.id,
+    actorName: session.user.displayName,
+    site: {
+      what: '帖子',
+      title: comment.post.title,
+      link: `/zones/${comment.post.zone.slug}/posts/${comment.post.id}?focus=${comment.id}`,
+    },
+    gate: zonePostMentionGate({
+      zone: comment.post.zone,
+      post: {
+        id: comment.post.id,
+        authorId: comment.post.authorId,
+        coauthorIds: comment.post.coauthors.map((c) => c.userId),
+        status: comment.post.status,
+        deletedAt: comment.post.deletedAt,
+        visibility: comment.post.visibility,
+      },
+    }),
   });
 
   if (!isAuthor && access.siteAdmin && !access.isMember) {

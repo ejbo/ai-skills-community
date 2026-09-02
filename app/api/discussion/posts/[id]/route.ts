@@ -7,6 +7,7 @@ import { can } from '@/lib/permissions';
 import { logAdmin } from '@/lib/audit';
 import { deleteUnreferencedMediaFiles } from '@/lib/discussion-media';
 import { MAX_PINNED_POSTS } from '@/lib/discussion-queries';
+import { notifyMentions } from '@/lib/mention-notify';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +31,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   const post = await prisma.post.findUnique({
     where: { id: params.id },
-    select: { id: true, authorId: true, pinned: true },
+    // bodyMd = the PREVIOUS body an edit diffs its @人 against.
+    select: { id: true, authorId: true, pinned: true, bodyMd: true },
   });
   if (!post) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
@@ -64,6 +66,17 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     },
     select: { id: true, bodyMd: true, pinned: true, editedAt: true },
   });
+
+  // @人 — only handles the edit ADDED get pinged; a typo fix re-pings nobody.
+  if (bodyMd !== undefined) {
+    void notifyMentions({
+      bodyMd,
+      prevMd: post.bodyMd,
+      actorId: session.user.id,
+      actorName: session.user.displayName,
+      site: { what: '动态', link: `/discussion/posts/${post.id}` },
+    });
+  }
 
   if (pinned !== undefined) {
     await logAdmin({

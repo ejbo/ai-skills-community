@@ -1,6 +1,7 @@
 {
   "notifications": {
     "title": "通知",
+    "unread": "未读",
     "mark_all_read": "全部已读",
     "empty": "暂无通知"
   },
@@ -47,20 +48,10 @@
     "shelf": "我的书架",
     "zones": "技术专区",
     "search_zones": "技术专区",
-    "mega_browse": "浏览",
-    "mega_more": "更多",
-    "mega_type": "类型",
-    "mega_topics": "主题",
-    "mega_kind": "大类",
-    "mega_shorts": "短视频",
-    "mega_shorts_feed": "沉浸式刷",
-    "mega_hot_posts": "最热动态",
-    "mega_hot_topics": "最热讨论",
     "mega_labs": "研究所",
     "mega_zone_feed": "最新动态",
     "mega_zone_boards": "全部版块",
     "mega_zone_mine": "我的版块",
-    "mega_event_mine": "我参加的",
     "mega_lab_zones": "{count} 个版块"
   },
   "home": {
@@ -759,7 +750,11 @@
     "rte_table_add_col": "加一列",
     "rte_table_del_row": "删除行",
     "rte_table_del_col": "删除列",
-    "rte_table_delete": "删除表格"
+    "rte_table_delete": "删除表格",
+    "mention_label": "提及成员",
+    "mention_hint": "输入名字或工号搜索",
+    "mention_loading": "搜索中…",
+    "mention_empty": "没有匹配的成员"
   },
   "discussion_pages": {
     "title": "社区讨论",
@@ -3299,7 +3294,11 @@
     "composer_coauthor_remove": "移除合著者 {name}",
     "composer_coauthor_search": "搜索版块成员",
     "composer_coauthor_empty": "没有匹配的成员",
-    "composer_coauthor_hint": "仅本版块的成员可以成为合著者。",
+    "composer_coauthor_hint": "站内任何成员都可以加为合著者，发布后会收到通知。不在本版块的合著者只能查看这篇帖子，不能编辑。",
+    "composer_coauthor_search_site": "搜索姓名或工号",
+    "composer_coauthor_prompt": "输入姓名或工号开始搜索",
+    "composer_coauthor_no_match": "没有匹配的人",
+    "composer_coauthor_full": "最多 {max} 位合著者",
     "composer_wait_uploads": "{count} 个附件上传中，请稍候",
     "composer_uploads_busy": "还有 {count} 个附件正在上传，请等上传完成后再操作",
     "composer_reset": "重置",

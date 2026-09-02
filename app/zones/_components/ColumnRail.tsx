@@ -9,6 +9,11 @@
 // (the chip row below xl edits the live URL and keeps them — same action, same
 // result at every width).
 // Empty taxonomy: a hint plus 创建栏目 for moderators.
+//
+// The rail is navigation, so it stays ink — but each 栏目 carries its own hue
+// as a dot (zone-color.ts), the way 讨论区's Discourse sidebar dots its
+// categories. That dot is the same colour as the chip the 栏目 wears on every
+// post row, which is what makes the rail and the list read as one taxonomy.
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
@@ -17,6 +22,7 @@ import { TabBar, type TabItem } from '@/components/motion';
 import { UNCATEGORIZED_COLUMN_PARAM, zoneHref, zonePostHref } from '@/lib/zones/shared';
 import type { ZoneColumnView, ZonePostCardView } from '@/lib/zones/types';
 import { FADE_Y_CLASS, SECTION_TITLE_CLS, hrefWith } from './ui';
+import { columnDotCls } from './zone-color';
 
 const ALL_KEY = '__all';
 
@@ -55,8 +61,9 @@ export function ColumnRail({
   const memberActive = member.some((c) => c.slug === active);
 
   const label = (c: ZoneColumnView, hash = false) => (
-    <span className="block max-w-[6.75rem] truncate" title={c.name}>
-      {hash ? `#${c.name}` : c.name}
+    <span className="inline-flex min-w-0 items-center gap-1.5" title={c.name}>
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${columnDotCls(c.name)}`} aria-hidden />
+      <span className="block max-w-[6.25rem] truncate">{hash ? `#${c.name}` : c.name}</span>
     </span>
   );
 

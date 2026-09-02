@@ -229,30 +229,41 @@ export default async function ZonesHubPage({ searchParams }: { searchParams: Sea
   ];
 
   const railMode = tab === 'feed' ? 'feed' : 'boards';
-  const resultLabel =
-    tab === 'feed'
+  // ONE result count on the page, and only when it answers something: how much
+  // did my filter find. Unfiltered, the list is its own answer — the old header
+  // 「9 篇内容」 hung off nothing and the tab row repeated it at the far right,
+  // aligned to neither column (owner ask #1).
+  const narrowed = tab === 'feed' ? feedFiltered : boardsFiltered;
+  const resultLabel = narrowed
+    ? tab === 'feed'
       ? t('hub_feed_count', { count: feed?.total ?? 0 })
-      : t('hub_result_count', { count: visibleZones });
+      : t('hub_result_count', { count: visibleZones })
+    : null;
+  const resultLine = resultLabel ? (
+    <p className="shrink-0 font-mono text-xs tabular-nums text-zinc-500 dark:text-zinc-400">{resultLabel}</p>
+  ) : null;
 
   return (
     <div className="container py-6">
-      <ZoneHubHeader
-        canCreate={canCreate}
-        searchMode={railMode}
-        zoneCount={tab === 'feed' ? undefined : visibleZones}
-        postCount={tab === 'feed' ? (feed?.total ?? 0) : undefined}
-      />
+      <ZoneHubHeader canCreate={canCreate} searchMode={railMode} />
 
-      <div className="mt-6 flex flex-wrap items-end justify-between gap-4">
+      {/*
+        The tab bar is the PAGE's control, so it spans the page: a block-level
+        TabBar draws its hairline edge to edge, and every column below starts on
+        that rule. Nothing else is allowed on this row — the count used to float
+        at its far right, aligned to neither column (owner ask #1).
+      */}
+      <div className="mt-6">
         <TabBar tabs={tabs} active={tab} id="zones-hub-tabs" ariaLabel={t('hub_title')} />
-        <p className="font-mono text-xs tabular-nums text-zinc-500">{resultLabel}</p>
       </div>
 
       {showFeatured && featured.length > 0 && (
         <section className="mt-8">
           <div className="mb-4 flex items-end justify-between gap-3 border-b border-zinc-200 pb-3 dark:border-zinc-800">
             <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
-              <Star className="h-4 w-4 text-zinc-400" />
+              {/* 精选 is an editorial mark on the content, not a control: the
+                  gold star is the same one 热榜 keeps (配色契约). */}
+              <Star className="h-4 w-4 fill-amber-400 text-amber-500" />
               {t('hub_featured')}
             </h2>
           </div>
@@ -270,26 +281,38 @@ export default async function ZonesHubPage({ searchParams }: { searchParams: Sea
 
       {tab === 'mine' ? (
         <div className="mt-6">
-          <HubActiveChips mode="boards" className="mb-4" />
+          {(resultLine || boardsFiltered) && (
+            <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+              {resultLine}
+              <HubActiveChips mode="boards" />
+            </div>
+          )}
           <ZoneBoards groups={groups} filtered={boardsFiltered} mine />
         </div>
       ) : (
-        <div className="mt-6 grid gap-x-10 gap-y-6 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <div className="mt-6 grid gap-x-10 gap-y-6 lg:grid-cols-[232px_minmax(0,1fr)]">
           <aside>
             <HubFilterRail org={railOrg} columns={facets.columns} mode={railMode} />
           </aside>
 
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 pb-3 dark:border-zinc-800">
+            {/* Everything that describes or orders THIS list lives in THIS
+                column and starts on its left edge: sort, then the count, then
+                the removable chips. That is the whole of owner ask #1 — the
+                sort used to sit under a page-wide rule that stopped 272px to
+                its left, and the count was somewhere else again. */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <HubSortToggle mode={railMode} />
-              {tab === 'boards' && board?.truncated && (
-                <span className={SECTION_TITLE_CLS}>{t('hub_boards_truncated')}</span>
-              )}
+              {resultLine}
             </div>
 
             <HubActiveChips mode={railMode} className="mt-3" />
 
-            <div className="mt-5">
+            {tab === 'boards' && board?.truncated && (
+              <p className={`${SECTION_TITLE_CLS} mt-3`}>{t('hub_boards_truncated')}</p>
+            )}
+
+            <div className="mt-4">
               {tab === 'feed' && feed ? (
                 <HubFeed
                   key={`${feedSort}|${q}|${carry.lab}|${carry.department}|${feedCarry.column}`}

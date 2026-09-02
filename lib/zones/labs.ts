@@ -27,22 +27,50 @@ export interface ZoneLabCard {
 
 /**
  * ─── EDIT ME ──────────────────────────────────────────────────────────────
- * The 研究所 the menu should always show, in the order they should appear.
+ * 「技术专区」下拉里的六个研究所 —— 这里就是填的地方。 This array is the whole
+ * answer: the six tiles below are what the navbar shows, in this order.
  *
- * `lab` must match `Zone.lab` EXACTLY (it is compared as a string, and it is
- * what `/zones?lab=…` filters on) — a stray space makes a different bucket.
- * `image` is a file you drop in `public/labs/`; omit it and the tile falls back
- * to the 版块 cover, then to a generated one, so a half-filled list still looks
- * finished.
+ * TO RENAME A 研究所: change its `lab` string. That is the only edit needed —
+ * the tile, its link and its 版块 count all follow.
+ *
+ *     { lab: '智能网络研究所' },
+ *
+ * TO GIVE IT A PICTURE: drop the file in `public/labs/` (see the README there
+ * for the filenames these entries expect) and uncomment its `image` line:
+ *
+ *     { lab: '智能网络研究所', image: '/labs/network.jpg' },
+ *
+ * TO ADD OR REMOVE ONE: add or delete a line. `LAB_TILE_MAX` caps the grid at
+ * six, so a seventh entry is simply never shown.
+ *
+ * Two rules that bite:
+ *  • `lab` must match `Zone.lab` EXACTLY — it is compared as a string and it is
+ *    what `/zones?lab=…` filters on, so a stray space makes a different bucket
+ *    and the tile reads 「0 个版块」. Copy the value from a 版块's 研究所 field.
+ *  • A 研究所 with no 版块 yet STILL gets a tile (curated entries hold their
+ *    slot at `zoneCount: 0`), which is why the grid is six from day one and the
+ *    names below can be filled in before any 版块 exists. Only the artwork
+ *    degrades: `image` → a representative 版块 cover → a generated one.
  *
  * Leave the array empty and the grid is purely data-driven: every 研究所 that
  * has a 版块 today, busiest first.
  */
 export const CURATED_LABS: { lab: string; image?: string }[] = [
-  // The two 研究所 that exist in the data today. Add the other four here — and
-  // drop their pictures in `public/labs/` — to get the full six-tile grid.
-  { lab: '计算视觉研究所' },
-  { lab: '网络技术研究所' },
+  // ── The two that exist in the data today ──────────────────────────────────
+  { lab: '计算视觉研究所' }, // image: '/labs/vision.jpg'
+  { lab: '网络技术研究所' }, // image: '/labs/network.jpg'
+
+  // ── PLACEHOLDERS — rename these four ──────────────────────────────────────
+  // They are deliberately live (not commented out) so the grid is six tiles
+  // from the first day; each renders as an empty 研究所 until it is renamed and
+  // a 版块 is filed under it. Replace the string, keep the line.
+  // The leading digit is not decoration: with no picture a tile draws its own
+  // first character, and four 「研究所…」 placeholders would draw four identical
+  // 「研」 squares. Numbered, they read as the empty slots they are.
+  { lab: '3 号研究所（待填写）' }, // image: '/labs/lab-3.jpg'
+  { lab: '4 号研究所（待填写）' }, // image: '/labs/lab-4.jpg'
+  { lab: '5 号研究所（待填写）' }, // image: '/labs/lab-5.jpg'
+  { lab: '6 号研究所（待填写）' }, // image: '/labs/lab-6.jpg'
 ];
 
 /** 版块 are team boards — the table is small by construction. Bounded anyway. */

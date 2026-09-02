@@ -5,6 +5,7 @@ import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import { notifyLibraryReply } from '@/lib/notifications';
+import { libraryDocMentionGate, notifyMentions } from '@/lib/mention-notify';
 import { toPublicAuthor } from '@/lib/user-identity';
 import { getDocComments } from '@/lib/library-queries';
 
@@ -23,7 +24,17 @@ const createSchema = z.object({
 async function loadDoc(id: string) {
   const doc = await prisma.libraryDoc.findUnique({
     where: { id },
-    select: { id: true, slug: true, title: true, uploaderId: true, status: true, deletedAt: true },
+    // visibility drives the mention gate: a comment on a 私有/受限 doc must not
+    // ping anyone who could not open the doc itself.
+    select: {
+      id: true,
+      slug: true,
+      title: true,
+      uploaderId: true,
+      visibility: true,
+      status: true,
+      deletedAt: true,
+    },
   });
   if (!doc || doc.deletedAt || doc.status !== 'ready') return null;
   return doc;
@@ -148,6 +159,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       isReplyToComment: false,
     }).catch(() => undefined);
   }
+
+  // @人 — gated by the doc's own visibility (the canReadDoc rules, batched).
+  void notifyMentions({
+    bodyMd,
+    actorId: session.user.id,
+    actorName,
+    site: {
+      what: '文档',
+      title: doc.title,
+      link: `/library/${doc.slug}?focus=${created.id}`,
+    },
+    gate: libraryDocMentionGate(doc),
+  });
 
   return NextResponse.json({ ok: true, comment: created });
 }

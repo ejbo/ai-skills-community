@@ -32,6 +32,7 @@ import {
 } from '@/lib/zones/shared';
 import { OrgFilterPanel } from './OrgFilterPanel';
 import { INPUT_CLS, SECTION_TITLE_CLS, chipCls } from './ui';
+import { columnDotCls } from './zone-color';
 
 export interface HubFilterState {
   q: string;
@@ -236,10 +237,11 @@ export function HubFilterRail({
                 type="button"
                 onClick={() => commit({ columns: toggle(state.columns, c.name) })}
                 aria-pressed={state.columns.includes(c.name)}
-                className={chipCls(state.columns.includes(c.name))}
+                className={`${chipCls(state.columns.includes(c.name))} inline-flex items-center gap-1.5`}
               >
-                {c.name}
-                <span className="ml-1 font-mono text-[10px] tabular-nums opacity-60">{c.postCount}</span>
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${columnDotCls(c.name)}`} aria-hidden />
+                <span className="min-w-0 truncate">{c.name}</span>
+                <span className="font-mono text-[10px] tabular-nums opacity-60">{c.postCount}</span>
               </button>
             ))}
           </div>

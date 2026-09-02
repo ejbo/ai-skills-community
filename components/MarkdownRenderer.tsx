@@ -6,6 +6,8 @@ import rehypeHighlight from 'rehype-highlight';
 import { sanitizeSchema } from '@/lib/markdown';
 import { withBasePath } from '@/lib/base-path';
 import { isStickerSrc } from '@/lib/stickers';
+import { isMentionHref } from '@/lib/mentions';
+import { MENTION_CHIP_CLASS } from '@/components/mention/chip';
 import { splitPollSegments } from '@/lib/polls-shared';
 import { ARTICLE_PROSE_CLASS } from '@/lib/zones/prose';
 import { PROSE_IMAGE_ATTR } from '@/components/zones/prose-image';
@@ -91,14 +93,23 @@ const MD_COMPONENTS: Components = {
   // External links open in a new tab and ALWAYS get a safe rel (closes
   // reverse-tabnabbing — the sanitize schema permits target/rel, and any
   // stored rel is overridden here). Root-relative hrefs get the basePath.
-  a: ({ node, href, target, rel, ...props }) => {
+  //
+  // @人 (lib/mentions.ts) is stored as an ordinary link to `/users/<handle>`,
+  // so it arrives here like any other anchor: when the href has the mention
+  // shape it wears the ink chip (components/mention/chip.ts) and stays a
+  // working profile link. Recognition is on the RAW stored href, BEFORE
+  // withBasePath — the same rule 表情包 follow above.
+  a: ({ node, href, target, rel, className, ...props }) => {
     const h = typeof href === 'string' ? href : '';
     const external = /^(https?:)?\/\//i.test(h);
+    const chip = isMentionHref(h) ? MENTION_CHIP_CLASS : '';
+    const cls = [chip, className].filter(Boolean).join(' ');
     return (
       <a
         href={withBasePath(h)}
         target={external ? '_blank' : target}
         rel={external || target === '_blank' ? 'noopener noreferrer nofollow' : rel}
+        className={cls || undefined}
         {...props}
       />
     );

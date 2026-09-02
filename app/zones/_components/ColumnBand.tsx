@@ -8,6 +8,7 @@ import { getTranslations } from 'next-intl/server';
 import { Pencil, X } from 'lucide-react';
 import type { ZoneColumnView } from '@/lib/zones/types';
 import { BTN_ICON, PILL_COLUMN_MEMBER } from './ui';
+import { columnDotCls } from './zone-color';
 
 export async function ColumnBand({
   column,
@@ -35,6 +36,9 @@ export async function ColumnBand({
     <div className="flex items-start justify-between gap-4 border-b border-zinc-200 pb-4 dark:border-zinc-800">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
+          {column && (
+            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${columnDotCls(column.name)}`} aria-hidden />
+          )}
           <h2 className="min-w-0 break-words text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">{name}</h2>
           <span className="font-mono text-xs tabular-nums text-zinc-500">{t('column_band_posts', { count })}</span>
           {column && !column.official && <span className={PILL_COLUMN_MEMBER}>{t('home_about_column_member')}</span>}

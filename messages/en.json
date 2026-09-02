@@ -1,6 +1,7 @@
 {
   "notifications": {
     "title": "Notifications",
+    "unread": "Unread",
     "mark_all_read": "Mark all read",
     "empty": "No notifications yet"
   },
@@ -47,20 +48,10 @@
     "shelf": "My Shelf",
     "zones": "Tech Zones",
     "search_zones": "Tech zones",
-    "mega_browse": "Browse",
-    "mega_more": "More",
-    "mega_type": "Type",
-    "mega_topics": "Topics",
-    "mega_kind": "Category",
-    "mega_shorts": "Shorts",
-    "mega_shorts_feed": "Swipe feed",
-    "mega_hot_posts": "Top posts",
-    "mega_hot_topics": "Top topics",
     "mega_labs": "Institutes",
     "mega_zone_feed": "Latest posts",
     "mega_zone_boards": "All boards",
     "mega_zone_mine": "My boards",
-    "mega_event_mine": "Attending",
     "mega_lab_zones": "{count, plural, one {# board} other {# boards}}"
   },
   "home": {
@@ -759,7 +750,11 @@
     "rte_table_add_col": "Add column",
     "rte_table_del_row": "Delete row",
     "rte_table_del_col": "Delete column",
-    "rte_table_delete": "Delete table"
+    "rte_table_delete": "Delete table",
+    "mention_label": "Mention a member",
+    "mention_hint": "Type a name or staff ID",
+    "mention_loading": "Searching…",
+    "mention_empty": "No matching member"
   },
   "discussion_pages": {
     "title": "Discussion",
@@ -3299,7 +3294,11 @@
     "composer_coauthor_remove": "Remove co-author {name}",
     "composer_coauthor_search": "Search zone members",
     "composer_coauthor_empty": "No matching members",
-    "composer_coauthor_hint": "Only members of this zone can be co-authors.",
+    "composer_coauthor_hint": "Anyone on the platform can be a co-author, and they are notified once the post is published. A co-author who is not a member of this zone can read the post but cannot edit it.",
+    "composer_coauthor_search_site": "Search by name or staff ID",
+    "composer_coauthor_prompt": "Type a name or staff ID to search",
+    "composer_coauthor_no_match": "No matching people",
+    "composer_coauthor_full": "Up to {max} co-authors",
     "composer_wait_uploads": "{count, plural, one {# upload in progress} other {# uploads in progress}}",
     "composer_uploads_busy": "{count, plural, one {# upload is} other {# uploads are}} still in progress — wait for them to finish first",
     "composer_reset": "Reset",

@@ -10,6 +10,7 @@ import { zoneContext } from '@/lib/zones/access';
 import { ZoneError } from '@/lib/zones/queries';
 import {
   MAX_DESIGNATED_VIEWERS,
+  canEditZonePostContent,
   getZonePostDetail,
   setZonePostFlags,
   softDeleteZonePost,
@@ -169,7 +170,19 @@ export async function PATCH(req: Request, { params }: { params: { slug: string; 
   }
 
   const uid = session.user.id;
-  const isAuthor = post.authorId === uid || post.coauthors.some((c) => c.userId === uid);
+  const coauthorIds = post.coauthors.map((c) => c.userId);
+  const isAuthor = post.authorId === uid || coauthorIds.includes(uid);
+  // 合著者可以是站内任何人 (owner ask 2026-09-02), so the byline alone must not
+  // be a write grant: `canEditZonePostContent` lets a CO-author edit only while
+  // the zone gate lets them read. The 主作者 and `moderate` are unchanged. It is
+  // exported from the lib so the composer page applies the identical rule.
+  const canEditContent = canEditZonePostContent({
+    viewerId: uid,
+    authorId: post.authorId,
+    coauthorIds,
+    canRead: ctx.access.canRead,
+    canModerate: ctx.access.canModerate,
+  });
   const { pinned, locked, ...content } = parsed.data;
 
   const editsContent = Object.values(content).some((x) => x !== undefined);
@@ -181,7 +194,7 @@ export async function PATCH(req: Request, { params }: { params: { slug: string; 
   const publishes = content.status === 'published' && post.status !== 'published';
   const nextType = content.type ?? post.type;
 
-  if (editsContent && !isAuthor && !ctx.access.canModerate) {
+  if (editsContent && !canEditContent) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
   if (moderates && !ctx.access.canModerate) {

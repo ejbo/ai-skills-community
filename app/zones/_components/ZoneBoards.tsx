@@ -3,7 +3,9 @@
 // 技术专区 hub — the 版块 tab (ask #8): every 版块 the viewer may read, grouped
 // under its 研究所 with a section header per lab, filtered live by the
 // 研究所 → 部门 rail. Nothing is truncated in a header: the org name is the
-// point of this view.
+// point of this view — so its glyph carries the lab's own identity hue
+// (zone-color.ts), which is what tells two long, similarly-worded 研究所
+// headers apart on a scroll.
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
@@ -11,6 +13,7 @@ import { Building2, Layers } from 'lucide-react';
 import type { ZoneCardView } from '@/lib/zones/types';
 import { ZoneGrid } from './ZoneGrid';
 import { BTN_SECONDARY } from './ui';
+import { orgHue } from './zone-color';
 
 export interface ZoneBoardGroup {
   /** '' = 未标注研究所 (rendered last, with a neutral header). */
@@ -57,7 +60,10 @@ export function ZoneBoards({
         <section key={group.lab || '__none__'}>
           {showHeaders && (
             <div className="mb-4 flex items-baseline gap-2 border-b border-zinc-200 pb-2 dark:border-zinc-800">
-              <Building2 className="h-3.5 w-3.5 shrink-0 translate-y-0.5 text-zinc-400" />
+              <Building2
+                className="h-3.5 w-3.5 shrink-0 translate-y-0.5"
+                style={group.lab ? { color: orgHue(group.lab) } : undefined}
+              />
               <h2 className="min-w-0 break-words text-sm font-semibold tracking-tight text-zinc-800 dark:text-zinc-200">
                 {group.lab || t('hub_org_unassigned')}
               </h2>

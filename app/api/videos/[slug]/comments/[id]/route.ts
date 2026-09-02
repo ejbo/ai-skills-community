@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { logAdmin } from '@/lib/audit';
 import { canModerateComment, videoActorFrom } from '@/lib/video/access';
+import { notifyMentions, videoMentionGate } from '@/lib/mention-notify';
 
 const editSchema = z.object({ bodyMd: z.string().min(1).max(2000) });
 
@@ -18,7 +19,25 @@ export async function PATCH(req: Request, { params }: { params: { slug: string; 
 
   const comment = await prisma.videoComment.findUnique({
     where: { id: params.id },
-    select: { id: true, authorId: true, status: true, video: { select: { slug: true } } },
+    select: {
+      id: true,
+      authorId: true,
+      status: true,
+      // bodyMd = the PREVIOUS body an edit diffs its @人 against; the video
+      // fields are the mention gate's inputs.
+      bodyMd: true,
+      video: {
+        select: {
+          slug: true,
+          title: true,
+          status: true,
+          visibility: true,
+          uploaderId: true,
+          isShort: true,
+          deletedAt: true,
+        },
+      },
+    },
   });
   if (!comment || comment.video.slug !== params.slug || comment.status === 'deleted') {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
@@ -31,6 +50,21 @@ export async function PATCH(req: Request, { params }: { params: { slug: string; 
     where: { id: comment.id },
     data: { bodyMd: parsed.data.bodyMd, editedAt: new Date() },
   });
+
+  // @人 — only handles the edit ADDED get pinged; same gate as the create path.
+  void notifyMentions({
+    bodyMd: parsed.data.bodyMd,
+    prevMd: comment.bodyMd,
+    actorId: session.user.id,
+    actorName: session.user.displayName,
+    site: {
+      what: '视频',
+      title: comment.video.title,
+      link: `/videos/${params.slug}?focus=${comment.id}`,
+    },
+    gate: videoMentionGate(comment.video),
+  });
+
   return NextResponse.json({ ok: true });
 }
 

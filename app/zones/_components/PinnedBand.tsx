@@ -16,7 +16,8 @@ import { zoneHref, zonePostHref } from '@/lib/zones/shared';
 import type { ZonePostCardView } from '@/lib/zones/types';
 import { RelTime } from './RelTime';
 import { RolePill } from './RolePill';
-import { CARD_CLS, PILL_COLUMN, PILL_COLUMN_MEMBER, SECTION_TITLE_CLS } from './ui';
+import { CARD_CLS, SECTION_TITLE_CLS } from './ui';
+import { columnPillCls, zoneHue, zoneWash } from './zone-color';
 
 export function PinnedBand({ items, leadRoles }: { items: ZonePostCardView[]; leadRoles?: LeadRoles }) {
   const t = useTranslations('zones');
@@ -44,7 +45,13 @@ export function PinnedBand({ items, leadRoles }: { items: ZonePostCardView[]; le
                   <img src={withBasePath(post.coverUrl)} alt="" loading="lazy" className="h-14 w-14 rounded-lg object-cover" />
                 </GlareHover>
               ) : (
-                <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-400 dark:bg-zinc-900">
+                // No cover: stand in with the ZONE's own colour rather than a
+                // grey block — a 置顶 band is two or three cards, and a grey
+                // square next to a coloured one reads as a broken image.
+                <span
+                  className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg"
+                  style={{ backgroundColor: zoneWash(post.zone.name), color: zoneHue(post.zone.name) }}
+                >
                   <FolderOpen className="h-5 w-5" aria-hidden />
                 </span>
               )}
@@ -58,7 +65,7 @@ export function PinnedBand({ items, leadRoles }: { items: ZonePostCardView[]; le
                   {post.column && (
                     <Link
                       href={`${zoneBase}?column=${encodeURIComponent(post.column.slug)}`}
-                      className={`${post.column.official ? PILL_COLUMN : PILL_COLUMN_MEMBER} relative z-[1]`}
+                      className={`${columnPillCls(post.column.name, post.column.official)} relative z-[1]`}
                     >
                       <span className="truncate">{post.column.name}</span>
                     </Link>

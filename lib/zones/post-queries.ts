@@ -25,13 +25,14 @@ import { Prisma } from '@prisma/client';
 import type { Session } from 'next-auth';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
+import { extractMentionHandles, newMentionHandles } from '@/lib/mentions';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor, type PublicAuthor } from '@/lib/user-identity';
 import type { ZoneAccessRow, ZoneSiteViewer } from './access';
 import { getOrCreateColumn, recountZoneColumns } from './columns';
 import { resolveEmbeds } from './embeds';
 import { ZoneError } from './errors';
 import { scheduleOfficePreview } from './office-preview';
-import type { ZoneAccess } from './permissions';
+import type { ZoneAccess, ZoneVisibilityValue } from './permissions';
 import {
   decideZonePostAccess,
   isZonePostAuthor,
@@ -63,6 +64,7 @@ import {
   normalizeAccessCode,
   normalizeHttpUrl,
   normalizeTags,
+  zonePostHref,
   type ZoneFeedSort,
   type ZonePostSort,
   type ZonePostTypeValue,
@@ -1070,17 +1072,59 @@ async function deleteUnreferencedZoneFiles(keys: (string | null | undefined)[]):
 
 // ── Create / update ──────────────────────────────────────────────────────────
 
-async function validateCoauthors(zone: ZoneAccessRow, authorId: string, ids: string[]): Promise<string[]> {
+/**
+ * 合著者 = 站内任何在职账号 (owner ask, 2026-09-02: 「添加合著者我希望是可以整个
+ * 平台的人都可以添加」). The zone-membership requirement is GONE — the picker
+ * searches the whole site through `GET /api/users/search`.
+ *
+ * What survives, because each one is load-bearing: the `maxCoauthors` cap, the
+ * self-exclusion (you are already the 主作者), the dedupe, the picker's order
+ * (it is the byline order) and — new — the existence + `isActive` check, which
+ * is what keeps a bogus id out of `coauthors.create` (an unknown user id would
+ * otherwise surface as a raw P2003 500).
+ *
+ * Unknown / disabled ids are DROPPED, never thrown on: the only way to send one
+ * is a stale chip (the person was disabled between picking and saving) or a
+ * hand-crafted body, and failing the whole save for either is worse than a
+ * byline that quietly matches reality. `coauthor_not_member` is dead as a
+ * result — the api_errors key stays for old clients / a rollback.
+ *
+ * A co-author who is not a member of the zone can READ the post they are on
+ * (decideZonePostAccess treats an author as privileged before the zone gate —
+ * that is what a byline means) but NOT edit it: see `canEditZonePostContent`.
+ */
+async function validateCoauthors(authorId: string, ids: string[]): Promise<string[]> {
   const unique = [...new Set(ids.map((s) => s.trim()).filter((id) => id && id !== authorId))].slice(0, ZONE_LIMITS.maxCoauthors);
   if (unique.length === 0) return [];
-  const needMembership = unique.filter((id) => id !== zone.ownerId);
-  if (needMembership.length > 0) {
-    const n = await prisma.zoneMember.count({
-      where: { zoneId: zone.id, status: 'active', userId: { in: needMembership } },
-    });
-    if (n !== needMembership.length) throw new ZoneError('coauthor_not_member', 400);
-  }
-  return unique;
+  const rows = await prisma.user.findMany({
+    where: { id: { in: unique }, isActive: true },
+    select: { id: true },
+  });
+  const known = new Set(rows.map((r) => r.id));
+  return unique.filter((id) => known.has(id));
+}
+
+/**
+ * May this viewer edit the post's CONTENT? The single rule, shared by the PATCH
+ * route and the composer page so the two can never disagree.
+ *
+ * Co-authorship is a per-post byline, site-wide by owner decision — it must
+ * never become a WRITE grant inside a 版块 the person cannot even read. So a
+ * co-author edits only while the zone gate lets them in; the 主作者 keeps the pen
+ * on their own post, and `moderate` is the usual override. (Publishing a draft
+ * needs `canPost` on top — the route applies that separately.)
+ */
+export function canEditZonePostContent(o: {
+  viewerId: string | null;
+  authorId: string;
+  coauthorIds: readonly string[];
+  canRead: boolean;
+  canModerate: boolean;
+}): boolean {
+  if (o.canModerate) return true;
+  if (!o.viewerId) return false;
+  if (o.viewerId === o.authorId) return true;
+  return o.canRead && o.coauthorIds.includes(o.viewerId);
 }
 
 async function validateCover(coverKey: string | null): Promise<{ coverKey: string | null; coverUrl: string | null }> {
@@ -1183,6 +1227,101 @@ async function resolvePostColumn(
   return column.id;
 }
 
+// ── 通知：合著者 + @人 ────────────────────────────────────────────────────────
+//
+// Both fire on PUBLISH, never on a draft save: a draft's co-author list and its
+// @人 churn while the author is still writing, and being told about a post you
+// cannot open yet is noise. Everything below is best-effort — the block is
+// wrapped, and `notifyCoauthor` / `notifyMentions` swallow their own errors
+// too: a notification may never fail the write that triggered it.
+
+/** House Chinese copy for a mention's location (notification bodies are stored data, not UI). */
+const MENTION_WHAT = '帖子';
+
+interface PostNotifyInput {
+  postId: string;
+  zone: { id: string; slug: string; ownerId: string; visibility: ZoneVisibilityValue };
+  post: { authorId: string; coauthorIds: string[]; visibility: ZonePostVisibilityValue };
+  actorId: string;
+  title: string;
+  bodyMd: string;
+  /**
+   * The body as it was BEFORE this save, or `undefined` when the post is
+   * appearing for the first time (create-published / draft→published) — then
+   * everyone it @s is pinged, because nobody was pinged while it was a draft.
+   */
+  prevBodyMd?: string;
+  /** Co-authors to ping: everyone on a fresh publish, only the ADDED ones on an edit. */
+  newCoauthorIds: string[];
+}
+
+async function notifyPostPeople(o: PostNotifyInput): Promise<void> {
+  try {
+    const newCoauthors = [...new Set(o.newCoauthorIds)].filter((id) => id && id !== o.actorId);
+    // Same switch `notifyMentions` applies internally — computed here only to
+    // decide whether this save has anything to announce at all (both helpers
+    // are pure and the body is already in memory).
+    const handles =
+      o.prevBodyMd === undefined ? extractMentionHandles(o.bodyMd) : newMentionHandles(o.bodyMd, o.prevBodyMd);
+    if (newCoauthors.length === 0 && handles.length === 0) return;
+
+    // Imported HERE, not at module scope, on purpose: lib/notifications reaches
+    // the mailer and lib/mention-notify reaches lib/auth, and BOTH validate the
+    // whole env at import time. post-queries is imported by every 技术专区 RSC
+    // and by pure unit tests, so the notification chain stays out of its import
+    // graph — this best-effort path runs at most once per publish and Node
+    // caches the module after the first load.
+    const [{ notifyCoauthor }, { notifyMentions, zonePostMentionGate }] = await Promise.all([
+      import('@/lib/notifications'),
+      import('@/lib/mention-notify'),
+    ]);
+
+    const link = zonePostHref(o.zone.slug, o.postId);
+    const actor = await prisma.user.findUnique({
+      where: { id: o.actorId },
+      select: { displayName: true, handle: true },
+    });
+    const actorName = actor?.displayName?.trim() || actor?.handle || '';
+    const alreadyToldAsCoauthor = new Set(newCoauthors);
+    // The zone's own gate, batch-loaded: a 仅成员可见 版块 or a 指定成员可见 帖子
+    // must not ping an outsider. It rebuilds `decideZonePostAccess`, so a
+    // co-author (or the 主版主, or a site admin) is reachable wherever they
+    // could open the post.
+    const readable = zonePostMentionGate({
+      zone: o.zone,
+      post: {
+        id: o.postId,
+        authorId: o.post.authorId,
+        coauthorIds: o.post.coauthorIds,
+        status: 'published',
+        deletedAt: null,
+        visibility: o.post.visibility,
+      },
+    });
+
+    await Promise.all([
+      newCoauthors.length > 0
+        ? notifyCoauthor({ recipientIds: newCoauthors, actorId: o.actorId, actorName, title: o.title, link })
+        : Promise.resolve(),
+      handles.length > 0
+        ? notifyMentions({
+            bodyMd: o.bodyMd,
+            ...(o.prevBodyMd !== undefined ? { prevMd: o.prevBodyMd } : {}),
+            actorId: o.actorId,
+            actorName,
+            site: { what: MENTION_WHAT, title: o.title, link },
+            gate: async (candidates) =>
+              // Being told you are now a 合著者 already carries this save's news:
+              // one event, one notification.
+              (await readable(candidates)).filter((c) => !alreadyToldAsCoauthor.has(c.id)),
+          })
+        : Promise.resolve(),
+    ]);
+  } catch (e) {
+    console.error('[zones] post notifications failed:', e);
+  }
+}
+
 export async function createZonePost(
   zone: ZoneAccessRow,
   authorId: string,
@@ -1194,7 +1333,7 @@ export async function createZonePost(
   const bodyMd = input.bodyMd ?? '';
   const visibility: ZonePostVisibilityValue = input.visibility ?? 'zone';
   const [coauthorIds, attachments, cover, columnId] = await Promise.all([
-    validateCoauthors(zone, authorId, input.coauthorIds ?? []),
+    validateCoauthors(authorId, input.coauthorIds ?? []),
     resolvePostAttachments(input.attachments ?? [], bodyMd),
     validateCover(input.coverKey),
     resolvePostColumn(zone, input, { userId: authorId, canModerate: opts.canModerate }),
@@ -1259,6 +1398,19 @@ export async function createZonePost(
   });
 
   for (const a of created.attachments) if (a.previewStatus === 'pending') scheduleOfficePreview(a.id);
+  // Published straight away ⇒ every co-author and everyone @-ed in the body
+  // hears about it now. A draft tells nobody (notifyPostPeople is never called).
+  if (publish) {
+    await notifyPostPeople({
+      postId: created.id,
+      zone: { id: zone.id, slug: zone.slug, ownerId: zone.ownerId, visibility: zone.visibility },
+      post: { authorId, coauthorIds, visibility },
+      actorId: authorId,
+      title,
+      bodyMd,
+      newCoauthorIds: coauthorIds,
+    });
+  }
   return { id: created.id };
 }
 
@@ -1285,6 +1437,8 @@ export async function updateZonePost(
       status: true,
       publishedAt: true,
       deletedAt: true,
+      // Who was ALREADY on the byline — an edit pings only who it ADDED.
+      coauthors: { select: { userId: true } },
       zone: {
         select: {
           id: true,
@@ -1314,7 +1468,7 @@ export async function updateZonePost(
   const bodyMd = patch.bodyMd !== undefined ? patch.bodyMd : existing.bodyMd;
 
   const [coauthorIds, attachments, cover, nextColumnId] = await Promise.all([
-    patch.coauthorIds !== undefined ? validateCoauthors(existing.zone, existing.authorId, patch.coauthorIds) : Promise.resolve(null),
+    patch.coauthorIds !== undefined ? validateCoauthors(existing.authorId, patch.coauthorIds) : Promise.resolve(null),
     // The composer always sends the WHOLE ledger, so that is when the body's
     // file keys are unioned in. A patch carrying `bodyMd` but no `attachments`
     // (API / CLI clients editing only the text) leaves the rows untouched.
@@ -1348,6 +1502,10 @@ export async function updateZonePost(
   const nextStatus = patch.status ?? existing.status;
   const publishing = existing.status === 'draft' && nextStatus === 'published';
   const unpublishing = existing.status === 'published' && nextStatus === 'draft';
+  const staysPublished = existing.status === 'published' && nextStatus === 'published';
+  // Set by the GUARDED flip below, so a publish that lost the race (someone
+  // else's PATCH already moved the row) notifies nobody — that request did.
+  let publishedNow = false;
 
   const existingKeys = new Set(existing.attachments.map((a) => a.key));
   const newKeys = attachments ? attachments.map((a) => a.key) : null;
@@ -1457,6 +1615,7 @@ export async function updateZonePost(
         data: { status: 'published', publishedAt: existing.publishedAt ?? now },
       });
       if (flipped.count > 0) {
+        publishedNow = true;
         await tx.zone.update({ where: { id: existing.zoneId }, data: { postCount: { increment: 1 }, lastActivityAt: now } });
       }
     } else if (unpublishing) {
@@ -1490,6 +1649,32 @@ export async function updateZonePost(
       select: { id: true },
     });
     for (const a of fresh) scheduleOfficePreview(a.id);
+  }
+
+  // 通知 — published rows only. A draft going LIVE pings its whole co-author
+  // list and everyone it @s (nobody was told while it was a draft); an edit of
+  // an already-published post pings only the people it ADDED, so re-saving a
+  // typo never re-pings the byline. Unpublishing pings nobody.
+  if (publishedNow || staysPublished) {
+    const before = new Set(existing.coauthors.map((c) => c.userId));
+    const finalCoauthorIds = coauthorIds ?? [...before];
+    await notifyPostPeople({
+      postId: existing.id,
+      zone: {
+        id: existing.zone.id,
+        slug: existing.zone.slug,
+        ownerId: existing.zone.ownerId,
+        visibility: existing.zone.visibility,
+      },
+      post: { authorId: existing.authorId, coauthorIds: finalCoauthorIds, visibility: nextVisibility },
+      actorId,
+      title,
+      bodyMd,
+      newCoauthorIds: publishedNow ? finalCoauthorIds : finalCoauthorIds.filter((id) => !before.has(id)),
+      // A draft going live has told nobody yet ⇒ no `prevBodyMd`, everyone it
+      // @s is pinged; an edit of a live post pings only the @s it ADDED.
+      ...(publishedNow ? {} : { prevBodyMd: existing.bodyMd }),
+    });
   }
 }
 

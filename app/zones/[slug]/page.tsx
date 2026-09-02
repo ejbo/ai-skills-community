@@ -43,6 +43,7 @@ import { ZoneNotice } from '../_components/ZoneNotice';
 import { ZoneSidebar } from '../_components/ZoneSidebar';
 import { ZoneStats } from '../_components/ZoneStats';
 import { CARD_CLS, PILL_COLUMN, PILL_COLUMN_MEMBER, PILL_MONO, SECTION_TITLE_CLS, hrefWith, loginHref } from '../_components/ui';
+import { columnDotCls } from '../_components/zone-color';
 
 export const dynamic = 'force-dynamic';
 
@@ -346,8 +347,16 @@ export default async function ZoneHomePage({
                     {zone.columns.map((c) => (
                       <tr key={c.id}>
                         <td className="px-5 py-2.5 sm:px-6">
-                          <Link href={`${base}?column=${encodeURIComponent(c.slug)}`} className="font-medium hover:underline">
-                            {c.name}
+                          {/* Same hue the 栏目 wears in the rail and on every
+                              post row (zone-color.ts) — this table is the
+                              taxonomy's index, so it must read as the same
+                              taxonomy. */}
+                          <Link
+                            href={`${base}?column=${encodeURIComponent(c.slug)}`}
+                            className="inline-flex min-w-0 items-center gap-1.5 font-medium hover:underline"
+                          >
+                            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${columnDotCls(c.name)}`} aria-hidden />
+                            <span className="min-w-0 truncate">{c.name}</span>
                           </Link>
                         </td>
                         <td className="max-w-[18rem] px-3 py-2.5 text-zinc-600 dark:text-zinc-400">

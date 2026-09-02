@@ -15,6 +15,7 @@ import { Magnetic } from '@/components/motion';
 import { UNCATEGORIZED_COLUMN_PARAM, ZONE_POST_SORTS, parseZonePostSort, zoneHref } from '@/lib/zones/shared';
 import type { ZoneColumnView } from '@/lib/zones/types';
 import { BTN_PRIMARY, INPUT_CLS, chipCls } from './ui';
+import { columnDotCls } from './zone-color';
 
 export function PostFilters({
   slug,
@@ -61,6 +62,7 @@ export function PostFilters({
       aria-pressed={columnSlug === c.slug}
       title={c.description || c.name}
     >
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${columnDotCls(c.name)}`} aria-hidden />
       <span className="truncate">{c.official ? c.name : `#${c.name}`}</span>
       <span className="font-mono text-[10px] tabular-nums opacity-70">{c.postCount}</span>
     </button>

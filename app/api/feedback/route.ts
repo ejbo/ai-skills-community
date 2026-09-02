@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
+import { notifyMentions } from '@/lib/mention-notify';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -37,6 +38,15 @@ export async function POST(req: Request) {
   const created = await prisma.feedback.create({
     data: { ...parsed.data, authorId: session.user.id },
     select: { id: true },
+  });
+
+  // @人 — the 意见反馈 board has no per-item visibility: every member can open
+  // any feedback, so there is nothing to gate on. Best-effort, never blocks.
+  void notifyMentions({
+    bodyMd: parsed.data.bodyMd,
+    actorId: session.user.id,
+    actorName: session.user.displayName,
+    site: { what: '反馈', title: parsed.data.title, link: `/feedback/${created.id}` },
   });
 
   return NextResponse.json({ ok: true, feedback: created });

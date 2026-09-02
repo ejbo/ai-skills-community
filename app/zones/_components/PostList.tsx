@@ -183,7 +183,10 @@ export function PostList({
 
   return (
     <div>
-      <div>
+      {/* A top rule so the stream reads as one list, exactly like the hub feed —
+          the rows only carry a bottom border, so without it the first row hung
+          off the controls above it. */}
+      <div className="border-t border-zinc-200 dark:border-zinc-800">
         {items.map((post) => (
           <PostRow key={post.id} post={post} compact={compact} showZone={showZone} leadRoles={leadRoles} />
         ))}

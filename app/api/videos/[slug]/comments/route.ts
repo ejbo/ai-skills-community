@@ -8,6 +8,7 @@ import { parseCommentSort } from '@/lib/video/types';
 import { listReplies, listTopComments, type VideoCommentView } from '@/lib/video/queries';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
 import { notifyCommentReply } from '@/lib/notifications';
+import { notifyMentions, videoMentionGate } from '@/lib/mention-notify';
 
 /** 隐私账号: strip department/lab of comment authors before the JSON leaves the server. */
 function trimComments(rows: VideoCommentView[], viewerCanSeeIdentity: boolean): VideoCommentView[] {
@@ -66,7 +67,17 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
 
   const video = await prisma.video.findUnique({
     where: { slug: params.slug },
-    select: { id: true, deletedAt: true, title: true },
+    // status/visibility/uploaderId/isShort are the mention gate's inputs — a
+    // draft / private video must not ping people who could not watch it.
+    select: {
+      id: true,
+      deletedAt: true,
+      title: true,
+      status: true,
+      visibility: true,
+      uploaderId: true,
+      isShort: true,
+    },
   });
   if (!video || video.deletedAt) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
@@ -132,6 +143,15 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
       });
     }
   }
+
+  // @人 — gated by canViewVideo, the same decision the watch page makes.
+  void notifyMentions({
+    bodyMd,
+    actorId: session.user.id,
+    actorName: session.user.displayName,
+    site: { what: '视频', title: video.title, link: `/videos/${params.slug}?focus=${created.id}` },
+    gate: videoMentionGate(video),
+  });
 
   const comment: VideoCommentView = {
     ...created,

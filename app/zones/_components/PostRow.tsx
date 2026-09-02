@@ -7,9 +7,15 @@
 // profile, column, tag filter) sit above the overlay with `relative z-[1]`.
 //
 // Types are hidden everywhere (owner decision): the leading chip is the 栏目
-// (dashed when member-created), never a format pill. A lead's name carries the
-// `RolePill` when the surface passes `leadRoles` (zone-scoped lists only — the
-// cross-zone feed passes none, a 版主 of one zone is nobody in another).
+// (soft-filled in the column's own hue when official, dashed in that hue when
+// member-created — see zone-color.ts), never a format pill. A lead's name
+// carries the `RolePill` when the surface passes `leadRoles` (zone-scoped lists
+// only — the cross-zone feed passes none, a 版主 of one zone is nobody in
+// another).
+//
+// The metadata line is TWO groups, not one long grey run: identity + time wrap
+// inside the left group, the engagement figures stay hard right, so a column of
+// numbers forms down the list and the eye can scan either edge.
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
@@ -24,9 +30,17 @@ import type { ZoneAttachmentKindView, ZonePostCardView } from '@/lib/zones/types
 import { RelTime } from './RelTime';
 import { RolePill } from './RolePill';
 import { VISIBILITY_ICONS } from './post/VisibilityPicker';
-import { PILL_COLUMN, PILL_COLUMN_MEMBER, PILL_INK, PILL_MONO } from './ui';
+import { PILL_INK, PILL_MONO } from './ui';
+import { columnPillCls, tagTextCls, zoneHue } from './zone-color';
 
-const KIND_ICONS: Record<ZoneAttachmentKindView, typeof FileText> = { image: ImageIcon, video: Video, file: FileText };
+// An attachment's KIND is content, not chrome — the same reason GitHub 热榜
+// keeps its per-language dot. Three quiet hues at 12px, enough to tell "there
+// are slides on this one" from "there is a video" without reading a word.
+const KIND_ICONS: Record<ZoneAttachmentKindView, { Icon: typeof FileText; cls: string }> = {
+  image: { Icon: ImageIcon, cls: 'text-emerald-500/80 dark:text-emerald-400/80' },
+  video: { Icon: Video, cls: 'text-violet-500/80 dark:text-violet-400/80' },
+  file: { Icon: FileText, cls: 'text-sky-500/80 dark:text-sky-400/80' },
+};
 const MAX_KIND_GLYPHS = 3;
 
 function Stat({ icon, value, label }: { icon: React.ReactNode; value: number; label: string }) {
@@ -38,14 +52,21 @@ function Stat({ icon, value, label }: { icon: React.ReactNode; value: number; la
   );
 }
 
-/** 20 px zone icon (or the ink monogram) — the feed's "which board" cue. */
+/**
+ * 20 px zone icon — the feed's "which board" cue. With no artwork it falls back
+ * to a monogram on the zone's OWN identity hue (zone-color.ts), not a black
+ * square: a feed mixing five 版块 used to show five identical ink chips.
+ */
 function ZoneIcon({ zone }: { zone: ZonePostCardView['zone'] }) {
   if (zone.iconUrl) {
     // eslint-disable-next-line @next/next/no-img-element -- stored root-relative media URL
     return <img src={withBasePath(zone.iconUrl)} alt="" loading="lazy" className="h-5 w-5 shrink-0 rounded-md object-cover" />;
   }
   return (
-    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-zinc-900 font-mono text-[10px] font-semibold uppercase text-white dark:bg-zinc-100 dark:text-zinc-900">
+    <span
+      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md font-mono text-[10px] font-semibold uppercase text-white"
+      style={{ backgroundColor: zoneHue(zone.name) }}
+    >
       {zone.name.trim().charAt(0) || 'Z'}
     </span>
   );
@@ -87,7 +108,7 @@ export function PostRow({
             <Link
               href={`${zoneHref(post.zone.slug)}?column=${encodeURIComponent(post.column.slug)}`}
               aria-label={t('post_column_aria', { name: post.column.name })}
-              className={`${post.column.official ? PILL_COLUMN : PILL_COLUMN_MEMBER} relative z-[1]`}
+              className={`${columnPillCls(post.column.name, post.column.official)} relative z-[1]`}
             >
               <FolderOpen className="h-3 w-3 shrink-0" aria-hidden />
               <span className="truncate">{post.column.name}</span>
@@ -125,7 +146,7 @@ export function PostRow({
 
         <h3
           className={`mt-1.5 font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 ${
-            compact ? 'line-clamp-1 text-sm' : 'line-clamp-2 text-base'
+            compact ? 'line-clamp-1 text-sm' : 'line-clamp-2 text-lg leading-snug'
           }`}
         >
           <Link href={href} className="after:absolute after:inset-0 group-hover:underline">
@@ -138,76 +159,85 @@ export function PostRow({
         )}
 
         <div
-          className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-zinc-500 dark:text-zinc-400 ${
+          className={`flex flex-wrap items-start gap-x-4 gap-y-1.5 text-xs text-zinc-500 dark:text-zinc-400 sm:flex-nowrap ${
             compact ? 'mt-1.5' : 'mt-2.5'
           }`}
         >
-          <span className="inline-flex min-w-0 items-center gap-1.5">
-            <span className="flex -space-x-1.5">
-              {shownAuthors.map((a) => (
-                <span key={a.handle} className="rounded-full ring-2 ring-white dark:ring-zinc-950">
-                  <Avatar name={a.displayName} src={a.avatarUrl} size="xs" handle={a.handle} />
-                </span>
-              ))}
-            </span>
-            <span className="inline-flex min-w-0 items-center gap-1">
-              {shownAuthors.map((a, i) => {
-                const role = leadRoleOf(leadRoles, a.handle);
-                return (
-                  <span key={a.handle} className="inline-flex min-w-0 items-center gap-1">
-                    {i > 0 && <span className="text-zinc-300 dark:text-zinc-600">·</span>}
-                    <Link
-                      href={`/users/${a.handle}`}
-                      className="relative z-[1] max-w-[8rem] truncate text-zinc-700 hover:text-zinc-900 hover:underline dark:text-zinc-300 dark:hover:text-zinc-100"
-                    >
-                      {a.displayName}
-                    </Link>
-                    {role && <RolePill role={role} />}
+          {/* Left group: it is the flex item that shrinks, so everything here
+              wraps INSIDE it and the figures below never get pushed off the
+              first line. */}
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 sm:flex-1">
+            <span className="inline-flex min-w-0 items-center gap-1.5">
+              <span className="flex -space-x-1.5">
+                {shownAuthors.map((a) => (
+                  <span key={a.handle} className="rounded-full ring-2 ring-white dark:ring-zinc-950">
+                    <Avatar name={a.displayName} src={a.avatarUrl} size="xs" handle={a.handle} />
                   </span>
-                );
-              })}
-              {moreAuthors > 0 && <span>{t('post_row_authors_more', { count: moreAuthors })}</span>}
-            </span>
-            {!compact && (
-              <DeptTag department={post.author.department} lab={post.author.lab} className="relative z-[1]" />
-            )}
-          </span>
-          <RelTime at={when} className="inline-flex items-center gap-1 tabular-nums" />
-          {!compact && (
-            <span className="inline-flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              {t('post_row_read_minutes', { count: post.readMinutes })}
-            </span>
-          )}
-          <Stat icon={<Heart className="h-3 w-3" />} value={post.likeCount} label={t('post_row_likes')} />
-          <Stat icon={<MessageCircle className="h-3 w-3" />} value={post.commentCount} label={t('post_row_comments')} />
-          {!compact && <Stat icon={<Eye className="h-3 w-3" />} value={post.viewCount} label={t('post_row_views')} />}
-          {post.attachmentCount > 0 && (
-            <span className="inline-flex items-center gap-1.5">
-              <Stat icon={<Paperclip className="h-3 w-3" />} value={post.attachmentCount} label={t('post_row_attachments')} />
-              {kindGlyphs.length > 0 && (
-                <span className="inline-flex items-center gap-0.5 text-zinc-400" aria-hidden>
-                  {kindGlyphs.map((k) => {
-                    const Icon = KIND_ICONS[k];
-                    return <Icon key={k} className="h-3 w-3" />;
-                  })}
-                </span>
+                ))}
+              </span>
+              <span className="inline-flex min-w-0 items-center gap-1">
+                {shownAuthors.map((a, i) => {
+                  const role = leadRoleOf(leadRoles, a.handle);
+                  return (
+                    <span key={a.handle} className="inline-flex min-w-0 items-center gap-1">
+                      {i > 0 && <span className="text-zinc-300 dark:text-zinc-600">·</span>}
+                      <Link
+                        href={`/users/${a.handle}`}
+                        className="relative z-[1] max-w-[8rem] truncate text-zinc-700 hover:text-zinc-900 hover:underline dark:text-zinc-300 dark:hover:text-zinc-100"
+                      >
+                        {a.displayName}
+                      </Link>
+                      {role && <RolePill role={role} />}
+                    </span>
+                  );
+                })}
+                {moreAuthors > 0 && <span>{t('post_row_authors_more', { count: moreAuthors })}</span>}
+              </span>
+              {!compact && (
+                <DeptTag department={post.author.department} lab={post.author.lab} className="relative z-[1]" />
               )}
             </span>
-          )}
-          {!compact && post.tags.length > 0 && (
-            <span className="inline-flex flex-wrap items-center gap-1">
-              {post.tags.slice(0, 4).map((tag) => (
-                <Link
-                  key={tag}
-                  href={`${zoneHref(post.zone.slug)}?tag=${encodeURIComponent(tag)}`}
-                  className="relative z-[1] font-mono text-[11px] text-zinc-500 hover:text-zinc-900 hover:underline dark:hover:text-zinc-100"
-                >
-                  #{tag}
-                </Link>
-              ))}
-            </span>
-          )}
+            <RelTime at={when} className="inline-flex items-center gap-1 tabular-nums" />
+            {!compact && (
+              <span className="inline-flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {t('post_row_read_minutes', { count: post.readMinutes })}
+              </span>
+            )}
+            {!compact && post.tags.length > 0 && (
+              <span className="inline-flex flex-wrap items-center gap-1">
+                {post.tags.slice(0, 4).map((tag) => (
+                  <Link
+                    key={tag}
+                    href={`${zoneHref(post.zone.slug)}?tag=${encodeURIComponent(tag)}`}
+                    className={`relative z-[1] font-mono text-[11px] transition hover:underline hover:opacity-80 ${tagTextCls(tag)}`}
+                  >
+                    #{tag}
+                  </Link>
+                ))}
+              </span>
+            )}
+          </div>
+
+          {/* Right anchor — the figures, always on the first line at ≥sm. */}
+          <span className="inline-flex shrink-0 items-center gap-3 sm:ml-auto">
+            <Stat icon={<Heart className="h-3 w-3" />} value={post.likeCount} label={t('post_row_likes')} />
+            <Stat icon={<MessageCircle className="h-3 w-3" />} value={post.commentCount} label={t('post_row_comments')} />
+            {!compact && <Stat icon={<Eye className="h-3 w-3" />} value={post.viewCount} label={t('post_row_views')} />}
+            {post.attachmentCount > 0 && (
+              <span className="inline-flex items-center gap-1.5">
+                <Stat icon={<Paperclip className="h-3 w-3" />} value={post.attachmentCount} label={t('post_row_attachments')} />
+                {kindGlyphs.length > 0 && (
+                  <span className="inline-flex items-center gap-0.5" aria-hidden>
+                    {kindGlyphs.map((k) => {
+                      const { Icon, cls } = KIND_ICONS[k];
+                      return <Icon key={k} className={`h-3 w-3 ${cls}`} />;
+                    })}
+                  </span>
+                )}
+              </span>
+            )}
+          </span>
         </div>
       </div>
 

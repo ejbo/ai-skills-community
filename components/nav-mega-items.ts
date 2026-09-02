@@ -3,11 +3,30 @@
 // A plain module (no 'use client', no next-intl) for the same reason
 // nav-items.ts is one: the catalog is data, the renderer translates.
 //
+// ── WHAT BELONGS IN A PANEL (owner decision, 2026-09-02) ─────────────────────
+// A hover panel is for a section that is really SEVERAL surfaces wearing one
+// nav link. It is NOT a place to re-list a section's filters: the first cut of
+// this file mirrored every taxonomy (skill sources, doc types, forum
+// categories, event kinds) and the owner rejected it as 「太冗余」— those chips
+// are already on the page the link goes to, one click away, where they carry
+// their counts and their state.
+//
+// So only three sections have panels, and each panel lists that section's own
+// real halves — nothing else:
+//   • /videos     — Geek Videos and Shorts (two boards, one nav link).
+//   • /discussion — 动态 (feed) and 讨论帖 (forum), the page's own two tabs.
+//   • /zones      — the 研究所 grid, which is a picture-led INDEX that exists
+//                   nowhere else in the chrome (edit lib/zones/labs.ts).
+// /skills, /library and /events have NO entry here on purpose, and a section
+// with no entry must behave as a plain link: `useNavMega` bails on an href it
+// cannot find, so hovering opens nothing. Adding a key back is a product
+// decision, not a tidiness one.
+//
 // Labels are `<namespace>:<key>` and every namespace here is on the
 // CLIENT_MESSAGE_NAMESPACES allowlist (lib/i18n-client-namespaces.ts) — a
 // namespace that is not shipped to the browser renders as a raw key path.
-// Taxonomy labels come from the board that OWNS the taxonomy (`labels.*`), the
-// same rule the homepage chips follow.
+// Panel labels reuse the DESTINATION page's own tab strings, so the panel and
+// the page can never drift apart in any of the three locales.
 //
 // Every href below was checked against the page that reads it. Three traps are
 // load-bearing:
@@ -37,108 +56,41 @@ export type MegaMenu =
 
 /** Keyed by the PRIMARY_NAV href. A section with no entry has no hover panel. */
 export const NAV_MEGA: Record<string, MegaMenu> = {
-  '/skills': {
-    kind: 'links',
-    columns: [
-      {
-        t: 'nav:mega_browse',
-        links: [
-          { href: '/skills', t: 'browse:all' },
-          { href: '/skills?source=external', t: 'browse:external' },
-          { href: '/skills?source=curated', t: 'browse:curated' },
-          { href: '/skills?source=internal', t: 'browse:internal' },
-        ],
-      },
-      {
-        t: 'nav:mega_more',
-        links: [
-          // The only packs browse entry — there is no /packs index route.
-          { href: '/skills?source=packs', t: 'browse:packs' },
-          { href: '/categories', t: 'nav:categories' },
-          { href: '/skills?sort=newest', t: 'browse:sort_newest' },
-          { href: '/skills?sort=top_rated', t: 'browse:sort_top_rated' },
-        ],
-      },
-    ],
-  },
-
+  // The section is named after the long-form board, so bare `/videos` is Geek
+  // Videos. Shorts is the other half of the same nav link and has no other
+  // entry point in the chrome — listing only the half the owner named would
+  // bury a whole surface.
   '/videos': {
     kind: 'links',
     columns: [
       {
-        t: 'nav:mega_browse',
         links: [
           { href: '/videos', t: 'shorts:tab_videos' },
           { href: '/videos?tab=shorts', t: 'shorts:tab_shorts' },
         ],
       },
-      {
-        t: 'nav:mega_shorts',
-        links: [
-          { href: '/videos/shorts', t: 'nav:mega_shorts_feed' },
-          { href: '/videos/shorts?sort=new', t: 'shorts:sort_new' },
-          { href: '/videos/shorts?upload=1', t: 'shorts:upload' },
-        ],
-      },
     ],
   },
 
-  '/library': {
-    kind: 'links',
-    columns: [
-      {
-        t: 'nav:mega_type',
-        links: [
-          { href: '/library?type=book', t: 'labels:docType.book' },
-          { href: '/library?type=paper', t: 'labels:docType.paper' },
-          { href: '/library?type=blog', t: 'labels:docType.blog' },
-          { href: '/library?type=report', t: 'labels:docType.report' },
-        ],
-      },
-      {
-        t: 'nav:mega_more',
-        links: [
-          { href: '/library', t: 'browse:sort_newest' },
-          { href: '/library?sort=featured', t: 'library_cards:sort_featured' },
-          { href: '/library?sort=shelved', t: 'library_cards:sort_shelved' },
-          { href: '/library/shelf', t: 'nav:shelf' },
-        ],
-      },
-    ],
-  },
-
+  // Exactly the two tabs `DiscussionTabs` renders, and the same two strings.
+  // 动态 is the DEFAULT tab, so its href carries no `tab` param — `?tab=posts`
+  // would work by accident (the page tests for `=== 'forum'`) but would make
+  // the nav link and the tab strip disagree about the canonical URL.
   '/discussion': {
     kind: 'links',
     columns: [
       {
-        t: 'nav:mega_browse',
         links: [
           { href: '/discussion', t: 'discussion:tab_posts' },
-          { href: '/discussion?sort=hot', t: 'nav:mega_hot_posts' },
           { href: '/discussion?tab=forum', t: 'discussion:tab_forum' },
-          { href: '/discussion?tab=forum&sort=top', t: 'nav:mega_hot_topics' },
-        ],
-      },
-      {
-        t: 'nav:mega_topics',
-        links: [
-          { href: '/discussion?tab=forum&category=tech', t: 'labels:discussionCategory.tech' },
-          { href: '/discussion?tab=forum&category=models', t: 'labels:discussionCategory.models' },
-          { href: '/discussion?tab=forum&category=agents', t: 'labels:discussionCategory.agents' },
-          { href: '/discussion?tab=forum&category=skills', t: 'labels:discussionCategory.skills' },
-        ],
-      },
-      {
-        links: [
-          { href: '/discussion?tab=forum&category=research', t: 'labels:discussionCategory.research' },
-          { href: '/discussion?tab=forum&category=qa', t: 'labels:discussionCategory.qa' },
-          { href: '/discussion?tab=forum&category=share', t: 'labels:discussionCategory.share' },
-          { href: '/discussion?tab=forum&category=showcase', t: 'labels:discussionCategory.showcase' },
         ],
       },
     ],
   },
 
+  // The 研究所 tiles come from lib/zones/labs.ts (curated order + artwork,
+  // live counts). The three links beside them are the hub's own tabs, the same
+  // "this section's real halves" rule the two panels above follow.
   '/zones': {
     kind: 'labs',
     columns: [
@@ -147,29 +99,6 @@ export const NAV_MEGA: Record<string, MegaMenu> = {
           { href: '/zones', t: 'nav:mega_zone_feed' },
           { href: '/zones?tab=boards', t: 'nav:mega_zone_boards' },
           { href: '/zones?tab=mine', t: 'nav:mega_zone_mine' },
-        ],
-      },
-    ],
-  },
-
-  '/events': {
-    kind: 'links',
-    columns: [
-      {
-        t: 'nav:mega_browse',
-        links: [
-          { href: '/events', t: 'events:tab_upcoming' },
-          { href: '/events?tab=past', t: 'events:tab_past' },
-          { href: '/events?mine=1', t: 'nav:mega_event_mine' },
-        ],
-      },
-      {
-        t: 'nav:mega_kind',
-        links: [
-          { href: '/events?kind=expert_talk', t: 'labels:eventKind.expert_talk' },
-          { href: '/events?kind=seminar', t: 'labels:eventKind.seminar' },
-          { href: '/events?kind=internal', t: 'labels:eventKind.internal' },
-          { href: '/events?kind=external', t: 'labels:eventKind.external' },
         ],
       },
     ],

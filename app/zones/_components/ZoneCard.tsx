@@ -5,6 +5,12 @@
 // zone has no cover. The whole card is a stretched link; moderator avatars and
 // the latest-post line are informational (no nested links but the title). The
 // latest post shows title + time only — types are hidden everywhere.
+//
+// A zone with no artwork is not a black square. It takes its OWN hue from the
+// identity palette (zone-color.ts) — a flat ~10% wash under the hairline grid
+// on the cover strip, and the monogram itself — so a grid of 版块 reads as a
+// row of distinct PLACES, which is the entire job of that grid. Chrome around
+// them (card border, pills, buttons) stays ink.
 
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
@@ -17,6 +23,7 @@ import { zoneHref } from '@/lib/zones/shared';
 import type { ZoneCardView } from '@/lib/zones/types';
 import { RelTime } from './RelTime';
 import { PILL_INK, PILL_MONO } from './ui';
+import { zoneHue, zoneWash } from './zone-color';
 
 export function ZoneCard({ zone, variant = 'grid' }: { zone: ZoneCardView; variant?: 'grid' | 'featured' }) {
   const t = useTranslations('zones');
@@ -24,10 +31,14 @@ export function ZoneCard({ zone, variant = 'grid' }: { zone: ZoneCardView; varia
   const locale = useLocale();
   const href = zoneHref(zone.slug);
   const org = [zone.lab, zone.department].filter(Boolean);
+  const hue = zoneHue(zone.name);
 
   return (
     <SpotlightCard as="article" className="flex h-full flex-col">
-      <div className="relative h-24 shrink-0 overflow-hidden border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
+      <div
+        className="relative h-24 shrink-0 overflow-hidden border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900"
+        style={zone.coverUrl ? undefined : { backgroundColor: zoneWash(zone.name) }}
+      >
         {zone.coverUrl ? (
           <GlareHover className="h-full w-full">
             {/* eslint-disable-next-line @next/next/no-img-element -- stored root-relative media URL */}
@@ -64,7 +75,10 @@ export function ZoneCard({ zone, variant = 'grid' }: { zone: ZoneCardView; varia
               // eslint-disable-next-line @next/next/no-img-element -- stored root-relative media URL
               <img src={withBasePath(zone.iconUrl)} alt="" className="h-11 w-11 rounded-[10px] object-cover" />
             ) : (
-              <span className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-zinc-900 font-mono text-base font-semibold uppercase text-white dark:bg-zinc-100 dark:text-zinc-900">
+              <span
+                className="flex h-11 w-11 items-center justify-center rounded-[10px] font-mono text-base font-semibold uppercase text-white"
+                style={{ backgroundColor: hue }}
+              >
                 {zone.name.trim().charAt(0) || 'Z'}
               </span>
             )}

@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import { apiReason } from '@/lib/api-errors';
 import { rateLimit } from '@/lib/rate-limit';
 import { notifyZoneReply } from '@/lib/notifications';
+import { notifyMentions, zonePostMentionGate } from '@/lib/mention-notify';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
 import { zoneContext } from '@/lib/zones/access';
 import { canSeeZonePost, listZoneComments } from '@/lib/zones/post-queries';
@@ -191,6 +192,31 @@ export async function POST(req: Request, { params }: { params: { slug: string; p
       isReplyToComment: false,
     });
   }
+
+  // @人 — gated by the post's OWN visibility (zone gate + post visibility +
+  // restricted grants), so a mention inside a 仅成员可见 / 未解锁 post stays
+  // silent for anyone who could not open it. Best-effort, never blocks.
+  void notifyMentions({
+    bodyMd,
+    actorId: uid,
+    actorName: session.user.displayName,
+    site: {
+      what: '帖子',
+      title: post.title,
+      link: `/zones/${ctx.zone.slug}/posts/${post.id}?focus=${comment.id}`,
+    },
+    gate: zonePostMentionGate({
+      zone: ctx.zone,
+      post: {
+        id: post.id,
+        authorId: post.authorId,
+        coauthorIds: post.coauthors.map((c) => c.userId),
+        status: post.status,
+        deletedAt: post.deletedAt,
+        visibility: post.visibility,
+      },
+    }),
+  });
 
   const view: ZoneCommentView = {
     id: comment.id,
