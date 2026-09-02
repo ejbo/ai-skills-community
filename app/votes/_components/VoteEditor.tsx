@@ -442,12 +442,16 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
       updateTask(taskId, { status: isVideo ? 'processing' : 'uploading' });
       let durationSec = 0;
       let poster: Blob | null = null;
+      let portrait = false;
       if (isVideo) {
         const objectUrl = URL.createObjectURL(file);
         try {
           const probed = await probeAndCapture(objectUrl);
           durationSec = probed.meta.duration;
           poster = probed.poster;
+          // 竖屏素材走竖版卡片 —— 卡片框按 posterAspect 画，9:16 的片子塞进
+          // 横版框会被裁掉大半。发起人仍可在「封面」里改回横版。
+          portrait = probed.meta.height > probed.meta.width;
         } catch {
           /* best-effort — upload without poster/duration */
         } finally {
@@ -474,6 +478,19 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
           if (posterRes.url) entry = { ...entry, posterUrl: posterRes.url };
         } catch {
           /* poster is best-effort */
+        }
+      }
+      if (portrait) {
+        // 上传接口不带这个字段，补一发 PATCH；失败了也只是回到横版默认值。
+        try {
+          await fetch(`/api/votes/${initial.id}/entries/${entry.id}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ posterAspect: 'portrait' }),
+          });
+          entry = { ...entry, posterAspect: 'portrait' };
+        } catch {
+          /* best-effort */
         }
       }
       setEntries((prev) => [...prev, entry as VoteEntryEditRow]);

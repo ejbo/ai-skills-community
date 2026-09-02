@@ -38,7 +38,9 @@ async function findEntry(activityId: string, entryId: string) {
 // PATCH /api/votes/[id]/entries/[entryId] (creator/admin) — inline edits from
 // the manage table + the 审核 actions for member submissions. Hand-edited
 // naming fields set titleEdited ONLY on an actual change; 隐藏 keeps votes but
-// drops the entry from the gallery.
+// drops the entry from the gallery. No field here replaces the SOURCE file
+// (封面更换 goes through the upload route and only swaps posterKey), so the
+// generated hover clip stays valid and is deliberately left alone.
 export async function PATCH(
   req: Request,
   { params }: { params: { id: string; entryId: string } },
@@ -178,7 +180,10 @@ export async function DELETE(
   }
 
   // Files unlink AFTER the row is gone (own ledger — keys are never shared).
+  // previewKey is the generated hover clip; nothing else can point at it (it is
+  // @unique and never echoed by a client), so it goes with the source.
   await deleteVoteMediaFile(entry.fileKey);
   await deleteVoteMediaFile(entry.posterKey);
+  await deleteVoteMediaFile(entry.previewKey);
   return NextResponse.json({ ok: true });
 }

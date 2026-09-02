@@ -32,6 +32,7 @@ import { usePathname } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { PRIMARY_NAV, STASHED_NAV, type NavItem } from '@/components/nav-items';
 import { NavMoreMenu } from '@/components/NavMoreMenu';
+import { useNavMega } from '@/components/NavMegaPanel';
 
 /** Tailwind `gap-1` on the row. Kept in sync by hand — it is one number. */
 const GAP_PX = 4;
@@ -124,7 +125,17 @@ export function NavPrimaryRow() {
     return () => ro.disconnect();
   }, [fit]);
 
+  // Hover mega-menu. It hangs entirely off pointer events on the anchors below
+  // and a portaled panel — deliberately NO wrapper element and no hover style
+  // that changes a link's width, because `widths.current` is cached once per
+  // locale and the ResizeObserver above watches only the row (whose width never
+  // changes). A wrapper would also break the `absolute w-max` hide trick: the
+  // wrapper would stay an in-flow flex item and `gap-1` would keep allocating
+  // 4px beside every overflowed link, so `fit()` would over-pack the row.
+  const mega = useNavMega();
+
   return (
+    <>
     <div
       ref={rowRef}
       // flex-1 + min-w-0: the row takes exactly the space the logo and the
@@ -145,6 +156,10 @@ export function NavPrimaryRow() {
               itemRefs.current[i] = el;
             }}
             href={item.href}
+            // Hidden links are `pointer-events-none`, so they can never open a
+            // panel for a destination the row is not showing.
+            onPointerEnter={(e) => mega.onEnter(item.href, e.currentTarget)}
+            onPointerLeave={mega.onLeave}
             aria-current={active ? 'page' : undefined}
             aria-hidden={hidden || undefined}
             tabIndex={hidden ? -1 : undefined}
@@ -155,7 +170,7 @@ export function NavPrimaryRow() {
             className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-sm font-medium transition lg:px-3 ${
               hidden ? 'pointer-events-none invisible absolute -z-10 w-max' : ''
             } ${
-              active
+              active || mega.activeHref === item.href
                 ? 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-white'
                 : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white'
             }`}
@@ -165,6 +180,8 @@ export function NavPrimaryRow() {
         );
       })}
     </div>
+    {mega.panel}
+    </>
   );
 }
 

@@ -34,6 +34,13 @@ const MINUTE_MS = 60 * 1000;
 
 // GET /api/votes/[id] — the full gallery payload (used by the client to
 // refresh budget/results state after voting). Same gating as the RSC page.
+//
+// LOGIN REQUIRED, and it has to be: `app/votes/layout.tsx` login-walls the whole
+// vote surface, but this route used to answer anonymously — and the payload it
+// answers with carries 作品名/作者名/工号 whenever the activity has 实名展示 on
+// (the default). That handed anyone who could reach the box a roster of employee
+// numbers without a session, straight past the wall the layout puts up. The
+// per-IP rate-limit branch below is kept for the pre-session window only.
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   const session = await auth();
   const viewer = voteViewerFromSession(session);
@@ -47,6 +54,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   if (!gate.allowed) {
     return NextResponse.json({ error: 'rate_limited', resetAt: gate.resetAt }, { status: 429 });
   }
+  if (!viewer.id) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   const view = await getVoteActivityView(params.id, viewer);
   if (!view) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   return NextResponse.json({ ok: true, activity: view });

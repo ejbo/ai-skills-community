@@ -2186,6 +2186,11 @@ model VoteEntry {
   fileUrl      String // root-relative /api/votes/media/<key>
   posterKey    String?          @unique // 视频封面（客户端抓帧上传，best-effort；可换自定义图）
   posterUrl    String?
+  // 悬停预览短片（服务端 ffmpeg 生成的前几秒静音小分辨率剪辑）。卡片悬停只播它，
+  // 永远不播原片 —— 原片不限大小，几张卡同时拉原片就是 CLAUDE.md 里那条
+  // 「hover 只用 preview clip」的教训。生成失败/无 ffmpeg 时为 null（降级为封面）。
+  previewKey   String?          @unique
+  previewUrl   String?
   // 封面裁切（CoverEditor 家法）：aspect 决定网格卡片版式；pos '' = 居中裁切、
   // 'contain' = 完整显示（模糊铺底）、'50% 30%' = object-position 选区。
   posterAspect VotePosterAspect @default(landscape)
@@ -2210,19 +2215,38 @@ model VoteEntry {
   reviewNote   String           @default("") // 驳回理由，仅投稿者可见
   voteCount    Int              @default(0) // vote tx 内从 VoteBallot 重算
   commentCount Int              @default(0) // guarded array tx（like-route pattern）
+  // 浏览数：灯箱打开一次算一次，按 (viewer, entry, UTC 日) 去重（VoteEntryVisit）。
+  // 只对发起人/管理员可见 —— toVoteEntryView 里按 isOwner 裁剪成 null。
+  viewCount    Int              @default(0)
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
-  activity  VoteActivity  @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  submitter User?         @relation("VoteSubmissions", fields: [submitterId], references: [id], onDelete: SetNull)
+  activity  VoteActivity     @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  submitter User?            @relation("VoteSubmissions", fields: [submitterId], references: [id], onDelete: SetNull)
   ballots   VoteBallot[]
   comments  VoteComment[]
+  visits    VoteEntryVisit[]
 
   @@unique([activityId, entryNo])
   @@index([activityId, hidden, entryNo])
   @@index([activityId, status])
   @@index([activityId, voteCount])
   @@index([submitterId])
+}
+
+// 作品浏览去重表 —— 与 ZonePostView / VideoView 同一套 sessionHash 家法。
+// /votes 是 layout 登录墙，所以 viewerKey 恒为 userId：没有匿名分支，也就没有
+// 可伪造的 IP key，故不存 userId 列（身份只进哈希）。
+model VoteEntryVisit {
+  id          String   @id @default(cuid())
+  entryId     String
+  sessionHash String // sha256( userId + entryId + UTC-day ) — 按天去重
+  createdAt   DateTime @default(now())
+
+  entry VoteEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@unique([entryId, sessionHash])
+  @@index([entryId])
 }
 
 model VoteBallot {

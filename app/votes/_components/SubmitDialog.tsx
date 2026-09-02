@@ -212,6 +212,9 @@ export function SubmitDialog({
         if (pickSeqRef.current !== seq) return; // superseded by a newer pick
         setPoster(probed.poster);
         setDurationSec(Math.round(probed.meta.duration));
+        // 竖屏视频默认走竖版卡片：卡片框是按 posterAspect 画的，手机横屏拍的
+        // 9:16 素材塞进横版框里会被裁掉大半。投稿人仍可在取景器里改回横版。
+        if (probed.meta.height > probed.meta.width) setPosterAspect('portrait');
       } catch {
         /* best-effort */
       } finally {
@@ -516,6 +519,7 @@ export function SubmitDialog({
                   <div className="mt-3">
                     <PosterCropEditor
                       imageUrl={cropImageUrl}
+                      kind={isVideo ? 'video' : 'image'}
                       aspect={posterAspect}
                       pos={posterPos}
                       onAspectChange={setPosterAspect}

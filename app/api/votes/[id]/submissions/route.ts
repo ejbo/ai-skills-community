@@ -15,8 +15,10 @@ import {
   voteOver,
 } from '@/lib/votes/shared';
 import {
+  deleteVoteMediaFile,
   faststartRemuxVoteMedia,
   isValidVoteMediaKey,
+  makeVotePreviewClip,
   probeVoteMediaDurationSec,
   statVoteMediaAsync,
   voteMediaPublicUrl,
@@ -246,15 +248,32 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Finalize media AFTER the row exists: the create above is what excludes a
   // concurrent double-claim, so only one request can ever remux this file
   // (concurrent remuxes share a tmp path — corruption risk). Best-effort.
-  let durationSec = entry.durationSec;
+  let previewUrl = entry.previewUrl;
   if (input.kind === 'video') {
     await faststartRemuxVoteMedia(input.fileKey, stat.size);
     const probed = await probeVoteMediaDurationSec(input.fileKey);
-    if (probed && probed !== durationSec) {
-      durationSec = probed;
-      await prisma.voteEntry
-        .update({ where: { id: entry.id }, data: { durationSec: probed } })
-        .catch(() => undefined);
+    // 卡片 hover 预览片段：与 Geek Videos 卡片同一契约 —— 只播这段生成的短片，
+    // 永远不播原片（作品视频不限大小）。生成失败就没有 preview，卡片退回封面图；
+    // 这一步和 remux 一样是尽力而为，绝不影响投稿是否成功。
+    const previewKey = await makeVotePreviewClip(input.fileKey, stat.size);
+    const data: Prisma.VoteEntryUpdateInput = {};
+    if (probed && probed !== entry.durationSec) data.durationSec = probed;
+    if (previewKey) {
+      previewUrl = voteMediaPublicUrl(previewKey);
+      data.previewKey = previewKey;
+      data.previewUrl = previewUrl;
+    }
+    if (Object.keys(data).length > 0) {
+      const ok = await prisma.voteEntry
+        .update({ where: { id: entry.id }, data })
+        .then(() => true)
+        .catch(() => false);
+      if (!ok) {
+        // The row kept its pre-finalize values — don't advertise a clip the
+        // entry doesn't point at, and don't leave it orphaned on disk either.
+        previewUrl = entry.previewUrl;
+        await deleteVoteMediaFile(previewKey);
+      }
     }
   }
 
@@ -266,6 +285,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       entryNo: entry.entryNo,
       kind: entry.kind,
       fileUrl: entry.fileUrl,
+      previewUrl,
       posterUrl: entry.posterUrl,
       title: entry.title,
       status: entry.status,

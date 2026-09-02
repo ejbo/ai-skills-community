@@ -20,6 +20,7 @@ export interface VoteStatsEntry {
   voteCount: number;
   voterCount: number; // distinct voters on this entry
   commentCount: number;
+  viewCount: number; // 打开灯箱看过的人次（按 viewer/日 去重）
   rank: number | null; // gallery-consistent rank (visible approved only)
 }
 
@@ -49,6 +50,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         hidden: true,
         voteCount: true,
         commentCount: true,
+        viewCount: true,
         submitter: { select: { displayName: true } },
       },
     }),
@@ -84,6 +86,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     voteCount: e.voteCount,
     voterCount: votersByEntry.get(e.id) ?? 0,
     commentCount: e.commentCount,
+    viewCount: e.viewCount,
     rank: rankById.get(e.id) ?? null,
   }));
 

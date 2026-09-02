@@ -3,6 +3,8 @@
 // identity trimming happen SERVER-side (counts/authors omitted from payloads,
 // never shipped-then-hidden).
 
+import { createHash } from 'node:crypto';
+
 import type { Prisma } from '@prisma/client';
 import type { Session } from 'next-auth';
 import { env } from '@/lib/env';
@@ -225,9 +227,11 @@ export interface VoteEntryView {
   kind: 'image' | 'video';
   fileUrl: string;
   posterUrl: string | null;
+  previewUrl: string | null; // 悬停预览短片（服务端生成；null ⇒ 卡片只显示封面或回退播原片）
   posterAspect: 'landscape' | 'portrait'; // 卡片版式（横版 4:3 / 竖版 3:4）
   posterPos: string; // '' 居中 | 'contain' 完整显示 | '50% 30%' 选区
   mimeType: string;
+  sizeBytes: number; // 悬停回退是否敢播原片，由 pickHoverPreview 按这个判断
   durationSec: number;
   title: string | null; // null = hidden by showTitles for this viewer
   description: string | null; // 作品描述 — gated with titles (作品自述属于展示信息)
@@ -237,6 +241,8 @@ export interface VoteEntryView {
   voteCount: number | null; // null = results hidden for this viewer
   rank: number | null; // competition rank, only when results visible
   commentCount: number;
+  // 浏览数：发起人/管理员之外一律 null（服务端裁剪，和票数同一套家法）。
+  viewCount: number | null;
   myVotes: number; // my votes on this entry in the CURRENT budget bucket
 }
 
@@ -355,9 +361,11 @@ export async function getVoteActivityView(
       kind: true,
       fileUrl: true,
       posterUrl: true,
+      previewUrl: true,
       posterAspect: true,
       posterPos: true,
       mimeType: true,
+      sizeBytes: true,
       durationSec: true,
       title: true,
       description: true,
@@ -366,6 +374,7 @@ export async function getVoteActivityView(
       authorNo: true,
       voteCount: true,
       commentCount: true,
+      viewCount: true,
     },
   });
 
@@ -465,9 +474,11 @@ export async function getVoteActivityView(
     kind: e.kind,
     fileUrl: e.fileUrl,
     posterUrl: e.posterUrl,
+    previewUrl: e.previewUrl,
     posterAspect: e.posterAspect,
     posterPos: e.posterPos,
     mimeType: e.mimeType,
+    sizeBytes: e.sizeBytes,
     durationSec: e.durationSec,
     title: titlesVisible ? e.title : null,
     description: titlesVisible && e.description ? e.description : null,
@@ -477,6 +488,9 @@ export async function getVoteActivityView(
     voteCount: resultsVisible ? e.voteCount : null,
     rank: resultsVisible ? (rankById.get(e.id) ?? null) : null,
     commentCount: e.commentCount,
+    // 浏览数是运营数据，不是给投票人看的展示信息：只有发起人与 votes 管理员
+    // 拿得到数字，其他人拿到 null（同 voteCount 的裁剪方式，绝不发了再前端隐藏）。
+    viewCount: isOwner ? e.viewCount : null,
     myVotes: myBallots.get(e.id) ?? 0,
   }));
 
@@ -697,6 +711,31 @@ export async function findManagedActivity(id: string, viewer: VoteViewer) {
   if (!row || row.deletedAt) return null;
   if (row.creatorId !== viewer.id && !viewer.canManage) return null;
   return row;
+}
+
+/**
+ * 一名成员一件作品一天算一次浏览（VideoView / ZonePostView 那套 sessionHash 家法）。
+ * 数组事务：重复插入违反 @@unique([entryId, sessionHash])，整个数组回滚，increment
+ * 跟着一起没了 —— 所以重复打开永远不会重复计数。best-effort，绝不抛。
+ *
+ * 注意日桶用的是 UTC（与全站其他浏览计数一致），跟投票预算的北京时间日桶
+ * （voteDayKey）是两回事，不要混。
+ *
+ * @returns true 表示这次真的记上了（客户端据此就地 +1，不必等下一次轮询）。
+ */
+export async function recordVoteEntryView(entryId: string, viewerId: string): Promise<boolean> {
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    const sessionHash = createHash('sha256').update(`${viewerId}:${entryId}:${day}`).digest('hex');
+    await prisma.$transaction([
+      prisma.voteEntryVisit.create({ data: { entryId, sessionHash } }),
+      prisma.voteEntry.update({ where: { id: entryId }, data: { viewCount: { increment: 1 } } }),
+    ]);
+    return true;
+  } catch {
+    /* 今天已经看过，或作品已被删除 —— 都不是错误 */
+    return false;
+  }
 }
 
 /**

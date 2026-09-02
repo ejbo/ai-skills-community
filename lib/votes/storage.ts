@@ -39,12 +39,23 @@ export const MAX_VOTE_VIDEO_BYTES = Number.MAX_SAFE_INTEGER;
 export const MAX_VOTE_IMAGE_BYTES = 50 * 1024 * 1024; // 50 MB
 export const MAX_VOTE_POSTER_BYTES = 10 * 1024 * 1024; // 10 MB
 export const MAX_VOTE_COVER_BYTES = 20 * 1024 * 1024; // 20 MB
+// 'preview' is never uploaded — makeVotePreviewClip generates it (6 s, ≤640px,
+// no audio), so this is a sanity bound on our OWN output, not a product cap: a
+// clip that lands over it means the encode went wrong and is thrown away.
+export const MAX_VOTE_PREVIEW_BYTES = 20 * 1024 * 1024; // 20 MB
 
 // Extensions we will ever write/serve; the filename fallback is clamped to
 // this set so a bogus filename can never store an arbitrary extension.
 const ALLOWED_EXT = new Set(['jpg', 'png', 'webp', 'avif', 'gif', 'mp4', 'webm', 'mov']);
 
-export type VoteMediaKind = 'image' | 'video' | 'poster' | 'cover';
+// 'preview' is SERVER-GENERATED only (see makeVotePreviewClip); it is part of
+// this union so keys/paths/caps go through the same helpers, NOT because a
+// client may ask for one. Both upload routes derive their kind from a closed
+// literal set (`x-upload-kind` maps to image/video/poster/cover in
+// app/api/votes/[id]/upload and to image/video/poster in
+// .../submissions/upload), so no request can select it, and no echoed-key
+// check ever passes 'preview' to isValidVoteMediaKey.
+export type VoteMediaKind = 'image' | 'video' | 'poster' | 'cover' | 'preview';
 
 export function isAllowedVoteImageType(type: string): boolean {
   return type in IMAGE_EXT;
@@ -58,11 +69,14 @@ export function maxBytesForVoteKind(kind: VoteMediaKind): number {
   if (kind === 'video') return MAX_VOTE_VIDEO_BYTES;
   if (kind === 'image') return MAX_VOTE_IMAGE_BYTES;
   if (kind === 'cover') return MAX_VOTE_COVER_BYTES;
+  if (kind === 'preview') return MAX_VOTE_PREVIEW_BYTES;
   return MAX_VOTE_POSTER_BYTES;
 }
 
 /** Pick a file extension from the content type, falling back to the filename. */
 export function voteMediaExtFor(kind: VoteMediaKind, contentType: string, filename: string): string {
+  // Preview clips are always OUR mp4 — no upload, so no type/filename to trust.
+  if (kind === 'preview') return 'mp4';
   const fromType = (kind === 'video' ? VIDEO_EXT : IMAGE_EXT)[contentType];
   if (fromType) return fromType;
   const m = filename.match(/\.([a-zA-Z0-9]{1,5})$/);
@@ -77,9 +91,14 @@ export function newVoteMediaKey(kind: VoteMediaKind, ext: string): string {
   return `${kind}/${nanoid()}.${ext}`;
 }
 
-const VOTE_MEDIA_KEY_RE = /^(image|video|poster|cover)\/[A-Za-z0-9_-]+\.[a-z0-9]{2,5}$/;
+const VOTE_MEDIA_KEY_RE = /^(image|video|poster|cover|preview)\/[A-Za-z0-9_-]+\.[a-z0-9]{2,5}$/;
 
-/** Shape check for keys echoed back by clients (poster attach, cover PATCH). */
+/**
+ * Shape check for keys echoed back by clients (poster attach, cover PATCH).
+ * `kind` is always a LITERAL at the call site (a zod enum value or a fixed
+ * string), never request input — a `preview/` key is never echoed by anyone,
+ * so nothing can claim one through here.
+ */
 export function isValidVoteMediaKey(key: string, kind: VoteMediaKind): boolean {
   return VOTE_MEDIA_KEY_RE.test(key) && key.startsWith(`${kind}/`);
 }
@@ -243,13 +262,13 @@ function hasFfmpeg(): Promise<boolean> {
   return ffmpegProbe;
 }
 
-function runFfmpeg(args: string[]): Promise<boolean> {
+function runFfmpeg(args: string[], timeoutMs: number = FFMPEG_TIMEOUT_MS): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const p = spawn('ffmpeg', args, { stdio: 'ignore' });
     const timer = setTimeout(() => {
       p.kill('SIGKILL');
       resolve(false); // in case 'close' never arrives; a later resolve is a no-op
-    }, FFMPEG_TIMEOUT_MS);
+    }, timeoutMs);
     const done = (ok: boolean) => {
       clearTimeout(timer); // a live timer would keep the event loop alive
       resolve(ok);
@@ -294,6 +313,144 @@ export async function faststartRemuxVoteMedia(key: string, size: number): Promis
   } catch {
     await fsp.unlink(tmp).catch(() => undefined);
     return false;
+  }
+}
+
+// ─── 卡片悬停预览片段 (hover preview clip) ──────────────────────────────────
+// 作品卡片要像 Geek Videos 卡片那样 hover 自动播放，而契约是**只播这段专门生成
+// 的短片，永远不播原片**（components/video/VideoCard.tsx / CLAUDE.md "Video
+// delivery"）—— 作品视频是不限大小的，拿原片当 hover 预览等于每次划过卡片就拉一
+// 个几百 MB 的文件。这里就是那段短片的生成器，契约与 faststartRemuxVoteMedia 完全
+// 一致：best-effort，永不抛，没有 ffmpeg / 排不上队 ⇒ 静默返回 null，卡片退回封面图。
+
+const PREVIEW_SECONDS = 6;
+const PREVIEW_MAX_EDGE = 640; // 长边上限；短边按比例，且强制偶数（libx264 要求）
+
+// Unlike the faststart remux (a whole-file copy, cost ∝ size) this only ever
+// decodes+encodes the FIRST few seconds, so size barely matters — the guard is
+// only against pathological files whose container index alone is expensive to
+// parse. Generous on purpose: MAX_UPLOAD_SAFETY_BYTES already bounds intake.
+const PREVIEW_SOURCE_MAX_BYTES = 8 * 1024 * 1024 * 1024; // 8 GB
+
+// Both budgets are DELIBERATELY tighter than the remux's (180 s / 45 s): this
+// runs in the SAME request, right after the remux + ffprobe, and the whole
+// handler answers inside nginx's `proxy_read_timeout 300s`. The queue's own
+// arithmetic (lib/uploads/job-queue.ts) already spends 45 + 180 + 30 = 255 s
+// worst case, so 5 + 20 = 25 s leaves the worst case at 280 s — a real margin
+// rather than the 5 s a 10 + 30 budget would have left. 20 s is still lavish
+// for encoding 6 s at ≤640px veryfast (measured well under 2 s), and blowing
+// either budget just means no preview: the card falls back to the poster.
+const PREVIEW_FFMPEG_TIMEOUT_MS = 20_000;
+const PREVIEW_JOB_MAX_WAIT_MS = 5_000;
+
+/**
+ * Generate the short hover-preview clip for an entry video. Returns the new
+ * `preview/<nanoid>.mp4` key, or null when there is no preview to be had
+ * (not a video key, no ffmpeg, no queue slot, ffmpeg failed, or the output
+ * looks wrong). NEVER throws — the caller stamps the key when it gets one and
+ * otherwise leaves the entry poster-only.
+ */
+export async function makeVotePreviewClip(
+  sourceKey: string,
+  sizeBytes: number,
+): Promise<string | null> {
+  if (!sourceKey.startsWith('video/')) return null;
+  if (!Number.isFinite(sizeBytes) || sizeBytes > PREVIEW_SOURCE_MAX_BYTES) return null;
+  const src = voteMediaAbsPath(sourceKey);
+  if (!src) return null;
+  if (!(await hasFfmpeg())) return null;
+
+  const key = newVoteMediaKey('preview', 'mp4');
+  const out = voteMediaAbsPath(key);
+  if (!out) return null;
+  // Write to `.tmp` and rename: a crashed/killed ffmpeg must never leave a
+  // half-written file at a key the entry row already points at.
+  const tmp = `${out}.tmp.mp4`;
+  try {
+    await fsp.mkdir(path.dirname(out), { recursive: true });
+  } catch {
+    return null;
+  }
+
+  const job = await tryRunMediaJob(
+    () =>
+      runFfmpeg(
+        [
+          '-y',
+          // Input seeking + input-side duration: ffmpeg reads only the first
+          // PREVIEW_SECONDS of the source instead of decoding the whole file.
+          '-ss',
+          '0',
+          '-t',
+          String(PREVIEW_SECONDS),
+          '-i',
+          src,
+          // `0:V:0` = first NON-attached-pic video stream, so an mp4 carrying
+          // cover art can't turn the preview into a single still frame.
+          '-map',
+          '0:V:0',
+          '-an', // hover previews are muted anyway
+          // Fit inside PREVIEW_MAX_EDGE² keeping the aspect ratio, THEN round
+          // both sides to an even number. The rounding pass is not optional:
+          // `force_original_aspect_ratio=decrease` happily yields an odd side
+          // (verified: a 1078×1002 source → 639×594) and libx264 dies with
+          // "width not divisible by 2". A bare `:-2` instead of the box would
+          // also let a portrait source through at 640×1138 — bigger than the
+          // landscape case it is supposed to bound.
+          //
+          // The `max(2, …)` clamp matters: a plain `trunc(x/2)*2` computes 0 for
+          // a 1-pixel side, and libavfilter reads a computed 0 as "keep the
+          // source size", so the odd side survives and libx264 fails exactly the
+          // way the rounding was there to prevent (verified on a 1280×2 source:
+          // without the clamp ⇒ `height not divisible by 2 (640x1)`; with it ⇒
+          // 640×2). Written with classic expressions rather than
+          // `force_divisible_by=2` so it also runs on pre-4.4 ffmpeg — a filter
+          // this box cannot parse would silently mean NO previews at all.
+          '-vf',
+          `scale='min(${PREVIEW_MAX_EDGE},iw)':'min(${PREVIEW_MAX_EDGE},ih)':force_original_aspect_ratio=decrease,scale='max(2\\,trunc(iw/2)*2)':'max(2\\,trunc(ih/2)*2)'`,
+          // Cap the output frame rate. Without it the clip inherits the source's:
+          // a 240 fps slow-mo phone video produced a 1.16 MB "preview" from the
+          // same 6 seconds that a 30 fps source turns into 129 KB. `-r` rather
+          // than `fps='min(30,source_fps)'` for the same portability reason as
+          // above, and it costs nothing on slower sources (a 24 fps source came
+          // out 122 KB with the cap vs 124 KB without).
+          '-r',
+          '30',
+          '-c:v',
+          'libx264',
+          '-preset',
+          'veryfast',
+          '-crf',
+          '30',
+          '-pix_fmt',
+          'yuv420p', // baseline-safe chroma; some sources are yuv444/10-bit
+          '-movflags',
+          '+faststart', // the point is instant first frame on hover
+          tmp,
+        ],
+        PREVIEW_FFMPEG_TIMEOUT_MS,
+      ),
+    PREVIEW_JOB_MAX_WAIT_MS,
+  );
+  // ran:false ⇒ ffmpeg was never spawned and no tmp file exists (job-queue.ts).
+  if (!job.ran) return null;
+  if (!job.value) {
+    await fsp.unlink(tmp).catch(() => undefined);
+    return null;
+  }
+
+  try {
+    const st = await fsp.stat(tmp);
+    // 0 bytes = ffmpeg "succeeded" writing nothing; over the cap = something
+    // went wrong with the encode. Either way it is not worth serving.
+    if (!st.isFile() || st.size === 0 || st.size > MAX_VOTE_PREVIEW_BYTES) {
+      throw new Error('bad_preview');
+    }
+    await fsp.rename(tmp, out); // atomic on the same filesystem
+    return key;
+  } catch {
+    await fsp.unlink(tmp).catch(() => undefined);
+    return null;
   }
 }
 

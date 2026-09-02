@@ -22,6 +22,7 @@ import { GithubTrending } from './home/GithubTrending';
 import { trendingVideos } from '@/lib/video/queries';
 import { annotateShortsViewer, featuredShorts, toShortView } from '@/lib/video/shorts-queries';
 import { getTrendingWithin, warmTrending } from '@/lib/github-trending';
+import { getHomeSnapshot } from '@/lib/home-stats';
 import { listTopics } from '@/lib/discussion-queries';
 import { eventViewerFromSession, listEvents } from '@/lib/event-queries';
 import { browseDocs } from '@/lib/library-queries';
@@ -34,6 +35,7 @@ import { getTranslations } from 'next-intl/server';
 import { Reveal } from './home/Reveal';
 import { SectionHeader } from './home/SectionHeader';
 import { HeroBackdrop } from './home/HeroBackdrop';
+import { HomeCountdown } from './home/HomeCountdown';
 
 interface HomeUser {
   id: string;
@@ -55,8 +57,13 @@ interface HomeUser {
  * made the page read as a template) — and do not grey out the content again
  * either, which is what made it read as a spreadsheet.
  *
- * Band order, top to bottom: hero (greeting + today's figures, GitHub 热榜,
- * shorts player), 社区此刻, 热门 Skills, 热门视频.
+ * Band order, top to bottom: hero (greeting + today's ledger + 社区速览 brief,
+ * GitHub 热榜, shorts player), 社区此刻, 热门 Skills, 热门视频.
+ *
+ * The ledger's figures come from `lib/home-stats.ts` — memoized, and combined
+ * across tables on purpose (see the comment on the strip). Everything else in
+ * the hero is already fetched for another reason: the 即将举行 count reuses the
+ * events page the 社区此刻 panel needs, so no band pays for a second query.
  */
 export async function CommunityHome({ user }: { user: HomeUser }) {
   const t = await getTranslations('home');
@@ -69,10 +76,6 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
   const canSeeIdentity = can(user, 'identity');
   const canModerateShorts = can(user, 'shorts');
 
-  // 今日 figures count from the server's local midnight.
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-
   const [
     skills,
     videos,
@@ -81,9 +84,7 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
     eventsRes,
     docsRes,
     announcement,
-    newSkillsToday,
-    newPostsToday,
-    newShortsToday,
+    snapshot,
     trending,
   ] = await Promise.all([
     prisma.skill.findMany({
@@ -102,13 +103,10 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
       orderBy: { publishedAt: 'desc' },
       select: { id: true, title: true },
     }),
-    prisma.skill.count({
-      where: { ...DISCOVERABLE_SKILL_WHERE, createdAt: { gte: todayStart } },
-    }),
-    prisma.post.count({ where: { createdAt: { gte: todayStart } } }),
-    prisma.video.count({
-      where: { isShort: true, status: 'published', deletedAt: null, createdAt: { gte: todayStart } },
-    }),
+    // Today's figures + the 热议 links. Memoized for 60s inside the module:
+    // a dozen COUNT(*)s per signed-in render is real work on a deploy whose
+    // only bottleneck is the single JS thread. Nothing in it is viewer-scoped.
+    getHomeSnapshot(),
     // Bounded: github.com sits behind a corporate proxy on the intranet deploy
     // and this page is force-dynamic. Past the budget we render without it and
     // the client leaf picks the data up from /api/github-trending.
@@ -128,8 +126,24 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
   // Panels only render title/counts — raw author identities from listTopics
   // never cross into client components, so no toPublicAuthor mapping needed.
   const topics = topicsRes.items;
-  const events = eventsRes.items.filter((e) => !e.cancelled).slice(0, 3);
+  // `listEvents` keeps cancelled rows (they stay visible with a badge on /events)
+  // and keeps an event until its last day is over in its OWN zone — so items[0]
+  // may already be in progress, which is exactly what the countdown chip reports.
+  const upcoming = eventsRes.items.filter((e) => !e.cancelled);
+  // NOT `upcoming[0]`: listEvents sorts by (event-local day key, instant) so
+  // date groups don't interleave across zones, which makes items[0] the first
+  // row of the earliest LOCAL DAY — a 北京 morning event can sort behind a
+  // Toronto evening one that starts an hour later. The hero states a countdown,
+  // so it has to name the event that actually happens next.
+  const nextEvent = upcoming.length
+    ? upcoming.reduce((a, b) => (Date.parse(b.startAt) < Date.parse(a.startAt) ? b : a))
+    : undefined;
+  const events = upcoming.slice(0, 3);
   const docs = docsRes.items;
+  // The upcoming figure is `total`, not `upcoming.length`: the page reads one
+  // 30-row page, and this is the number /events?tab=upcoming itself reports.
+  const upcomingEvents = eventsRes.total;
+  const { stats, hotPosts } = snapshot;
   const panelCount = [topics.length, events.length, docs.length].filter((n) => n > 0).length;
   const panelCols = panelCount >= 3 ? 'lg:grid-cols-3' : panelCount === 2 ? 'lg:grid-cols-2' : '';
 
@@ -161,24 +175,45 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
               </h1>
               <p className="mt-2 max-w-[52ch] text-sm text-muted">{t('community_sub_v2')}</p>
 
+              {/* THE LEDGER. Six figures, not one per table: 动态 + 论坛主题 +
+                  技术专区帖 read as one "new discussion" number, and every board's
+                  comments read as one "new comment" number — a strip of a dozen
+                  near-zero counters says less than six that move. Five are recent
+                  flow (the window lives in lib/home-stats.ts); 即将举行 is the one
+                  stock figure, which is why it is last. A plain grid, no dividers:
+                  at six columns the rules read as noise, and the border-y wrapper
+                  already frames the block. */}
               <div className="mt-5 border-y border-zinc-200/90 py-3.5 dark:border-zinc-800">
-                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-                  <div className="flex divide-x divide-zinc-200/90 dark:divide-zinc-800">
-                    <Figure value={nf.format(newSkillsToday)} label={t('stat_new_skills')} />
-                    <Figure value={nf.format(newPostsToday)} label={t('stat_new_posts')} />
-                    <Figure value={nf.format(newShortsToday)} label={t('stat_new_shorts')} />
-                  </div>
-                  <span className="shrink-0 text-xs text-muted">{today}</span>
+                <p className="text-[11px] text-muted">{t('stats_range', { date: today })}</p>
+                <div className="mt-2.5 grid grid-cols-3 gap-x-4 gap-y-3.5 sm:grid-cols-6">
+                  <Figure value={nf.format(stats.skills)} label={t('stat_new_skills')} />
+                  <Figure value={nf.format(stats.discussions)} label={t('stat_new_discussions')} />
+                  <Figure value={nf.format(stats.comments)} label={t('stat_new_comments')} />
+                  <Figure value={nf.format(stats.videos)} label={t('stat_new_videos')} />
+                  <Figure value={nf.format(stats.docs)} label={t('stat_new_docs')} />
+                  <Figure value={nf.format(upcomingEvents)} label={t('stat_upcoming_events')} />
                 </div>
 
-                {(events.length > 0 || announcement) && (
-                  <div className="mt-3.5 space-y-1.5">
-                    {events.length > 0 && (
+                {/* 社区速览 — the next thing happening, the latest notice, and what
+                    people are actually talking about. Two columns so five lines
+                    cost three rows: the hero band has a fixed height at lg and
+                    every row here is height taken out of the GitHub 热榜 below. */}
+                {(nextEvent || announcement || hotPosts.length > 0) && (
+                  <div className="mt-3.5 grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
+                    {nextEvent && (
                       <BriefLine
                         label={t('briefing_events_label')}
-                        href={`/events/${events[0].id}`}
-                        text={events[0].title}
-                        dot={KIND_META[events[0].kind]?.dot}
+                        href={`/events/${nextEvent.id}`}
+                        text={nextEvent.title}
+                        dot={KIND_META[nextEvent.kind]?.dot}
+                        // All-day events are stored date-only at UTC midnight, so
+                        // counting down to that instant would be meaningless in the
+                        // organizer's zone. The date on the /events card says enough.
+                        trailing={
+                          nextEvent.allDay ? undefined : (
+                            <HomeCountdown startAt={nextEvent.startAt} endAt={nextEvent.endAt} />
+                          )
+                        }
                       />
                     )}
                     {announcement && (
@@ -189,6 +224,17 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
                         dot="bg-amber-500"
                       />
                     )}
+                    {/* 动态 have no title — the label text is an excerpt of the body,
+                        built server-side by `excerptOf`. The dot stays ink: the feed
+                        has no taxonomy of its own to borrow a colour from. */}
+                    {hotPosts.map((post) => (
+                      <BriefLine
+                        key={post.id}
+                        label={t('brief_hot_label')}
+                        href={`/discussion/posts/${post.id}`}
+                        text={post.excerpt}
+                      />
+                    ))}
                   </div>
                 )}
               </div>
@@ -413,42 +459,52 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
   );
 }
 
-/** One of today's three figures. Mono digits, plain-text label. */
+/**
+ * One figure in the hero ledger. Mono digits, plain-text label. It is a grid
+ * cell now rather than a flex item with dividers, so a long label (fr's
+ * "Nouveaux commentaires") wraps inside its own column instead of pushing the
+ * row wider than the hero's left track.
+ */
 function Figure({ value, label }: { value: string; label: string }) {
   return (
-    <div className="px-4 first:pl-0 last:pr-0">
+    <div className="min-w-0">
       <div className="font-mono text-[22px] font-medium leading-none tabular-nums">{value}</div>
-      <div className="mt-1.5 text-[11px] text-muted">{label}</div>
+      <div className="mt-1.5 text-[11px] leading-snug text-muted">{label}</div>
     </div>
   );
 }
 
 /**
  * "活动 · <title>" line under the figures. The dot is the only colour, and it
- * is the same hue the row's own board uses for that kind, so the two lines are
- * told apart before either label is read.
+ * is the same hue the row's own board uses for that kind, so the lines are told
+ * apart before any label is read; a source with no taxonomy of its own (the
+ * 动态 feed) keeps the ink default rather than being given an invented hue.
  */
 function BriefLine({
   label,
   href,
   text,
   dot,
+  trailing,
 }: {
   label: string;
   href: string;
   text: string;
   dot?: string;
+  /** Right-aligned adornment, e.g. the next event's countdown chip. */
+  trailing?: ReactNode;
 }) {
   return (
-    <Link href={href} className="group flex min-w-0 items-baseline gap-2 text-xs">
+    <Link href={href} className="group flex min-w-0 items-center gap-2 text-xs">
       <span
         aria-hidden
-        className={`mt-[1px] h-1.5 w-1.5 shrink-0 self-center rounded-full ${dot ?? 'bg-zinc-400'}`}
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot ?? 'bg-zinc-400'}`}
       />
       <span className="shrink-0 text-muted">{label}</span>
-      <span className="min-w-0 truncate decoration-zinc-300 underline-offset-2 group-hover:underline dark:decoration-zinc-600">
+      <span className="min-w-0 flex-1 truncate decoration-zinc-300 underline-offset-2 group-hover:underline dark:decoration-zinc-600">
         {text}
       </span>
+      {trailing}
     </Link>
   );
 }

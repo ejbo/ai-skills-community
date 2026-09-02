@@ -10,12 +10,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Move } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { withBasePath } from '@/lib/base-path';
-import type { VotePosterAspect } from '@/lib/votes/shared';
-
-const ASPECT_RATIO: Record<VotePosterAspect, number> = {
-  landscape: 4 / 3,
-  portrait: 3 / 4,
-};
+import {
+  voteCardAspectClass,
+  voteCardAspectRatio,
+  type VoteEntryKind,
+  type VotePosterAspect,
+} from '@/lib/votes/shared';
 
 const MAX_EDITOR_HEIGHT = 300;
 
@@ -28,12 +28,16 @@ const clampPct = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
 
 export function PosterCropEditor({
   imageUrl,
+  kind,
   aspect,
   pos,
   onAspectChange,
   onPosChange,
 }: {
   imageUrl: string; // stored root-relative URL or blob: (withBasePath is a no-op for blob:)
+  // 取景框比例跟着卡片走（横版视频 16:9、横版图片 4:3、竖版 3:4）——
+  // voteCardAspectRatio 是卡片和这里唯一的那一份规则。
+  kind: VoteEntryKind;
   aspect: VotePosterAspect;
   pos: string; // '' | 'contain' | '50% 30%'
   onAspectChange: (a: VotePosterAspect) => void;
@@ -69,7 +73,7 @@ export function PosterCropEditor({
     dispH = natural.h * scale;
   }
   // Frame = largest box of the chosen aspect fitting inside the displayed image.
-  const ratio = ASPECT_RATIO[aspect];
+  const ratio = voteCardAspectRatio(kind, aspect);
   let frameW = 0;
   let frameH = 0;
   if (dispW > 0 && dispH > 0) {
@@ -203,8 +207,8 @@ export function PosterCropEditor({
       <div className="mt-3 flex items-end gap-3">
         <div
           className={`relative shrink-0 overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800 ${
-            aspect === 'portrait' ? 'h-32 w-24' : 'h-24 w-32'
-          }`}
+            aspect === 'portrait' ? 'w-24' : 'w-32'
+          } ${voteCardAspectClass(kind, aspect)}`}
         >
           {pos === 'contain' ? (
             <>

@@ -127,6 +127,7 @@ export function PosterDialog({
           {imageUrl ? (
             <PosterCropEditor
               imageUrl={imageUrl}
+              kind={entry.kind}
               aspect={aspect}
               pos={pos}
               onAspectChange={setAspect}

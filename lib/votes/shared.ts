@@ -583,3 +583,77 @@ export function reconcileDraft(
   }
   return { next, trimmed, changed: changed || trimmed };
 }
+
+// ─── 作品卡片画面框 ─────────────────────────────────────────────────────────
+// 卡片、投稿弹窗的取景框、封面对话框的预览小图必须用同一份比例：创作者在
+// PosterCropEditor 里拖出来的取景，如果和前台卡片的框不是同一个比例，保存的
+// object-position 落到卡片上就是另一块画面。所以规则只写在这里一处。
+//
+// 横版视频用 16:9 —— 对齐 Geek Videos 的卡片，而视频封面本来就是从视频里抓的
+// 帧，16:9 框里正好铺满（4:3 框会把画面两边裁掉）。横版图片保持 4:3，作品图什么
+// 比例都有，4:3 更中性；竖版一律 3:4。
+
+export type VoteEntryKind = 'image' | 'video';
+
+/** 数值比例（宽/高）—— 取景框几何用。 */
+export function voteCardAspectRatio(kind: VoteEntryKind, aspect: VotePosterAspect): number {
+  if (aspect === 'portrait') return 3 / 4;
+  return kind === 'video' ? 16 / 9 : 4 / 3;
+}
+
+/** 同一条规则的 Tailwind 版本（lib/** 在 tailwind content 里，类名扫得到）。 */
+export function voteCardAspectClass(kind: VoteEntryKind, aspect: VotePosterAspect): string {
+  if (aspect === 'portrait') return 'aspect-[3/4]';
+  return kind === 'video' ? 'aspect-video' : 'aspect-[4/3]';
+}
+
+// ─── 卡片悬停预览 ───────────────────────────────────────────────────────────
+// Geek Videos 的卡片悬停就播视频，靠的是上传时另存的一段短 preview clip；
+// components/video/VideoCard.tsx 里那段注释写得很清楚：绝不回退到原片，
+// 否则鼠标扫过一排卡片就是同时拉几个 GB。作品评选这边更糟 —— 参赛视频不限
+// 大小（MAX_VOTE_VIDEO_BYTES = MAX_SAFE_INTEGER），一屏能挂 48 张卡。
+//
+// 所以这里是唯一决定「悬停播什么」的地方，两条：
+//   1. 有服务端生成的 previewUrl 就播它（正常路径，几百 KB）；
+//   2. 没有（老作品还没回填 / 机器上没有 ffmpeg / 生成失败）时，只有当原片
+//      小到可以当预览片用才回退播原片，并且只循环开头几秒。
+// 第 2 条是有意与 VideoCard 不同的：那边的原片是无上限的长视频，这里带了一个
+// 硬字节闸门，越过闸门就老老实实只显示封面。
+
+/**
+ * 回退播原片的体积上限：超过就只显示封面。
+ *
+ * 12 MB 是有意压得很低的：Chrome 一旦开播就会往前缓冲，实际拉多少由它的启发式
+ * 决定而不是由我们循环的 8 秒决定，所以这个闸门**就是**最坏情况的字节数 —— 它
+ * 必须小到「拉一次跟页面上一张大图差不多」才站得住。真正的路子是服务端生成的
+ * preview clip（几十到几百 KB）：新上传自动有，老作品跑一次
+ * `pnpm votes:backfill-previews`。这条回退只是让机器上没有 ffmpeg、或者还没回填时，
+ * 小体积作品照样能悬停播放，不是给大文件用的。
+ */
+export const VOTE_HOVER_SOURCE_MAX_BYTES = 12 * 1024 * 1024; // 12 MB
+/** 回退播原片时只循环开头这么多秒（预览片本身已经是短片，不需要截断）。 */
+export const VOTE_HOVER_FALLBACK_SEC = 8;
+
+export interface VoteHoverPreviewInput {
+  kind: 'image' | 'video';
+  previewUrl?: string | null;
+  fileUrl: string;
+  sizeBytes: number;
+}
+
+export interface VoteHoverPreview {
+  /** Root-relative URL to load on hover (caller applies withBasePath). */
+  src: string;
+  /** true ⇒ this is the full source, so wrap playback at VOTE_HOVER_FALLBACK_SEC. */
+  isSource: boolean;
+}
+
+/** 决定一件作品悬停时播什么；null = 不播（只显示封面）。 */
+export function pickHoverPreview(entry: VoteHoverPreviewInput): VoteHoverPreview | null {
+  if (entry.kind !== 'video') return null;
+  if (entry.previewUrl) return { src: entry.previewUrl, isSource: false };
+  if (!entry.fileUrl) return null;
+  // sizeBytes 是 int32 clamp 过的上传体积；0 表示未知（老数据），不冒险。
+  if (entry.sizeBytes <= 0 || entry.sizeBytes > VOTE_HOVER_SOURCE_MAX_BYTES) return null;
+  return { src: entry.fileUrl, isSource: true };
+}

@@ -1,13 +1,37 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, LayoutDashboard, LibraryBig, Settings, ShieldCheck, LogOut, User } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import {
+  ChevronDown,
+  LayoutDashboard,
+  LibraryBig,
+  LogOut,
+  Settings,
+  ShieldCheck,
+  User,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { signOut } from 'next-auth/react';
 import { useTranslations } from 'next-intl';
+import {
+  BubbleLabel,
+  BubblePanel,
+  BubbleRow,
+  bubblePanelHeight,
+  bubblePill,
+  bubbleTriggerKeyDown,
+} from '@/components/BubbleMenuPanel';
+import { useAnchoredPanel } from '@/components/useAnchoredPanel';
 import { withBasePath } from '@/lib/base-path';
 import { Avatar } from '@/components/Avatar';
+
+// Avatar dropdown. Navigation to the viewer's OWN surfaces (主页 / 面板 / 书架 /
+// 设置) plus sign-out — never an authoring action, which is why 上传 Skill lives
+// on /skills and not here.
+//
+// Shares the bubble-menu motion and the portaled panel with 收纳 and the
+// language menu (components/BubbleMenuPanel.tsx).
 
 interface MenuUser {
   id: string;
@@ -20,94 +44,99 @@ interface MenuUser {
   image?: string | null;
 }
 
+const PANEL_W = 248;
+/** The email caption above the pills. */
+const HEADER_H = 26;
+
 export function UserMenu({ user }: { user: MenuUser }) {
   const t = useTranslations('nav');
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
 
-  useEffect(() => {
-    function close(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, []);
+  const links: { href: string; Icon: LucideIcon; label: string }[] = [
+    { href: `/users/${user.handle ?? user.id}`, Icon: User, label: t('profile') },
+    { href: '/dashboard', Icon: LayoutDashboard, label: t('dashboard') },
+    { href: '/library/shelf', Icon: LibraryBig, label: t('shelf') },
+    { href: '/settings', Icon: Settings, label: t('settings') },
+    // The operator seeing their own tools — not a role badge shown to others.
+    ...(user.isAdmin
+      ? [{ href: '/manage', Icon: ShieldCheck, label: t('manage') }]
+      : []),
+  ];
+
+  const panel = useAnchoredPanel<HTMLButtonElement>({
+    width: PANEL_W,
+    // +1 for the sign-out pill, which is not a link.
+    height: bubblePanelHeight(links.length + 1, HEADER_H),
+  });
+
+  const name = user.displayName ?? user.email;
 
   return (
-    <div ref={ref} className="relative">
+    <>
       <button
-        onClick={() => setOpen((o) => !o)}
-        aria-label={user.displayName ?? user.email}
+        ref={panel.triggerRef}
+        type="button"
+        onClick={panel.toggle}
+        onKeyDown={bubbleTriggerKeyDown(panel)}
+        aria-label={name}
         aria-haspopup="menu"
-        aria-expanded={open}
-        className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 transition hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 dark:focus-visible:ring-zinc-100 dark:hover:bg-zinc-800"
+        aria-expanded={panel.open}
+        className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 transition hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 dark:hover:bg-zinc-800 dark:focus-visible:ring-zinc-100"
       >
-        <Avatar name={user.displayName ?? user.email} src={user.avatarUrl ?? user.image ?? null} size="sm" />
-        <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
+        <Avatar name={name} src={user.avatarUrl ?? user.image ?? null} size="sm" />
+        <ChevronDown
+          className={`h-3.5 w-3.5 text-zinc-500 transition-transform duration-300 ${
+            panel.open ? 'rotate-180' : ''
+          }`}
+        />
       </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.15 }}
-            className="surface absolute right-0 top-full mt-2 w-56 rounded-xl p-1 shadow-lg"
-          >
-            <div className="px-3 py-2 text-xs text-muted">{user.email}</div>
-            <MenuItem href={`/users/${user.handle ?? user.id}`} icon={<User className="h-4 w-4" />}>
-              {t('profile')}
-            </MenuItem>
-            <MenuItem href="/dashboard" icon={<LayoutDashboard className="h-4 w-4" />}>
-              {t('dashboard')}
-            </MenuItem>
-            <MenuItem href="/library/shelf" icon={<LibraryBig className="h-4 w-4" />}>
-              {t('shelf')}
-            </MenuItem>
-            <MenuItem href="/settings" icon={<Settings className="h-4 w-4" />}>
-              {t('settings')}
-            </MenuItem>
-            {user.isAdmin && (
-              <MenuItem href="/manage" icon={<ShieldCheck className="h-4 w-4" />}>
-                {t('manage')}
-              </MenuItem>
-            )}
-            <button
-              onClick={async () => {
-                // Clear the session, then navigate client-side. Letting next-auth build the
-                // post-logout redirect server-side resolved the host wrong behind the proxy
-                // (→ localhost:3100); navigating in the browser keeps us on the real origin.
-                await signOut({ redirect: false });
-                window.location.href = withBasePath('/');
-              }}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            >
-              <LogOut className="h-4 w-4" />
-              {t('logout')}
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
 
-function MenuItem({
-  href,
-  icon,
-  children,
-}: {
-  href: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
-    >
-      {icon}
-      {children}
-    </Link>
+      <BubblePanel
+        panel={panel}
+        label={name}
+        width={PANEL_W}
+        header={<div className="truncate px-3 pb-1.5 pt-1 text-[11px] text-muted">{user.email}</div>}
+      >
+        {links.map((item, i) => {
+          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          return (
+            <BubbleRow key={item.href} index={i}>
+              <Link
+                role="menuitem"
+                href={item.href}
+                onClick={() => panel.close()}
+                aria-current={active ? 'page' : undefined}
+                className={bubblePill(active)}
+              >
+                <item.Icon className="h-4 w-4 shrink-0" aria-hidden />
+                <BubbleLabel index={i} className="truncate">
+                  {item.label}
+                </BubbleLabel>
+              </Link>
+            </BubbleRow>
+          );
+        })}
+        <BubbleRow index={links.length}>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={async () => {
+              panel.close();
+              // Clear the session, then navigate client-side. Letting next-auth build the
+              // post-logout redirect server-side resolved the host wrong behind the proxy
+              // (→ localhost:3100); navigating in the browser keeps us on the real origin.
+              await signOut({ redirect: false });
+              window.location.href = withBasePath('/');
+            }}
+            className={bubblePill()}
+          >
+            <LogOut className="h-4 w-4 shrink-0" aria-hidden />
+            <BubbleLabel index={links.length} className="truncate">
+              {t('logout')}
+            </BubbleLabel>
+          </button>
+        </BubbleRow>
+      </BubblePanel>
+    </>
   );
 }

@@ -11,6 +11,7 @@ import {
   faststartRemuxVoteMedia,
   isAllowedVoteImageType,
   isAllowedVoteVideoType,
+  makeVotePreviewClip,
   maxBytesForVoteKind,
   newVoteMediaKey,
   probeVoteMediaDurationSec,
@@ -108,6 +109,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: 'upload_failed' }, { status: 500 });
   }
 
+  // Declared outside the try so the failure path below can unlink it too — a
+  // generated clip nothing points at is an orphan on the same volume as the DB.
+  let previewKey: string | null = null;
+
   try {
     if (kind === 'cover') {
       return NextResponse.json({ key, url: voteMediaPublicUrl(key), size });
@@ -139,6 +144,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       durationSec =
         (await probeVoteMediaDurationSec(key)) ??
         (Number.isFinite(clientDuration) && clientDuration > 0 ? clientDuration : 0);
+      // 卡片 hover 预览片段（Geek Videos 卡片契约：只播这段短片，不播原片）。
+      // 生成失败就是没有 preview —— 卡片退回封面图，上传绝不因此失败。
+      previewKey = await makeVotePreviewClip(key, size);
     }
 
     const rule = parseNameRule(activity.nameRule) ?? DEFAULT_NAME_RULE;
@@ -162,6 +170,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
               kind,
               fileKey: key,
               fileUrl: voteMediaPublicUrl(key),
+              previewKey,
+              previewUrl: previewKey ? voteMediaPublicUrl(previewKey) : null,
               originalName: filename.slice(0, 255),
               title: parsed.title,
               authorName: parsed.authorName,
@@ -188,6 +198,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         entryNo: entry!.entryNo,
         kind: entry!.kind,
         fileUrl: entry!.fileUrl,
+        previewUrl: entry!.previewUrl,
         posterUrl: entry!.posterUrl,
         posterAspect: entry!.posterAspect,
         posterPos: entry!.posterPos,
@@ -204,8 +215,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       },
     });
   } catch {
-    // DB write failed after the file landed — don't leak the orphan file.
+    // DB write failed after the file landed — don't leak the orphan file(s).
     await deleteVoteMediaFile(key);
+    await deleteVoteMediaFile(previewKey);
     return NextResponse.json({ error: 'upload_failed' }, { status: 500 });
   }
 }

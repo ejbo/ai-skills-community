@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_NAME_RULE,
+  VOTE_HOVER_SOURCE_MAX_BYTES,
   applyNameRule,
   competitionRanks,
   parseCustomFields,
   parseNameRule,
+  pickHoverPreview,
   resolveCustomAnswers,
   seededShuffle,
+  voteCardAspectClass,
+  voteCardAspectRatio,
   voteDayKey,
   voteOver,
   voteStarted,
@@ -498,6 +502,84 @@ describe('isVoteTimezone prototype safety', () => {
       expect(isVoteTimezone(k)).toBe(false);
       expect(voteTimezoneOf(k)).toBe(DEFAULT_VOTE_TIMEZONE);
       expect(voteTimezoneKey(k)).toBe('tz_eastern');
+    }
+  });
+});
+
+describe('pickHoverPreview', () => {
+  const video = {
+    kind: 'video' as const,
+    previewUrl: null as string | null,
+    fileUrl: '/api/votes/media/video/abc.mp4',
+    sizeBytes: 10 * 1024 * 1024,
+  };
+
+  it('never previews an image entry', () => {
+    expect(
+      pickHoverPreview({ kind: 'image', fileUrl: '/api/votes/media/image/a.jpg', sizeBytes: 100 }),
+    ).toBeNull();
+  });
+
+  it('prefers the generated clip and does not mark it as the source', () => {
+    const got = pickHoverPreview({ ...video, previewUrl: '/api/votes/media/preview/x.mp4' });
+    expect(got).toEqual({ src: '/api/votes/media/preview/x.mp4', isSource: false });
+  });
+
+  it('prefers the clip even for a huge source', () => {
+    const got = pickHoverPreview({
+      ...video,
+      previewUrl: '/api/votes/media/preview/x.mp4',
+      sizeBytes: 4 * 1024 * 1024 * 1024,
+    });
+    expect(got?.isSource).toBe(false);
+  });
+
+  it('falls back to a small source, flagged so the caller wraps playback', () => {
+    expect(pickHoverPreview(video)).toEqual({ src: video.fileUrl, isSource: true });
+  });
+
+  it('refuses the source once it is over the byte gate', () => {
+    expect(pickHoverPreview({ ...video, sizeBytes: VOTE_HOVER_SOURCE_MAX_BYTES + 1 })).toBeNull();
+    expect(pickHoverPreview({ ...video, sizeBytes: VOTE_HOVER_SOURCE_MAX_BYTES })).not.toBeNull();
+  });
+
+  it('refuses an unknown size rather than gambling on an uncapped source', () => {
+    expect(pickHoverPreview({ ...video, sizeBytes: 0 })).toBeNull();
+  });
+});
+
+describe('voteCardAspect*', () => {
+  it('gives landscape videos the Geek Videos 16:9 frame', () => {
+    expect(voteCardAspectClass('video', 'landscape')).toBe('aspect-video');
+    expect(voteCardAspectRatio('video', 'landscape')).toBeCloseTo(16 / 9);
+  });
+
+  it('keeps landscape images at 4:3', () => {
+    expect(voteCardAspectClass('image', 'landscape')).toBe('aspect-[4/3]');
+    expect(voteCardAspectRatio('image', 'landscape')).toBeCloseTo(4 / 3);
+  });
+
+  it('is 3:4 for portrait whatever the kind', () => {
+    for (const kind of ['image', 'video'] as const) {
+      expect(voteCardAspectClass(kind, 'portrait')).toBe('aspect-[3/4]');
+      expect(voteCardAspectRatio(kind, 'portrait')).toBeCloseTo(3 / 4);
+    }
+  });
+
+  // 取景器和卡片必须是同一条规则：PosterCropEditor 用 ratio 画取景框、用 class
+  // 画预览小图，卡片用 class 画画面框 —— 两者对不上就等于保存了错的裁切。
+  it('keeps the numeric ratio and the Tailwind class in agreement', () => {
+    const expected: Record<string, number> = {
+      'aspect-video': 16 / 9,
+      'aspect-[4/3]': 4 / 3,
+      'aspect-[3/4]': 3 / 4,
+    };
+    for (const kind of ['image', 'video'] as const) {
+      for (const aspect of ['landscape', 'portrait'] as const) {
+        expect(expected[voteCardAspectClass(kind, aspect)]).toBeCloseTo(
+          voteCardAspectRatio(kind, aspect),
+        );
+      }
     }
   });
 });

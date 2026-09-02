@@ -29,6 +29,7 @@ import {
   ChevronRight,
   Clock,
   Download,
+  Eye,
   Link as LinkIcon,
   Loader2,
   Megaphone,
@@ -56,9 +57,12 @@ import { holdNavBarHidden } from '@/lib/nav-chrome';
 import type { VoteActivityView, VoteEntryView } from '@/lib/vote-queries';
 import {
   MAX_BALLOT_CHANGES,
+  VOTE_HOVER_FALLBACK_SEC,
   formatVoteInstant,
+  pickHoverPreview,
   reconcileDraft,
   stepDraftCount,
+  voteCardAspectClass,
   voteTimezoneKey,
   type BallotChange,
   type BallotDraft,
@@ -71,6 +75,11 @@ import { loginHref } from '@/lib/auth/callback-path';
 
 type SortMode = 'default' | 'no' | 'votes';
 const GRID_PAGE = 48;
+// 悬停多久才真正开始加载预览：鼠标扫过一整排卡片时，没有哪张停留超过这个时间，
+// 所以扫一遍不会触发任何一次网络请求（Geek Videos 卡片的同一个数字）。
+const PREVIEW_DELAY_MS = 400;
+// 灯箱里停留多久才算看过一件作品（挡住按住 ←/→ 一路翻过去的那些）。
+const VIEW_DWELL_MS = 700;
 const DRAFT_STORAGE_PREFIX = 'votes:draft:';
 // NavBarShell = 12px top padding + 56px bar; hold it hidden a little early.
 const NAVBAR_BAND_PX = 80;
@@ -179,17 +188,22 @@ const RANK_STYLES: Record<number, string> = {
 // Module-level leaves — defining these inside VoteGallery would mint a new
 // component type per render and remount their subtrees on every state change.
 
-/** 卡片版式 class（横版 4:3 / 竖版 3:4 — posterAspect 决定）。 */
+/**
+ * 卡片版式 class —— 规则本身在 lib/votes/shared.ts，封面取景器用的是同一条，
+ * 否则创作者拖出来的裁切和卡片显示的不是同一块画面。
+ */
 function aspectClass(entry: VoteEntryView): string {
-  return entry.posterAspect === 'portrait' ? 'aspect-[3/4]' : 'aspect-[4/3]';
+  return voteCardAspectClass(entry.kind, entry.posterAspect);
 }
 
 function EntryMedia({ entry, alt, eager = false }: { entry: VoteEntryView; alt: string; eager?: boolean }) {
   const thumb = entry.kind === 'video' ? entry.posterUrl : entry.fileUrl;
   if (!thumb) {
+    // 抓帧失败的视频：给一块带编号的渐变底，而不是一片什么都没有的空白
+    // （VideoCard 无封面时用标题首字，同一个思路）。
     return (
-      <div className="flex h-full w-full items-center justify-center bg-zinc-200 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-600">
-        <Play className="h-8 w-8" />
+      <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-zinc-200 to-zinc-300 text-2xl font-semibold tabular-nums text-zinc-500 dark:from-zinc-800 dark:to-zinc-700 dark:text-zinc-400">
+        {entry.entryNo}
       </div>
     );
   }
@@ -244,7 +258,6 @@ interface CardCtx {
   canVote: boolean;
   resultsVisible: boolean;
   titlesVisible: boolean;
-  authorsVisible: boolean;
   maxPerEntry: number;
   allowRevoke: boolean;
   /** Draft-adjusted budget left > 0 — flips only when the budget runs out / frees up. */
@@ -413,6 +426,18 @@ function VoteButton({ entry, draftCount, ctx, pop, size = 'sm', onStep }: VoteBu
   );
 }
 
+/**
+ * 同一时刻只允许一张卡片播预览。鼠标扫过网格时前一张必须先 pause + 卸掉 src，
+ * 否则一屏 48 张卡片会留下一串还在缓冲的 <video>（ShortsFeed 那句「每个可播放
+ * 元素要 30-80 MB」是同一个道理）。
+ */
+let activePreview: { current: () => void } | null = null;
+
+function motionOk(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 interface EntryCardProps {
   entry: VoteEntryView;
   draftCount: number;
@@ -424,33 +449,167 @@ interface EntryCardProps {
 
 // One grid cell. memo + stable callbacks: a draft click re-renders ONLY the
 // card it touched (and the toolbar), not the whole gallery.
+//
+// 版式对齐 Geek Videos 的卡片（components/video/VideoCard.tsx）：画面框里不再压
+// 播放按钮，鼠标悬停直接播片，作品名/作者挪到框下面。整张卡是 flex 列且
+// 投票行 mt-auto，所以同一行里标题长短不同的卡片，按钮仍然对齐在同一条线上，
+// 不会在卡片之间留出参差不齐的空档。
 const EntryCard = memo(function EntryCard({ entry, draftCount, ctx, pop, onOpen, onStep }: EntryCardProps) {
   const t = useTranslations('votes');
   const pending = draftCount !== entry.myVotes;
+  // previewing = 已过悬停延迟、这张卡该播了；playing = 真的有画面了。
+  // 分成两个状态是为了不闪黑：<video> 挂上去到解出第一帧之间是空的，
+  // 封面要一直留在下面，等 onPlaying 再交叉淡入。
+  const [previewing, setPreviewing] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const preview = pickHoverPreview(entry);
+  const title = ctx.titlesVisible ? entryTitle(entry, t) : t('untitled_entry', { no: entry.entryNo });
+
+  // 释放解码器/缓冲：pause() 不够，必须摘掉 src 再 load()（ShortsCell 的卸载
+  // 家法，VideoCard 少了这一步）。挂在 **callback ref** 上而不是 effect 清理里：
+  // 卸载时 React 先把 ref 置空、再跑 passive cleanup，等到 useEffect 的返回函数
+  // 执行时 videoRef.current 已经是 null，那条清理路径根本摸不到元素。callback ref
+  // 的 null 调用发生在元素被摘下去的那一刻，是唯一拿得到它的时机。
+  const releaseVideo = useCallback((el: HTMLVideoElement | null) => {
+    const prev = videoRef.current;
+    if (!el && prev) {
+      prev.pause();
+      prev.removeAttribute('src');
+      prev.load();
+    }
+    videoRef.current = el;
+  }, []);
+
+  const stopRef = useRef<() => void>(() => undefined);
+  stopRef.current = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    // setPreviewing(false) 会卸载 <video>，releaseVideo 在那一刻放掉它。
+    setPlaying(false);
+    setPreviewing(false);
+    if (activePreview === stopRef) activePreview = null;
+  };
+
+  function startHover(pointerType?: string) {
+    // 触屏没有真正的“悬停”，浏览器合成出来的 pointerenter 会在点开灯箱前
+    // 白拉一段视频 —— 只认鼠标。
+    if (pointerType && pointerType !== 'mouse') return;
+    if (!preview || !motionOk()) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      if (activePreview && activePreview !== stopRef) activePreview.current();
+      activePreview = stopRef;
+      setPreviewing(true);
+    }, PREVIEW_DELAY_MS);
+  }
+
+  useEffect(() => {
+    if (!previewing) return;
+    const el = videoRef.current;
+    if (!el) return;
+    el.play().catch(() => {
+      /* 自动播放可能被拦，静默即可 —— 封面继续显示 */
+    });
+  }, [previewing]);
+
+  // 卸载（翻页、筛选、切换榜单视图）时同样要放掉解码器。
+  useEffect(() => () => stopRef.current(), []);
+
   return (
-    <div className="group cv-auto -m-1 p-1">
+    <div
+      className="group cv-auto -m-1 flex h-full flex-col p-1"
+      onPointerEnter={(e) => startHover(e.pointerType)}
+      onPointerLeave={() => stopRef.current()}
+    >
       <button
         type="button"
-        onClick={() => onOpen(entry.id)}
-        className="relative block w-full overflow-hidden rounded-xl bg-zinc-100 text-left dark:bg-zinc-900"
+        // 打开灯箱前先停掉预览：灯箱在上面盖着，卡片不一定收到 pointerleave；
+        // 键盘回车打开时更是既没有 pointerleave 也没有 blur（焦点没动），
+        // 结果就是弹窗后面还有一路 <video> 在拉流。
+        onClick={() => {
+          stopRef.current();
+          onOpen(entry.id);
+        }}
+        onFocus={(e) => {
+          // 只有键盘/程序化聚焦才预热；触屏点一下也会聚焦，那不是“悬停”。
+          if (e.currentTarget.matches(':focus-visible')) startHover('mouse');
+        }}
+        onBlur={() => stopRef.current()}
+        // 画面 + 标题块一起是点击区（参照 VideoCard 的 <Link> 包法）：
+        // 标题在框外面，但点标题当然也该打开作品。
+        // 读屏念的是作品名，而不是把 #编号、名次、已选、时长、作者、浏览数
+        // 一路串起来念一遍 —— 没有封面时更是只剩一个编号。
+        aria-label={title}
+        className="block w-full rounded-xl text-left outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 dark:focus-visible:ring-zinc-100"
       >
-        <div className={`relative ${aspectClass(entry)}`}>
-          <EntryMedia entry={entry} alt={entryTitle(entry, t)} />
-          {entry.kind === 'video' && (
-            <>
-              <span className="absolute inset-0 flex items-center justify-center">
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition group-hover:scale-110">
-                  <Play className="h-4 w-4 translate-x-[1px]" />
-                </span>
-              </span>
-              {entry.durationSec > 0 && (
-                <span className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-white">
-                  {fmtDuration(entry.durationSec)}
-                </span>
-              )}
-            </>
+        <div
+          className={`relative overflow-hidden rounded-xl bg-zinc-100 dark:bg-zinc-900 ${aspectClass(entry)}`}
+        >
+          <div
+            className={`absolute inset-0 transition-opacity duration-300 ${
+              playing ? 'opacity-0' : 'opacity-100'
+            }`}
+          >
+            <EntryMedia entry={entry} alt={title} />
+          </div>
+
+          {/* <video> 只在这张卡真的要播时才存在。VideoCard 是常驻元素 + 延迟挂
+              src；这里不行 —— 画廊的窗口是只增不减的，滚到底就有几百上千张卡
+              同时挂着，常驻几百个媒体元素毫无意义。没有元素 = 零网络、零解码器。 */}
+          {previewing && preview && (
+            <video
+              ref={releaseVideo}
+              src={withBasePath(preview.src)}
+              muted
+              loop
+              playsInline
+              preload="none"
+              tabIndex={-1}
+              aria-hidden
+              onPlaying={() => setPlaying(true)}
+              onTimeUpdate={
+                preview.isSource
+                  ? (e) => {
+                      // 回退播原片时只循环开头几秒 —— 预览片本身已经是短片。
+                      const el = e.currentTarget;
+                      if (el.currentTime >= VOTE_HOVER_FALLBACK_SEC) el.currentTime = 0;
+                    }
+                  : undefined
+              }
+              // 预览片必须和封面对齐同一块画面：封面是按 posterPos 裁的，
+              // 视频要是一律居中 cover，鼠标一停画面就“跳”一下。
+              style={
+                entry.posterPos === 'contain'
+                  ? undefined
+                  : { objectPosition: /^\d/.test(entry.posterPos) ? entry.posterPos : '50% 50%' }
+              }
+              className={`absolute inset-0 h-full w-full transition-opacity duration-300 ${
+                entry.posterPos === 'contain' ? 'object-contain' : 'object-cover'
+              } ${playing ? 'opacity-100' : 'opacity-0'}`}
+            />
           )}
-          <span className="absolute left-2 top-2 flex items-center gap-1.5">
+
+          <span className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+
+          {/* 时长角标是「这是视频」在触屏上仅剩的提示（悬停预览在触屏不存在，
+              画面上的播放按钮按要求去掉了）。所以 durationSec 未知时不能整块不渲染
+              —— ffprobe 失败的作品会变得和图片作品长得一模一样 —— 退化成一个小
+              播放三角，仍然是角标而不是压在画面中间的按钮。 */}
+          {entry.kind === 'video' && (
+            <span className="absolute bottom-1.5 right-1.5 flex items-center rounded bg-black/80 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-white">
+              {entry.durationSec > 0 ? (
+                fmtDuration(entry.durationSec)
+              ) : (
+                <Play className="h-2.5 w-2.5 translate-x-[0.5px] fill-current" />
+              )}
+            </span>
+          )}
+          <span className="absolute left-2 top-2 flex items-center gap-1.5" aria-hidden>
             <span className="rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-white">
               #{entry.entryNo}
             </span>
@@ -474,22 +633,39 @@ const EntryCard = memo(function EntryCard({ entry, draftCount, ctx, pop, onOpen,
               {draftCount > 1 ? draftCount : ''}
             </span>
           )}
-          {(ctx.titlesVisible || ctx.authorsVisible) && (
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2.5 pb-2 pt-8">
-              {ctx.titlesVisible && (
-                <span className="block truncate text-xs font-medium text-white">{entryTitle(entry, t)}</span>
-              )}
-              {entry.authorName && (
-                <span className="block truncate text-[10px] text-white/75">
-                  {entry.authorName}
-                  {entry.authorNo ? ` · ${entry.authorNo}` : ''}
-                </span>
-              )}
-            </span>
+        </div>
+
+        {/* 作品名/作者挪到画面下面（Geek Videos 家法）：画面不被文字压住，
+            长标题也能完整换行显示，而不是被一行 truncate 切掉。 */}
+        <div className="mt-2 min-w-0 px-0.5">
+          <h3 className="line-clamp-2 text-sm font-semibold leading-snug tracking-tight">{title}</h3>
+          {entry.authorName && (
+            <p className="mt-0.5 truncate text-xs text-muted">
+              {entry.authorName}
+              {entry.authorNo ? ` · ${entry.authorNo}` : ''}
+            </p>
+          )}
+          {entry.viewCount !== null && (
+            <p
+              className="mt-0.5 flex items-center gap-1 text-xs text-muted"
+              title={t('views_owner_only')}
+            >
+              <Eye className="h-3.5 w-3.5" aria-hidden />
+              {/* 数字对读屏隐藏：旁边的 sr-only 才是完整读法（否则会念成
+                  「0 0 次浏览」），而且顺带把「只有发起人看得见」讲清楚 ——
+                  光靠 title= 的话触屏和读屏用户根本读不到这层意思。 */}
+              <span className="tabular-nums" aria-hidden>
+                {entry.viewCount}
+              </span>
+              <span className="sr-only">
+                {t('views_n', { count: entry.viewCount })}（{t('views_owner_only')}）
+              </span>
+            </p>
           )}
         </div>
       </button>
-      <div className="mt-2 flex items-center justify-between gap-2 px-0.5">
+
+      <div className="mt-auto flex items-center justify-between gap-2 px-0.5 pt-2">
         <VoteButton entry={entry} draftCount={draftCount} ctx={ctx} pop={pop} onStep={onStep} />
         {entry.voteCount !== null && (
           <span className="shrink-0 text-xs font-medium tabular-nums text-muted">
@@ -524,6 +700,14 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
   const [stuck, setStuck] = useState(false);
   const viewRef = useRef(view);
   viewRef.current = view;
+  // 组件是否还在（异步回调回来时用；见浏览计数 effect）。
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const submittingRef = useRef(false);
@@ -940,6 +1124,62 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
     };
   }, [lightboxOpen]);
 
+  // ── 浏览计数 ────────────────────────────────────────────────────────────
+  // 打开灯箱 = 看了这件作品。服务端按 (viewer, entry, UTC 日) 去重，所以来回
+  // 用 ←/→ 翻、或者刷新页面重开，都只算一次。
+  //
+  // effect 只依赖 lightboxId 这个 primitive：依赖 lightboxEntry 的话，30 秒轮询
+  // 每次 mergeView 都可能换掉对象引用，effect 就会跟着重跑。再加一个 ref 里的
+  // Set 兜住 React 严格模式的双次调用，同一次会话里同一件作品也只发一次。
+  const pingedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!lightboxId) return;
+    if (!viewRef.current.viewer.loggedIn) return;
+    if (pingedRef.current.has(lightboxId)) return;
+    const entryId = lightboxId;
+    // 停留一下才算「看过」。effect 的触发单位是 lightboxId 变化，而 ←/→ 就是
+    // 改这个 id：按住方向键翻页会以按键重复速率（~30/s）发请求，既把 240/min
+    // 的限流打爆，也会给一堆只在眼前掠过 300ms 的作品记上浏览。计时器在 id
+    // 再次变化时清掉，所以只有真正停下来看的那一件会计数。
+    const timer = setTimeout(() => {
+      if (pingedRef.current.has(entryId)) return;
+      pingedRef.current.add(entryId);
+      ping();
+    }, VIEW_DWELL_MS);
+    return () => clearTimeout(timer);
+
+    function ping() {
+    fetch(`/api/votes/${viewRef.current.id}/entries/${entryId}/view`, { method: 'POST' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        // 只有服务端真的记上了才就地 +1（去重命中时不动），否则「今天第二次打开」
+        // 会让发起人看到一个数据库里并不存在的数字。
+        //
+        // 这里刻意 **不** 按 effect 的清理来取消：关掉灯箱或按 → 翻到下一件，
+        // lightboxId 一变清理就跑，可服务端那一次是实打实记上了的，而
+        // pingedRef 又不会让它重发 —— 取消的话这张卡就一直显示旧数字。
+        // 组件真的卸载了才丢弃（aliveRef）。
+        if (!aliveRef.current || !data?.counted) return;
+        // 看不到浏览数的人（绝大多数）不必为此重建整份派生列表：viewCount 是
+        // null 时 map 是纯 no-op，setView 却会让 entryById / displayed / ranked
+        // 全部重算。
+        setView((prev) => {
+          const hit = prev.entries.find((e) => e.id === entryId);
+          if (!hit || hit.viewCount === null) return prev;
+          return {
+            ...prev,
+            entries: prev.entries.map((e) =>
+              e.id === entryId && e.viewCount !== null ? { ...e, viewCount: e.viewCount + 1 } : e,
+            ),
+          };
+        });
+      })
+      .catch(() => {
+        /* best-effort：浏览数记不上不该影响看作品 */
+      });
+    }
+  }, [lightboxId]);
+
   async function share() {
     const ok = await copyText(window.location.href);
     pushToast(ok ? 'success' : 'error', ok ? t('share_copied') : t('toast_vote_failed'));
@@ -955,7 +1195,6 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
       canVote: view.viewer.canVote,
       resultsVisible,
       titlesVisible: view.titlesVisible,
-      authorsVisible: view.authorsVisible,
       maxPerEntry: view.maxPerEntry,
       allowRevoke: view.allowRevoke,
       budgetLeft,
@@ -969,7 +1208,6 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
       view.viewer.canVote,
       resultsVisible,
       view.titlesVisible,
-      view.authorsVisible,
       view.maxPerEntry,
       view.allowRevoke,
       budgetLeft,
@@ -1348,6 +1586,18 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
                 )}
               </span>
               {draftCountOf(entry) > 0 && <Check className="h-4 w-4 shrink-0 text-zinc-400" />}
+              {entry.viewCount !== null && (
+                <span
+                  className="hidden shrink-0 items-center gap-1 text-xs text-muted sm:inline-flex"
+                  title={t('views_owner_only')}
+                >
+                  <Eye className="h-3.5 w-3.5" aria-hidden />
+                  <span className="tabular-nums" aria-hidden>
+                    {entry.viewCount}
+                  </span>
+                  <span className="sr-only">{t('views_n', { count: entry.viewCount })}</span>
+                </span>
+              )}
               <span className="shrink-0 text-sm font-semibold tabular-nums">
                 {t('card_votes', { count: entry.voteCount ?? 0 })}
               </span>
@@ -1503,6 +1753,18 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
                       {lightboxEntry.voteCount !== null && (
                         <span className="rounded-full bg-white/10 px-2.5 py-1 font-medium tabular-nums">
                           {t('card_votes', { count: lightboxEntry.voteCount })}
+                        </span>
+                      )}
+                      {lightboxEntry.viewCount !== null && (
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 font-medium"
+                          title={t('views_owner_only')}
+                        >
+                          <Eye className="h-3.5 w-3.5" aria-hidden />
+                          <span className="tabular-nums" aria-hidden>
+                            {lightboxEntry.viewCount}
+                          </span>
+                          <span className="sr-only">{t('views_n', { count: lightboxEntry.viewCount })}</span>
                         </span>
                       )}
                       {lightboxEntry.rank !== null && view.over && (
