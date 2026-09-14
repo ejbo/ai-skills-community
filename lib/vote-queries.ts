@@ -243,6 +243,8 @@ export interface VoteEntryView {
   commentCount: number;
   // 浏览数：发起人/管理员之外一律 null（服务端裁剪，和票数同一套家法）。
   viewCount: number | null;
+  // 点击数：同一闸门、同一裁剪，但不去重（一人多次打开累计）。
+  openCount: number | null;
   myVotes: number; // my votes on this entry in the CURRENT budget bucket
 }
 
@@ -375,6 +377,7 @@ export async function getVoteActivityView(
       voteCount: true,
       commentCount: true,
       viewCount: true,
+      openCount: true,
     },
   });
 
@@ -491,6 +494,7 @@ export async function getVoteActivityView(
     // 浏览数是运营数据，不是给投票人看的展示信息：只有发起人与 votes 管理员
     // 拿得到数字，其他人拿到 null（同 voteCount 的裁剪方式，绝不发了再前端隐藏）。
     viewCount: isOwner ? e.viewCount : null,
+    openCount: isOwner ? e.openCount : null,
     myVotes: myBallots.get(e.id) ?? 0,
   }));
 
@@ -714,16 +718,34 @@ export async function findManagedActivity(id: string, viewer: VoteViewer) {
 }
 
 /**
- * 一名成员一件作品一天算一次浏览（VideoView / ZonePostView 那套 sessionHash 家法）。
- * 数组事务：重复插入违反 @@unique([entryId, sessionHash])，整个数组回滚，increment
- * 跟着一起没了 —— 所以重复打开永远不会重复计数。best-effort，绝不抛。
+ * 一次「打开作品」落两个数：
+ *
+ * - `openCount` 点击数：**不去重**，每次 ping 都 +1（一个人今天开五次就是 5）。
+ *   发起人要的是「被点开了多少次」这个原始热度。
+ * - `viewCount` 浏览人数：一名成员一件作品一天算一次（VideoView / ZonePostView
+ *   那套 sessionHash 家法）。数组事务：重复插入违反 @@unique([entryId, sessionHash])，
+ *   整个数组回滚，increment 跟着一起没了 —— 所以重复打开永远不会重复计数。
+ *
+ * 两者分两条语句写，故意不放进同一个事务：去重命中让 visit 插入失败时，点击数
+ * 仍然要 +1，这正是两个数的差别所在。都是 best-effort，绝不抛。
  *
  * 注意日桶用的是 UTC（与全站其他浏览计数一致），跟投票预算的北京时间日桶
  * （voteDayKey）是两回事，不要混。
  *
- * @returns true 表示这次真的记上了（客户端据此就地 +1，不必等下一次轮询）。
+ * @returns `opened` 点击数是否真的 +1 了；`counted` 浏览人数是否真的 +1 了
+ *   （客户端据此各自就地 +1，不必等下一次轮询）。
  */
-export async function recordVoteEntryView(entryId: string, viewerId: string): Promise<boolean> {
+export async function recordVoteEntryView(
+  entryId: string,
+  viewerId: string,
+): Promise<{ opened: boolean; counted: boolean }> {
+  let opened = false;
+  try {
+    await prisma.voteEntry.update({ where: { id: entryId }, data: { openCount: { increment: 1 } } });
+    opened = true;
+  } catch {
+    /* 作品已被删除 —— 不是错误 */
+  }
   try {
     const day = new Date().toISOString().slice(0, 10);
     const sessionHash = createHash('sha256').update(`${viewerId}:${entryId}:${day}`).digest('hex');
@@ -731,10 +753,10 @@ export async function recordVoteEntryView(entryId: string, viewerId: string): Pr
       prisma.voteEntryVisit.create({ data: { entryId, sessionHash } }),
       prisma.voteEntry.update({ where: { id: entryId }, data: { viewCount: { increment: 1 } } }),
     ]);
-    return true;
+    return { opened, counted: true };
   } catch {
     /* 今天已经看过，或作品已被删除 —— 都不是错误 */
-    return false;
+    return { opened, counted: false };
   }
 }
 

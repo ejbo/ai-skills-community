@@ -1,5 +1,5 @@
 // 版块设置 (canManage | canModerate | canManageRoles | owner | site admin):
-// TabBar-driven ZoneSettingsForm — 基本信息 / 权限与加入 / 栏目 / 角色 / 危险操作.
+// TabBar-driven ZoneSettingsForm — 基本信息 / 权限与加入 / 栏目 / 主页布局 / 角色 / 危险操作.
 //
 // `canModerate` admits the page for the 栏目 tab alone: the column routes gate on
 // `moderate`, not `manage`, so a 版主 without `manage` still curates the taxonomy
@@ -27,7 +27,7 @@ function firstParam(v: string | string[] | undefined): string {
   return (Array.isArray(v) ? v[0] : (v ?? '')).trim();
 }
 
-const TABS: readonly SettingsTab[] = ['basic', 'access', 'columns', 'roles', 'danger'];
+const TABS: readonly SettingsTab[] = ['basic', 'access', 'columns', 'layout', 'roles', 'danger'];
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const [t, session] = await Promise.all([getTranslations('zones'), auth()]);

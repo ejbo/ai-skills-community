@@ -435,17 +435,22 @@ describe('settingsTabsFor — 栏目 gates on moderate, not manage', () => {
     expect(tabs[0]).toBe('columns');
   });
 
-  it('keeps the reading order basic → access → columns → roles → danger for an owner', () => {
+  it('keeps the reading order basic → access → columns → layout → roles → danger for an owner', () => {
     expect(settingsTabsFor(accessWith({ isOwner: true, canManage: true, canModerate: true, canManageRoles: true }))).toEqual([
       'basic',
       'access',
       'columns',
+      'layout',
       'roles',
       'danger',
     ]);
   });
 
-  it('a manager without moderate never sees 栏目', () => {
-    expect(settingsTabsFor(accessWith({ canManage: true }))).toEqual(['basic', 'access']);
+  it('a manager without moderate never sees 栏目 (but does see 主页布局 — it PATCHes the zone row)', () => {
+    expect(settingsTabsFor(accessWith({ canManage: true }))).toEqual(['basic', 'access', 'layout']);
+  });
+
+  it('a moderator without manage sees 栏目 but never 主页布局', () => {
+    expect(settingsTabsFor(accessWith({ canModerate: true }))).toEqual(['columns']);
   });
 });

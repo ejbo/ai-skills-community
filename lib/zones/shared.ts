@@ -2,7 +2,7 @@
 // in tests/zones-shared.test.ts). No env, no prisma, no next-intl here.
 
 import { POLL_TOKEN_GLOBAL_RE } from '@/lib/polls-shared';
-import { labsOf, mergeInstitutes } from '@/lib/org';
+import { defaultOrg, type OrgApi } from '@/lib/org';
 
 // ── Slugs ────────────────────────────────────────────────────────────────────
 
@@ -208,8 +208,9 @@ export function isValidAccessCode(raw: string): boolean {
 // the tree is derived from live rows (lib/zones/queries.ts#zoneOrgTree).
 
 /**
- * Merge the configured org tree (lib/org.ts) into a tree built from live 版块
- * rows. THE one implementation — `zoneOrgTree` (the DB groupBy) and the hub's
+ * Merge the configured org tree — the admin catalog loaded by
+ * lib/zones/org-catalog.ts#getOrg(), or the static empty `defaultOrg` — into a
+ * tree built from live 版块 rows. THE one implementation — `zoneOrgTree` (the DB groupBy) and the hub's
  * boards rail (an in-memory list) both go through it, so the two can never
  * disagree about which 研究所 exist or what order their 实验室 come in.
  *
@@ -219,7 +220,8 @@ export function isValidAccessCode(raw: string): boolean {
  * rows carry that the config does not know is appended after, busiest first.
  * Nothing is ever dropped — an off-tree 研究所 or 实验室 stays filterable.
  */
-export function withConfiguredInstitutes(tree: readonly OrgLabNode[]): OrgLabNode[] {
+export function withConfiguredInstitutes(tree: readonly OrgLabNode[], org: OrgApi = defaultOrg): OrgLabNode[] {
+  const { labsOf, mergeInstitutes } = org;
   const collate = (a: string, b: string) => a.localeCompare(b, 'zh-CN');
   const byCount = (a: OrgDeptNode, b: OrgDeptNode) => b.zoneCount - a.zoneCount || collate(a.department, b.department);
 
@@ -608,6 +610,49 @@ export function zoneWikiHref(slug: string, pageSlug?: string | null): string {
 }
 
 // ── Limits shared by API + UI ────────────────────────────────────────────────
+
+// ── 版块主题色 ───────────────────────────────────────────────────────────────
+//
+// `#rrggbb` only (lowercased on the way in). Null ⇒ zone-color.ts falls back
+// to the name-hashed identity hue, so an unset theme still has a colour.
+
+export const THEME_COLOR_RE = /^#[0-9a-f]{6}$/;
+
+/** Lowercased `#rrggbb`, or null for anything that is not one. */
+export function normalizeThemeColor(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const s = v.trim().toLowerCase();
+  return THEME_COLOR_RE.test(s) ? s : null;
+}
+
+export function isValidThemeColor(v: unknown): v is string {
+  return normalizeThemeColor(v) !== null;
+}
+
+// ── 主题词 (Zone.topics) ────────────────────────────────────────────────────
+// Short chips a 版主 pins on the board (header + hub cards, searchable). Free
+// text, never translated. Sanitized ONCE here — the PATCH route and updateZone
+// both go through `sanitizeZoneTopics`.
+export const MAX_ZONE_TOPICS = 6;
+export const ZONE_TOPIC_MAX = 16;
+
+/** Strings only; trim + collapse inner whitespace; drop empties; dedupe case-insensitively; cap length and count. */
+export function sanitizeZoneTopics(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const v of raw) {
+    if (typeof v !== 'string') continue;
+    const s = v.replace(/\s+/g, ' ').trim().slice(0, ZONE_TOPIC_MAX).trim();
+    if (!s) continue;
+    const key = s.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+    if (out.length >= MAX_ZONE_TOPICS) break;
+  }
+  return out;
+}
 
 export const ZONE_LIMITS = {
   nameMin: 2,

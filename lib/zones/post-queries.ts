@@ -28,6 +28,7 @@ import { prisma } from '@/lib/db';
 import { extractMentionHandles, newMentionHandles } from '@/lib/mentions';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor, type PublicAuthor } from '@/lib/user-identity';
 import type { ZoneAccessRow, ZoneSiteViewer } from './access';
+import { listColumnPresets, orderColumnFacet } from './column-presets';
 import { getOrCreateColumn, recountZoneColumns } from './columns';
 import { resolveEmbeds } from './embeds';
 import { ZoneError } from './errors';
@@ -69,6 +70,7 @@ import {
   type ZonePostSort,
   type ZonePostTypeValue,
   type ZonePostVisibilityValue,
+  normalizeThemeColor,
 } from './shared';
 import {
   deleteZoneMediaFile,
@@ -142,7 +144,7 @@ export const ZONE_POST_CARD_SELECT = {
   attachments: { orderBy: { sortOrder: 'asc' as const }, select: { kind: true } },
   // `iconUrl` is PUBLIC zone metadata (the hub shows every readable zone's
   // icon) — the only zone field beyond identity a feed row ships.
-  zone: { select: { id: true, slug: true, name: true, iconUrl: true } },
+  zone: { select: { id: true, slug: true, name: true, iconUrl: true, themeColor: true } },
 } satisfies Prisma.ZonePostSelect;
 
 export type ZonePostCardRow = Prisma.ZonePostGetPayload<{ select: typeof ZONE_POST_CARD_SELECT }>;
@@ -342,7 +344,7 @@ export function toZonePostCardView(row: ZonePostCardRow, ctx: PostCardContext): 
   const accessLocked = ctx.lockedIds?.has(row.id) ?? false;
   return {
     id: row.id,
-    zone: { id: row.zone.id, slug: row.zone.slug, name: row.zone.name, iconUrl: row.zone.iconUrl ?? null },
+    zone: { id: row.zone.id, slug: row.zone.slug, name: row.zone.name, iconUrl: row.zone.iconUrl ?? null, themeColor: normalizeThemeColor(row.zone.themeColor) },
     type: row.type,
     title: row.title,
     // A locked stub never carries content: the summary is an excerpt of the
@@ -2060,10 +2062,14 @@ export async function zoneHubFacets(viewer: ZoneSiteViewer): Promise<ZoneHubFace
       take: 20,
     }),
   ]);
+  // 栏目预设 (管理后台) lead in preset order — even at zero posts, so the rail
+  // shows the house taxonomy — then everything else busiest-first as before.
+  const presets = await listColumnPresets();
   return {
     org,
-    columns: columns
-      .map((c) => ({ name: c.name, postCount: c._sum.postCount ?? 0 }))
-      .filter((c) => c.postCount > 0),
+    columns: orderColumnFacet(
+      columns.map((c) => ({ name: c.name, postCount: c._sum.postCount ?? 0 })).filter((c) => c.postCount > 0),
+      presets,
+    ),
   };
 }

@@ -116,12 +116,22 @@ function toggle(list: readonly string[], value: string): string[] {
 
 // ── Search ───────────────────────────────────────────────────────────────────
 
-export function HubSearchBox({ mode, className = '' }: { mode: 'feed' | 'boards'; className?: string }) {
+export function HubSearchBox({
+  mode,
+  className = '',
+  size = 'md',
+}: {
+  mode: 'feed' | 'boards';
+  className?: string;
+  /** `lg` = the hero's search (taller, pill-shaped, the landing's main verb). */
+  size?: 'md' | 'lg';
+}) {
   const t = useTranslations('zones');
   const { state, commit, pending } = useHubFilters();
   const [value, setValue] = useState(state.q);
   useEffect(() => setValue(state.q), [state.q]);
   const placeholder = mode === 'feed' ? t('hub_search_posts_placeholder') : t('filters_search_placeholder');
+  const lg = size === 'lg';
 
   return (
     <form
@@ -132,16 +142,16 @@ export function HubSearchBox({ mode, className = '' }: { mode: 'feed' | 'boards'
       }}
       className={`relative ${className}`}
     >
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+      <Search className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-zinc-400 ${lg ? 'left-4 h-5 w-5' : 'left-3 h-4 w-4'}`} />
       <input
         type="search"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className={`${INPUT_CLS} h-10 pl-9 pr-20`}
+        className={`${INPUT_CLS} ${lg ? 'h-12 rounded-full pl-12 pr-24 text-base shadow-sm focus:shadow-md' : 'h-10 pl-9 pr-20'}`}
       />
-      <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-1">
+      <div className={`absolute top-1/2 flex -translate-y-1/2 items-center gap-1 ${lg ? 'right-2' : 'right-1.5'}`}>
         {value && (
           <button
             type="button"
@@ -158,7 +168,11 @@ export function HubSearchBox({ mode, className = '' }: { mode: 'feed' | 'boards'
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md px-2 py-1 text-xs font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+          className={
+            lg
+              ? 'rounded-full bg-zinc-900 px-3.5 py-1.5 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-white'
+              : 'rounded-md px-2 py-1 text-xs font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100'
+          }
         >
           {t('hub_search_submit')}
         </button>

@@ -3,6 +3,7 @@
 // server boundary maps rows into these shapes (authors through toPublicAuthor,
 // dates as ISO strings) so client components never see raw Prisma rows.
 
+import type { ZoneSidebarLayout } from './sidebar';
 import type { PublicAuthor } from '@/lib/user-identity';
 import type { ZoneAccess, ZonePermissionKey } from './permissions';
 import type {
@@ -42,6 +43,8 @@ export interface ZoneCardView {
   tagline: string;
   coverUrl: string | null;
   iconUrl: string | null;
+  /** `#rrggbb` picked by the 版主, or null ⇒ name-hashed hue (zone-color.ts). */
+  themeColor: string | null;
   lab: string;
   department: string;
   visibility: ZoneVisibilityView;
@@ -57,6 +60,8 @@ export interface ZoneCardView {
   latestPost: { id: string; title: string; type: ZonePostTypeValue; publishedAt: string } | null;
   /** The viewer's relationship (null = none). */
   membership: ZoneMembershipView;
+  /** 主题词 chips (≤ MAX_ZONE_TOPICS, lib/zones/shared.ts). */
+  topics: string[];
 }
 
 export interface ZoneRoleView {
@@ -85,6 +90,8 @@ export interface ZoneDetailView extends ZoneCardView {
   allowMemberColumns: boolean;
   /** Pre-decided viewer policy (lib/zones/permissions.ts). */
   access: ZoneAccess;
+  /** 主页布局 — right-rail modules on/off + order + custom cards (lib/zones/sidebar.ts). Always complete. */
+  sidebar: ZoneSidebarLayout;
 }
 
 export interface ZoneMemberView {
@@ -129,7 +136,7 @@ export interface ZoneAttachmentView {
 export interface ZonePostCardView {
   id: string;
   /** `iconUrl` is public zone metadata (every logged-in viewer sees zone icons on the hub). */
-  zone: { id: string; slug: string; name: string; iconUrl: string | null };
+  zone: { id: string; slug: string; name: string; iconUrl: string | null; themeColor: string | null };
   type: ZonePostTypeValue;
   title: string;
   summary: string;

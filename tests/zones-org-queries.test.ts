@@ -7,10 +7,18 @@
 // are derived from the live config rather than hardcoded, so renaming a 研究所
 // in lib/org.ts does not fail the suite — only breaking a RULE does.
 import { describe, expect, it, vi } from 'vitest';
-import { INSTITUTES, instituteNames, labsOf } from '@/lib/org';
+import { INSTITUTES, createOrg, instituteNames, labsOf } from '@/lib/org';
 
 // queries.ts is a server module; only its pure exports are under test here.
 vi.mock('@/lib/db', () => ({ prisma: {} }));
+// Production ships an EMPTY org chart; these rules need a configured one.
+vi.mock('@/lib/org', async (importOriginal) => {
+  const m = await importOriginal<typeof import('@/lib/org')>();
+  const { ORG_FIXTURE } = await import('./fixtures/org-fixture');
+  const api = m.createOrg(ORG_FIXTURE);
+  // `defaultOrg` is the parameter default every pure helper falls back to.
+  return { ...m, ...api, defaultOrg: api };
+});
 
 const { buildZoneOrgTree, buildZoneOrgOptions } = await import('@/lib/zones/queries');
 
@@ -112,5 +120,31 @@ describe('buildZoneOrgOptions', () => {
     expect(o.institutes.filter((v) => v === FIRST)).toHaveLength(1);
     expect(o.labsByInstitute[FIRST].filter((v) => v === '重复实验室')).toHaveLength(1);
     for (const inst of o.institutes) expect(Array.isArray(o.labsByInstitute[inst])).toBe(true);
+  });
+
+  it('carries the CATALOG alone in `configured` — live rows and the roster never leak into it', () => {
+    const o = buildZoneOrgOptions(
+      [
+        { lab: '未登记研究所', department: '某实验室' },
+        { lab: FIRST, department: '借来的实验室' },
+      ],
+      ['花名册研究所'],
+      ['花名册实验室'],
+    );
+    expect(o.configured.institutes).toEqual(CONFIGURED);
+    expect(o.configured.labsByInstitute[FIRST]).toEqual(labsOf(FIRST));
+    expect(o.configured.labsByInstitute[FIRST]).not.toContain('借来的实验室');
+    expect(o.configured.labsByInstitute['未登记研究所']).toBeUndefined();
+    expect(o.configured.institutes).not.toContain('花名册研究所');
+    // The widened lists still carry everything (the picker's 「其他」 suggestions).
+    expect(o.institutes).toContain('未登记研究所');
+    expect(o.labsByInstitute[FIRST]).toContain('借来的实验室');
+  });
+
+  it('an empty catalog yields an empty `configured` block (the picker degrades to the combobox)', () => {
+    const empty = createOrg([]);
+    const o = buildZoneOrgOptions([{ lab: '自填研究所', department: '自填实验室' }], [], [], empty);
+    expect(o.configured).toEqual({ institutes: [], labsByInstitute: {} });
+    expect(o.institutes).toEqual(['自填研究所']);
   });
 });

@@ -6,7 +6,7 @@
 
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { ArrowRight, MessageSquare } from 'lucide-react';
+import { ArrowRight, Megaphone, MessageSquare } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import type { PublicAuthor } from '@/lib/user-identity';
@@ -20,12 +20,15 @@ export async function ModeratorsCard({
   owner,
   moderators,
   memberCount,
+  canModerate = false,
 }: {
   slug: string;
   owner: PublicAuthor;
   /** Active members holding the `moderator` role (owner excluded by the query). */
   moderators: ZoneMemberView[];
   memberCount: number;
+  /** Shows the 版主公告 how-to line (publish, then 设为公告 from the post's ⋯ menu). */
+  canModerate?: boolean;
 }) {
   const t = await getTranslations('zones');
   const base = zoneHref(slug);
@@ -73,6 +76,15 @@ export async function ModeratorsCard({
         <MessageSquare className="h-4 w-4" />
         {t('mods_contact')}
       </Link>
+      {canModerate && (
+        <Link
+          href={`${base}/posts/new`}
+          className="group mt-3 flex items-start gap-2 border-t border-zinc-200 pt-3 text-[11px] leading-5 text-zinc-500 transition hover:text-zinc-900 dark:border-zinc-800 dark:hover:text-zinc-100"
+        >
+          <Megaphone className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1">{t('notice_cta')}</span>
+        </Link>
+      )}
     </section>
   );
 }

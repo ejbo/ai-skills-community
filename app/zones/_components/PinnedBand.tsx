@@ -50,7 +50,7 @@ export function PinnedBand({ items, leadRoles }: { items: ZonePostCardView[]; le
                 // square next to a coloured one reads as a broken image.
                 <span
                   className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg"
-                  style={{ backgroundColor: zoneWash(post.zone.name), color: zoneHue(post.zone.name) }}
+                  style={{ backgroundColor: zoneWash(post.zone.name, post.zone.themeColor), color: zoneHue(post.zone.name, post.zone.themeColor) }}
                 >
                   <FolderOpen className="h-5 w-5" aria-hidden />
                 </span>

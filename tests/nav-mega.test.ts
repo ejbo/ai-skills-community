@@ -163,8 +163,11 @@ describe('the 研究所 grid answers 「这里我在哪里填一下」', () => {
     expect(INSTITUTES.length).toBeLessThanOrEqual(INSTITUTE_TILE_MAX);
   });
 
-  it('ships six 研究所, unique and trimmed, each with its 实验室', () => {
-    expect(INSTITUTES.length).toBe(6);
+  it('ships an EMPTY chart by default — the 版块 name their own 研究所 (owner decision 2026-09-11)', () => {
+    // The six hand-written 研究所 are gone: there are not that many yet, and the
+    // people who know which lab a board belongs to are the 版主 who create it.
+    // Whatever IS pinned here later must still be unique and trimmed.
+    expect(INSTITUTES.length).toBe(0);
     const names = instituteNames();
     expect(new Set(names).size).toBe(names.length);
     for (const n of names) {

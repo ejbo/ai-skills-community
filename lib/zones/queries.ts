@@ -15,7 +15,9 @@ import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { distinctDirectoryValues } from '@/lib/employee-directory';
-import { allLabs, instituteNames, labsOf, mergeInstitutes } from '@/lib/org';
+import { defaultOrg, type OrgApi } from '@/lib/org';
+import { getOrg } from './org-catalog';
+import { listColumnPresets, seedPresetColumns } from './column-presets';
 import { AUTHOR_IDENTITY_FIELDS, AUTHOR_IDENTITY_SELECT, toPublicAuthor, type PublicAuthor } from '@/lib/user-identity';
 import { resolveZoneAccess, type ZoneAccessRow, type ZoneSiteViewer } from './access';
 import { listZoneColumns } from './columns';
@@ -34,13 +36,16 @@ import {
   ZONE_LIMITS,
   ZONE_VISIBILITIES,
   isValidZoneSlug,
+  normalizeThemeColor,
   parseZoneLinks,
+  sanitizeZoneTopics,
   type OrgDeptNode,
   type OrgLabNode,
   type ZoneLink,
   type ZoneSort,
   withConfiguredInstitutes,
 } from './shared';
+import { parseSidebarLayout, type ZoneSidebarLayout } from './sidebar';
 import { deleteZoneMediaFile, isValidZoneMediaKey, zoneMediaPublicUrl } from './storage';
 import type { ZoneCardView, ZoneDetailView, ZoneMemberView, ZoneMembershipView, ZoneRoleView } from './types';
 
@@ -88,6 +93,8 @@ export const ZONE_CARD_SELECT = {
   tagline: true,
   coverUrl: true,
   iconUrl: true,
+  themeColor: true,
+  topics: true,
   lab: true,
   department: true,
   visibility: true,
@@ -122,6 +129,7 @@ const ZONE_DETAIL_SELECT = {
   links: true,
   allowGuestComments: true,
   allowMemberColumns: true,
+  sidebar: true,
   deletedAt: true,
 } satisfies Prisma.ZoneSelect;
 
@@ -175,6 +183,7 @@ export function toZoneCardView(row: ZoneCardRow, extras: ZoneCardExtras): ZoneCa
     tagline: row.tagline,
     coverUrl: row.coverUrl,
     iconUrl: row.iconUrl,
+    themeColor: normalizeThemeColor(row.themeColor),
     lab: row.lab,
     department: row.department,
     visibility: row.visibility,
@@ -191,6 +200,7 @@ export function toZoneCardView(row: ZoneCardRow, extras: ZoneCardExtras): ZoneCa
         ? { id: latest.id, title: latest.title, type: latest.type, publishedAt: iso(latest.publishedAt) }
         : null,
     membership: extras.membership,
+    topics: sanitizeZoneTopics(row.topics),
   };
 }
 
@@ -385,6 +395,20 @@ export async function featuredZones(viewer: ZoneSiteViewer, take = MAX_FEATURED_
   return cardsFor(rows, viewer);
 }
 
+/**
+ * The hub hero's three figures — every discoverable 版块 (the same gate the
+ * 版块 tab and the navbar tiles use), their published posts and their active
+ * memberships. Viewer-independent by construction, so one aggregate serves all.
+ */
+export async function zoneHubTotals(): Promise<{ zones: number; posts: number; members: number }> {
+  const agg = await prisma.zone.aggregate({
+    where: { deletedAt: null },
+    _count: { _all: true },
+    _sum: { postCount: true, memberCount: true },
+  });
+  return { zones: agg._count._all, posts: agg._sum.postCount ?? 0, members: agg._sum.memberCount ?? 0 };
+}
+
 /** Zones the viewer owns or is an active member of, most recently active first. */
 export async function listMyZones(viewer: ZoneSiteViewer): Promise<ZoneCardView[]> {
   if (!viewer.id) return [];
@@ -436,6 +460,7 @@ export async function getZoneDetail(slug: string, viewer: ZoneSiteViewer): Promi
     roles,
     columns,
     allowMemberColumns: row.allowMemberColumns,
+    sidebar: parseSidebarLayout(row.sidebar),
     access,
   };
 }
@@ -487,7 +512,7 @@ function configuredFirst(configured: readonly string[], extra: readonly string[]
  * the org chart — the same function the hub's boards rail uses on an in-memory
  * list, so a 研究所 can never appear in one rail and not the other.
  */
-export function buildZoneOrgTree(rows: readonly (OrgPair & { count: number })[]): OrgLabNode[] {
+export function buildZoneOrgTree(rows: readonly (OrgPair & { count: number })[], org: OrgApi = defaultOrg): OrgLabNode[] {
   const live = new Map<string, { zoneCount: number; departments: Map<string, number> }>();
   for (const r of rows) {
     const lab = (r.lab ?? '').trim();
@@ -509,7 +534,7 @@ export function buildZoneOrgTree(rows: readonly (OrgPair & { count: number })[])
     // a sensible order rather than whatever the groupBy happened to return.
     .sort((a, b) => b.zoneCount - a.zoneCount || collateOrg(a.lab, b.lab));
 
-  return withConfiguredInstitutes(raw);
+  return withConfiguredInstitutes(raw, org);
 }
 
 /**
@@ -518,12 +543,18 @@ export function buildZoneOrgTree(rows: readonly (OrgPair & { count: number })[])
  * count is the sum of its labs' counts plus the rows that name no 实验室.
  */
 export async function zoneOrgTree(viewer: ZoneSiteViewer): Promise<OrgLabNode[]> {
-  const rows = await prisma.zone.groupBy({
-    by: ['lab', 'department'],
-    where: readableZoneWhere(viewer),
-    _count: { _all: true },
-  });
-  return buildZoneOrgTree(rows.map((r) => ({ lab: r.lab ?? '', department: r.department ?? '', count: r._count._all })));
+  const [rows, org] = await Promise.all([
+    prisma.zone.groupBy({
+      by: ['lab', 'department'],
+      where: readableZoneWhere(viewer),
+      _count: { _all: true },
+    }),
+    getOrg(),
+  ]);
+  return buildZoneOrgTree(
+    rows.map((r) => ({ lab: r.lab ?? '', department: r.department ?? '', count: r._count._all })),
+    org,
+  );
 }
 
 /**
@@ -538,6 +569,12 @@ export interface ZoneOrgOptions {
   labsByInstitute: Record<string, string[]>;
   /** Every 实验室 known anywhere — the datalist behind the 「其他」 escape hatch. */
   labs: string[];
+  /**
+   * The CATALOG alone (管理后台 → 技术专区 → 组织架构): what the picker offers as
+   * real options. Empty ⇒ no catalog yet, the picker degrades to the combobox.
+   * The widened lists above are suggestions; these are the org chart.
+   */
+  configured: { institutes: string[]; labsByInstitute: Record<string, string[]> };
 }
 
 /** Pure half of `zoneFacets` (see tests/zones-org-tree.test.ts). */
@@ -545,7 +582,9 @@ export function buildZoneOrgOptions(
   pairs: readonly OrgPair[],
   rosterInstitutes: readonly string[],
   rosterLabs: readonly string[],
+  org: OrgApi = defaultOrg,
 ): ZoneOrgOptions {
+  const { instituteNames, labsOf, allLabs } = org;
   const liveLabsOf = new Map<string, Set<string>>();
   const liveInstitutes: string[] = [];
   const liveLabs: string[] = [];
@@ -567,21 +606,31 @@ export function buildZoneOrgOptions(
   for (const institute of institutes) {
     labsByInstitute[institute] = configuredFirst(labsOf(institute), [...(liveLabsOf.get(institute) ?? [])]);
   }
-  return { institutes, labsByInstitute, labs: configuredFirst(allLabs(), [...liveLabs, ...rosterLabs]) };
+  const configuredInstitutes = configuredFirst(instituteNames(), []);
+  const configuredLabsByInstitute: Record<string, string[]> = {};
+  for (const institute of configuredInstitutes) configuredLabsByInstitute[institute] = configuredFirst(labsOf(institute), []);
+  return {
+    institutes,
+    labsByInstitute,
+    labs: configuredFirst(allLabs(), [...liveLabs, ...rosterLabs]),
+    configured: { institutes: configuredInstitutes, labsByInstitute: configuredLabsByInstitute },
+  };
 }
 
 /** 研究所 / 实验室 pickers: the configured tree ∪ live 版块 ∪ the employee roster. */
 export async function zoneFacets(): Promise<ZoneOrgOptions> {
-  const [pairs, rosterInstitutes, rosterLabs] = await Promise.all([
+  const [pairs, rosterInstitutes, rosterLabs, org] = await Promise.all([
     prisma.zone.groupBy({ by: ['lab', 'department'], where: { deletedAt: null } }),
     // The roster's own columns follow the same mapping: `lab` is the 研究所.
     distinctDirectoryValues('lab').catch(() => [] as string[]),
     distinctDirectoryValues('department').catch(() => [] as string[]),
+    getOrg(),
   ]);
   return buildZoneOrgOptions(
     pairs.map((p) => ({ lab: p.lab ?? '', department: p.department ?? '' })),
     rosterInstitutes,
     rosterLabs,
+    org,
   );
 }
 
@@ -594,12 +643,18 @@ export interface ZoneInput {
   descriptionMd: string;
   lab: string;
   department: string;
+  /** `#rrggbb` or null (name-hashed hue). */
+  themeColor: string | null;
   visibility: 'public' | 'members';
   joinPolicy: 'open' | 'approval' | 'invite';
   allowGuestComments: boolean;
   /** Members may create their own 栏目 from the composer (版主 always can). */
   allowMemberColumns: boolean;
   links: ZoneLink[];
+  /** 主题词 chips — sanitized (lib/zones/shared.ts). */
+  topics: string[];
+  /** 主页布局 — parsed (lib/zones/sidebar.ts). */
+  sidebar: ZoneSidebarLayout;
 }
 
 /** zod: full create payload (defaults applied); use `zoneInputSchema.partial()` for PATCH bodies. */
@@ -614,11 +669,18 @@ export const zoneInputSchema = z.object({
   descriptionMd: z.string().max(ZONE_LIMITS.descriptionMax).default(''),
   lab: z.string().trim().max(ZONE_LIMITS.labMax).default(''),
   department: z.string().trim().max(ZONE_LIMITS.departmentMax).default(''),
+  themeColor: z
+    .union([z.string(), z.null()])
+    .optional()
+    .transform((v) => normalizeThemeColor(v))
+    .default(null),
   visibility: z.enum(ZONE_VISIBILITIES).default('public'),
   joinPolicy: z.enum(ZONE_JOIN_POLICIES).default('approval'),
   allowGuestComments: z.boolean().default(true),
   allowMemberColumns: z.boolean().default(true),
   links: z.unknown().transform((v) => parseZoneLinks(v)).default([]),
+  topics: z.unknown().transform((v) => sanitizeZoneTopics(v)).default([]),
+  sidebar: z.unknown().transform((v) => parseSidebarLayout(v)).default({}),
 });
 
 export const zonePatchSchema = zoneInputSchema.partial();
@@ -642,6 +704,9 @@ export async function createZone(input: ZoneInput, ownerId: string): Promise<{ i
   if (!isValidZoneSlug(slug)) throw new ZoneError('invalid_slug');
   if (name.length < ZONE_LIMITS.nameMin || name.length > ZONE_LIMITS.nameMax) throw new ZoneError('invalid_input');
   const now = new Date();
+  // 栏目预设 (管理后台 → 技术专区 → 栏目预设) are seeded as the new board's official
+  // 栏目 so it opens with the house taxonomy. Loaded BEFORE the tx (memoized read).
+  const presets = seedPresetColumns(await listColumnPresets());
   try {
     return await prisma.$transaction(async (tx) => {
       const zone = await tx.zone.create({
@@ -652,11 +717,13 @@ export async function createZone(input: ZoneInput, ownerId: string): Promise<{ i
           descriptionMd: input.descriptionMd.slice(0, ZONE_LIMITS.descriptionMax),
           lab: input.lab.trim().slice(0, ZONE_LIMITS.labMax),
           department: input.department.trim().slice(0, ZONE_LIMITS.departmentMax),
+          themeColor: normalizeThemeColor(input.themeColor),
           visibility: input.visibility,
           joinPolicy: input.joinPolicy,
           allowGuestComments: input.allowGuestComments,
           allowMemberColumns: input.allowMemberColumns,
           links: linksJson(input.links),
+          topics: sanitizeZoneTopics(input.topics),
           ownerId,
           memberCount: 1,
           postCount: 0,
@@ -678,6 +745,20 @@ export async function createZone(input: ZoneInput, ownerId: string): Promise<{ i
       await tx.zoneMember.create({
         data: { zoneId: zone.id, userId: ownerId, status: 'active', joinedAt: now, roleId: null },
       });
+      if (presets.length > 0) {
+        await tx.zoneColumn.createMany({
+          data: presets.map((p) => ({
+            zoneId: zone.id,
+            slug: p.slug,
+            name: p.name,
+            description: p.description,
+            official: true,
+            sortOrder: p.sortOrder,
+            createdById: ownerId,
+          })),
+          skipDuplicates: true,
+        });
+      }
       return zone;
     });
   } catch (e) {
@@ -716,11 +797,14 @@ export async function updateZone(
   if (patch.descriptionMd !== undefined) data.descriptionMd = patch.descriptionMd.slice(0, ZONE_LIMITS.descriptionMax);
   if (patch.lab !== undefined) data.lab = patch.lab.trim().slice(0, ZONE_LIMITS.labMax);
   if (patch.department !== undefined) data.department = patch.department.trim().slice(0, ZONE_LIMITS.departmentMax);
+  if (patch.themeColor !== undefined) data.themeColor = normalizeThemeColor(patch.themeColor);
   if (patch.visibility !== undefined) data.visibility = patch.visibility;
   if (patch.joinPolicy !== undefined) data.joinPolicy = patch.joinPolicy;
   if (patch.allowGuestComments !== undefined) data.allowGuestComments = patch.allowGuestComments;
   if (patch.allowMemberColumns !== undefined) data.allowMemberColumns = patch.allowMemberColumns;
   if (patch.links !== undefined) data.links = linksJson(patch.links);
+  if (patch.topics !== undefined) data.topics = sanitizeZoneTopics(patch.topics);
+  if (patch.sidebar !== undefined) data.sidebar = parseSidebarLayout(patch.sidebar) as unknown as Prisma.InputJsonValue;
 
   const staleKeys: string[] = [];
   if (patch.coverKey !== undefined) {

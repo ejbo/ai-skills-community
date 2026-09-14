@@ -1,5 +1,9 @@
-// 技术专区 — zone home right rail (server component), FIXED order — Reddit's
-// rule that a board's sidebar reads the same everywhere:
+// 技术专区 — zone home right rail (server component). The ORDER and the set of
+// modules now come from `zone.sidebar` (版块设置 → 主页布局, lib/zones/sidebar.ts):
+// a 版主 may hide any built-in except 关于, reorder them, and slot in custom
+// markdown cards. The default layout is the fixed order below — Reddit's rule
+// that a board's sidebar reads the same everywhere holds until the 版主 says
+// otherwise. Each built-in keeps its exact markup; only the walk changed.
 //   1. 关于     owner byline · excerpt · 更多 · facts (研究所 / 实验室 / 创建于) ·
 //              policy sentence · 加入
 //   2. 本周动态  (ZonePulse — omitted when both counts are 0)
@@ -13,11 +17,14 @@
 //      keeps postCount at 0 — without this card it had no link at ≥1280px.
 // No SpotlightCard / TiltCard here: a rail is reference, not a showcase.
 
+import { Fragment } from 'react';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { ArrowRight, ExternalLink, FileEdit } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
+import { ZoneMarkdown } from '@/components/zones/ZoneMarkdown';
 import { excerptOf, hostnameOf, zoneHref } from '@/lib/zones/shared';
+import { visibleSidebarModules, type SidebarBuiltinModule, type SidebarCustomCard } from '@/lib/zones/sidebar';
 import type { WikiPageView, ZoneDetailView, ZoneMemberView, ZonePostCardView } from '@/lib/zones/types';
 import { JoinButton } from './JoinButton';
 import { ModeratorsCard } from './ModeratorsCard';
@@ -56,9 +63,9 @@ export async function ZoneSidebar({
   const policy = t(`home_policy_${zone.visibility}_${zone.joinPolicy}`);
   const wall = members.slice(0, AVATAR_WALL);
 
-  return (
-    <aside className="space-y-5">
-      {/* 1. 关于 */}
+  // Every built-in module, verbatim — looked up by id as the layout is walked.
+  const builtin: Record<SidebarBuiltinModule, React.ReactNode> = {
+    about: (
       <section className={`${CARD_CLS} p-4`}>
         <h2 className={SECTION_TITLE_CLS}>{t('sidebar_about')}</h2>
         <div className="mt-3 flex items-center gap-2 text-sm">
@@ -105,14 +112,14 @@ export async function ZoneSidebar({
           </div>
         )}
       </section>
-
-      {/* 2. 本周动态 */}
+    ),
+    pulse: (
       <ZonePulse pulse={pulse} lastActivityAt={zone.lastActivityAt} />
-
-      {/* 3. 版规 */}
+    ),
+    rules: (
       <RulesAccordion slug={zone.slug} page={rulesPage} canWiki={zone.access.canWiki} />
-
-      {/* 4. 成员 */}
+    ),
+    members: (
       <section className={`${CARD_CLS} p-4`}>
         <div className="flex items-center justify-between gap-2">
           <h2 className={SECTION_TITLE_CLS}>{t('sidebar_members')}</h2>
@@ -144,12 +151,12 @@ export async function ZoneSidebar({
           </p>
         )}
       </section>
-
-      {/* 5. 版主 */}
-      <ModeratorsCard slug={zone.slug} owner={zone.owner} moderators={moderators} memberCount={zone.memberCount} />
-
-      {/* 6. 外链 */}
-      {zone.links.length > 0 && (
+    ),
+    moderators: (
+      <ModeratorsCard slug={zone.slug} owner={zone.owner} moderators={moderators} memberCount={zone.memberCount} canModerate={zone.access.canModerate} />
+    ),
+    links:
+      zone.links.length > 0 ? (
         <section className={`${CARD_CLS} p-4`}>
           <h2 className={SECTION_TITLE_CLS}>{t('sidebar_links')}</h2>
           <ul className="mt-2 space-y-1">
@@ -169,6 +176,26 @@ export async function ZoneSidebar({
             ))}
           </ul>
         </section>
+      ) : null,
+  };
+
+  const custom = (card: SidebarCustomCard) => (
+    <section className={`${CARD_CLS} p-4`}>
+      {card.title && <h2 className={SECTION_TITLE_CLS}>{card.title}</h2>}
+      {card.bodyMd && (
+        <ZoneMarkdown content={card.bodyMd} compact headingIds={false} className={card.title ? 'mt-3' : ''} />
+      )}
+    </section>
+  );
+
+  return (
+    <aside className="space-y-5">
+      {visibleSidebarModules(zone.sidebar).map((m) =>
+        m.kind === 'builtin' ? (
+          <Fragment key={m.id}>{builtin[m.id]}</Fragment>
+        ) : (
+          <Fragment key={m.card.id}>{custom(m.card)}</Fragment>
+        ),
       )}
 
       {/* 7. 我的草稿 — below xl (the 栏目 rail carries the link on xl) unless the rail is collapsed. */}

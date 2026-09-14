@@ -10,15 +10,17 @@
 // The columns still read backwards and are deliberately NOT renamed:
 //   Zone.lab        = 研究所 (the tile, the `?lab=` filter value)
 //   Zone.department = 实验室 (the level under it, `?department=`)
-// See the header of lib/org.ts. To add, rename or picture a 研究所, edit
-// `INSTITUTES` there — nothing in this file needs to change.
+// See the header of lib/org.ts. To add, rename or picture a 研究所, use
+// 管理后台 → 技术专区 → 组织架构 (the catalog this file loads through
+// lib/zones/org-catalog.ts) — nothing in this file needs to change.
 
 import { prisma } from '@/lib/db';
 // The config↔live merge lives in lib/zones/shared.ts so the rails and the DB
 // tree cannot drift; re-exported here because the hub already imports it from
 // this module.
 export { withConfiguredInstitutes } from '@/lib/zones/shared';
-import { INSTITUTES, INSTITUTE_TILE_MAX, labsOf, mergeInstitutes } from '@/lib/org';
+import { INSTITUTE_TILE_MAX } from '@/lib/org';
+import { getOrgCatalog } from './org-catalog';
 import type { OrgLabNode } from '@/lib/zones/shared';
 
 export interface ZoneLabCard {
@@ -72,7 +74,9 @@ let inflight: Promise<ZoneLabCard[]> | null = null;
  * nothing new — those covers are already on /zones for every signed-in user.
  */
 async function loadLabs(): Promise<ZoneLabCard[]> {
-  const rows = await prisma.zone.findMany({
+  const [{ institutes: INSTITUTES }, rows] = await Promise.all([
+    getOrgCatalog(),
+    prisma.zone.findMany({
     where: { deletedAt: null, lab: { not: '' } },
     orderBy: [
       { featured: 'desc' },
@@ -83,7 +87,8 @@ async function loadLabs(): Promise<ZoneLabCard[]> {
     ],
     take: LAB_SCAN_MAX,
     select: { lab: true, department: true, name: true, coverUrl: true },
-  });
+    }),
+  ]);
 
   const live = new Map<
     string,
@@ -138,6 +143,11 @@ async function loadLabs(): Promise<ZoneLabCard[]> {
     }));
 
   return [...cards, ...rest].slice(0, LAB_TILE_MAX);
+}
+
+/** Called by every admin write to the org catalog (lib/zones/org-admin.ts). */
+export function invalidateZoneLabCards(): void {
+  cache = null;
 }
 
 /** Process-wide memo — the payload is identical for every signed-in viewer. */

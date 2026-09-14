@@ -65,7 +65,7 @@ function ZoneIcon({ zone }: { zone: ZonePostCardView['zone'] }) {
   return (
     <span
       className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md font-mono text-[10px] font-semibold uppercase text-white"
-      style={{ backgroundColor: zoneHue(zone.name) }}
+      style={{ backgroundColor: zoneHue(zone.name, zone.themeColor) }}
     >
       {zone.name.trim().charAt(0) || 'Z'}
     </span>

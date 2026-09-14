@@ -3,19 +3,22 @@
 // only a client reference there ("is not a function" at runtime, invisible to tsc).
 //
 // Tab order is the order a 版主 reads the page in: what the zone IS (basic), who may enter
-// (access), how content is organised (columns), who may do what (roles), and last the
+// (access), how content is organised (columns), how the home page reads (layout), who may do
+// what (roles), and last the
 // irreversible actions. `columns` gates on `canModerate` — the column routes gate on
 // `moderate`, not `manage`, so a 版主 without `manage` still curates the taxonomy.
 
 import type { ZoneDetailView } from '@/lib/zones/types';
 
-export type SettingsTab = 'basic' | 'access' | 'columns' | 'roles' | 'danger';
+export type SettingsTab = 'basic' | 'access' | 'columns' | 'layout' | 'roles' | 'danger';
 
 export function settingsTabsFor(zone: ZoneDetailView): SettingsTab[] {
   const a = zone.access;
   const out: SettingsTab[] = [];
   if (a.canManage) out.push('basic', 'access');
   if (a.canModerate) out.push('columns');
+  // 主页布局 (right-rail modules + custom cards) PATCHes the zone row ⇒ `manage`.
+  if (a.canManage) out.push('layout');
   if (a.canManageRoles) out.push('roles');
   if (a.isOwner || a.siteAdmin) out.push('danger');
   return out;

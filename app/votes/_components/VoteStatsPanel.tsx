@@ -26,6 +26,7 @@ interface StatsEntry {
   voterCount: number;
   commentCount: number;
   viewCount: number;
+  openCount: number;
   rank: number | null;
 }
 
@@ -130,7 +131,12 @@ export function VoteStatsPanel({ activityId }: { activityId: string }) {
               <th className="px-2 py-2 text-right font-medium">{t('stats_col_votes')}</th>
               <th className="px-2 py-2 text-right font-medium">{t('stats_col_voters')}</th>
               <th className="px-2 py-2 text-right font-medium">{t('stats_col_comments')}</th>
-              <th className="px-2 py-2 text-right font-medium">{t('stats_col_views')}</th>
+              <th className="px-2 py-2 text-right font-medium" title={t('views_hint')}>
+                {t('stats_col_views')}
+              </th>
+              <th className="px-2 py-2 text-right font-medium" title={t('opens_hint')}>
+                {t('stats_col_opens')}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -150,7 +156,7 @@ export function VoteStatsPanel({ activityId }: { activityId: string }) {
             })}
             {entries.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-3 py-8 text-center text-sm text-muted">
+                <td colSpan={11} className="px-3 py-8 text-center text-sm text-muted">
                   {t('ed_entries_empty')}
                 </td>
               </tr>
@@ -241,10 +247,11 @@ function VoteStatsRow({
         <td className="px-2 py-2 text-right tabular-nums text-muted">{entry.voterCount}</td>
         <td className="px-2 py-2 text-right tabular-nums text-muted">{entry.commentCount}</td>
         <td className="px-2 py-2 text-right tabular-nums text-muted">{entry.viewCount}</td>
+        <td className="px-2 py-2 text-right tabular-nums text-muted">{entry.openCount}</td>
       </tr>
       {open && (
         <tr className="border-b border-zinc-100 dark:border-zinc-900">
-          <td colSpan={10} className="bg-zinc-50/60 px-4 py-3 dark:bg-zinc-900/40">
+          <td colSpan={11} className="bg-zinc-50/60 px-4 py-3 dark:bg-zinc-900/40">
             {rows === 'loading' || rows === undefined ? (
               <div className="flex items-center gap-2 py-2 text-xs text-muted">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />

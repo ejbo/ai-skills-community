@@ -16,7 +16,10 @@ import { Magnetic, Stepper } from '@/components/motion';
 import { ZONE_LIMITS, isValidZoneSlug, slugifyAscii, zoneHref, type ZoneLink } from '@/lib/zones/shared';
 import type { ZoneOrgOptions } from '@/lib/zones/queries';
 import { AccessOptions, LinksField, OrgFields, type AccessValue } from './ZoneSettingsForm';
+import { ThemeColorPicker } from './ThemeColorPicker';
+import { TopicsField } from './TopicsField';
 import { BTN_PRIMARY, BTN_SECONDARY, CARD_CLS, HINT_CLS, INPUT_CLS, LABEL_CLS, PILL_MONO, readError } from './ui';
+import { zoneHue } from './zone-color';
 
 interface ZoneMeta extends ZoneOrgOptions {
   canCreate: boolean;
@@ -34,6 +37,8 @@ export function CreateZoneWizard({ facets }: { facets: ZoneOrgOptions }) {
   const [slug, setSlug] = useState('');
   const [slugTouched, setSlugTouched] = useState(false);
   const [tagline, setTagline] = useState('');
+  const [themeColor, setThemeColor] = useState<string | null>(null);
+  const [topics, setTopics] = useState<string[]>([]);
   const [lab, setLab] = useState('');
   const [department, setDepartment] = useState('');
   const [orgTouched, setOrgTouched] = useState(false);
@@ -57,6 +62,7 @@ export function CreateZoneWizard({ facets }: { facets: ZoneOrgOptions }) {
             institutes: meta.institutes,
             labsByInstitute: meta.labsByInstitute ?? {},
             labs: Array.isArray(meta.labs) ? meta.labs : [],
+            configured: meta.configured ?? { institutes: [], labsByInstitute: {} },
           });
         }
         if (meta.me && !orgTouched) {
@@ -98,6 +104,8 @@ export function CreateZoneWizard({ facets }: { facets: ZoneOrgOptions }) {
           name: trimmedName,
           slug,
           tagline: tagline.trim(),
+          themeColor,
+          topics,
           descriptionMd,
           lab: lab.trim(),
           department: department.trim(),
@@ -179,6 +187,8 @@ export function CreateZoneWizard({ facets }: { facets: ZoneOrgOptions }) {
               {tagline.length}/{ZONE_LIMITS.taglineMax}
             </p>
           </div>
+          <ThemeColorPicker value={themeColor} name={trimmedName} onChange={setThemeColor} />
+          <TopicsField value={topics} onChange={setTopics} idPrefix="zone-new-topics" />
         </section>
       ),
     },
@@ -245,6 +255,11 @@ export function CreateZoneWizard({ facets }: { facets: ZoneOrgOptions }) {
             <dd className="font-mono">/zones/{slug}</dd>
             <dt className="text-zinc-500">{t('create_tagline')}</dt>
             <dd>{tagline.trim() || <span className="text-zinc-400">—</span>}</dd>
+            <dt className="text-zinc-500">{t('theme_color')}</dt>
+            <dd className="flex items-center gap-2">
+              <span className="h-4 w-4 rounded-full" style={{ backgroundColor: zoneHue(trimmedName || 'Z', themeColor) }} aria-hidden />
+              <span className="font-mono text-xs">{themeColor ?? t('theme_color_default')}</span>
+            </dd>
             <dt className="text-zinc-500">{t('create_step_org')}</dt>
             <dd className="flex flex-wrap gap-1.5">
               {[lab.trim(), department.trim()].filter(Boolean).length ? (

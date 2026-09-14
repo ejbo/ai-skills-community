@@ -48,6 +48,10 @@ export function chipCls(active: boolean): string {
 export const PILL_COLUMN =
   'inline-flex max-w-[12rem] shrink-0 items-center gap-1 rounded-full border border-zinc-300 px-2 py-0.5 text-[11px] font-medium text-zinc-600 transition hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-zinc-500 dark:hover:text-zinc-100';
 
+/** 主题词 chip — human text like 栏目, hover lifts to ink; a link into the hub search. */
+export const PILL_TOPIC =
+  'inline-flex max-w-[10rem] shrink-0 items-center gap-0.5 truncate rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] font-medium text-zinc-600 transition hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-500 dark:hover:text-zinc-100';
+
 /** Member-created 栏目: same shape, dashed — never a hue in navigation chrome. */
 export const PILL_COLUMN_MEMBER = `${PILL_COLUMN} border-dashed`;
 

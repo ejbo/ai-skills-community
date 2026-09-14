@@ -9,9 +9,11 @@ export const dynamic = 'force-dynamic';
 const MINUTE_MS = 60 * 1000;
 
 // POST /api/votes/[id]/entries/[entryId]/view (login) — the gallery pings this
-// once per lightbox open. Server-side the VoteEntryVisit sessionHash dedupes to
-// one view per viewer per work per UTC day, so re-opening or bouncing between
-// works with ←/→ never inflates the number.
+// once per lightbox open (after a dwell). One ping moves TWO numbers: openCount
+// (点击数, raw — every open counts, one person opening five times is 5) and
+// viewCount (浏览人数 — the VoteEntryVisit sessionHash dedupes to one per viewer
+// per work per UTC day). The response says which of the two actually moved so
+// the client can bump each in place without inventing a number.
 //
 // 计数闸门必须与阅读闸门一致（zone post view route 的家法）：草稿活动、隐藏或
 // 未过审的作品都不该累计公开浏览 —— 未过审作品只有投稿人自己看得见，让它涨
@@ -40,7 +42,7 @@ export async function POST(
   // 逐件核对的那些打开算进去，读到的就有一半是自己的痕迹。其他人（含站点
   // 管理员）照常计数：他们同时也是普通看客，区别对待反而让数字讲不清。
   if (session.user.id === activity.creatorId) {
-    return NextResponse.json({ ok: true, counted: false, reason: 'self' });
+    return NextResponse.json({ ok: true, opened: false, counted: false, reason: 'self' });
   }
 
   const entry = await prisma.voteEntry.findUnique({
@@ -52,6 +54,6 @@ export async function POST(
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
-  const counted = await recordVoteEntryView(entry.id, session.user.id);
-  return NextResponse.json({ ok: true, counted });
+  const { opened, counted } = await recordVoteEntryView(entry.id, session.user.id);
+  return NextResponse.json({ ok: true, opened, counted });
 }

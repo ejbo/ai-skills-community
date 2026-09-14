@@ -21,6 +21,7 @@ export interface VoteStatsEntry {
   voterCount: number; // distinct voters on this entry
   commentCount: number;
   viewCount: number; // 打开灯箱看过的人次（按 viewer/日 去重）
+  openCount: number; // 打开灯箱的次数（不去重，一人多次累计）
   rank: number | null; // gallery-consistent rank (visible approved only)
 }
 
@@ -51,6 +52,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         voteCount: true,
         commentCount: true,
         viewCount: true,
+        openCount: true,
         submitter: { select: { displayName: true } },
       },
     }),
@@ -87,6 +89,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     voterCount: votersByEntry.get(e.id) ?? 0,
     commentCount: e.commentCount,
     viewCount: e.viewCount,
+    openCount: e.openCount,
     rank: rankById.get(e.id) ?? null,
   }));
 

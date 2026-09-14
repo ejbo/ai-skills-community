@@ -30,6 +30,7 @@ import {
   Clock,
   Download,
   Eye,
+  MousePointerClick,
   Link as LinkIcon,
   Loader2,
   Megaphone,
@@ -666,20 +667,28 @@ const EntryCard = memo(function EntryCard({ entry, draftCount, ctx, pop, onOpen,
             </p>
           )}
           {entry.viewCount !== null && (
-            <p
-              className="mt-0.5 flex items-center gap-1 text-xs text-muted"
-              title={t('views_owner_only')}
-            >
-              <Eye className="h-3.5 w-3.5" aria-hidden />
-              {/* 数字对读屏隐藏：旁边的 sr-only 才是完整读法（否则会念成
+            <p className="mt-0.5 flex items-center gap-2.5 text-xs text-muted">
+              {/* 两个数并排：👁 浏览人数（按人/日去重）· 🖱 点击次数（不去重）。
+                  数字对读屏隐藏：旁边的 sr-only 才是完整读法（否则会念成
                   「0 0 次浏览」），而且顺带把「只有发起人看得见」讲清楚 ——
                   光靠 title= 的话触屏和读屏用户根本读不到这层意思。 */}
-              <span className="tabular-nums" aria-hidden>
-                {entry.viewCount}
+              <span className="inline-flex items-center gap-1" title={t('views_hint')}>
+                <Eye className="h-3.5 w-3.5" aria-hidden />
+                <span className="tabular-nums" aria-hidden>
+                  {entry.viewCount}
+                </span>
+                <span className="sr-only">{t('views_n', { count: entry.viewCount })}</span>
               </span>
-              <span className="sr-only">
-                {t('views_n', { count: entry.viewCount })}（{t('views_owner_only')}）
-              </span>
+              {entry.openCount !== null && (
+                <span className="inline-flex items-center gap-1" title={t('opens_hint')}>
+                  <MousePointerClick className="h-3.5 w-3.5" aria-hidden />
+                  <span className="tabular-nums" aria-hidden>
+                    {entry.openCount}
+                  </span>
+                  <span className="sr-only">{t('opens_n', { count: entry.openCount })}</span>
+                </span>
+              )}
+              <span className="sr-only">（{t('views_owner_only')}）</span>
             </p>
           )}
         </div>
@@ -1181,7 +1190,10 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
         // lightboxId 一变清理就跑，可服务端那一次是实打实记上了的，而
         // pingedRef 又不会让它重发 —— 取消的话这张卡就一直显示旧数字。
         // 组件真的卸载了才丢弃（aliveRef）。
-        if (!aliveRef.current || !data?.counted) return;
+        if (!aliveRef.current || !data) return;
+        const opened = data.opened === true; // 点击数（不去重）
+        const counted = data.counted === true; // 浏览人数（去重命中时为 false）
+        if (!opened && !counted) return;
         // 看不到浏览数的人（绝大多数）不必为此重建整份派生列表：viewCount 是
         // null 时 map 是纯 no-op，setView 却会让 entryById / displayed / ranked
         // 全部重算。
@@ -1191,7 +1203,13 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
           return {
             ...prev,
             entries: prev.entries.map((e) =>
-              e.id === entryId && e.viewCount !== null ? { ...e, viewCount: e.viewCount + 1 } : e,
+              e.id === entryId && e.viewCount !== null
+                ? {
+                    ...e,
+                    viewCount: counted ? e.viewCount + 1 : e.viewCount,
+                    openCount: opened && e.openCount !== null ? e.openCount + 1 : e.openCount,
+                  }
+                : e,
             ),
           };
         });
@@ -1624,15 +1642,23 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
                 />
               )}
               {entry.viewCount !== null && (
-                <span
-                  className="hidden shrink-0 items-center gap-1 text-xs text-muted sm:inline-flex"
-                  title={t('views_owner_only')}
-                >
-                  <Eye className="h-3.5 w-3.5" aria-hidden />
-                  <span className="tabular-nums" aria-hidden>
-                    {entry.viewCount}
+                <span className="hidden shrink-0 items-center gap-2.5 text-xs text-muted sm:inline-flex">
+                  <span className="inline-flex items-center gap-1" title={t('views_hint')}>
+                    <Eye className="h-3.5 w-3.5" aria-hidden />
+                    <span className="tabular-nums" aria-hidden>
+                      {entry.viewCount}
+                    </span>
+                    <span className="sr-only">{t('views_n', { count: entry.viewCount })}</span>
                   </span>
-                  <span className="sr-only">{t('views_n', { count: entry.viewCount })}</span>
+                  {entry.openCount !== null && (
+                    <span className="inline-flex items-center gap-1" title={t('opens_hint')}>
+                      <MousePointerClick className="h-3.5 w-3.5" aria-hidden />
+                      <span className="tabular-nums" aria-hidden>
+                        {entry.openCount}
+                      </span>
+                      <span className="sr-only">{t('opens_n', { count: entry.openCount })}</span>
+                    </span>
+                  )}
                 </span>
               )}
               <span className="shrink-0 text-sm font-semibold tabular-nums">
@@ -1795,13 +1821,25 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
                       {lightboxEntry.viewCount !== null && (
                         <span
                           className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 font-medium"
-                          title={t('views_owner_only')}
+                          title={t('views_hint')}
                         >
                           <Eye className="h-3.5 w-3.5" aria-hidden />
                           <span className="tabular-nums" aria-hidden>
                             {lightboxEntry.viewCount}
                           </span>
                           <span className="sr-only">{t('views_n', { count: lightboxEntry.viewCount })}</span>
+                        </span>
+                      )}
+                      {lightboxEntry.openCount !== null && (
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 font-medium"
+                          title={t('opens_hint')}
+                        >
+                          <MousePointerClick className="h-3.5 w-3.5" aria-hidden />
+                          <span className="tabular-nums" aria-hidden>
+                            {lightboxEntry.openCount}
+                          </span>
+                          <span className="sr-only">{t('opens_n', { count: lightboxEntry.openCount })}</span>
                         </span>
                       )}
                       {lightboxEntry.rank !== null && view.over && (

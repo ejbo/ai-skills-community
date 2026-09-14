@@ -318,7 +318,9 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   (`toPublicAuthor` + `<DeptTag/>`). Admin: pin/lock/delete inline on cards/topic pages +
   tables at `/manage/discussion`, all logAdmin'd.
 - **活动 (Events)**: Luma-style community event calendar at `/events` (`Event`/`EventSpeaker`;
-  migration `20260730120000_add_events`). 大类 = `EventKind` enum (external/internal/
+  migration `20260730120000_add_events`). **面向用户的能力清单已经核实过一遍并写进
+  `docs/events-capabilities.md`（发布/浏览/报名/提醒/时区/权限/站内入口 + 「别说什么」+
+  「没有的能力」）—— 做胶片、写文档、答疑直接取用，不要再开调研去重读一遍这些文件。** 大类 = `EventKind` enum (external/internal/
   expert_talk/seminar), 小类 = `topics String[]` from the fixed `EVENT_TOPICS` taxonomy in
   `lib/events/types.ts` — two orthogonal facets, don't merge them. 城市 and 时区 are ALSO fixed
   option sets there (`EVENT_CITIES`; `EVENT_TIMEZONES` = 东部/中部/西部/北京 as IANA zones).
@@ -797,8 +799,16 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
     打开灯箱触发 `POST /api/votes/[id]/entries/[entryId]/view`，计数闸门与阅读闸门一致
     （草稿活动 / hidden / 非 approved 一律 404，且校验作品属于 URL 里的活动）。
     `toVoteEntryView` 按 `isOwner` 裁成 `viewCount: number | null`，和 `voteCount` 同一套家法：
-    **服务端裁剪，绝不发了再前端隐藏**。路由回 `{counted}`，客户端只在真记上时才就地 +1
-    （去重命中时不动，否则发起人会看到数据库里没有的数字）。发起人自己的打开**不计数**
+    **服务端裁剪，绝不发了再前端隐藏**。**点击次数 (2026-09-11, migration
+    `20260911120000_vote_entry_open_count`)**：`VoteEntry.openCount` 是同一个 ping 的**不去重**
+    版本 —— 一个人今天打开五次就是 5（owner 要的是「被点开多少次」的原始热度，👁 浏览人数
+    则回答「多少人看过」）。`recordVoteEntryView` 先单独 `increment openCount`，再跑去重
+    事务，两条**故意不放同一个事务**：visit 唯一键命中让事务回滚时，点击数照样 +1，这正是
+    两个数的差别。同一闸门（草稿/hidden/非 approved 404）、同一裁剪（`openCount: number|null`）、
+    同样不含发起人自己。路由回 `{opened, counted}`，客户端按各自的布尔就地 +1
+    （去重命中时只动 openCount，否则发起人会看到数据库里没有的数字）。卡片/榜单/灯箱/数据
+    tab/CSV 五处并排展示 👁 浏览人数 + 🖱 点击次数（`views_hint`/`opens_hint` 解释口径）。
+    发起人自己的打开**不计数**
     （`counted:false, reason:'self'`）—— 这个数字是给他读的，把他自己逐件审稿的痕迹算进去
     就没法看了。前端的计数 effect **必须带停留延迟**（`VIEW_DWELL_MS`）：它的触发单位是
     `lightboxId` 变化，而 ←/→ 正是改这个 id，不 debounce 的话按住方向键就是每秒 ~30 个
@@ -959,21 +969,83 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
     deliberately two components (non-modal vs modal). i18n prefixes added this round: `panel_*`, `columns_*`,
     `home_*`, `column_rail_*`, `column_band_*`, `notice_*`, `rules_*`, `mods_*`, `onboard_*`, `composer_*`
     (new), `attach_*` (new), `post_*` (new), `rail_strip_*`, `strip_aria`, `ui.rte_table_*`, `ui.rte_upload_file`.
-- **组织架构 = `lib/org.ts`, 一份真相**: 研究所 (top) → 实验室 → 版块. `INSTITUTES` is the ONLY
-  place the 研究所 list, their 实验室 and their cover filenames are written; the navbar mega-menu
-  tiles (`/api/zones/labs` → `zoneLabCards()` → `NavMegaPanel`), the 建版块 form's pickers and
-  `/zones` 的研究所侧栏 all read it. Adding a 研究所 = one entry; adding a 实验室 = one string.
+- **组织架构 = `lib/org.ts` 的词汇 + 版块自己填的数据 (2026-09-11)**: 研究所 (top) → 实验室 → 版块.
+  写死的六个研究所**已删除**（owner decision：「目前还没有这么多，让版主自己创建板块，再选择隶属于
+  哪个 lab 和哪个研究所」）——`INSTITUTES` 现在是**空数组**，组织树完全由 `Zone` 行汇总而来（导航栏
+  磁贴 `zoneLabCards()`、`/zones` 研究所侧栏、`zoneFacets` 建议列表都只列**至少有一个版块**的
+  研究所）。建版块/版块设置里的 研究所·实验室 在目录为空时是两个 **datalist 组合框**（`OrgFields`；**v5 把目录搬进了数据库**，目录非空时变成下拉选择 —— 见「技术专区 v5」）：建议来自
+  已有版块 ∪ 员工名单，选同一拼写就归到一起，直接输入新名字也永远允许。合并/占位/排序的机制
+  （`mergeInstitutes`/`labsOf`/`withConfiguredInstitutes`）保留且配置为空——将来要钉顺序或配封面，
+  加一条 `INSTITUTES` 记录即可；这些规则只在测试里对着 fixture 跑（`tests/fixtures/org-fixture.ts`，
+  三个 org 测试用 `vi.mock('@/lib/org', …createOrg(ORG_FIXTURE))`）。
   **The `Zone` columns are named backwards and are deliberately NOT renamed**: `Zone.lab` holds the
   研究所 and `Zone.department` holds the 实验室 (the columns predate the org model; renaming them
   would rewrite every query, index and payload for a naming nit). Read them through the helpers,
-  never assume the column name means what it says. An institute with `labs: []` is a VALID state —
-  the create form falls back to free text, so nobody is blocked while the chart is filled in — and
-  `instituteOf()` returns null rather than guessing when a 实验室 name is ambiguous. Live 版块 whose
-  实验室 is not in the config are NOT dropped: `withConfiguredInstitutes` (lib/zones/shared.ts) is
-  the ONE canonical merge — configured first in config order, live extras after, busiest first.
-  There were briefly two merge helpers disagreeing on that tail order; don't add a third. Covers
-  live in `public/labs/` and are a hand-typed filename, so a missing/typo'd file is expected: the
-  tile falls back to a name-hashed identity colour (配色契约), it never renders a broken image.
+  never assume the column name means what it says. Live 版块 whose 实验室 is not in the config are
+  NOT dropped: `withConfiguredInstitutes` (lib/zones/shared.ts) is the ONE canonical merge —
+  configured first in config order, live extras after, busiest first. Don't add a second merge.
+  Covers in `public/labs/` are only used when an `INSTITUTES` entry names them; a missing file
+  falls back to a name-hashed identity colour, never a broken image.
+- **技术专区 v4 (2026-09-11, migration `20260911000000_zone_theme_color`) — 贴吧式主页与版块头部.**
+  User's ask: 「目前看起来很混乱，也不吸引人，也没有很多可以自定义的内容……更符合贴吧、版主这类，
+  给各 lab 实验室来创建自己的板块」. Functions untouched; what changed:
+  - **`Zone.themeColor`** (`#rrggbb` | null, `normalizeThemeColor`/`isValidThemeColor` in
+    lib/zones/shared.ts) is the ONE new customisation. `zoneHue(name, themeColor)` (zone-color.ts)
+    prefers it and falls back to the name hash, so every surface that painted a zone's colour
+    (monogram, banner wash `zoneBannerStyle`, icon ring, wall tile, feed row icon) reads it through
+    that helper — never `identityColor(name)` directly for a zone. Picker = `ThemeColorPicker`
+    (12 identity swatches + native colour input + 恢复默认), in 版块设置 → 基本信息 and wizard step 1.
+    It colours the zone's MATERIAL only (配色契约): buttons/tabs/pills stay ink.
+  - **Hub (`/zones`)**: `ZoneHubHero` (eyebrow · h1 · big pill search `HubSearchBox size="lg"` ·
+    three static figures from `zoneHubTotals()` · 创建 CTA · **`ZoneWall3D`** at lg+) →
+    `MyZonesStrip` (viewer's boards as icon chips, 贴吧「我关注的吧」) → the same three tabs.
+    动态 gets a third xl column, `HubSideRail` (热门版块 ranked + 开一个版块 card). `ZoneWall3D` is
+    the one deliberately 3D thing: a `preserve-3d` grid under 1400px perspective at a resting
+    isometric pose, pointer-nudged ±5° through springs (fine pointer + motion-safe only), tiles at
+    three `translateZ` depths breathing on `animate-zone-float` (globals.css) — every tile is a real
+    link, the float class is unconditional (`motion-safe:` gates it; a `reduce ?` className would
+    not hydrate), columns = 2/3/4 by board count. No WebGL, no new dependency.
+  - **Zone home**: `ZoneHeader` is a tall banner (cover, or theme wash + hairline grid + rotated
+    watermark monogram — the banner div is `overflow-hidden` so the glyph never bleeds under the
+    buttons), icon on a white plinth ringed in the theme colour, 成员/帖子/Wiki figures row, same
+    tabs. `ZoneCard` got the same banner/watermark/ring treatment. The dashed 「设为公告」 how-to
+    box moved out of the stream into the rail's 版主 card (`ModeratorsCard canModerate`);
+    `ZoneNotice` renders nothing without an announcement.
+- **技术专区 v5 (2026-09-11, migration `20260911150000_zone_site_catalog`) — 目录进数据库、首页文案进后台、版块自定义布局.**
+  User's ask: 「侧边的研究所分类，以及栏目……在管理员界面里可以添加修改和删除，而不是写死在代码里」「技术专区的这些描述
+  ……管理员最好也可以直接在管理平台里修改」「我的板块那里重复了，只留 动态/板块/我的板块」「给各技术专区更自由的设定、更产品化」.
+  - **组织架构目录 = `OrgInstitute` / `OrgLab` 表**，维护在 管理后台 → 技术专区 → 组织架构 (`/manage/zones/org`,
+    `lib/zones/org-admin.ts`, API `/api/admin/zones/org/*`). `Zone.lab` / `Zone.department` **仍然存名字**（无外键）：目录是
+    STRUCTURE（顺序、存在、简介、封面），行只是填进去 —— 所以 **改名会在同一事务里改写所有版块的对应值**（名字就是 join key），
+    删除只撤目录项，版块保留原值并作为 live extra 继续可筛（`lib/org.ts#mergeInstitutes` 的老规则）。`lib/org.ts` 的
+    `INSTITUTES` 永远为空，只剩纯函数 `createOrg()`；服务端一律 `getOrg()` / `getOrgCatalog()` (`lib/zones/org-catalog.ts`,
+    60 s memo，每次后台写都 `invalidateOrgCatalog()` + `invalidateZoneLabCards()`) 并把 `OrgApi` **当参数传给纯函数**
+    (`withConfiguredInstitutes(tree, org)`, `buildZoneOrgTree(rows, org)`, `buildZoneOrgOptions(…, org)`)。测试 mock
+    `@/lib/org` 时必须同时覆盖 `defaultOrg`（它是这些参数的默认值）。建版块/版块设置的 研究所·实验室 在目录非空时是两个
+    **`<select>`**（研究所 → 该所实验室），末尾「其他（手动输入）」才展开自填框；库里存了目录外的值会以「其他」态打开且值不丢。
+    迁移把现有版块在用的 研究所/实验室 回填进目录，所以管理员打开就是真实数据；`db push` 部署要手动跑那两条 INSERT。
+  - **栏目预设 = `ZoneColumnPreset`** (`/manage/zones/columns`, `lib/zones/column-presets*.ts`)：站级标准栏目。三处消费：
+    `createZone` 事务里播种为 official `ZoneColumn`；「同步到所有版块」只**补缺**（按 `columnDedupeKey` 去重，永不改名/删除
+    版块自己的栏目 —— 预设是底线不是上限，满 `MAX_ZONE_COLUMNS` 的版块跳过并计数）；专区首页左侧 栏目 facet 按预设顺序排前
+    （0 帖也显示，`orderColumnFacet`）。版主在版块设置里的 栏目 tab 不变。
+  - **首页文案与模块开关 = `ZoneSiteSetting` 单行** (`/manage/zones/settings`, `lib/zones/site-settings*.ts`)：`copy` 按语言存
+    {eyebrow,title,subtitle,createTitle,createDesc}，解析链是 **本语言 → 中文 → i18n 默认** (`resolveZoneHubCopy`，中文是 stored
+    content 的 source of truth，与知识库双语字段同一家法)，后台输入框的占位符就是当前语言的 i18n 默认值，留空即默认。四个开关
+    `showWall/showTotals/showHotRail/showFeatured` 在 `ZoneHubHero` / `page.tsx` 生效（关掉版块墙时左栏收成单列 `max-w-3xl`）。
+    `hubCopy()` (ZoneHubHero.tsx) 是页面、hero、右栏三处共用的唯一入口。30 s memo。
+  - **`MyZonesStrip` 已删除**（与「我的版块」tab 重复）；i18n 里 `hub_mine_strip_*` 一并删掉。
+  - **版块自定义**：`Zone.topics String[]`（≤6 个、每个 ≤16 字，`sanitizeZoneTopics`；头部与卡片渲染成 `PILL_TOPIC` 墨色描边
+    chip，点击去 `/zones?q=`；hub 搜索目前**不**匹配 topics —— Prisma `String[]` 无 substring 操作，需要时在 `listZones` 加
+    `hasSome` 或改 `matchesQuery`）和 **`Zone.sidebar Json` = 主页布局** (`lib/zones/sidebar.ts` 纯契约)：`{order, hidden,
+    custom[{id,title,bodyMd}]}`，六个内置模块 `about pulse rules members moderators links` 可排序/隐藏（`about` 不可隐藏），
+    自定义卡片 ≤6、标题 ≤40、正文 ≤4000 markdown，id 形如 `custom:<8 位 a-z0-9>`。`parseSidebarLayout` 是唯一 sanitizer，
+    **缺失的内置模块会被追加回来**（以后新增模块不会在已自定义的版块上消失），`ZoneSidebar` 只按 `visibleSidebarModules()`
+    走一遍、内置模块 markup 原样保留，自定义卡片走 `ZoneMarkdown compact`；我的草稿卡固定在布局之外最后。编辑器 =
+    版块设置 → **主页布局** tab（`SidebarLayoutEditor`，gate `canManage`，`settings-tabs.ts` 顺序 basic/access/columns/
+    layout/roles/danger —— `tests/zones-columns.test.ts` 钉着这个顺序），PATCH `/api/zones/[slug]` 的 `sidebar` 超限回 400
+    而不是静默截断。
+  - Manage 页全部中文；三个新页已登记 `PAGE_NAMES`。i18n 新 key：`create_org_pick_*`/`create_org_catalog_hint`、`layout_*`、
+    `topics_*`、`settings_tab_layout`。
 - **演示内容 (`pnpm demo:seed` / `demo:unseed` / `--dry-run`)**: `scripts/demo-content.ts` — a
   pull-and-go demo dataset for the owner's migration (「迁移时无法放进数据库，希望 pull 下就有、
   之后好删」). Two 温哥华 版块 with rich posts (cross-zone `[embed:]`, polls, tables, office

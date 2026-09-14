@@ -2220,6 +2220,10 @@ model VoteEntry {
   // 浏览数：灯箱打开一次算一次，按 (viewer, entry, UTC 日) 去重（VoteEntryVisit）。
   // 只对发起人/管理员可见 —— toVoteEntryView 里按 isOwner 裁剪成 null。
   viewCount    Int              @default(0)
+  // 点击数：同一条 view ping，但**不去重** —— 一个人今天打开五次就是 5。
+  // 和 viewCount 并排给发起人看「多少人看过」vs「被点开多少次」；同样不含
+  // 发起人自己的打开，同样按 isOwner 裁剪成 null。
+  openCount    Int              @default(0)
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
@@ -2389,6 +2393,10 @@ model Zone {
   coverKey           String?
   iconUrl            String?
   iconKey            String?
+  // 版块主题色 — `#rrggbb`, validated by lib/zones/shared.ts (isValidThemeColor).
+  // Null ⇒ the name-hashed identity hue (zone-color.ts). It colours the zone's
+  // OWN material (banner wash, monogram, icon ring), never the page chrome.
+  themeColor         String?
   // 组织归属 — free text, prefilled from the creator's User.lab/department and
   // the EmployeeDirectory distinct lists. Display only; never a join key.
   lab                String         @default("")
@@ -2401,6 +2409,13 @@ model Zone {
   allowGuestComments Boolean        @default(true)
   // members may create their own 栏目 from the composer (版主 always can).
   allowMemberColumns Boolean        @default(true)
+  // 版块主题词 — up to MAX_ZONE_TOPICS short chips (lib/zones/shared.ts), shown on
+  // the header / cards and searchable. Free text, never translated.
+  topics             String[]       @default([])
+  // 主页布局 — which right-rail modules render, in what order, plus 版主-written
+  // custom cards. Shape + sanitizer: lib/zones/sidebar.ts (`ZoneSidebarLayout`).
+  // `{}` ⇒ the default fixed order.
+  sidebar            Json           @default("{}")
   featured           Boolean        @default(false)
   featuredAt         DateTime?
   ownerId            String
@@ -2747,4 +2762,68 @@ model ZonePostViewer {
   @@id([postId, userId])
   @@index([userId])
   @@index([postId, via])
+}
+
+// ── 技术专区站级目录 (2026-09-11 v5) ─────────────────────────────────────────
+// 组织架构目录：研究所 → 实验室，由管理后台维护（/manage/zones/org）。
+// Zone.lab / Zone.department keep storing the NAMES (no FK): the catalog is the
+// STRUCTURE (order, existence, description) and the rows fill it in — an entry
+// deleted here leaves its 版块 filterable as a live extra (lib/org.ts merge).
+// Renaming an entry rewrites the matching Zone rows in the same transaction
+// (lib/zones/org-admin.ts), because the name IS the join key.
+model OrgInstitute {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String   @default("")
+  // Tile artwork, root-relative under /labs/ or an uploaded media URL; null ⇒ generated cover.
+  imageUrl    String?
+  sortOrder   Int      @default(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  labs OrgLab[]
+
+  @@index([sortOrder])
+}
+
+model OrgLab {
+  id          String   @id @default(cuid())
+  instituteId String
+  name        String
+  description String   @default("")
+  sortOrder   Int      @default(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  institute OrgInstitute @relation(fields: [instituteId], references: [id], onDelete: Cascade)
+
+  @@unique([instituteId, name])
+  @@index([instituteId, sortOrder])
+}
+
+// 栏目预设：站级的标准栏目清单（/manage/zones/columns）。新建版块时播种为
+// official ZoneColumn；「同步到所有版块」按 name 补齐缺失的 official 栏目；
+// 专区首页的 栏目 facet 按预设顺序排在前面。Per-zone 栏目 remain ZoneColumn.
+model ZoneColumnPreset {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String   @default("")
+  sortOrder   Int      @default(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([sortOrder])
+}
+
+// 技术专区站级设置（单行，id = "default"）：首页文案（按语言）与首页模块开关。
+// `copy` shape: { "zh-CN": { eyebrow, title, subtitle, createTitle, createDesc }, en, fr }
+// — an empty string falls back to the i18n message (lib/zones/site-settings.ts).
+model ZoneSiteSetting {
+  id           String   @id @default("default")
+  copy         Json     @default("{}")
+  showWall     Boolean  @default(true)
+  showTotals   Boolean  @default(true)
+  showHotRail  Boolean  @default(true)
+  showFeatured Boolean  @default(true)
+  updatedAt    DateTime @updatedAt
 }

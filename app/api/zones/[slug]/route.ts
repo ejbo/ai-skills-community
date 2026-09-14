@@ -7,10 +7,20 @@ import {
   MAX_ZONE_LINKS,
   ZONE_JOIN_POLICIES,
   ZONE_LIMITS,
+  MAX_ZONE_TOPICS,
+  ZONE_TOPIC_MAX,
   ZONE_VISIBILITIES,
+  isValidThemeColor,
   isValidZoneSlug,
   parseZoneLinks,
+  sanitizeZoneTopics,
 } from '@/lib/zones/shared';
+import {
+  MAX_SIDEBAR_CUSTOM_CARDS,
+  SIDEBAR_CARD_BODY_MAX,
+  SIDEBAR_CARD_TITLE_MAX,
+  parseSidebarLayout,
+} from '@/lib/zones/sidebar';
 import { zoneContext } from '@/lib/zones/access';
 import { getZoneDetail, softDeleteZone, updateZone } from '@/lib/zones/queries';
 import { isValidZoneMediaKey, statZoneMediaAsync, type ZoneMediaKind } from '@/lib/zones/storage';
@@ -35,6 +45,8 @@ const patchSchema = z
     descriptionMd: z.string().max(ZONE_LIMITS.descriptionMax).optional(),
     lab: z.string().trim().max(ZONE_LIMITS.labMax).optional(),
     department: z.string().trim().max(ZONE_LIMITS.departmentMax).optional(),
+    // null clears the theme (back to the name-hashed hue); a bad string is rejected.
+    themeColor: z.union([z.string().refine((v) => isValidThemeColor(v)), z.null()]).optional(),
     visibility: z.enum(ZONE_VISIBILITIES).optional(),
     joinPolicy: z.enum(ZONE_JOIN_POLICIES).optional(),
     allowGuestComments: z.boolean().optional(),
@@ -47,6 +59,33 @@ const patchSchema = z
       .optional(),
     coverKey: z.string().max(200).nullable().optional(),
     iconKey: z.string().max(200).nullable().optional(),
+    // 主题词: hard-bounded here (count + length) so an over-long list is a 400,
+    // never a silent trim; the dedupe/whitespace pass is sanitizeZoneTopics.
+    topics: z
+      .array(z.string().max(ZONE_TOPIC_MAX * 2))
+      .max(MAX_ZONE_TOPICS)
+      .transform((v) => sanitizeZoneTopics(v))
+      .optional(),
+    // 主页布局: the SHAPE is validated here (card count + field lengths are a
+    // 400, not a truncation); parseSidebarLayout then normalises the rest
+    // (unknown ids dropped, missing built-ins appended, `about` never hidden).
+    sidebar: z
+      .object({
+        order: z.array(z.string().max(40)).max(40).optional(),
+        hidden: z.array(z.string().max(40)).max(20).optional(),
+        custom: z
+          .array(
+            z.object({
+              id: z.string().max(40),
+              title: z.string().max(SIDEBAR_CARD_TITLE_MAX),
+              bodyMd: z.string().max(SIDEBAR_CARD_BODY_MAX),
+            }),
+          )
+          .max(MAX_SIDEBAR_CUSTOM_CARDS)
+          .optional(),
+      })
+      .transform((v) => parseSidebarLayout(v))
+      .optional(),
   })
   .refine((v) => Object.values(v).some((x) => x !== undefined));
 

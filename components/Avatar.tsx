@@ -24,7 +24,8 @@ const SIZE: Record<Size, string> = {
  * list of them reads as one family rather than as confetti, and all dark
  * enough to carry white glyphs in either theme.
  */
-const IDENTITY_COLORS = [
+/** The 12-hue identity palette — exported so a 版块's theme swatches are the SAME colours a person's avatar hashes to. */
+export const IDENTITY_COLORS = [
   '#B24357', // rose
   '#B85C2B', // clay
   '#8F7420', // ochre

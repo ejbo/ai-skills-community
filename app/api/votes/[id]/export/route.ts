@@ -45,6 +45,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       voteCount: true,
       commentCount: true,
       viewCount: true,
+      openCount: true,
       hidden: true,
       status: true,
       createdAt: true,
@@ -88,6 +89,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     '总票数',
     '评论数',
     '浏览数',
+    '点击数',
     '投稿时间',
     '投票人',
     '投票人账号',
@@ -118,8 +120,10 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       String(e.voteCount),
       String(e.commentCount),
       // 浏览数与 数据 tab 的「浏览」同源（VoteEntryVisit 按 viewer/UTC 日去重，
-      // 不含发起人自己的打开）。少了这一列，屏幕上有的数字导出后就没了。
+      // 不含发起人自己的打开）；点击数是同一 ping 的不去重版本。少了这两列，
+      // 屏幕上有的数字导出后就没了。
       String(e.viewCount),
+      String(e.openCount),
       e.createdAt.toISOString(),
     ];
     lines.push([...base, '', '', '', '', '', '']);
@@ -134,8 +138,9 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         '',
         ...fieldDefs.map(() => ''),
         // 投稿人 / 投稿人账号 / 原文件名 / 类型 / 状态 / 已隐藏 / 总票数 /
-        // 评论数 / 浏览数 / 投稿时间 —— 作品行才有值，投票行留空占位。
+        // 评论数 / 浏览数 / 点击数 / 投稿时间 —— 作品行才有值，投票行留空占位。
         // 数量必须和表头一致：加列时这里要跟着加一个。
+        '',
         '',
         '',
         '',

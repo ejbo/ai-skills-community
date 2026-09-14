@@ -10,7 +10,7 @@ import { getTranslations } from 'next-intl/server';
 import { ArrowRight, Megaphone } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { leadRoleOf, type LeadRoles } from '@/lib/zones/lead-roles';
-import { excerptOf, zoneHref, zonePostHref } from '@/lib/zones/shared';
+import { excerptOf, zonePostHref } from '@/lib/zones/shared';
 import type { ZonePostCardView } from '@/lib/zones/types';
 import { RelTime } from './RelTime';
 import { RolePill } from './RolePill';
@@ -22,7 +22,7 @@ export async function ZoneNotice({
   slug,
   post,
   leadRoles,
-  canModerate,
+  canModerate: _canModerate,
 }: {
   zoneId: string;
   slug: string;
@@ -33,19 +33,10 @@ export async function ZoneNotice({
 }) {
   const t = await getTranslations('zones');
 
-  if (!post) {
-    if (!canModerate) return null;
-    return (
-      <Link
-        href={`${zoneHref(slug)}/posts/new`}
-        className="group flex items-center gap-2 rounded-2xl border border-dashed border-zinc-300 px-4 py-2.5 text-xs text-zinc-500 transition hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700 dark:hover:border-zinc-500 dark:hover:text-zinc-100"
-      >
-        <Megaphone className="h-3.5 w-3.5 shrink-0" aria-hidden />
-        <span className="min-w-0 flex-1">{t('notice_cta')}</span>
-        <ArrowRight className="h-3 w-3 shrink-0 transition-transform duration-200 group-hover:translate-x-0.5" />
-      </Link>
-    );
-  }
+  // No announcement: nothing at the top of the stream. The 版主's how-to CTA
+  // lives in the 版主 rail card (ModeratorsCard) — a dashed instruction box
+  // above every post list read as clutter on a board that simply has no notice.
+  if (!post) return null;
 
   const href = zonePostHref(slug, post.id);
   const role = leadRoleOf(leadRoles, post.author.handle);

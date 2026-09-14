@@ -24,6 +24,7 @@ export async function GET() {
     institutes: org.institutes,
     labsByInstitute: org.labsByInstitute,
     labs: org.labs,
+    configured: org.configured,
     canCreate,
     me: { lab: me?.lab ?? '', department: me?.department ?? '' },
   });

@@ -1,0 +1,334 @@
+/* ==========================================================================
+   deck-editor v2 — 让任意「一页一个 .slide」的 HTML 胶片变成可视化可编辑
+   纯原生，无依赖。所有编辑器界面都带 .dke- 前缀，打印时全部隐藏。
+
+   分区：
+     1 变量 / 工具条      2 下拉菜单 / 右键菜单     3 页面画布状态
+     4 选中框 / 手柄 / 参考线                      5 属性面板 / 页码条
+     6 浮层提示 / 恢复条  7 放映模式               8 打印
+   ========================================================================== */
+
+/* 编辑器界面配色。想换成自家品牌色：
+   window.DECK_EDITOR_CONFIG = { accent: '#C7000B' }（会同时推导出 accent2 / hi）
+   或者直接在你自己的样式表里覆盖下面这三个变量。 */
+:root{
+  --dke-accent:#3B5BDB; --dke-accent2:#4C6EF5; --dke-alt:#0B7285;
+  --dke-ink:#1F1F1F; --dke-mute:#767676; --dke-line:#DCDCDC; --dke-bg:#FFFFFF;
+  --dke-face:#F7F7F8; --dke-hi:#EDF0FE;
+  --dke-font:12px/1.4 "Microsoft YaHei","PingFang SC","Segoe UI",Arial,sans-serif;
+}
+
+/* ─────────────────────────────── 1 工具条 ─────────────────────────────── */
+
+.dke-bar{
+  position:fixed; left:0; right:0; top:0; z-index:9998;
+  display:flex; flex-direction:column;
+  font:var(--dke-font); color:var(--dke-ink);
+  background:var(--dke-bg); border-bottom:1px solid var(--dke-line);
+  box-shadow:0 1px 8px rgba(0,0,0,.10);
+  user-select:none; -webkit-user-select:none;
+}
+.dke-row{display:flex; align-items:center; gap:4px; padding:5px 10px; flex-wrap:wrap; min-height:34px}
+.dke-row + .dke-row{border-top:1px solid #EFEFEF; background:var(--dke-face)}
+.dke-row.hidden{display:none}
+.dke-sep{width:1px; height:18px; background:#DDD; margin:0 4px; flex:none}
+.dke-lbl{font-size:11px; color:var(--dke-mute); margin:0 2px 0 0; white-space:nowrap}
+.dke-spring{margin-left:auto}
+
+.dke-btn{
+  font:600 12px/1 "Microsoft YaHei","PingFang SC",Arial,sans-serif;
+  padding:6px 9px; border:1px solid transparent; background:transparent; color:#333;
+  border-radius:4px; cursor:pointer; white-space:nowrap; position:relative;
+  display:inline-flex; align-items:center; gap:4px;
+}
+.dke-btn:hover{background:#EFEFEF}
+.dke-btn:active{background:#E4E4E4}
+.dke-btn.on{background:var(--dke-hi); color:var(--dke-accent); box-shadow:inset 0 0 0 1px rgba(199,0,11,.35)}
+.dke-btn.primary{background:var(--dke-accent); color:#fff}
+.dke-btn.primary:hover{background:#A80009}
+.dke-btn.ghost{border-color:#D6D6D6; background:#fff}
+.dke-btn.ghost:hover{border-color:var(--dke-accent); color:var(--dke-accent); background:#fff}
+.dke-btn.icon{min-width:28px; justify-content:center; padding:6px 6px; font-weight:400; font-size:13px}
+.dke-btn[disabled]{opacity:.35; cursor:default; background:transparent}
+.dke-btn[disabled]:hover{background:transparent}
+.dke-btn .caret{font-size:9px; opacity:.55; margin-left:1px}
+
+/* 段控：文字 / 对象 */
+.dke-seg{display:inline-flex; border:1px solid #D6D6D6; border-radius:4px; overflow:hidden; background:#fff}
+.dke-seg .dke-btn{border-radius:0; border:0; padding:6px 11px}
+.dke-seg .dke-btn + .dke-btn{border-left:1px solid #E6E6E6}
+.dke-seg .dke-btn.on{background:var(--dke-accent); color:#fff; box-shadow:none}
+
+.dke-sel,.dke-num{
+  font:12px "Microsoft YaHei","PingFang SC",Arial,sans-serif;
+  padding:5px 6px; border:1px solid #D6D6D6; border-radius:4px; background:#fff; color:#333;
+}
+.dke-sel:focus,.dke-num:focus{outline:none; border-color:var(--dke-accent)}
+.dke-num{width:50px; text-align:center}
+.dke-num.wide{width:62px; text-align:left}
+.dke-num.mixed{color:#9A9A9A}
+
+.dke-swatches{display:flex; gap:2px; align-items:center}
+.dke-sw{width:16px; height:16px; border:1px solid rgba(0,0,0,.22); cursor:pointer; border-radius:3px}
+.dke-sw:hover{outline:2px solid var(--dke-accent2); outline-offset:1px}
+.dke-sw.none{background:repeating-linear-gradient(45deg,#fff,#fff 3px,#DDD 3px,#DDD 6px)}
+
+.dke-status{font-size:11px; font-weight:700; color:#2E6B33; white-space:nowrap; margin-left:4px}
+.dke-status.dirty{color:#B26A00}
+.dke-status.off{color:#9A9A9A; font-weight:400}
+.dke-btn.need::after{content:""; position:absolute; top:3px; right:3px; width:5px; height:5px;
+  border-radius:50%; background:#FFD34D}
+
+.dke-hint{font-size:11px; color:#9A9A9A; white-space:nowrap; margin-left:8px}
+.dke-hint b{color:var(--dke-accent); font-weight:600}
+.dke-kbd{font:600 10px/1.5 Consolas,Menlo,monospace; background:#EEE; border:1px solid #DDD;
+  border-bottom-width:2px; border-radius:3px; padding:0 4px; color:#555}
+
+/* ─────────────────────── 2 下拉菜单 / 右键菜单 ────────────────────────── */
+
+.dke-menu,.dke-ctx{
+  position:fixed; z-index:10002; min-width:168px; padding:5px;
+  background:#fff; border:1px solid #D6D6D6; border-radius:6px;
+  box-shadow:0 8px 26px rgba(0,0,0,.18); font:var(--dke-font); color:var(--dke-ink);
+  user-select:none; -webkit-user-select:none;
+}
+.dke-mi{display:flex; align-items:center; gap:9px; padding:7px 9px; border-radius:4px; cursor:pointer; white-space:nowrap}
+.dke-mi:hover{background:var(--dke-hi); color:var(--dke-accent)}
+.dke-mi[disabled]{opacity:.35; pointer-events:none}
+.dke-mi .k{margin-left:auto; font:10px/1 Consolas,Menlo,monospace; color:#AAA}
+.dke-mi .g{width:16px; text-align:center; opacity:.75}
+.dke-mdiv{height:1px; background:#EEE; margin:4px 2px}
+.dke-mhd{padding:5px 9px 3px; font-size:10.5px; color:#A0A0A0}
+
+/* ─────────────────────────── 3 画布 / 页面状态 ────────────────────────── */
+
+body.dke-ready{padding-top:var(--dke-h,42px)}
+body.dke-ready.dke-panel-on{padding-right:var(--dke-r,0px)}
+body.dke-on .slide{outline:1px solid rgba(0,0,0,.10); outline-offset:-1px}
+body.dke-on .slide.dke-cur{outline:2px solid rgba(199,0,11,.45); outline-offset:-1px}
+
+/* 文字模式下把可编辑区标出来，但别喧宾夺主 */
+body.dke-on.dke-text [contenteditable="true"]:focus{outline:none}
+body.dke-on.dke-text .slide:focus{outline:2px solid rgba(199,0,11,.45); outline-offset:-1px}
+
+/* 对象模式：光标提示这是在选对象，不是在敲字 */
+body.dke-obj .slide,body.dke-obj .slide *{cursor:default}
+body.dke-obj .dke-frame{cursor:move}
+
+/* 已解锁的浮动元素（图片 / 文本框 / 标注 / 脱离排版的块） */
+.dke-el{position:absolute; z-index:20; box-sizing:border-box}
+.dke-el img{display:block; width:100%; height:100%; object-fit:fill; pointer-events:none}
+.dke-el.fitmode img{object-fit:contain}
+.dke-el.txt{padding:3px 5px; font-size:15px; line-height:1.5; color:var(--dke-ink); min-width:36px}
+/* 标注的外观只是"兜底"：故意用单类选择器，胶片自己的 .shot .pin 之类规则能盖过它。
+   编辑器新插入的标注会把这些值写成内联样式，所以不受影响。 */
+.dke-pin{width:26px; height:26px; border-radius:50%; background:var(--dke-accent2); color:#fff;
+  font:700 14px/26px Arial,sans-serif; text-align:center;
+  box-shadow:0 0 0 3px rgba(255,255,255,.95),0 1px 5px rgba(0,0,0,.45)}
+.dke-el.dke-pin{z-index:40}
+.dke-el.dke-line{background:var(--dke-accent); height:2px}
+.dke-spacer{pointer-events:none; visibility:hidden}
+.dke-el.dke-lock{cursor:default !important}
+
+/* 拖放图片提示 */
+.slide.dke-drop{box-shadow:inset 0 0 0 3px var(--dke-accent2)}
+
+/* ──────────────── 4 选中框 / 手柄 / 参考线 / 框选（overlay 层） ─────────── */
+
+/* overlay 铺在每一页上，只有框和手柄接收鼠标；正文完全不受影响 */
+.dke-ov{position:absolute; left:0; top:0; right:0; bottom:0; z-index:9000; pointer-events:none;
+  overflow:visible; font:var(--dke-font)}
+.dke-ov *{box-sizing:border-box}
+
+.dke-hover{position:absolute; border:1px dashed rgba(10,74,122,.85); background:rgba(10,74,122,.05);
+  pointer-events:none; border-radius:2px}
+.dke-hover::after{content:attr(data-tag); position:absolute; left:0; top:0; transform:translateY(-100%);
+  background:var(--dke-alt); color:#fff; font:10px/1.7 Arial,sans-serif; padding:0 6px;
+  white-space:nowrap; border-radius:2px 2px 0 0}
+
+.dke-frame{position:absolute; pointer-events:auto; outline:1.5px solid var(--dke-accent2); outline-offset:0;
+  cursor:move; touch-action:none}
+.dke-frame.sub{outline-color:rgba(230,0,18,.5)}
+.dke-frame.locked{outline-style:dashed; cursor:default}
+.dke-frame.docked{outline-color:var(--dke-alt)}
+.dke-frame::after{content:attr(data-tag); position:absolute; left:-1px; top:-1px; transform:translateY(-100%);
+  background:var(--dke-accent2); color:#fff; font:10px/1.7 Arial,sans-serif; padding:0 6px;
+  white-space:nowrap; border-radius:2px 2px 0 0; pointer-events:none; opacity:.92}
+.dke-frame.docked::after{background:var(--dke-alt)}
+.dke-frame.notag::after{display:none}
+
+.dke-h{position:absolute; width:9px; height:9px; background:#fff; border:1.5px solid var(--dke-accent2);
+  border-radius:2px; pointer-events:auto; touch-action:none}
+.dke-h.nw{left:-5px;top:-5px;cursor:nwse-resize}
+.dke-h.n {left:50%;top:-5px;margin-left:-4.5px;cursor:ns-resize}
+.dke-h.ne{right:-5px;top:-5px;cursor:nesw-resize}
+.dke-h.e {right:-5px;top:50%;margin-top:-4.5px;cursor:ew-resize}
+.dke-h.se{right:-5px;bottom:-5px;cursor:nwse-resize}
+.dke-h.s {left:50%;bottom:-5px;margin-left:-4.5px;cursor:ns-resize}
+.dke-h.sw{left:-5px;bottom:-5px;cursor:nesw-resize}
+.dke-h.w {left:-5px;top:50%;margin-top:-4.5px;cursor:ew-resize}
+
+/* 形状（直线 / 箭头 / 折线 / 曲线）——这是正文内容，不是编辑器 chrome。
+   整块设 pointer-events:none，只有里面那根透明的粗"命中杆"接鼠标：
+   所以一条细斜线点得中，它的外接矩形又不会挡住底下的字。 */
+.dke-shape{pointer-events:none}
+.dke-shape > svg{display:block; overflow:visible; pointer-events:none}
+.dke-shape [data-dke-hit="1"]{pointer-events:stroke}
+.dke-shape [data-dke-hit="2"]{pointer-events:all}
+
+/* 端点手柄：圆的，跟八向缩放的方块区分开 */
+.dke-frame.shape{outline-style:dashed}
+.dke-eh{position:absolute; width:11px; height:11px; margin:-5.5px 0 0 -5.5px;
+  background:#fff; border:1.5px solid var(--dke-accent2); border-radius:50%;
+  box-shadow:0 1px 3px rgba(0,0,0,.28); pointer-events:auto; touch-action:none;
+  cursor:crosshair; z-index:2}
+/* 中间的顶点用深色小方块 */
+.dke-eh.mid{width:9px; height:9px; margin:-4.5px 0 0 -4.5px; border-radius:2px;
+  background:#1F1F1F; border-color:#fff; cursor:move}
+/* 「编辑顶点」时点可能有几十个，手柄要小一号才看得清曲线 */
+.dke-eh.vtx{width:8px; height:8px; margin:-4px 0 0 -4px; border-width:1.2px}
+.dke-eh.vtx.mid{width:7px; height:7px; margin:-3.5px 0 0 -3.5px}
+
+/* 端点粘在别的元素上了：手柄改成实心绿 */
+.dke-eh.glued{background:#12B886; border-color:#fff; box-shadow:0 0 0 1.5px #12B886,0 1px 3px rgba(0,0,0,.3)}
+/* 拖动中提示"这里能连上" */
+.dke-gdot{position:absolute; width:13px; height:13px; margin:-6.5px 0 0 -6.5px; border-radius:50%;
+  border:2px solid #12B886; background:rgba(18,184,134,.22); pointer-events:none; z-index:9300}
+
+/* 旋转手柄：吊在框顶上，跟 PPT 一个位置 */
+.dke-rot{position:absolute; left:50%; top:-26px; width:13px; height:13px; margin-left:-6.5px;
+  background:#fff; border:1.5px solid var(--dke-accent2); border-radius:50%;
+  box-shadow:0 1px 3px rgba(0,0,0,.28); pointer-events:auto; touch-action:none;
+  cursor:grab; z-index:3}
+.dke-rot:active{cursor:grabbing}
+.dke-rot::before{content:''; position:absolute; left:50%; top:13px; width:1.5px; height:13px;
+  margin-left:-.75px; background:var(--dke-accent2)}
+.dke-rot::after{content:'↻'; position:absolute; left:0; right:0; top:-1px;
+  font:11px/13px Arial,sans-serif; text-align:center; color:var(--dke-accent2)}
+
+/* 调节手柄（折线拐点 / 曲线弯度），跟 PPT 的黄点一个意思 */
+.dke-adj{position:absolute; width:11px; height:11px; margin:-5.5px 0 0 -5.5px;
+  background:#FFC400; border:1.5px solid #8A6D00; border-radius:50%;
+  box-shadow:0 1px 3px rgba(0,0,0,.28); pointer-events:auto; touch-action:none;
+  cursor:move; z-index:3}
+/* 已经"进入"的整张图：留一条虚线提示还在图里 */
+.dke-gbox{position:absolute; outline:1.5px dashed rgba(122,90,248,.9); outline-offset:3px;
+  pointer-events:none; z-index:1}
+.dke-frame.svgel{outline-color:#7A5AF8}
+.dke-frame.svgel::after{background:#7A5AF8}
+
+.dke-guide{position:absolute; background:#FF3D8A; pointer-events:none; z-index:9200}
+.dke-guide.v{width:1px; top:0; bottom:0}
+.dke-guide.h{height:1px; left:0; right:0}
+.dke-guide.mid{background:#12B886}
+
+.dke-marq{position:absolute; border:1px solid var(--dke-accent2); background:rgba(230,0,18,.08); pointer-events:none}
+
+.dke-size{position:absolute; left:50%; bottom:-22px; transform:translateX(-50%);
+  background:rgba(25,25,25,.86); color:#fff; font:10px/1.7 Consolas,Menlo,monospace;
+  padding:0 6px; border-radius:3px; white-space:nowrap; pointer-events:none}
+
+/* 正在原地改字：把框隐掉，别挡着 */
+.dke-frame.editing{outline-style:dashed; pointer-events:none}
+.dke-frame.editing .dke-h{display:none}
+.dke-textedit{outline:2px solid var(--dke-accent2) !important; outline-offset:1px;
+  background:rgba(255,250,250,.55)}
+
+/* ───────────────────────── 5 属性面板 / 页码条 ────────────────────────── */
+
+.dke-panel{
+  position:fixed; right:0; top:var(--dke-h,42px); bottom:0; width:248px; z-index:9997;
+  background:#fff; border-left:1px solid var(--dke-line); box-shadow:-2px 0 10px rgba(0,0,0,.06);
+  font:var(--dke-font); color:var(--dke-ink); overflow-y:auto; overscroll-behavior:contain;
+  user-select:none; -webkit-user-select:none; display:none;
+}
+body.dke-panel-on .dke-panel{display:block}
+.dke-pgrp{border-bottom:1px solid #F0F0F0; padding:9px 11px 11px}
+.dke-pgrp > h4{font-size:11px; font-weight:700; color:#909090; letter-spacing:.4px; margin-bottom:8px;
+  display:flex; align-items:center; gap:6px; text-transform:uppercase}
+.dke-pgrid{display:grid; grid-template-columns:1fr 1fr; gap:6px 10px}
+.dke-field{display:flex; align-items:center; gap:5px}
+.dke-field > span{font-size:11px; color:#8A8A8A; flex:none; white-space:nowrap; min-width:14px}
+.dke-field input[type=number],.dke-field input[type=text]{
+  width:100%; min-width:0; font:12px Consolas,Menlo,monospace; padding:4px 5px;
+  border:1px solid #DEDEDE; border-radius:3px; background:#fff}
+.dke-field select{width:100%; min-width:0; font:11.5px var(--dke-font); padding:3px 4px;
+  border:1px solid #DEDEDE; border-radius:3px; background:#fff; color:var(--dke-ink); cursor:pointer}
+.dke-field select:focus{outline:none; border-color:var(--dke-accent)}
+.dke-pgrp .dke-btn.ghost{font-size:11px; padding:4px 7px}
+.dke-field input:focus{outline:none; border-color:var(--dke-accent)}
+.dke-field input[type=color]{width:26px; height:24px; padding:0; border:1px solid #DEDEDE; border-radius:3px;
+  background:#fff; cursor:pointer}
+.dke-range{width:100%; accent-color:var(--dke-accent)}
+.dke-prow{display:flex; align-items:center; gap:4px; flex-wrap:wrap}
+.dke-pempty{padding:24px 16px; color:#A0A0A0; font-size:12px; line-height:1.65; text-align:left}
+.dke-pempty b{display:block; color:#666; font-size:12.5px; margin-bottom:9px}
+.dke-pempty b + span{color:#909090}
+
+.dke-rail{
+  position:fixed; left:0; right:0; bottom:0; z-index:9996; height:30px;
+  display:flex; align-items:center; gap:6px; padding:0 10px;
+  background:rgba(255,255,255,.96); border-top:1px solid var(--dke-line);
+  font:var(--dke-font); user-select:none; -webkit-user-select:none;
+  backdrop-filter:saturate(1.4) blur(6px);
+}
+body.dke-rail-on{padding-bottom:30px}
+.dke-pages{display:flex; align-items:center; gap:3px; overflow-x:auto; flex:1; min-width:0;
+  scrollbar-width:thin; padding:2px 0}
+.dke-pages::-webkit-scrollbar{height:4px}
+.dke-pages::-webkit-scrollbar-thumb{background:#CCC; border-radius:2px}
+.dke-pg{flex:none; min-width:22px; height:20px; padding:0 5px; border-radius:3px; border:1px solid #DEDEDE;
+  background:#fff; color:#666; font:600 11px/18px Arial,sans-serif; text-align:center; cursor:pointer}
+.dke-pg:hover{border-color:var(--dke-accent); color:var(--dke-accent)}
+.dke-pg.on{background:var(--dke-accent); border-color:var(--dke-accent); color:#fff}
+.dke-pg.dragover{box-shadow:-2px 0 0 var(--dke-accent2)}
+.dke-zoom{display:flex; align-items:center; gap:2px; flex:none}
+
+/* ─────────────────────── 6 浮层提示 / 草稿恢复条 ──────────────────────── */
+
+.dke-toast{position:fixed; left:50%; bottom:44px; transform:translateX(-50%) translateY(6px); z-index:10005;
+  background:rgba(28,28,28,.93); color:#fff; padding:9px 15px; border-radius:5px; max-width:76vw;
+  font:12px/1.5 "Microsoft YaHei","PingFang SC",Arial,sans-serif; pointer-events:none; opacity:0;
+  transition:opacity .16s, transform .16s; box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.dke-toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+.dke-toast b{color:#FFC9CD}
+
+.dke-notice{position:fixed; left:50%; top:calc(var(--dke-h,42px) + 12px); transform:translateX(-50%);
+  z-index:10004; background:#FFF9E6; border:1px solid #E8CF86; border-radius:6px;
+  padding:9px 12px; display:flex; align-items:center; gap:10px;
+  font:var(--dke-font); box-shadow:0 6px 20px rgba(0,0,0,.14)}
+.dke-notice .dke-btn{border:1px solid #D8C078; background:#fff}
+
+/* ───────────────────────────── 7 放映模式 ────────────────────────────── */
+
+body.dke-present{overflow:hidden; background:#111 !important; padding:0 !important}
+body.dke-present .dke-bar,body.dke-present .dke-panel,body.dke-present .dke-rail,
+body.dke-present .dke-ov,body.dke-present .dke-notice{display:none !important}
+body.dke-present .deck{zoom:1 !important; display:block; padding:0; gap:0}
+body.dke-present .slide{display:none !important}
+body.dke-present .slide.dke-show{
+  display:flex !important; position:fixed; left:50%; top:50%; margin:0;
+  transform:translate(-50%,-50%) scale(var(--dke-pscale,1)); transform-origin:center center;
+  box-shadow:0 10px 60px rgba(0,0,0,.6)}
+body.dke-present .slide.dke-show.cover,body.dke-present .slide.dke-show.end{display:block !important}
+.dke-pnav{position:fixed; right:14px; bottom:12px; z-index:10006; color:#fff; opacity:.35;
+  font:12px/1 "Microsoft YaHei",Arial,sans-serif; pointer-events:none}
+
+/* ───────────────────────────── 8 打印 ────────────────────────────────── */
+
+@media print{
+  /* 红条、色块、表头都是背景色，不强制打印背景就会变成一片白 */
+  html,body,.slide,.slide *{-webkit-print-color-adjust:exact !important; print-color-adjust:exact !important}
+  /* 放映中直接按 Ctrl+P 时，把放映的定位和缩放全撤掉，否则只印出一页 */
+  body.dke-present{overflow:visible !important; background:#fff !important}
+  body.dke-present .deck{display:flex !important}
+  body.dke-present .slide,body.dke-present .slide.dke-show{
+    display:flex !important; position:relative !important; left:auto !important; top:auto !important;
+    transform:none !important; box-shadow:none !important}
+  body.dke-present .slide.cover,body.dke-present .slide.end{display:block !important}
+  .dke-bar,.dke-toast,.dke-ov,.dke-panel,.dke-rail,.dke-menu,.dke-ctx,.dke-notice,.dke-pnav{display:none !important}
+  body.dke-ready,body.dke-on,body.dke-rail-on,body.dke-panel-on{padding:0 !important}
+  .deck{zoom:1 !important}
+  body.dke-on .slide,body.dke-on .slide.dke-cur{outline:none !important}
+  .dke-textedit{outline:none !important; background:none !important}
+}

@@ -47,7 +47,7 @@ describe('zoneHue / orgHue', () => {
   });
 
   it('gives different 版块 different colours (that is the whole point of the wall)', () => {
-    const hues = new Set(['端侧推理优化', '多模态感知', '5G 核心网智能化', '知识图谱'].map(zoneHue));
+    const hues = new Set(['端侧推理优化', '多模态感知', '5G 核心网智能化', '知识图谱'].map((n) => zoneHue(n)));
     expect(hues.size).toBeGreaterThan(1);
   });
 

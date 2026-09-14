@@ -2,6 +2,7 @@ import { format } from 'date-fns';
 import { prisma } from '@/lib/db';
 import { requirePermission } from '@/lib/admin';
 import { distinctDirectoryValues } from '@/lib/employee-directory';
+import { ZonesSubNav } from './_components/ZonesSubNav';
 import { ZonesManager, type ZoneAdminRow } from './ZonesManager';
 
 export const dynamic = 'force-dynamic';
@@ -71,6 +72,7 @@ export default async function ManageZonesPage() {
 
   return (
     <div className="space-y-4">
+      <ZonesSubNav />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">技术专区</h2>

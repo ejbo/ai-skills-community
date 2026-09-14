@@ -61,6 +61,7 @@ import path from 'node:path';
 import { config as loadEnv } from 'dotenv';
 // 只取类型 —— 编译期就擦掉，不会在 loadEnv 之前把 @/lib/env 拖起来。
 import type { EventCityValue, EventTimezoneValue } from '@/lib/events/types';
+import { defaultSidebarLayout } from '@/lib/zones/sidebar';
 
 loadEnv();
 loadEnv({ path: '.env.local', override: true });
@@ -778,6 +779,7 @@ async function buildInferenceZone(ownerId: string): Promise<ZoneRef> {
       slug: ZONE_INFERENCE,
       tagline: '把一次推理拆开计时，再决定该拧哪个旋钮。',
       descriptionMd: ZONE_A_ABOUT,
+      themeColor: '#2c7391',
       lab: INSTITUTE, // 研究所
       department: LAB_CDAA, // 实验室
       visibility: 'public',
@@ -788,6 +790,8 @@ async function buildInferenceZone(ownerId: string): Promise<ZoneRef> {
         { label: 'vLLM', url: 'https://github.com/vllm-project/vllm' },
         { label: 'FlashAttention 论文', url: 'https://arxiv.org/abs/2205.14135' },
       ],
+      topics: ['推理加速', 'INT4 量化', '算子融合'],
+      sidebar: defaultSidebarLayout(),
     },
     ownerId,
   );
@@ -804,6 +808,7 @@ async function buildGraphicsZone(ownerId: string): Promise<ZoneRef> {
       name: '图形渲染技术',
       slug: ZONE_GRAPHICS,
       tagline: '一帧 16.6 毫秒，钱花在哪儿要能说清楚。',
+      themeColor: '#5c5ba6',
       descriptionMd: ZONE_B_ABOUT,
       lab: INSTITUTE,
       department: LAB_GRAPHICS,
@@ -815,6 +820,8 @@ async function buildGraphicsZone(ownerId: string): Promise<ZoneRef> {
         { label: 'Vulkan 规范', url: 'https://registry.khronos.org/vulkan/' },
         { label: 'RenderDoc', url: 'https://renderdoc.org/' },
       ],
+      topics: ['渲染管线', '帧预算', 'Vulkan'],
+      sidebar: defaultSidebarLayout(),
     },
     ownerId,
   );

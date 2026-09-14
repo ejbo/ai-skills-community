@@ -1,6 +1,6 @@
 'use client';
 
-// 技术专区 — settings surface: TabBar (基本信息 | 权限与加入 | 栏目 | 角色 | 危险操作),
+// 技术专区 — settings surface: TabBar (基本信息 | 权限与加入 | 栏目 | 主页布局 | 角色 | 危险操作),
 // each tab gated by the pre-decided ZoneAccess (settingsTabsFor). All tab drafts
 // live in THIS component so a `?tab=` soft navigation keeps unsaved edits; the
 // 栏目 tab is the exception — ColumnsEditor owns its list and re-reads the
@@ -15,6 +15,7 @@ import { useTranslations } from 'next-intl';
 import { ExternalLink, Loader2, Plus, Save, Trash2 } from 'lucide-react';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
+import { withBasePath } from '@/lib/base-path';
 import { TabBar } from '@/components/motion';
 import {
   MAX_ZONE_LINKS,
@@ -30,8 +31,11 @@ import type { ZoneDetailView, ZoneJoinPolicyView, ZoneVisibilityView } from '@/l
 import { ColumnsEditor } from './ColumnsEditor';
 import { DangerZone } from './DangerZone';
 import { RolesEditor } from './RolesEditor';
+import { SidebarLayoutEditor } from './SidebarLayoutEditor';
+import { TopicsField } from './TopicsField';
 import { ZoneCoverUploader } from './ZoneCoverUploader';
-import { BTN_PRIMARY, BTN_SECONDARY, CARD_CLS, HINT_CLS, INPUT_CLS, LABEL_CLS, SELECT_CLS, readError } from './ui';
+import { BTN_PRIMARY, BTN_SECONDARY, CARD_CLS, HINT_CLS, INPUT_CLS, LABEL_CLS, SELECT_CLS, chipCls, readError } from './ui';
+import { ThemeColorPicker } from './ThemeColorPicker';
 import { settingsTabsFor, type SettingsTab } from './settings-tabs';
 
 
@@ -210,18 +214,20 @@ export function AccessOptions({ value, onChange }: { value: AccessValue; onChang
 
 // ── 组织归属: 研究所 → 实验室 ──────────────────────────────────────────────────
 //
-// A 研究所 is COMPOSED OF 实验室, so these are two DEPENDENT selects, not two
-// free-text boxes — free text is why three 版块 ended up with three spellings of
-// the second level. The values are stored in the backwards-named columns
-// (`Zone.lab` = 研究所, `Zone.department` = 实验室 — see lib/org.ts) and stay
-// Chinese: only the LABELS are translated, never the org values.
+// Two modes, decided by whether 管理后台 → 技术专区 → 组织架构 has entries
+// (`options.configured`):
+//   • CATALOG: two <select>s — 研究所 (catalog order) then 实验室 (that
+//     研究所's catalog labs, disabled until one is chosen). Each ends with a
+//     「其他 / 自行填写」 option that reveals the free-text input below, so a
+//     value outside the catalog still works — and a board whose STORED value is
+//     not in the catalog opens in that state with its value intact (the picker
+//     may never silently clear what a 版主 wrote).
+//   • COMBOBOX (catalog empty): the 2026-09-11 behaviour — free text with
+//     datalist suggestions from live 版块 ∪ the employee roster.
 //
-// Two things keep it from becoming a whitelist, which lib/org.ts forbids:
-//  • 「其他（手动输入）」 reveals a free-text box, because the configured tree is
-//    half filled in and nobody may be blocked from creating a 版块 today; and
-//  • a value that is not in the options is NEVER silently dropped — the field
-//    switches itself into the custom box holding it, so an existing 版块 always
-//    survives a settings round trip.
+// The values are stored in the backwards-named columns (`Zone.lab` = 研究所,
+// `Zone.department` = 实验室 — see lib/org.ts) and stay Chinese: only the
+// LABELS are translated, never the org values.
 
 export interface OrgValue {
   /** `Zone.lab` — the 研究所. */
@@ -230,8 +236,46 @@ export interface OrgValue {
   department: string;
 }
 
-/** Sentinel option value; not a legal org name (they are stored verbatim). */
-const ORG_OTHER = '__other__';
+/** The `<option>` value that switches a select into free-text mode; can never collide with a real name (names are trimmed, non-empty). */
+const OTHER = '\u0000other';
+
+function ComboInput({
+  id,
+  listId,
+  value,
+  maxLength,
+  placeholder,
+  suggestions,
+  onChange,
+}: {
+  id: string;
+  listId: string;
+  value: string;
+  maxLength: number;
+  placeholder: string;
+  suggestions: string[];
+  onChange: (v: string) => void;
+}) {
+  return (
+    <>
+      <input
+        id={id}
+        list={listId}
+        value={value}
+        maxLength={maxLength}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete="off"
+        className={INPUT_CLS}
+      />
+      <datalist id={listId}>
+        {suggestions.map((v) => (
+          <option key={v} value={v} />
+        ))}
+      </datalist>
+    </>
+  );
+}
 
 export function OrgFields({
   value,
@@ -246,122 +290,173 @@ export function OrgFields({
 }) {
   const t = useTranslations('zones');
   const tl = useTranslations('labels');
-  // Explicit 「其他」 picks. An off-tree VALUE forces custom mode on its own, so
-  // this state only has to remember a deliberate choice made on an empty field.
-  const [instituteOther, setInstituteOther] = useState(false);
-  const [labOther, setLabOther] = useState(false);
-
   const institute = value.lab.trim();
   const lab = value.department.trim();
-  const instituteCustom = instituteOther || (!!institute && !options.institutes.includes(institute));
-  const labOptions = !instituteCustom && institute ? (options.labsByInstitute[institute] ?? []) : [];
-  // No institute and no saved 实验室 ⇒ nothing to choose from yet: locked.
-  const labMode: 'select' | 'custom' | 'locked' =
-    labOther || instituteCustom || (lab && !labOptions.includes(lab))
-      ? 'custom'
-      : institute && labOptions.length
-        ? 'select'
-        : institute
-          ? 'custom' // a configured 研究所 whose 实验室 are not filled in yet
-          : 'locked';
+  const catalog = options.configured ?? { institutes: [], labsByInstitute: {} };
+  const hasCatalog = catalog.institutes.length > 0;
+  const scoped = institute ? (options.labsByInstitute[institute] ?? []) : [];
+  const labSuggestions = scoped.length > 0 ? scoped : options.labs;
 
-  function pickInstitute(next: string) {
-    if (next === ORG_OTHER) {
-      setInstituteOther(true);
-      setLabOther(false);
-      onChange({ lab: '', department: '' });
-      return;
-    }
-    setInstituteOther(false);
-    setLabOther(false);
-    // A 实验室 belongs to exactly one 研究所 — drop it unless the new one has it.
-    const keep = lab && (options.labsByInstitute[next] ?? []).includes(lab) ? lab : '';
-    onChange({ lab: next, department: keep });
+  // 「其他」 is sticky: once chosen it stays open even while the text is empty,
+  // and a stored value outside the catalog forces it open on first render.
+  const [instituteOther, setInstituteOther] = useState(() => hasCatalog && Boolean(institute) && !catalog.institutes.includes(institute));
+  const [labOther, setLabOther] = useState(() => {
+    if (!hasCatalog || !lab) return false;
+    const inCatalog = catalog.institutes.includes(institute) && (catalog.labsByInstitute[institute] ?? []).includes(lab);
+    return !inCatalog;
+  });
+
+  if (!hasCatalog) {
+    return (
+      <div className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className={LABEL_CLS} htmlFor={`${idPrefix}-institute`}>
+              {tl('orgInstitute')}
+            </label>
+            <ComboInput
+              id={`${idPrefix}-institute`}
+              listId={`${idPrefix}-institute-list`}
+              value={value.lab}
+              maxLength={ZONE_LIMITS.labMax}
+              placeholder={t('create_org_institute_placeholder')}
+              suggestions={options.institutes}
+              onChange={(v) => onChange({ lab: v, department: value.department })}
+            />
+          </div>
+          <div>
+            <label className={LABEL_CLS} htmlFor={`${idPrefix}-lab`}>
+              {tl('orgLab')}
+            </label>
+            <ComboInput
+              id={`${idPrefix}-lab`}
+              listId={`${idPrefix}-lab-list`}
+              value={value.department}
+              maxLength={ZONE_LIMITS.departmentMax}
+              placeholder={t('create_org_lab_placeholder')}
+              suggestions={labSuggestions}
+              onChange={(v) => onChange({ ...value, department: v })}
+            />
+          </div>
+        </div>
+        {options.institutes.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-zinc-400">{t('create_org_existing')}</span>
+            {options.institutes.slice(0, 8).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => onChange({ lab: v, department: value.department })}
+                className={chipCls(institute === v)}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+        )}
+        <p className={HINT_CLS}>{t('create_org_hint')}</p>
+      </div>
+    );
   }
 
-  function pickLab(next: string) {
-    if (next === ORG_OTHER) {
-      setLabOther(true);
-      onChange({ ...value, department: '' });
-      return;
-    }
-    setLabOther(false);
-    onChange({ ...value, department: next });
-  }
+  const instituteInCatalog = catalog.institutes.includes(institute);
+  const instituteSelect = instituteOther ? OTHER : instituteInCatalog ? institute : '';
+  const catalogLabs = instituteInCatalog ? (catalog.labsByInstitute[institute] ?? []) : [];
+  const labInCatalog = catalogLabs.includes(lab);
+  const labSelect = labOther ? OTHER : labInCatalog ? lab : '';
+  // The 实验室 select needs a 研究所 first: a catalog one has its labs; an
+  // 「其他」 研究所 has none, so only 「其他」 remains meaningful there.
+  const labDisabled = !instituteOther && !instituteInCatalog;
 
   return (
     <div className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label className={LABEL_CLS} htmlFor={`${idPrefix}-institute`}>
+        <div className="space-y-2">
+          <label className={LABEL_CLS} htmlFor={`${idPrefix}-institute-select`}>
             {tl('orgInstitute')}
           </label>
           <select
-            id={`${idPrefix}-institute`}
-            value={instituteCustom ? ORG_OTHER : institute}
-            onChange={(e) => pickInstitute(e.target.value)}
+            id={`${idPrefix}-institute-select`}
+            value={instituteSelect}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === OTHER) {
+                setInstituteOther(true);
+                // Leaving the catalog: a catalog 实验室 no longer applies.
+                if (labInCatalog) onChange({ lab: '', department: '' });
+                else onChange({ lab: '', department: value.department });
+                return;
+              }
+              setInstituteOther(false);
+              setLabOther(false);
+              // Switching 研究所 clears a 实验室 that belonged to the old one.
+              const keep = (catalog.labsByInstitute[v] ?? []).includes(lab) ? value.department : '';
+              onChange({ lab: v, department: keep });
+            }}
             className={`${SELECT_CLS} w-full`}
           >
-            <option value="">{t('create_org_none')}</option>
-            {options.institutes.map((v) => (
+            <option value="">{t('create_org_pick_institute')}</option>
+            {catalog.institutes.map((v) => (
               <option key={v} value={v}>
                 {v}
               </option>
             ))}
-            <option value={ORG_OTHER}>{t('create_org_other')}</option>
+            <option value={OTHER}>{t('create_org_other')}</option>
           </select>
-          {instituteCustom && (
-            <input
+          {instituteOther && (
+            <ComboInput
+              id={`${idPrefix}-institute`}
+              listId={`${idPrefix}-institute-list`}
               value={value.lab}
               maxLength={ZONE_LIMITS.labMax}
-              onChange={(e) => onChange({ lab: e.target.value, department: value.department })}
               placeholder={t('create_org_institute_placeholder')}
-              className={`${INPUT_CLS} mt-2`}
-              aria-label={tl('orgInstitute')}
+              suggestions={options.institutes.filter((v) => !catalog.institutes.includes(v))}
+              onChange={(v) => onChange({ lab: v, department: value.department })}
             />
           )}
         </div>
-        <div>
-          <label className={LABEL_CLS} htmlFor={`${idPrefix}-lab`}>
+        <div className="space-y-2">
+          <label className={LABEL_CLS} htmlFor={`${idPrefix}-lab-select`}>
             {tl('orgLab')}
           </label>
-          {labMode === 'select' ? (
-            <select
+          <select
+            id={`${idPrefix}-lab-select`}
+            value={labSelect}
+            disabled={labDisabled}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === OTHER) {
+                setLabOther(true);
+                onChange({ ...value, department: labInCatalog ? '' : value.department });
+                return;
+              }
+              setLabOther(false);
+              onChange({ ...value, department: v });
+            }}
+            className={`${SELECT_CLS} w-full`}
+          >
+            <option value="">{labDisabled ? t('create_org_pick_lab_first') : t('create_org_pick_lab')}</option>
+            {catalogLabs.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+            <option value={OTHER}>{t('create_org_other')}</option>
+          </select>
+          {labOther && !labDisabled && (
+            <ComboInput
               id={`${idPrefix}-lab`}
-              value={lab}
-              onChange={(e) => pickLab(e.target.value)}
-              className={`${SELECT_CLS} w-full`}
-            >
-              <option value="">{t('create_org_none')}</option>
-              {labOptions.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-              <option value={ORG_OTHER}>{t('create_org_other')}</option>
-            </select>
-          ) : (
-            <>
-              <input
-                id={`${idPrefix}-lab`}
-                list={`${idPrefix}-lab-list`}
-                value={value.department}
-                disabled={labMode === 'locked'}
-                maxLength={ZONE_LIMITS.departmentMax}
-                onChange={(e) => onChange({ ...value, department: e.target.value })}
-                placeholder={labMode === 'locked' ? t('create_org_lab_needs_institute') : t('create_org_lab_placeholder')}
-                className={INPUT_CLS}
-              />
-              <datalist id={`${idPrefix}-lab-list`}>
-                {(labOptions.length ? labOptions : options.labs).map((v) => (
-                  <option key={v} value={v} />
-                ))}
-              </datalist>
-            </>
+              listId={`${idPrefix}-lab-list`}
+              value={value.department}
+              maxLength={ZONE_LIMITS.departmentMax}
+              placeholder={t('create_org_lab_placeholder')}
+              suggestions={labSuggestions.filter((v) => !catalogLabs.includes(v))}
+              onChange={(v) => onChange({ ...value, department: v })}
+            />
           )}
         </div>
       </div>
-      <p className={HINT_CLS}>{t('create_org_hint')}</p>
+      <p className={HINT_CLS}>{t('create_org_catalog_hint')}</p>
     </div>
   );
 }
@@ -375,6 +470,8 @@ interface BasicDraft {
   department: string;
   descriptionMd: string;
   links: ZoneLink[];
+  topics: string[];
+  themeColor: string | null;
   cover: { key: string | null | undefined; url: string | null };
   icon: { key: string | null | undefined; url: string | null };
 }
@@ -402,6 +499,8 @@ export function ZoneSettingsForm({
     department: zone.department,
     descriptionMd: zone.descriptionMd,
     links: zone.links,
+    topics: zone.topics,
+    themeColor: zone.themeColor,
     cover: { key: undefined, url: zone.coverUrl },
     icon: { key: undefined, url: zone.iconUrl },
   });
@@ -451,6 +550,8 @@ export function ZoneSettingsForm({
       department: basic.department.trim(),
       descriptionMd: basic.descriptionMd,
       links: basic.links,
+      topics: basic.topics,
+      themeColor: basic.themeColor,
     };
     if (basic.cover.key !== undefined) body.coverKey = basic.cover.key;
     if (basic.icon.key !== undefined) body.iconKey = basic.icon.key;
@@ -506,6 +607,12 @@ export function ZoneSettingsForm({
                 onChange={(org) => setBasic((b) => ({ ...b, lab: org.lab, department: org.department }))}
                 idPrefix={`zone-org-${zone.slug}`}
               />
+              <TopicsField
+                value={basic.topics}
+                onChange={(topics) => setBasic((b) => ({ ...b, topics }))}
+                disabled={busy}
+                idPrefix={`zone-topics-${zone.slug}`}
+              />
             </section>
 
             <section className={`${CARD_CLS} grid gap-5 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:p-5`}>
@@ -526,6 +633,15 @@ export function ZoneSettingsForm({
                   kind="icon"
                   url={basic.icon.url}
                   onChange={(next) => setBasic((b) => ({ ...b, icon: next }))}
+                  disabled={busy}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <ThemeColorPicker
+                  value={basic.themeColor}
+                  name={basic.name}
+                  iconUrl={basic.icon.url ? withBasePath(basic.icon.url) : null}
+                  onChange={(themeColor) => setBasic((b) => ({ ...b, themeColor }))}
                   disabled={busy}
                 />
               </div>
@@ -581,6 +697,8 @@ export function ZoneSettingsForm({
             canManage={zone.access.canManage}
           />
         )}
+
+        {active === 'layout' && <SidebarLayoutEditor zoneSlug={zone.slug} initial={zone.sidebar} />}
 
         {active === 'roles' && <RolesEditor zoneSlug={zone.slug} initialRoles={zone.roles} />}
 

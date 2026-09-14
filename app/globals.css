@@ -136,6 +136,12 @@
   /* 技术专区 HairlineGrid drift: one cell per minute — perceptible only if
      you stare, never on a scroll frame. `--grid-size` is set inline by the
      component so the drift is exactly one cell whatever the grid size. */
+  /* 技术专区 hub 版块墙 (ZoneWall3D): a slow vertical breathing per tile,
+     staggered by a negative animation-delay so the wall never moves in step.
+     Small on purpose (6px) — the plane's perspective multiplies it. */
+  .animate-zone-float {
+    animation: zone-float 7s ease-in-out infinite;
+  }
   .animate-grid-drift {
     animation: grid-drift 60s linear infinite;
   }
@@ -232,6 +238,15 @@
 }
 
 /* Keyframes for `.animate-grid-drift` above (components/motion/HairlineGrid). */
+@keyframes zone-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
 @keyframes grid-drift {
   to {
     background-position: var(--grid-size, 64px) var(--grid-size, 64px);

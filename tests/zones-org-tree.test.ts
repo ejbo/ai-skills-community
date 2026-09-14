@@ -16,6 +16,14 @@ import type { OrgLabNode } from '@/lib/zones/shared';
 // lib/zones/labs.ts imports Prisma for the live counts; `withConfiguredInstitutes`
 // is pure, so stub the db rather than skip it.
 vi.mock('@/lib/db', () => ({ prisma: {} }));
+// Production ships an EMPTY org chart; these rules need a configured one.
+vi.mock('@/lib/org', async (importOriginal) => {
+  const m = await importOriginal<typeof import('@/lib/org')>();
+  const { ORG_FIXTURE } = await import('./fixtures/org-fixture');
+  const api = m.createOrg(ORG_FIXTURE);
+  // `defaultOrg` is the parameter default every pure helper falls back to.
+  return { ...m, ...api, defaultOrg: api };
+});
 
 let withConfiguredInstitutes: (tree: readonly OrgLabNode[]) => OrgLabNode[];
 beforeAll(async () => {

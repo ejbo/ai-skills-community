@@ -24,7 +24,7 @@
 // home. The name is what the reader sees and what `getOrCreateColumn` dedupes
 // on, so it is the identity here too.
 
-import { identityColor } from '@/components/Avatar';
+import { IDENTITY_COLORS, identityColor } from '@/components/Avatar';
 import { tagColorIndex } from '@/lib/discussion-tags';
 
 export interface ColumnHue {
@@ -123,18 +123,35 @@ export function tagTextCls(name: string): string {
 }
 
 /**
- * A 版块's own colour, from the identity palette. Used for the monogram a zone
- * with no icon falls back to (a wall of flat black squares is what made the hub
- * unreadable) and, at low alpha, for the cover strip behind the hairline grid.
+ * A 版块's own colour. The 版主 may pick one (`Zone.themeColor`, a `#rrggbb`
+ * — 版块设置 → 主题色); otherwise it hashes the NAME into the identity palette,
+ * so an unthemed zone still has a face. Used for the monogram a zone with no
+ * icon falls back to, the banner wash behind a zone with no cover, the icon
+ * ring — the zone's own MATERIAL, never a control.
  */
-export function zoneHue(name: string): string {
-  return identityColor(name);
+export function zoneHue(name: string, themeColor?: string | null): string {
+  return themeColor || identityColor(name);
 }
 
 /** `zoneHue` at ~10% — a flat wash, never a gradient. */
-export function zoneWash(name: string): string {
-  return `${identityColor(name)}1A`;
+export function zoneWash(name: string, themeColor?: string | null): string {
+  return `${zoneHue(name, themeColor)}1A`;
 }
+
+/**
+ * The banner behind a zone with no cover image: the hue at two low alphas on
+ * a diagonal, plus a soft overhead light. Still "a wash" to the eye — the
+ * second stop is what keeps a 200px band from reading as one flat slab.
+ */
+export function zoneBannerStyle(name: string, themeColor?: string | null): { backgroundImage: string } {
+  const hue = zoneHue(name, themeColor);
+  return {
+    backgroundImage: `radial-gradient(120% 90% at 18% 0%, ${hue}33 0%, transparent 55%), linear-gradient(135deg, ${hue}2E 0%, ${hue}14 60%, ${hue}0A 100%)`,
+  };
+}
+
+/** The swatches 版块设置 offers — exactly the identity palette, so a theme never introduces a 13th hue. */
+export const ZONE_THEME_SWATCHES: readonly string[] = IDENTITY_COLORS;
 
 /**
  * A 研究所 is a place too, so the section headers that group 版块 by lab take
