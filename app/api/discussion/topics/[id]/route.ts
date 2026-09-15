@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { prisma } from '@/lib/db';
 import { apiReason } from '@/lib/api-errors';
 import { auth } from '@/lib/auth';
@@ -16,6 +17,7 @@ import {
   deleteUnreferencedMediaFiles,
   mediaArraySchema,
   mediaKeysAvailable,
+  removedUploadKeys,
   resolveMedia,
 } from '@/lib/discussion-media';
 import { notifyMentions } from '@/lib/mention-notify';
@@ -31,7 +33,8 @@ const categoriesSchema = z
 const patchSchema = z
   .object({
     title: z.string().trim().min(4, '标题至少 4 个字').max(120).optional(),
-    bodyMd: z.string().max(20000).optional(),
+    // RichTextEditor field (TopicForm maxLength 20000): VISIBLE length, like its counter.
+    bodyMd: withRichTextLimit(z.string(), 20000).optional(),
     categories: categoriesSchema.optional(),
     media: mediaArraySchema.optional(),
     pinned: z.boolean().optional(),
@@ -102,10 +105,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         { status: 400 },
       );
     }
-    const keptKeys = new Set(resolved.map((m) => m.key).filter(Boolean));
-    removedKeys = topic.media
-      .filter((m) => (m.kind === 'video' || m.kind === 'file') && m.key && !keptKeys.has(m.key))
-      .map((m) => m.key);
+    removedKeys = removedUploadKeys(topic.media, resolved);
   }
 
   let nextTags: { categories: string[]; official: string[] } | undefined;

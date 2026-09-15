@@ -10,6 +10,7 @@ import { DeptTag } from '@/components/DeptTag';
 import { ZoneMarkdown } from '@/components/zones/ZoneMarkdown';
 import { DISCUSSION_EMBED_KINDS } from '@/lib/zones/shared';
 import { RichTextEditor } from '@/components/RichTextEditor';
+import { isRichTextTooLong } from '@/lib/markdown-text';
 import { pushToast } from '@/components/Toaster';
 import { relativeTime } from '@/lib/i18n-date';
 import { CommentLikeButton } from '@/components/CommentLikeButton';
@@ -349,7 +350,8 @@ function ReplyBox({
   const router = useRouter();
   const [bodyMd, setBodyMd] = useState('');
   const [busy, setBusy] = useState(false);
-  const tooLong = bodyMd.trim().length > 5000;
+  // Visible length, like the server (lib/rich-text-limit.ts): formatting spans are not counted.
+  const tooLong = isRichTextTooLong(bodyMd.trim(), 5000);
 
   async function submit() {
     const trimmed = bodyMd.trim();

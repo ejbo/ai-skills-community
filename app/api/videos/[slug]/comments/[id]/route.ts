@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { logAdmin } from '@/lib/audit';
 import { canModerateComment, videoActorFrom } from '@/lib/video/access';
 import { notifyMentions, videoMentionGate } from '@/lib/mention-notify';
 
-const editSchema = z.object({ bodyMd: z.string().min(1).max(2000) });
+const editSchema = z.object({ bodyMd: withRichTextLimit(z.string().min(1), 2000) });
 
 // PATCH /api/videos/[slug]/comments/[id] (author) -> { ok }
 export async function PATCH(req: Request, { params }: { params: { slug: string; id: string } }) {

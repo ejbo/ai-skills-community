@@ -14,61 +14,30 @@
 
 import type { MouseEvent } from 'react';
 import { useTranslations } from 'next-intl';
-import {
-  File,
-  FileArchive,
-  FileCode,
-  FileSpreadsheet,
-  FileText,
-  Image as ImageIcon,
-  Presentation,
-  Video,
-  X,
-  type LucideIcon,
-} from 'lucide-react';
+import { Image as ImageIcon, Video, X, type LucideIcon } from 'lucide-react';
+import { fileIconFor } from '@/components/files/file-icon';
 import { withBasePath } from '@/lib/base-path';
-import { formatBytes, isOfficePreviewable } from '@/lib/zones/shared';
+import { fileMetaParts } from '@/lib/files/display';
 import type { EmbedData, ZoneAttachmentView } from '@/lib/zones/types';
 import { usePreview } from '@/components/zones/preview/PreviewProvider';
+import { attachmentPreviewBadgeKey, attachmentPreviewClass } from './preview-badge';
 import { zoneMediaKeyFromPublicUrl } from './upload-core';
 
-export function attachmentIconFor(a: { kind: ZoneAttachmentView['kind']; ext: string }): LucideIcon {
+export { attachmentPreviewBadgeKey } from './preview-badge';
+
+/**
+ * Glyph for an attachment: by the key's preview class (the renderer the panel
+ * will use), with the display extension as the tiebreak for slides / sheets /
+ * archives. `url` is optional so pickers holding only `{ kind, ext }` still work.
+ */
+export function attachmentIconFor(a: { kind: ZoneAttachmentView['kind']; ext: string; url?: string; name?: string }): LucideIcon {
   if (a.kind === 'image') return ImageIcon;
   if (a.kind === 'video') return Video;
-  switch (a.ext.toLowerCase()) {
-    case 'pdf':
-    case 'doc':
-    case 'docx':
-    case 'txt':
-    case 'md':
-      return FileText;
-    case 'ppt':
-    case 'pptx':
-      return Presentation;
-    case 'xls':
-    case 'xlsx':
-    case 'csv':
-      return FileSpreadsheet;
-    case 'zip':
-      return FileArchive;
-    case 'json':
-      return FileCode;
-    default:
-      return File;
+  if (a.url) {
+    const { cls } = attachmentPreviewClass({ kind: a.kind, url: a.url, name: a.name ?? '' });
+    return fileIconFor(cls, a.ext);
   }
-}
-
-/** `zones` key describing the preview state, or null when nothing to say. */
-export function attachmentPreviewBadgeKey(a: ZoneAttachmentView): string | null {
-  if (a.kind === 'image' || a.kind === 'video' || a.ext === 'pdf') return 'attach_previewable';
-  if (isOfficePreviewable(a.ext)) {
-    if (a.previewStatus === 'ready') return 'attach_previewable';
-    if (a.previewStatus === 'pending') return 'attach_preview_pending';
-    if (a.previewStatus === 'failed') return 'attach_preview_failed';
-    if (a.previewStatus === 'unsupported') return null;
-    return null;
-  }
-  return null;
+  return fileIconFor('none', a.ext);
 }
 
 /** The preview ref of an attachment: the row id, else its storage key. */
@@ -140,8 +109,11 @@ export function AttachmentCard({
         <span className="min-w-0 flex-1">
           <span className={`block truncate font-medium ${compact ? 'text-xs' : 'text-sm'}`}>{attachment.name || attachment.ext.toUpperCase()}</span>
           <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[11px] tabular-nums text-muted">
-            <span>{(attachment.ext || attachment.mimeType || attachment.kind).toUpperCase()}</span>
-            <span>{formatBytes(attachment.sizeBytes)}</span>
+            {/* EXT · size — a localized 文件 when there is no extension, never the MIME type
+                (`APPLICATION/OCTET-STREAM` wrapped the rail row onto two lines). */}
+            {fileMetaParts(attachment.ext, attachment.sizeBytes, t('attach_type_generic')).map((part, i) => (
+              <span key={i}>{part}</span>
+            ))}
             {attachment.width && attachment.height && (
               <span>
                 {attachment.width}×{attachment.height}

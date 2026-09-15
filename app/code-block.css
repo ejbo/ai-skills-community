@@ -1,0 +1,295 @@
+/* 代码块（Aceternity Code Block 风格）— reader frame, editor node view and file
+   preview share these rules. Imported from app/layout.tsx AFTER globals.css.
+
+   The panel (bg-slate-900, header, copy button) is Tailwind on the components
+   (components/code/CodeFrame.tsx → CODE_FRAME_CLASS). Everything INSIDE the
+   panel lives here, keyed on `.code-frame`, because three different DOMs share
+   it: MarkdownRenderer's line spans, CodeBlock's innerHTML, and ProseMirror's
+   editable content in the editor node view.
+
+   Dark in BOTH themes, so no [data-theme] branches below: the token colours are
+   atom-dark (Prism's `atomDark`, which Aceternity uses), scoped with
+   `.code-frame code .hljs-*` = (0,2,1) so they beat globals.css's GitHub palette
+   including its `[data-theme='dark'] .hljs-*` = (0,2,0) overrides. */
+
+.code-frame {
+  --code-lh: 1.7;
+  --code-fg: #c5c8c6;
+  --code-gutter-fg: rgb(255 255 255 / 0.28);
+  --code-gutter-gap: 1.25rem;
+  color-scheme: dark;
+  color: var(--code-fg);
+  line-height: var(--code-lh);
+  /* Geist Mono draws `->` / `=>` / `!=` as arrow ligatures; in code a reader
+     must see the characters that are actually there. */
+  font-variant-ligatures: none;
+  font-feature-settings: 'liga' 0, 'calt' 0;
+}
+
+/* Comment boxes and compact panels: a tighter panel. (`text-sm` is already the
+   house 13 px — tailwind.config.ts — so the code size does not change.) */
+.prose-sm .code-frame {
+  padding: 0.75rem;
+}
+
+.code-frame pre,
+.code-frame .code-frame-pre {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: var(--code-lh);
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+  tab-size: 4;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.18) transparent;
+}
+.code-frame pre:focus-visible {
+  outline: 1px solid rgb(255 255 255 / 0.25);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+.code-frame pre::-webkit-scrollbar {
+  height: 8px;
+}
+.code-frame pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+.code-frame pre::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.18);
+  border-radius: 9999px;
+}
+.code-frame pre::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 255 255 / 0.3);
+}
+
+/* `width: max-content` + `min-width: 100%` makes every line as wide as the
+   LONGEST line, so a highlighted row paints across the whole scroll width
+   instead of stopping at the viewport edge. */
+.code-frame pre > code {
+  display: block;
+  min-width: 100%;
+  width: max-content;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 400;
+}
+.code-frame pre > code::before,
+.code-frame pre > code::after {
+  content: none;
+}
+
+/* One row per source line. The trailing "\n" stays INSIDE each row, so
+   textContent and a mouse selection both copy the exact source; a block that
+   ends in a newline does not add a line box, so rows keep one line height. */
+.code-frame .code-line {
+  display: block;
+  min-height: calc(var(--code-lh) * 1em);
+  padding-right: 1rem;
+}
+/* Line numbers are generated content: not in textContent, not selectable, not
+   copied. The gutter width comes from --code-gutter (digits of the last line). */
+.code-frame .code-line::before {
+  content: attr(data-line);
+  display: inline-block;
+  width: var(--code-gutter, 2ch);
+  margin-right: var(--code-gutter-gap);
+  text-align: right;
+  color: var(--code-gutter-fg);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.code-frame .code-line[data-highlighted] {
+  background: rgba(255, 255, 255, 0.1);
+}
+.code-frame .code-line[data-highlighted]::before {
+  color: rgb(255 255 255 / 0.55);
+}
+
+.code-frame ::selection {
+  background: rgb(148 163 184 / 0.38);
+}
+
+/* ---- Editor node view (components/editor/CodeBlockView.tsx) -------------
+   ProseMirror owns the text, so there are no line spans to number; a separate
+   non-editable gutter column does it, with the same metrics as the rows above.
+   NodeViewContent sets an inline `white-space: pre-wrap`; code blocks do not
+   wrap in reading, so they do not wrap while writing either. */
+.code-frame .code-frame-body {
+  display: flex;
+  align-items: flex-start;
+}
+/* (0,3,0) on purpose: tiptap injects `.ProseMirror [contenteditable="false"]
+   { white-space: normal }` AFTER this sheet, which at equal specificity folds
+   the "1\n2\n3" gutter onto one line. */
+.code-frame .code-frame-body > .code-frame-gutter {
+  flex: none;
+  min-width: calc(var(--code-gutter, 2ch) + var(--code-gutter-gap));
+  padding-right: var(--code-gutter-gap);
+  text-align: right;
+  white-space: pre;
+  color: var(--code-gutter-fg);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--code-lh);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.code-frame .code-frame-body > pre {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.code-frame [data-node-view-content] {
+  white-space: pre !important;
+  outline: none;
+  caret-color: #f8f8f2;
+}
+.code-frame [data-node-view-content] > [data-node-view-content-react] {
+  display: block;
+  white-space: pre !important;
+}
+.code-frame .code-frame-select,
+.code-frame .code-frame-input {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 1.5rem;
+  border-radius: 0.375rem;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  background: rgb(255 255 255 / 0.04);
+  color: #d4d4d8;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  padding: 0 0.5rem;
+  outline: none;
+}
+.code-frame .code-frame-select {
+  padding-right: 1.5rem;
+  background-image: linear-gradient(45deg, transparent 50%, #a1a1aa 50%), linear-gradient(135deg, #a1a1aa 50%, transparent 50%);
+  background-position: calc(100% - 0.7rem) 55%, calc(100% - 0.45rem) 55%;
+  background-size: 0.25rem 0.25rem, 0.25rem 0.25rem;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+.code-frame .code-frame-select option {
+  background: #0f172a;
+  color: #e4e4e7;
+}
+.code-frame .code-frame-input::placeholder {
+  color: #71717a;
+}
+.code-frame .code-frame-select:hover,
+.code-frame .code-frame-input:hover {
+  border-color: rgb(255 255 255 / 0.2);
+}
+.code-frame .code-frame-select:focus-visible,
+.code-frame .code-frame-input:focus {
+  border-color: rgb(255 255 255 / 0.35);
+}
+/* tiptap puts ProseMirror-selectednode on the `.react-renderer` wrapper around the view. */
+.ProseMirror-selectednode > .code-frame {
+  outline: 2px solid rgb(148 163 184 / 0.6);
+  outline-offset: 2px;
+}
+
+/* ---- atom-dark token palette -------------------------------------------- */
+.code-frame code .hljs,
+.code-frame code.hljs {
+  color: var(--code-fg);
+  background: transparent;
+}
+.code-frame code .hljs-comment,
+.code-frame code .hljs-quote {
+  color: #8a8a8a;
+  font-style: normal;
+}
+.code-frame code .hljs-keyword,
+.code-frame code .hljs-selector-tag,
+.code-frame code .hljs-tag,
+.code-frame code .hljs-name,
+.code-frame code .hljs-property,
+.code-frame code .hljs-doctag,
+.code-frame code .hljs-link {
+  color: #96cbfe;
+}
+.code-frame code .hljs-link {
+  text-decoration: underline;
+}
+.code-frame code .hljs-title,
+.code-frame code .hljs-type,
+.code-frame code .hljs-section,
+.code-frame code .hljs-title.class_,
+.code-frame code .hljs-title.class_.inherited__ {
+  color: #ffffb6;
+}
+.code-frame code .hljs-title.function_,
+.code-frame code .hljs-function .hljs-title {
+  color: #dad085;
+}
+.code-frame code .hljs-literal {
+  color: #99cc99;
+}
+.code-frame code .hljs-number {
+  color: #ff73fd;
+}
+.code-frame code .hljs-string,
+.code-frame code .hljs-built_in,
+.code-frame code .hljs-selector-class,
+.code-frame code .hljs-selector-id,
+.code-frame code .hljs-selector-attr,
+.code-frame code .hljs-selector-pseudo,
+.code-frame code .hljs-addition,
+.code-frame code .hljs-code {
+  color: #a8ff60;
+}
+.code-frame code .hljs-attr,
+.code-frame code .hljs-attribute,
+.code-frame code .hljs-variable,
+.code-frame code .hljs-template-variable,
+.code-frame code .hljs-variable.language_ {
+  color: #c6c5fe;
+}
+.code-frame code .hljs-params {
+  color: var(--code-fg);
+}
+.code-frame code .hljs-operator,
+.code-frame code .hljs-punctuation {
+  color: #ededed;
+}
+.code-frame code .hljs-symbol,
+.code-frame code .hljs-bullet,
+.code-frame code .hljs-deletion {
+  color: #f92672;
+}
+.code-frame code .hljs-meta,
+.code-frame code .hljs-meta .hljs-keyword {
+  color: #f9ee98;
+}
+.code-frame code .hljs-meta .hljs-string {
+  color: #a8ff60;
+}
+.code-frame code .hljs-regexp,
+.code-frame code .hljs-char.escape_,
+.code-frame code .hljs-template-tag {
+  color: #e9c062;
+}
+.code-frame code .hljs-subst {
+  color: var(--code-fg);
+}
+.code-frame code .hljs-section,
+.code-frame code .hljs-strong {
+  font-weight: 700;
+}
+.code-frame code .hljs-emphasis {
+  font-style: italic;
+}

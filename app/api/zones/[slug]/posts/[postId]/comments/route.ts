@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { apiReason } from '@/lib/api-errors';
@@ -18,7 +19,7 @@ const MINUTE_MS = 60 * 1000;
 const COMMENTS_PER_MINUTE = 10;
 
 const createSchema = z.object({
-  bodyMd: z.string().trim().min(1).max(ZONE_LIMITS.commentMax),
+  bodyMd: withRichTextLimit(z.string().trim().min(1), ZONE_LIMITS.commentMax),
   // parentId must be a TOP-LEVEL comment (2-level flat threads, same contract
   // as the discussion / feedback / video boards); replyToId marks which
   // comment gets the notification. min(1): an empty string would skip

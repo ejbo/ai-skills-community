@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { NAV_BAR_HEIGHT_PX } from '@/lib/nav-chrome';
+import { mediaHeaders } from '@/lib/uploads/serve';
+import { zoneMediaPublicUrl } from '@/lib/zones/storage';
 import {
   dockTopOffset,
+  fileOpensInNewTab,
   isDockSash,
   officeCanRetry,
   officeNoteKey,
@@ -126,5 +129,28 @@ describe('previewShellClasses', () => {
     expect(rest.root).toBe('px-5 py-5');
     expect(rest.inner).toBeUndefined();
     expect(rest.content).toBeUndefined();
+  });
+});
+
+// 打开原页面 / 在新标签页打开 used to be offered for EVERY file, and for a text /
+// code / csv / office key it just started a second download (the media route
+// answers those with `Content-Disposition: attachment`). The control must be
+// offered exactly when the route would render the bytes inline.
+describe('fileOpensInNewTab', () => {
+  it('offers "open in a new tab" only where the media route serves inline', () => {
+    for (const key of ['image/a.png', 'video/b.mp4', 'file/c.pdf', 'file/d.mp3', 'file/e.webm', 'file/f.jpg']) {
+      expect(fileOpensInNewTab(zoneMediaPublicUrl(key)), key).toBe(true);
+      expect(mediaHeaders(key).headers['content-disposition'].startsWith('inline'), key).toBe(true);
+    }
+    for (const key of ['file/a.csv', 'file/b.py', 'file/c.md', 'file/d.txt', 'file/e.docx', 'file/f.svg', 'file/g.html', 'file/h.bin', 'file/i.zip']) {
+      expect(fileOpensInNewTab(zoneMediaPublicUrl(key)), key).toBe(false);
+      expect(mediaHeaders(key).headers['content-disposition'].startsWith('attachment'), key).toBe(true);
+    }
+  });
+
+  it('answers false for a URL that is not a zone media key', () => {
+    expect(fileOpensInNewTab('')).toBe(false);
+    expect(fileOpensInNewTab('https://example.com/a.png')).toBe(false);
+    expect(fileOpensInNewTab('/api/discussion/media/file/a.pdf')).toBe(false);
   });
 });

@@ -32,6 +32,14 @@ describe('splitMarkdownSections (版规 accordion)', () => {
     expect(splitMarkdownSections('## **Bold** rule\n\nbody')).toEqual([{ heading: 'Bold rule', body: 'body' }]);
   });
 
+  it('labels a coloured heading by its text and skips a heading with no text in step with extractHeadings', () => {
+    const md = ['## <span data-color="red">第一条</span> &lt;必读&gt;', '', 'a', '', '## <span data-bg="yellow"></span>', '', 'b', '', '## 第二条', '', 'c'].join('\n');
+    expect(splitMarkdownSections(md)).toEqual([
+      { heading: '第一条 <必读>', body: 'a\n\n## <span data-bg="yellow"></span>\n\nb' },
+      { heading: '第二条', body: 'c' },
+    ]);
+  });
+
   it('ignores `#` lines inside fenced code (they are code, not rules)', () => {
     const md = ['## Real', '', '```sh', '## not a heading', '# nor this', '```', '', 'after'].join('\n');
     const sections = splitMarkdownSections(md);

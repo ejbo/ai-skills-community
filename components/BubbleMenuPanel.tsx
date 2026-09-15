@@ -86,8 +86,14 @@ export function BubblePanel({
       const els = itemsIn(panelRef.current);
       // Roving focus: only one item is tabbable, the arrows do the rest.
       els.forEach((el) => el.setAttribute('tabindex', '-1'));
+      // `data-bubble-aux` marks controls appended to a menu that is ABOUT
+      // something else (the 收纳 menu's phone-only 语言 pills): their checked
+      // state must not pull focus — and, on a scrolling phone panel, the scroll
+      // position — to the bottom of a navigation menu.
       const active = els.find(
-        (el) => el.getAttribute('aria-checked') === 'true' || el.hasAttribute('aria-current'),
+        (el) =>
+          !el.hasAttribute('data-bubble-aux') &&
+          (el.getAttribute('aria-checked') === 'true' || el.hasAttribute('aria-current')),
       );
       (active ?? els[0])?.focus();
     });

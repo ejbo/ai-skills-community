@@ -13,14 +13,19 @@ import { ARTICLE_PROSE_CLASS } from '@/lib/zones/prose';
 import { PROSE_IMAGE_ATTR } from '@/components/zones/prose-image';
 import { StickerImage } from '@/components/stickers/StickerImage';
 import { PollWidget } from '@/components/polls/PollWidget';
+import { CodeFrame } from '@/components/code/CodeFrame';
+import { CODE_LINES_MAX_NODES, rehypeCodeLines, remarkCodeMeta } from '@/lib/markdown-code-lines';
 
 // Shared code / table styling for both sizes.
 // The prose-code chip styles (bg/px) target EVERY <code>, including the one
 // inside <pre>. There, code is an inline element, so the horizontal padding
 // paints only at the first line's start — every code block looked like its
 // first line was indented by one space. The [&_pre_code]:p-0 overrides zero it out.
+// Code BLOCKS no longer take any prose-pre styling: every <pre> renders through
+// CodeFrame (`pre` override below), which is `not-prose` and owns its dark panel
+// (app/code-block.css). A prose-pre background here would only fight it.
 const CODE_TABLE =
-  'prose-pre:bg-zinc-100 prose-pre:text-zinc-800 dark:prose-pre:bg-zinc-900 dark:prose-pre:text-zinc-100 prose-code:rounded prose-code:bg-zinc-100 prose-code:px-1 prose-code:py-0.5 prose-code:text-[13px] prose-code:font-mono prose-code:before:content-none prose-code:after:content-none dark:prose-code:bg-zinc-800 [&_pre_code]:bg-transparent [&_pre_code]:p-0 dark:[&_pre_code]:bg-transparent prose-table:overflow-hidden prose-th:border prose-th:border-zinc-300 prose-th:px-3 prose-th:py-1.5 prose-td:border prose-td:border-zinc-200 prose-td:px-3 prose-td:py-1.5 dark:prose-th:border-zinc-700 dark:prose-td:border-zinc-800';
+  'prose-code:rounded prose-code:bg-zinc-100 prose-code:px-1 prose-code:py-0.5 prose-code:text-[13px] prose-code:font-mono prose-code:before:content-none prose-code:after:content-none dark:prose-code:bg-zinc-800 [&_pre_code]:bg-transparent [&_pre_code]:p-0 dark:[&_pre_code]:bg-transparent prose-table:overflow-hidden prose-th:border prose-th:border-zinc-300 prose-th:px-3 prose-th:py-1.5 prose-td:border prose-td:border-zinc-200 prose-td:px-3 prose-td:py-1.5 dark:prose-th:border-zinc-700 dark:prose-td:border-zinc-800';
 
 // Default reading size (skill description, etc.).
 const DEFAULT_CLASS = `prose prose-zinc max-w-none text-[15px] leading-relaxed dark:prose-invert prose-headings:tracking-tight prose-headings:font-semibold ${CODE_TABLE}`;
@@ -45,15 +50,40 @@ const SIZE_CLASS: Record<MarkdownSize, string> = {
   article: ARTICLE_CLASS,
 };
 
-const REMARK_PLUGINS = [remarkGfm];
+// remarkCodeMeta records each fence's meta (```py title="main.py" {1,3}) by source
+// offset — rehype-raw drops it from the tree — for rehypeCodeLines to read back.
+const REMARK_PLUGINS = [remarkGfm, remarkCodeMeta];
 
-// Order matters: parse raw HTML → highlight code → sanitize (last, so
-// anything the earlier plugins produced is still scrubbed against the schema).
-const REHYPE_PLUGINS = [
-  rehypeRaw,
-  [rehypeHighlight, { ignoreMissing: true, detect: false }],
-  [rehypeSanitize, sanitizeSchema],
-] as NonNullable<Parameters<typeof ReactMarkdown>[0]['rehypePlugins']>;
+type RehypePlugins = NonNullable<Parameters<typeof ReactMarkdown>[0]['rehypePlugins']>;
+
+// Order matters: parse raw HTML → highlight code → sanitize (so anything the
+// earlier plugins produced is still scrubbed against the schema) → split code
+// into numbered lines. rehypeCodeLines is the one plugin AFTER the trust
+// boundary, deliberately: it only emits attributes it builds itself from
+// validated values (lib/markdown-code-lines.ts), so the schema needs no entry
+// for them and stored raw HTML cannot fake a frame's filename.
+//
+// Line splitting has a node budget PER BODY (CODE_LINES_MAX_NODES — splitting
+// cost is lines × nesting depth, not input size; see the module). A body with
+// poll tokens renders as several trees, so the budget is divided between them
+// rather than granted once per tree. One cached list per tree count keeps the
+// plugin identities stable (a body mounts at most MAX_POLLS_PER_CONTENT polls,
+// so the cache stays tiny).
+const rehypePluginCache = new Map<number, RehypePlugins>();
+function rehypePluginsFor(trees: number): RehypePlugins {
+  const n = Math.max(1, trees);
+  let plugins = rehypePluginCache.get(n);
+  if (!plugins) {
+    plugins = [
+      rehypeRaw,
+      [rehypeHighlight, { ignoreMissing: true, detect: false }],
+      [rehypeSanitize, sanitizeSchema],
+      [rehypeCodeLines, { maxNodes: Math.floor(CODE_LINES_MAX_NODES / n) }],
+    ] as RehypePlugins;
+    rehypePluginCache.set(n, plugins);
+  }
+  return plugins;
+}
 
 // MODULE-LEVEL on purpose: a `components` map written inline in the render
 // body is a fresh function identity per render, which React reads as a new
@@ -99,6 +129,18 @@ const MD_COMPONENTS: Components = {
   // shape it wears the ink chip (components/mention/chip.ts) and stays a
   // working profile link. Recognition is on the RAW stored href, BEFORE
   // withBasePath — the same rule 表情包 follow above.
+  // Code blocks: rehypeCodeLines has already split the highlighted code into
+  // `span.code-line` rows and stamped the frame hooks on <pre>; the Aceternity
+  // frame (header, copy, gutter) is a client leaf, so only primitives cross.
+  pre: ({ node, children }) => {
+    const p = (node?.properties ?? {}) as Record<string, unknown>;
+    const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
+    return (
+      <CodeFrame language={str(p.dataLanguage)} filename={str(p.dataFilename)} lineCount={Number(p.dataLines) || 1}>
+        {children}
+      </CodeFrame>
+    );
+  },
   a: ({ node, href, target, rel, className, ...props }) => {
     const h = typeof href === 'string' ? href : '';
     const external = /^(https?:)?\/\//i.test(h);
@@ -117,9 +159,9 @@ const MD_COMPONENTS: Components = {
 };
 
 // One markdown chunk (poll tokens already split out by the caller).
-function Md({ content }: { content: string }) {
+function Md({ content, trees }: { content: string; trees: number }) {
   return (
-    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={MD_COMPONENTS}>
+    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={rehypePluginsFor(trees)} components={MD_COMPONENTS}>
       {content}
     </ReactMarkdown>
   );
@@ -139,11 +181,12 @@ export function MarkdownRenderer({
   // else renders as before. No poll ⇒ single segment ⇒ identical output.
   const segments = splitPollSegments(content || '_(empty)_');
   const sizeClass = SIZE_CLASS[size ?? (compact ? 'compact' : 'default')];
+  const trees = segments.reduce((n, seg) => (seg.type === 'md' ? n + 1 : n), 0);
   return (
     <div className={sizeClass}>
       {segments.map((seg, i) =>
         seg.type === 'md' ? (
-          <Md key={i} content={seg.text} />
+          <Md key={i} content={seg.text} trees={trees} />
         ) : (
           // id in the key: content edits that swap the token remount the widget
           // (fresh missing/poll/selection state); index keeps duplicates unique.

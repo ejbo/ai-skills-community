@@ -15,13 +15,12 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { nanoid } from 'nanoid';
 import { tryRunMediaJob } from '@/lib/uploads/job-queue';
+import { contentTypeFor, keyExtOf, safeKeyExt } from '@/lib/files/file-types';
 import {
   MAX_ZONE_COVER_BYTES,
   MAX_ZONE_FILE_BYTES,
   MAX_ZONE_IMAGE_BYTES,
   MAX_ZONE_VIDEO_BYTES,
-  ZONE_FILE_EXT,
-  ZONE_FILE_EXTS,
   ZONE_IMAGE_TYPES,
   ZONE_MEDIA_KEY_RE,
   ZONE_VIDEO_TYPES,
@@ -64,18 +63,6 @@ export function isAllowedZoneVideoType(type: string): boolean {
   return ZONE_VIDEO_TYPES.has(type);
 }
 
-/**
- * Files are accepted by MIME type OR by extension: browsers report
- * `application/octet-stream` (or nothing) for .md / .pptx / .csv depending on
- * the OS registry, so the filename is a legitimate second signal — but never
- * for a body the browser positively identified as an image or a video.
- */
-export function isAllowedZoneFileType(type: string, filename: string): boolean {
-  if (type in ZONE_FILE_EXT) return true;
-  if (ZONE_IMAGE_TYPES.has(type) || ZONE_VIDEO_TYPES.has(type)) return false;
-  return ZONE_FILE_EXTS.has(extOfName(filename));
-}
-
 export function maxBytesForZoneKind(kind: ZoneMediaKind): number {
   switch (kind) {
     case 'video':
@@ -94,9 +81,14 @@ export function maxBytesForZoneKind(kind: ZoneMediaKind): number {
 }
 
 /**
- * Pick a file extension for a kind from the content type, falling back to the
- * filename. Always returns something that satisfies ZONE_MEDIA_KEY_RE — a bogus
- * filename can never store an arbitrary extension.
+ * Pick a file extension for a kind. Media kinds clamp to their small inline set
+ * (by content type, then the filename); the `file` kind accepts ANY file and
+ * keeps the NAME's extension when it is `[a-z0-9]{1,10}` (the MIME is only a
+ * hint — most source files arrive with an empty type), else `bin`
+ * (lib/files/file-types.ts `safeKeyExt`). Always returns something that
+ * satisfies ZONE_MEDIA_KEY_RE — a bogus filename can never store `../`,
+ * uppercase or an empty extension. How a stored extension is SERVED is a
+ * separate decision (serveClassOf): an `.html` / `.svg` key is plain text.
  */
 export function zoneMediaExtFor(kind: ZoneMediaKind, contentType: string, filename: string): string {
   const rawName = extOfName(filename);
@@ -105,12 +97,7 @@ export function zoneMediaExtFor(kind: ZoneMediaKind, contentType: string, filena
   if (kind === 'video') {
     return VIDEO_EXT[contentType] ?? (VIDEO_EXTS.has(fromName) ? fromName : 'mp4');
   }
-  if (kind === 'file') {
-    // The filename wins for documents: `.pptx` sent as octet-stream must not
-    // become `.bin`, and `.md` sent as text/plain must stay `.md`.
-    if (ZONE_FILE_EXTS.has(fromName)) return fromName;
-    return ZONE_FILE_EXT[contentType] ?? 'bin';
-  }
+  if (kind === 'file') return safeKeyExt(filename, contentType);
   // image | cover | icon | poster
   return IMAGE_EXT[contentType] ?? (IMAGE_EXTS.has(fromName) ? fromName : 'jpg');
 }
@@ -151,33 +138,9 @@ export function zoneMediaKeyFromUrl(url: string | null | undefined): string | nu
   }
 }
 
-const CONTENT_TYPES: Record<string, string> = {
-  jpg: 'image/jpeg',
-  png: 'image/png',
-  webp: 'image/webp',
-  avif: 'image/avif',
-  gif: 'image/gif',
-  mp4: 'video/mp4',
-  webm: 'video/webm',
-  mov: 'video/quicktime',
-  pdf: 'application/pdf',
-  ppt: 'application/vnd.ms-powerpoint',
-  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  doc: 'application/msword',
-  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  xls: 'application/vnd.ms-excel',
-  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  zip: 'application/zip',
-  // Text formats are served as text (never HTML) — safe to render inline.
-  txt: 'text/plain; charset=utf-8',
-  md: 'text/markdown; charset=utf-8',
-  csv: 'text/csv; charset=utf-8',
-  json: 'application/json; charset=utf-8',
-};
-
+/** Content-Type of a stored key — the shared table decides (real types only for inline media; text as text/plain). */
 export function zoneMediaContentType(key: string): string {
-  const ext = key.split('.').pop()?.toLowerCase() ?? '';
-  return CONTENT_TYPES[ext] ?? 'application/octet-stream';
+  return contentTypeFor(keyExtOf(key));
 }
 
 /**

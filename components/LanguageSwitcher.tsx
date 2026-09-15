@@ -1,6 +1,6 @@
 'use client';
 
-import { useTransition } from 'react';
+import { useCallback, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, Languages } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
@@ -26,11 +26,30 @@ import { LOCALE_OPTIONS, setLocaleCookie } from '@/lib/locales';
 
 const PANEL_W = 200;
 
-export function LanguageSwitcher() {
-  const t = useTranslations('nav');
+/**
+ * The switch itself, shared by this trigger and the phone rows of the 收纳 menu
+ * (components/NavMoreMenu.tsx), which is where the language lives below `sm`
+ * because the navbar has no room for this button there.
+ */
+export function useLocaleSwitch() {
   const locale = useLocale();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const choose = useCallback(
+    (code: string) => {
+      if (code === locale) return;
+      setLocaleCookie(code);
+      // Messages are resolved server-side per request, so a refresh is the switch.
+      startTransition(() => router.refresh());
+    },
+    [locale, router],
+  );
+  return { locale, pending, choose };
+}
+
+export function LanguageSwitcher() {
+  const t = useTranslations('nav');
+  const { locale, pending, choose: switchTo } = useLocaleSwitch();
   const panel = useAnchoredPanel<HTMLButtonElement>({
     width: PANEL_W,
     height: bubblePanelHeight(LOCALE_OPTIONS.length),
@@ -40,10 +59,7 @@ export function LanguageSwitcher() {
 
   function choose(code: string) {
     panel.close();
-    if (code === locale) return;
-    setLocaleCookie(code);
-    // Messages are resolved server-side per request, so a refresh is the switch.
-    startTransition(() => router.refresh());
+    switchTo(code);
   }
 
   return (

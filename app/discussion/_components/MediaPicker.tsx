@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
-  FileText,
   ImagePlus,
   Link2,
   Loader2,
@@ -13,19 +12,31 @@ import {
   X,
 } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
+import { fileIconFor } from '@/components/files/file-icon';
+import { clampAttachmentName } from '@/components/zones/attachments/upload-core';
 import { withBasePath } from '@/lib/base-path';
-import { formatBytes } from './types';
+import { fileMetaParts, formatBytes } from '@/lib/files/display';
+import { displayExtOf, previewPlanFor, uploadContentTypeFor } from '@/lib/files/file-types';
+import {
+  MAX_POST_FILES,
+  MAX_POST_FILE_BYTES,
+  MAX_POST_IMAGES,
+  MAX_POST_VIDEO_BYTES,
+} from '@/lib/uploads/post-media-keys';
 
 // Shared attachment picker for the 动态 composer AND the forum topic form:
 // image gallery (≤9), ONE video (uploaded — inline playable — or an external
-// link rendered as a card; the intranet can't embed iframes), and PDF/PPT/Word
-// files (≤4, downloadable). Uploads go through the existing raw-body routes.
+// link rendered as a card; the intranet can't embed iframes), and up to 4 files
+// of ANY type (source code, JSON, archives, Office, PDF… — previewed in the
+// post's file viewer when the type allows, otherwise download-only). Uploads go
+// through the existing raw-body routes; limits and byte caps are the server's
+// own numbers (lib/uploads/post-media-keys.ts), checked here first so a
+// 300 MB file or an empty one fails instantly instead of after the upload.
 
 const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,image/avif,image/gif';
 const VIDEO_ACCEPT = 'video/mp4,video/webm,video/quicktime';
-const FILE_ACCEPT = '.pdf,.ppt,.pptx,.doc,.docx';
-const MAX_IMAGES = 9;
-const MAX_FILES = 4;
+const MAX_IMAGES = MAX_POST_IMAGES;
+const MAX_FILES = MAX_POST_FILES;
 
 export interface UploadedItem {
   key: string;
@@ -80,7 +91,12 @@ export function mediaPayload(d: MediaDraft) {
   ];
 }
 
-/** Raw-body upload protocol shared by every upload route in the app. */
+/**
+ * Raw-body upload protocol shared by every upload route in the app. Kept local
+ * rather than using components/zones/attachments/upload-core's `uploadRaw`:
+ * that one rewrites every 429 to `rate_limited`, and this route answers the
+ * spent daily byte budget with a 429 `quota_exceeded` whose message matters.
+ */
 function uploadRaw(
   file: File,
   endpoint: string,
@@ -90,7 +106,10 @@ function uploadRaw(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', withBasePath(endpoint));
-    xhr.setRequestHeader('content-type', file.type || 'application/octet-stream');
+    // Declared from the extension when the OS reported no type (most source
+    // files, and some .png/.mp4 on Windows): the image and video routes validate
+    // this header, and for a file it is the key-extension hint of last resort.
+    xhr.setRequestHeader('content-type', uploadContentTypeFor(file));
     xhr.setRequestHeader('x-filename', encodeURIComponent(file.name));
     for (const [k, v] of Object.entries(extraHeaders)) xhr.setRequestHeader(k, v);
     xhr.upload.onprogress = (e) => {
@@ -125,7 +144,16 @@ function uploadErrorKey(e: unknown): string {
   if (msg === 'unsupported_type') return 'err_unsupported_type';
   if (msg === 'rate_limited') return 'err_rate_limited';
   if (msg === 'quota_exceeded') return 'err_quota_exceeded';
+  if (msg === 'empty_body') return 'err_empty_file';
+  if (msg === 'insufficient_storage') return 'err_insufficient_storage';
   return 'err_upload_failed';
+}
+
+/** Client-side twin of the route's first checks — the 'discussion' error key, or null when the file may go up. */
+function precheckErrorKey(file: File, maxBytes: number): string | null {
+  if (file.size === 0) return 'err_empty_file';
+  if (file.size > maxBytes) return 'err_file_too_large';
+  return null;
 }
 
 export function MediaPicker({
@@ -139,6 +167,7 @@ export function MediaPicker({
   onUploadingChange?: (count: number) => void;
 }) {
   const t = useTranslations('discussion');
+  const tz = useTranslations('zones');
   const [uploading, setUploading] = useState(0);
   const [videoPct, setVideoPct] = useState<number | null>(null);
   const [linkInputOpen, setLinkInputOpen] = useState(false);
@@ -187,7 +216,7 @@ export function MediaPicker({
                 ...d,
                 images: [
                   ...d.images,
-                  { key: r.key, url: r.url, name: file.name, mimeType: file.type, sizeBytes: r.size },
+                  { key: r.key, url: r.url, name: clampAttachmentName(file.name), mimeType: file.type, sizeBytes: r.size },
                 ],
               },
         );
@@ -202,6 +231,11 @@ export function MediaPicker({
   async function addVideo(list: FileList | null) {
     const file = list?.[0];
     if (!file) return;
+    const early = precheckErrorKey(file, MAX_POST_VIDEO_BYTES);
+    if (early) {
+      pushToast('error', t('video_upload_error', { error: t(early) }));
+      return;
+    }
     bump(1);
     setVideoPct(0);
     try {
@@ -210,7 +244,7 @@ export function MediaPicker({
       );
       commit((d) => ({
         ...d,
-        video: { key: r.key, url: r.url, name: file.name, mimeType: file.type, sizeBytes: r.size },
+        video: { key: r.key, url: r.url, name: clampAttachmentName(file.name), mimeType: file.type, sizeBytes: r.size },
         videoLink: '', // ONE video per post/topic — upload replaces the link
       }));
       setLinkInputOpen(false);
@@ -228,6 +262,11 @@ export function MediaPicker({
     const picked = Array.from(list).slice(0, room);
     if (Array.from(list).length > room) pushToast('info', t('max_files_hint', { count: MAX_FILES }));
     for (const file of picked) {
+      const early = precheckErrorKey(file, MAX_POST_FILE_BYTES);
+      if (early) {
+        pushToast('error', t('file_upload_error', { name: file.name, error: t(early) }));
+        continue;
+      }
       bump(1);
       try {
         const r = await uploadRaw(file, '/api/discussion/upload', { 'x-upload-kind': 'file' });
@@ -238,7 +277,9 @@ export function MediaPicker({
                 ...d,
                 files: [
                   ...d.files,
-                  { key: r.key, url: r.url, name: file.name, mimeType: file.type, sizeBytes: r.size },
+                  // The post schema caps a name at 200 chars; a longer one would 400 the
+                  // whole post, so it is shortened in the middle (extension kept).
+                  { key: r.key, url: r.url, name: clampAttachmentName(file.name), mimeType: file.type || uploadContentTypeFor(file), sizeBytes: r.size },
                 ],
               },
         );
@@ -318,7 +359,7 @@ export function MediaPicker({
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium">{value.video.name}</span>
-            <span className="block text-xs text-muted">{formatBytes(value.video.sizeBytes)}</span>
+            <span className="block text-xs text-muted">{value.video.sizeBytes > 0 ? formatBytes(value.video.sizeBytes) : ''}</span>
           </span>
           <button
             onClick={() => commit((d) => ({ ...d, video: null }))}
@@ -346,25 +387,33 @@ export function MediaPicker({
 
       {value.files.length > 0 && (
         <div className="space-y-2">
-          {value.files.map((m) => (
-            <div
-              key={m.key}
-              className="flex items-center gap-3 rounded-xl border border-zinc-200 p-2.5 dark:border-zinc-800"
-            >
-              <FileText className="h-4 w-4 shrink-0 text-muted" />
-              <span className="min-w-0 flex-1 truncate text-sm">{m.name}</span>
-              <span className="shrink-0 text-xs text-muted">{formatBytes(m.sizeBytes)}</span>
-              <button
-                onClick={() =>
-                  commit((d) => ({ ...d, files: d.files.filter((x) => x.key !== m.key) }))
-                }
-                aria-label={t('remove_file')}
-                className="rounded p-1 text-muted hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          {value.files.map((m) => {
+            const ext = displayExtOf(m.name, m.key, m.mimeType);
+            const FileIcon = fileIconFor(previewPlanFor(m.key, m.name).cls, ext);
+            return (
+              <div
+                key={m.key}
+                className="flex items-center gap-3 rounded-xl border border-zinc-200 p-2.5 dark:border-zinc-800"
               >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
+                <FileIcon className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+                <span className="min-w-0 flex-1 truncate text-sm" title={m.name}>
+                  {m.name}
+                </span>
+                <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted">
+                  {fileMetaParts(ext, m.sizeBytes, tz('attach_type_generic')).join(' · ')}
+                </span>
+                <button
+                  onClick={() =>
+                    commit((d) => ({ ...d, files: d.files.filter((x) => x.key !== m.key) }))
+                  }
+                  aria-label={t('remove_file')}
+                  className="rounded p-1 text-muted hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              );
+          })}
         </div>
       )}
 
@@ -409,10 +458,10 @@ export function MediaPicker({
             e.target.value = '';
           }}
         />
+        {/* No `accept`: any file type may be attached (the viewer decides what previews). */}
         <input
           ref={fileInput}
           type="file"
-          accept={FILE_ACCEPT}
           multiple
           hidden
           onChange={(e) => {
@@ -451,7 +500,7 @@ export function MediaPicker({
           onClick={() => fileInput.current?.click()}
           disabled={value.files.length >= MAX_FILES}
           className={attachBtn}
-          title={t('attach_file_title')}
+          title={t('attach_file_title', { count: MAX_FILES, size: formatBytes(MAX_POST_FILE_BYTES) })}
         >
           <Paperclip className="h-4 w-4" />
           {t('attach_file')}

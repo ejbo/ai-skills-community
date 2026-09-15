@@ -28,9 +28,12 @@ export async function GET(req: Request, { params }: { params: { key: string[] } 
   const contentType = libraryContentType(key);
   // Keys are fresh nanoids per upload — content never changes under a key, so
   // the browser may cache aggressively (private: files are login-walled).
+  // nosniff on every response: stored `.html` goes out as text/plain (rendering
+  // user HTML on-origin = XSS), and a sniffing browser could undo exactly that.
   const baseHeaders: Record<string, string> = {
     'content-type': contentType,
     'cache-control': 'private, max-age=31536000, immutable',
+    'x-content-type-options': 'nosniff',
   };
   if (contentType === 'application/pdf') {
     const basename = key.split('/').pop() ?? 'document.pdf';
@@ -47,7 +50,7 @@ export async function GET(req: Request, { params }: { params: { key: string[] } 
     if (start > end || start >= size) {
       return new NextResponse('Range Not Satisfiable', {
         status: 416,
-        headers: { 'content-range': `bytes */${size}` },
+        headers: { 'content-range': `bytes */${size}`, 'x-content-type-options': 'nosniff' },
       });
     }
     return new NextResponse(openLibraryRange(key, start, end), {

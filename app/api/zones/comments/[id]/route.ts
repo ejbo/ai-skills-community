@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import type { Session } from 'next-auth';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic';
 /** Authors may edit their own comment for this long; moderators always. */
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
 
-const editSchema = z.object({ bodyMd: z.string().trim().min(1).max(ZONE_LIMITS.commentMax) });
+const editSchema = z.object({ bodyMd: withRichTextLimit(z.string().trim().min(1), ZONE_LIMITS.commentMax) });
 
 const COMMENT_SELECT = {
   id: true,

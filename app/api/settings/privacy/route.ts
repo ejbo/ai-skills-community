@@ -2,21 +2,20 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
-import { PROFILE_VISIBILITY_SELECT } from '@/lib/profile-queries';
 
 export const dynamic = 'force-dynamic';
 
-const schema = z.object({
-  isPrivate: z.boolean().optional(),
-  showLibraryActivity: z.boolean().optional(),
-  // 个人主页板块可见性 (/users/[handle])
-  showProfileSkills: z.boolean().optional(),
-  showProfileDocs: z.boolean().optional(),
-  showProfilePosts: z.boolean().optional(),
-  showProfileComments: z.boolean().optional(),
-  showProfileShelf: z.boolean().optional(),
-  showProfileEvents: z.boolean().optional(),
-});
+// Account-level privacy switches only. 主页板块可见性 moved to
+// `UserProfile.layout` (PUT /api/me/profile {layout}); the six legacy
+// `User.showProfile*` flags are a read-only fallback now and are NEVER written.
+// `.strict()` so a stale client still posting one gets a 400 instead of a
+// silent no-op that toasts "已保存".
+const schema = z
+  .object({
+    isPrivate: z.boolean().optional(),
+    showLibraryActivity: z.boolean().optional(),
+  })
+  .strict();
 
 export async function GET() {
   const session = await auth();
@@ -28,7 +27,6 @@ export async function GET() {
       showLibraryActivity: true,
       department: true,
       lab: true,
-      ...PROFILE_VISIBILITY_SELECT,
     },
   });
   return NextResponse.json({ ok: true, ...user });

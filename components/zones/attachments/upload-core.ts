@@ -8,16 +8,8 @@
 // that other code already imported from it.
 
 import { withBasePath } from '@/lib/base-path';
-import {
-  MAX_ZONE_FILE_BYTES,
-  MAX_ZONE_IMAGE_BYTES,
-  MAX_ZONE_VIDEO_BYTES,
-  ZONE_FILE_EXTS,
-  ZONE_IMAGE_TYPES,
-  ZONE_MEDIA_KEY_RE,
-  ZONE_VIDEO_TYPES,
-  extOfName,
-} from '@/lib/zones/shared';
+import { displayExtOf, isInlineVideo, isRasterImage, uploadContentTypeFor } from '@/lib/files/file-types';
+import { MAX_ZONE_FILE_BYTES, MAX_ZONE_IMAGE_BYTES, MAX_ZONE_VIDEO_BYTES, ZONE_MEDIA_KEY_RE } from '@/lib/zones/shared';
 import type { ZoneAttachmentKindView, ZoneAttachmentView } from '@/lib/zones/types';
 
 export type UploadKind = ZoneAttachmentKindView;
@@ -127,7 +119,10 @@ export function uploadRaw(
     }
     const xhr = new XMLHttpRequest();
     xhr.open('POST', withBasePath(endpoint));
-    xhr.setRequestHeader('content-type', file.type || 'application/octet-stream');
+    // The type is DECLARED from the extension when the OS reported none: the
+    // image / video kinds validate this header, and a real `.png` with an empty
+    // type would 415.
+    xhr.setRequestHeader('content-type', uploadContentTypeFor(file));
     xhr.setRequestHeader('x-filename', encodeURIComponent(file.name));
     for (const [k, v] of Object.entries(extraHeaders)) xhr.setRequestHeader(k, v);
     const onAbort = () => xhr.abort();
@@ -184,6 +179,10 @@ export function uploadErrorKey(e: unknown): string {
       return 'attach_err_rate_limited';
     case 'forbidden':
       return 'attach_err_forbidden';
+    case 'empty_body':
+      return 'attach_err_empty_file';
+    case 'insufficient_storage':
+      return 'attach_err_insufficient_storage';
     case 'unauthenticated':
       return 'attach_err_unauthenticated';
     default:
@@ -213,12 +212,22 @@ export function clampAttachmentName(name: string, max = ATTACHMENT_NAME_MAX): st
   return `${head}…${ext}`;
 }
 
-/** Attachment kind of a File by MIME (images / videos) or extension (files); null = unsupported. */
-export function classify(file: File): UploadKind | null {
-  if (ZONE_IMAGE_TYPES.has(file.type)) return 'image';
-  if (ZONE_VIDEO_TYPES.has(file.type)) return 'video';
-  if (ZONE_FILE_EXTS.has(extOfName(file.name))) return 'file';
-  return null;
+/**
+ * Attachment kind of a File. Every file is attachable (owner decision 2026-09);
+ * the only question is which of the three kinds it goes up as, decided by
+ * EXTENSION first with the MIME as a hint (lib/files/file-types.ts): a raster
+ * image → `image`, an mp4/webm/mov → `video`, ANYTHING else → `file` — svg,
+ * heic, `.ts` reported as `video/mp2t`, an extension-less Makefile. Total by
+ * design: there is no "unsupported" answer, so callers have no null branch.
+ *
+ * The editor's IMAGE path (`/api/uploads/image`) and the Content-Type an upload
+ * declares are the same file-types decisions, imported from there directly
+ * (`isRasterImage`, `uploadContentTypeFor`) — no second name for them here.
+ */
+export function classify(file: File): UploadKind {
+  if (isRasterImage(file)) return 'image';
+  if (isInlineVideo(file)) return 'video';
+  return 'file';
 }
 
 /** Per-file byte caps (the only attachment limits left — counts are unlimited). */
@@ -236,12 +245,12 @@ export function draftFromUpload(file: File, kind: UploadKind, r: RawUploadResult
     kind,
     url: r.url,
     name,
-    mimeType: file.type || 'application/octet-stream',
+    mimeType: file.type || uploadContentTypeFor(file),
     sizeBytes: r.size,
     width: r.width ?? null,
     height: r.height ?? null,
     posterUrl: null,
-    ext: extOfName(file.name) || extOfName(r.key),
+    ext: displayExtOf(name, r.key, file.type),
     previewStatus: 'none',
     previewUrl: null,
   };

@@ -24,6 +24,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import type { Session } from 'next-auth';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { prisma } from '@/lib/db';
 import { extractMentionHandles, newMentionHandles } from '@/lib/mentions';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor, type PublicAuthor } from '@/lib/user-identity';
@@ -40,7 +41,9 @@ import {
   zonePostAccessContext,
   type ZonePostAccessDecision,
 } from './post-access';
+import { autoPostSummary, nextPostSummary } from './post-summary';
 import { readableZoneWhere, zoneOrgTree } from './queries';
+import { displayExtOf, keyExtOf } from '@/lib/files/file-types';
 import {
   ACCESS_CODE_ALPHABET,
   ACCESS_CODE_LENGTH,
@@ -56,8 +59,6 @@ import {
   decodeTimeCursor,
   encodeTimeCursor,
   estimateReadMinutes,
-  excerptOf,
-  extOfName,
   extractHeadings,
   isOfficePreviewable,
   isValidAccessCode,
@@ -256,56 +257,15 @@ type AttachmentViewSource = Pick<
   'id' | 'kind' | 'key' | 'url' | 'name' | 'mimeType' | 'sizeBytes' | 'width' | 'height' | 'posterUrl' | 'previewStatus' | 'previewUrl'
 >;
 
-function extFromMime(mime: string): string {
-  switch (mime.split(';')[0].trim().toLowerCase()) {
-    case 'application/pdf':
-      return 'pdf';
-    case 'application/vnd.ms-powerpoint':
-      return 'ppt';
-    case 'application/vnd.openxmlformats-officedocument.presentationml.presentation':
-      return 'pptx';
-    case 'application/msword':
-      return 'doc';
-    case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
-      return 'docx';
-    case 'application/vnd.ms-excel':
-      return 'xls';
-    case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
-      return 'xlsx';
-    case 'application/zip':
-    case 'application/x-zip-compressed':
-      return 'zip';
-    case 'text/plain':
-      return 'txt';
-    case 'text/markdown':
-      return 'md';
-    case 'text/csv':
-      return 'csv';
-    case 'application/json':
-      return 'json';
-    case 'image/jpeg':
-      return 'jpg';
-    case 'image/png':
-      return 'png';
-    case 'image/webp':
-      return 'webp';
-    case 'image/avif':
-      return 'avif';
-    case 'image/gif':
-      return 'gif';
-    case 'video/mp4':
-      return 'mp4';
-    case 'video/webm':
-      return 'webm';
-    case 'video/quicktime':
-      return 'mov';
-    default:
-      return '';
-  }
-}
-
+/**
+ * The view's `ext` is DISPLAY text (compound-aware `tar.gz`, from the name,
+ * falling back to the key / MIME). It no longer decides anything: badges,
+ * the preview branch and office conversion all read the storage KEY's
+ * extension (lib/files/file-types.ts `previewPlanFor`), because the name is
+ * client-supplied and the key is what the server wrote.
+ */
 function attachmentExt(a: { name: string; key: string; mimeType: string }): string {
-  return extOfName(a.name) || extOfName(a.key) || extFromMime(a.mimeType);
+  return displayExtOf(a.name, a.key, a.mimeType);
 }
 
 export function toAttachmentView(row: AttachmentViewSource): ZoneAttachmentView {
@@ -932,7 +892,8 @@ export const zonePostInputSchema = z.object({
   type: z.enum(ZONE_POST_TYPES).default('article'),
   title: z.string().trim().min(ZONE_LIMITS.postTitleMin).max(ZONE_LIMITS.postTitleMax),
   summary: z.string().trim().max(ZONE_LIMITS.postSummaryMax).default(''),
-  bodyMd: z.string().max(ZONE_LIMITS.postBodyMax).default(''),
+  // RichTextEditor field: VISIBLE length, the composer counter's measure (lib/rich-text-limit.ts).
+  bodyMd: withRichTextLimit(z.string(), ZONE_LIMITS.postBodyMax).default(''),
   coverKey: z.string().trim().max(200).nullable().default(null),
   linkUrl: z.string().trim().max(2048).nullable().default(null),
   tags: z.array(z.string().max(64)).max(MAX_ZONE_POST_TAGS * 2).default([]),
@@ -970,10 +931,12 @@ function kindOfKey(key: string): ZoneAttachmentKindView | null {
   return null;
 }
 
-function initialPreviewStatus(kind: ZoneAttachmentKindView, ext: string): ResolvedAttachment['previewStatus'] {
+/** Office conversion state at save time — decided by the KEY's extension (never the client-supplied name). */
+function initialPreviewStatus(kind: ZoneAttachmentKindView, key: string): ResolvedAttachment['previewStatus'] {
   if (kind !== 'file') return 'none';
-  if (isOfficePreviewable(ext)) return 'pending';
-  return ext === 'pdf' ? 'none' : 'unsupported';
+  const keyExt = keyExtOf(key);
+  if (isOfficePreviewable(keyExt)) return 'pending';
+  return keyExt === 'pdf' ? 'none' : 'unsupported';
 }
 
 function cleanName(raw: string, fallbackKey: string): string {
@@ -1017,7 +980,7 @@ export async function resolveAttachmentInputs(
 
     const name = cleanName(item.name ?? '', key);
     const mimeType = (item.mimeType ?? '').trim().slice(0, 100);
-    const ext = extOfName(name) || extOfName(key) || extFromMime(mimeType);
+    const ext = displayExtOf(name, key, mimeType);
     const dims = kind === 'file' ? { width: null, height: null } : { width: item.width ?? null, height: item.height ?? null };
     out.push({
       kind,
@@ -1028,7 +991,7 @@ export async function resolveAttachmentInputs(
       sizeBytes: 0,
       ...dims,
       posterUrl,
-      previewStatus: initialPreviewStatus(kind, ext),
+      previewStatus: initialPreviewStatus(kind, key),
       sortOrder: out.length,
       ext,
     });
@@ -1138,9 +1101,10 @@ async function validateCover(coverKey: string | null): Promise<{ coverKey: strin
   return { coverKey: key, coverUrl: zoneMediaPublicUrl(key) };
 }
 
+/** A new post's summary: what the author typed, else the body's auto excerpt (lib/zones/post-summary.ts). */
 function summaryOf(summary: string, bodyMd: string): string {
   const s = summary.trim().slice(0, ZONE_LIMITS.postSummaryMax);
-  return s || excerptOf(bodyMd, 200);
+  return s || autoPostSummary(bodyMd);
 }
 
 /** A URL is always optional (types are hidden, so `link_required` is gone); a non-empty one must parse. */
@@ -1518,8 +1482,19 @@ export async function updateZonePost(
     type,
     title: title.slice(0, ZONE_LIMITS.postTitleMax),
     bodyMd,
+    // A stored summary that is only the auto excerpt of the OLD body is not the
+    // author's text — re-derive it from the new body instead of freezing it
+    // (whether it arrives echoed back by the composer or re-used by a body-only
+    // PATCH). See lib/zones/post-summary.ts.
     ...(patch.summary !== undefined || patch.bodyMd !== undefined
-      ? { summary: summaryOf(patch.summary !== undefined ? patch.summary : existing.summary, bodyMd) }
+      ? {
+          summary: nextPostSummary({
+            incoming: patch.summary !== undefined ? patch.summary : existing.summary,
+            previousBodyMd: existing.bodyMd,
+            bodyMd,
+            max: ZONE_LIMITS.postSummaryMax,
+          }),
+        }
       : {}),
     ...(patch.tags !== undefined ? { tags: normalizeTags(patch.tags) } : {}),
     ...(linkUrl !== undefined ? { linkUrl } : {}),
@@ -1952,6 +1927,15 @@ export interface ZoneFeedFilters {
   limit?: number;
   /** Narrow to one 版块 (its slug). */
   zoneSlug?: string | null;
+  /**
+   * 个人主页: posts this user authored OR co-authored. When it is the viewer's
+   * own id the zone gate relaxes to "zone not deleted" — an author is privileged
+   * on their posts even in a members-only zone they have since left
+   * (decideZonePostAccess), so `readableZoneWhere` would wrongly drop them.
+   */
+  authorId?: string | null;
+  /** Narrow to these post ids (精选置顶 resolution) — still under every gate above. */
+  ids?: string[];
 }
 
 const FEED_MAX_FILTER_VALUES = 20;
@@ -1962,21 +1946,24 @@ function cleanList(values: string[] | undefined, max = 64): string[] {
     .map((v) => v.slice(0, max));
 }
 
-export async function listZoneFeed(f: ZoneFeedFilters): Promise<ZoneFeedResult> {
-  const limit = clampLimit(f.limit);
-  const sort: ZoneFeedSort = f.sort === 'hot' ? 'hot' : 'new';
+/** The feed's filter clauses (no cursor) — shared by the list and `countZoneFeed` so the two never disagree. */
+function zoneFeedAnd(f: ZoneFeedFilters): Prisma.ZonePostWhereInput[] {
   const q = (f.q ?? '').trim().slice(0, 100);
   const labs = cleanList(f.labs, ZONE_LIMITS.labMax);
   const departments = cleanList(f.departments, ZONE_LIMITS.departmentMax);
   const columns = cleanList(f.columns, ZONE_LIMITS.columnNameMax * 2);
   const types = [...new Set(f.types ?? [])];
   const zoneSlug = (f.zoneSlug ?? '').trim().toLowerCase().slice(0, 64);
+  const authorId = (f.authorId ?? '').trim();
+  const ownPosts = Boolean(authorId) && authorId === f.viewer.id;
 
   // AND of independent OR-groups — never assign `where.OR` twice.
   const and: Prisma.ZonePostWhereInput[] = [
-    { ...PUBLISHED_WHERE, zone: readableZoneWhere(f.viewer) },
+    { ...PUBLISHED_WHERE, zone: ownPosts ? { deletedAt: null } : readableZoneWhere(f.viewer) },
     zonePostVisibilityWhere(null, f.viewer),
   ];
+  if (authorId) and.push({ OR: [{ authorId }, { coauthors: { some: { userId: authorId } } }] });
+  if (f.ids) and.push({ id: { in: [...new Set(f.ids)].slice(0, 100) } });
   if (zoneSlug) and.push({ zone: { slug: zoneSlug } });
   if (labs.length > 0) and.push({ zone: { lab: { in: labs } } });
   if (departments.length > 0) and.push({ zone: { department: { in: departments } } });
@@ -1994,6 +1981,18 @@ export async function listZoneFeed(f: ZoneFeedFilters): Promise<ZoneFeedResult> 
       ],
     });
   }
+  return and;
+}
+
+/** Total posts the feed would list under these filters (cursor ignored). */
+export async function countZoneFeed(f: ZoneFeedFilters): Promise<number> {
+  return prisma.zonePost.count({ where: { AND: zoneFeedAnd(f) } });
+}
+
+export async function listZoneFeed(f: ZoneFeedFilters): Promise<ZoneFeedResult> {
+  const limit = clampLimit(f.limit);
+  const sort: ZoneFeedSort = f.sort === 'hot' ? 'hot' : 'new';
+  const and = zoneFeedAnd(f);
 
   const cursor = sort === 'new' ? decodeTimeCursor(f.cursor) : null;
   const offset = sort === 'hot' ? decodeOffsetCursor(f.cursor) : 0;

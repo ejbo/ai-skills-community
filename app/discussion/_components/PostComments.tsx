@@ -9,6 +9,7 @@ import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { RichTextEditor } from '@/components/RichTextEditor';
+import { isRichTextTooLong } from '@/lib/markdown-text';
 import { pushToast } from '@/components/Toaster';
 import { relativeTime } from '@/lib/i18n-date';
 import { currentLoginHref } from '@/lib/auth/callback-path';
@@ -576,7 +577,8 @@ function CommentBox({
   const pathname = usePathname();
   const [bodyMd, setBodyMd] = useState('');
   const [busy, setBusy] = useState(false);
-  const tooLong = bodyMd.trim().length > 2000;
+  // Visible length, like the server (lib/rich-text-limit.ts): formatting spans are not counted.
+  const tooLong = isRichTextTooLong(bodyMd.trim(), 2000);
 
   async function submit() {
     const trimmed = bodyMd.trim();

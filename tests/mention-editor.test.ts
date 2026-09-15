@@ -14,15 +14,15 @@
 //    file re-runs the mention through the same stack to prove the link mark and
 //    the suggestion plugin do not disturb them.
 //
-// Like the smoke test, the extension list REPLICATES components/RichTextEditor.tsx
-// (nodeviews omitted — they need a live React view). Mirror changes there.
+// Like the smoke test, the extension list is the REAL one:
+// buildRichTextExtensions (components/editor/rich-text-extensions.ts) is what
+// components/RichTextEditor.tsx registers, minus the React node views. Its
+// ORDER is part of what is tested: TABLE_EXTENSIONS before MentionSuggestion is
+// what lets the popup see Enter / arrows before a table cell does (last
+// describe block).
 import { describe, expect, it } from 'vitest';
 import { Editor } from '@tiptap/core';
-import StarterKit from '@tiptap/starter-kit';
-import Link from '@tiptap/extension-link';
-import Image from '@tiptap/extension-image';
-import { Markdown } from 'tiptap-markdown';
-import { PollEmbedBase } from '@/components/polls/poll-embed-extension';
+import { buildRichTextExtensions } from '@/components/editor/rich-text-extensions';
 import {
   MentionSuggestion,
   MentionSuggestionPluginKey,
@@ -34,58 +34,10 @@ import { extractMentionHandles, mentionMarkdown } from '@/lib/mentions';
 
 const STICKER_URL_PREFIX = '/api/uploads/stickers/';
 
-// RichTextEditor's BasePathImage carries a markdown serializer; without it
-// tiptap-markdown falls back to raw <img> HTML. Same shim as the smoke test.
-const BaseImage = Image.extend({
-  addStorage() {
-    return {
-      markdown: {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        serialize(state: any, node: any) {
-          const { src, alt } = node.attrs;
-          state.write(`![${state.esc(alt || '')}](${String(src ?? '').replace(/[()]/g, '\\$&')})`);
-        },
-      },
-    };
-  },
-});
-
-const StickerImageNode = BaseImage.extend({
-  name: 'stickerImage',
-  draggable: false,
-  inline() {
-    return true;
-  },
-  group() {
-    return 'inline';
-  },
-  addCommands() {
-    return {};
-  },
-  parseHTML() {
-    return [{ tag: `img[src^="${STICKER_URL_PREFIX}"]`, priority: 100 }];
-  },
-});
-
-function makeEditor(content = '') {
-  return new Editor({
-    extensions: [
-      StarterKit,
-      // Same options as RichTextEditor: autolink ON, which is what makes the
-      // Link mark `inclusive` and therefore what the trailing space guards.
-      Link.configure({
-        openOnClick: false,
-        autolink: true,
-        HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: '_blank' },
-      }),
-      MentionSuggestion,
-      BaseImage,
-      StickerImageNode,
-      PollEmbedBase,
-      Markdown.configure({ html: true, transformPastedText: true, breaks: false }),
-    ],
-    content,
-  });
+function makeEditor(content = '', mention: Parameters<typeof MentionSuggestion.configure>[0] = {}) {
+  // Link autolink ON (RICH_TEXT_LINK_OPTIONS) is what makes the Link mark
+  // `inclusive` and therefore what the trailing space guards.
+  return new Editor({ extensions: buildRichTextExtensions({ mention }), content });
 }
 
 /** The range the suggestion plugin would hand `command` for the trailing `@…`. */
@@ -162,7 +114,7 @@ describe('mention insertion + markdown round trip', () => {
     // custom node would have had to earn). The only difference is the trailing
     // space the pick leaves in the doc, which markdown does not keep at all.
     const again = makeEditor(out);
-    const second = again.storage.markdown.getMarkdown();
+    const second: string = again.storage.markdown.getMarkdown();
     expect(second).toBe(out.trimEnd());
     expect(extractMentionHandles(second)).toEqual([WANG.handle]);
     again.destroy();
@@ -260,5 +212,77 @@ describe('coexistence with the other editor mechanisms', () => {
     const ed = makeEditor(md);
     expect(extractMentionHandles(ed.storage.markdown.getMarkdown())).toEqual([]);
     ed.destroy();
+  });
+});
+
+describe('the @人 popup and table cells share Enter', () => {
+  const TABLE_MD = '| a | b |\n| --- | --- |\n| 1 | 2 |';
+  const cellEnd = (ed: Editor) => {
+    let at = -1;
+    ed.state.doc.descendants((n, pos) => {
+      if (at < 0 && n.type.name === 'tableCell') at = pos + n.nodeSize - 2;
+      return true;
+    });
+    return at;
+  };
+  const pressEnter = (ed: Editor) => ed.view.dom.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  const hardBreaks = (ed: Editor) => {
+    let n = 0;
+    ed.state.doc.descendants((node) => {
+      if (node.type.name === 'hardBreak') n += 1;
+      return true;
+    });
+    return n;
+  };
+
+  it('with the popup open, Enter goes to the popup (it picks) — not a cell line break', () => {
+    const ed = makeEditor(TABLE_MD, { onKeyDown: (event) => event.key === 'Enter' });
+    ed.commands.setTextSelection(cellEnd(ed));
+    ed.commands.insertContent(' @wa');
+    expect(MentionSuggestionPluginKey.getState(ed.state)?.active).toBe(true);
+    pressEnter(ed);
+    expect(hardBreaks(ed)).toBe(0);
+    expect(ed.storage.markdown.getMarkdown()).not.toContain('<table');
+    ed.destroy();
+  });
+
+  it('when the popup declines the key, Enter in the cell is a GFM-safe line break', () => {
+    const ed = makeEditor(TABLE_MD, { onKeyDown: () => false });
+    ed.commands.setTextSelection(cellEnd(ed));
+    ed.commands.insertContent(' @wa');
+    pressEnter(ed);
+    expect(hardBreaks(ed)).toBe(1);
+    ed.commands.insertContent('next');
+    const out: string = ed.storage.markdown.getMarkdown();
+    expect(out).toContain('<br>');
+    expect(out).not.toContain('<table');
+    ed.destroy();
+  });
+
+  it('a bold mention next to CJK text keeps notifying after a save + reopen', () => {
+    const ed = makeEditor('');
+    ed.commands.setContent(
+      {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: '请' },
+              { type: 'text', text: '联系', marks: [{ type: 'bold' }] },
+              { type: 'text', text: '@王伟', marks: [{ type: 'link', attrs: { href: `/users/${WANG.handle}` } }, { type: 'bold' }] },
+              { type: 'text', text: '看一下' },
+            ],
+          },
+        ],
+      },
+      false,
+    );
+    const out: string = ed.storage.markdown.getMarkdown();
+    expect(extractMentionHandles(out)).toEqual([WANG.handle]);
+    ed.destroy();
+    const again = makeEditor(out);
+    expect(extractMentionHandles(again.storage.markdown.getMarkdown())).toEqual([WANG.handle]);
+    again.destroy();
   });
 });

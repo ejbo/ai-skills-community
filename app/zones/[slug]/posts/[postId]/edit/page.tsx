@@ -7,7 +7,9 @@ import { prisma } from '@/lib/db';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
 import { loadZoneBySlug, resolveZoneAccess, zoneSiteViewer } from '@/lib/zones/access';
 import { listZoneColumns } from '@/lib/zones/columns';
+import { canViewerEditZonePost } from '@/lib/zones/post-edit';
 import { getZonePostDetail } from '@/lib/zones/post-queries';
+import { isAutoPostSummary } from '@/lib/zones/post-summary';
 import { zonePostHref } from '@/lib/zones/shared';
 import type { ZoneCurrentUser } from '@/lib/zones/types';
 import { PostComposer } from '@/app/zones/_components/post/PostComposer';
@@ -33,12 +35,17 @@ export default async function EditZonePostPage({ params }: { params: { slug: str
   const locale = await getLocale();
   const post = await getZonePostDetail(params.postId, zone, access, viewer, { session, locale });
   if (!post) notFound();
-  // Content edits: author / co-author, or the zone's moderators (the PATCH route enforces the same rule).
-  if (!post.isAuthor && !access.canModerate) redirect(zonePostHref(zone.slug, post.id));
+  // Content edits go through the SAME policy the PATCH route enforces
+  // (`canEditZonePostContent`): the 主作者, a co-author who can still read the
+  // zone, or a moderator. Deciding with `isAuthor || canModerate` here used to
+  // hand a co-author outside a 仅成员可见 版块 a composer whose save then 403s.
+  if (!(await canViewerEditZonePost({ postId: post.id, isAuthor: post.isAuthor, access }))) {
+    redirect(zonePostHref(zone.slug, post.id));
+  }
   // The composer needs co-author and 指定成员 USER IDS (the API contract), which
   // the public views deliberately do not carry — read the join rows here. The
   // designated list is only meaningful (and only readable) for a `restricted`
-  // post, and this page is already gated on author-or-moderator above.
+  // post, and this page is already gated on the edit policy above.
   const [rows, columns, options] = await Promise.all([
     prisma.zonePostAuthor.findMany({
       where: { postId: post.id },
@@ -63,6 +70,13 @@ export default async function EditZonePostPage({ params }: { params: { slug: str
         ).map((r) => ({ userId: r.userId, user: toPublicAuthor(r.user, access.canSeeIdentity) }))
       : [];
 
+  // 摘要 left blank at save time is stored as an excerpt of the body. Loading
+  // that excerpt into the input would turn it into a "typed" summary on the next
+  // save and freeze the card on today's body — so the composer gets it back as
+  // blank (the 留空则自动截取正文 placeholder), exactly as the author left it.
+  // updateZonePost recognises the echo too; this keeps the INPUT honest.
+  const composerPost = isAutoPostSummary(post.summary, post.bodyMd) ? { ...post, summary: '' } : post;
+
   const currentUser: ZoneCurrentUser = {
     id: session.user.id,
     handle: session.user.handle,
@@ -76,7 +90,7 @@ export default async function EditZonePostPage({ params }: { params: { slug: str
         zone={{ id: zone.id, slug: zone.slug, name: zone.name }}
         access={access}
         currentUser={currentUser}
-        post={post}
+        post={composerPost}
         initialCoauthors={initialCoauthors}
         initialDesignated={initialDesignated}
         columns={columns}

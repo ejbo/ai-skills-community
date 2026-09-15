@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
@@ -7,7 +8,7 @@ import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
 
 const reviewSchema = z.object({
   rating: z.number().int().min(1).max(5),
-  bodyMd: z.string().max(2000).default(''),
+  bodyMd: withRichTextLimit(z.string(), 2000).default(''),
 });
 
 export async function GET(_req: Request, { params }: { params: { slug: string } }) {

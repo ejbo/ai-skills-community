@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { Prisma } from '@prisma/client';
 import { getLocale } from 'next-intl/server';
 import { auth } from '@/lib/auth';
@@ -89,7 +90,8 @@ const patchSchema = z
     type: z.enum(ZONE_POST_TYPES).optional(),
     title: z.string().trim().min(ZONE_LIMITS.postTitleMin).max(ZONE_LIMITS.postTitleMax).optional(),
     summary: z.string().trim().max(ZONE_LIMITS.postSummaryMax).optional(),
-    bodyMd: z.string().max(ZONE_LIMITS.postBodyMax).optional(),
+    // RichTextEditor field: VISIBLE length, the composer counter's measure (lib/rich-text-limit.ts).
+    bodyMd: withRichTextLimit(z.string(), ZONE_LIMITS.postBodyMax).optional(),
     coverKey: z.string().regex(ZONE_MEDIA_KEY_RE).regex(COVER_KEY_RE).nullable().optional(),
     linkUrl: z.string().max(2048).nullable().optional(),
     tags: z.array(z.string().max(64)).max(64).optional(),

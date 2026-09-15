@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { prisma } from '@/lib/db';
 import { gateApi } from '@/lib/admin';
 import { logAdmin } from '@/lib/audit';
@@ -96,7 +97,8 @@ const createSchema = z.object({
     .transform((s) => s.replace(/^@/, ''))
     .pipe(z.string().min(1).max(64)),
   tagline: z.string().trim().max(ZONE_LIMITS.taglineMax).default(''),
-  descriptionMd: z.string().max(ZONE_LIMITS.descriptionMax).default(''),
+  // Same visible-length measure as zoneInputSchema, which re-validates it (lib/rich-text-limit.ts).
+  descriptionMd: withRichTextLimit(z.string(), ZONE_LIMITS.descriptionMax).default(''),
   lab: z.string().trim().max(ZONE_LIMITS.labMax).default(''),
   department: z.string().trim().max(ZONE_LIMITS.departmentMax).default(''),
   visibility: z.enum(ZONE_VISIBILITIES).default('public'),

@@ -2,6 +2,7 @@
 // and the editor trust. Garbage degrades to the default; nothing built-in can
 // ever vanish; 关于 can never be hidden; custom cards are capped.
 import { describe, expect, it } from 'vitest';
+import { RICH_TEXT_RAW_CEILING_FACTOR } from '@/lib/markdown-text';
 import {
   DEFAULT_SIDEBAR_ORDER,
   MAX_SIDEBAR_CUSTOM_CARDS,
@@ -38,9 +39,9 @@ describe('parseSidebarLayout', () => {
     expect(l.hidden).toEqual(['pulse']);
   });
 
-  it('custom cards: bad ids, duplicates and empty cards are dropped; text is trimmed and capped', () => {
+  it('custom cards: bad ids, duplicates and empty cards are dropped; text is trimmed, titles capped', () => {
     const long = 'x'.repeat(SIDEBAR_CARD_TITLE_MAX + 10);
-    const body = 'y'.repeat(SIDEBAR_CARD_BODY_MAX + 10);
+    const body = `  ${'y'.repeat(SIDEBAR_CARD_BODY_MAX)}  `;
     const l = parseSidebarLayout({
       custom: [
         { id: 'custom:abcd1234', title: '  hello ', bodyMd: body },
@@ -53,8 +54,33 @@ describe('parseSidebarLayout', () => {
     });
     expect(l.custom.map((c) => c.id)).toEqual(['custom:abcd1234', 'custom:longtitle']);
     expect(l.custom[0].title).toBe('hello');
-    expect(l.custom[0].bodyMd).toHaveLength(SIDEBAR_CARD_BODY_MAX);
+    expect(l.custom[0].bodyMd).toBe(body.trim());
     expect(l.custom[1].title).toHaveLength(SIDEBAR_CARD_TITLE_MAX);
+  });
+
+  it('card bodies are measured by VISIBLE length and never cut into broken markup', () => {
+    // 50 coloured 60-character phrases: 3000 visible, ~4500 raw — what the editor counter calls "3000 / 4000".
+    const phrase = `<span data-color="red">${'字'.repeat(60)}</span>`;
+    const formatted = phrase.repeat(50);
+    expect(formatted.length).toBeGreaterThan(SIDEBAR_CARD_BODY_MAX);
+    const kept = parseSidebarLayout({ custom: [{ id: 'custom:fmt00001', title: 't', bodyMd: formatted }] });
+    expect(kept.custom[0].bodyMd).toBe(formatted);
+
+    // A STORED card slightly over the cap keeps rendering whole (the editor's red counter asks for the trim;
+    // the write schema is what refuses it) — it is never sliced mid-tag.
+    const slightlyOver = `${formatted}${'y'.repeat(SIDEBAR_CARD_BODY_MAX)}`;
+    const read = parseSidebarLayout({ custom: [{ id: 'custom:over0001', title: 't', bodyMd: slightlyOver }] });
+    expect(read.custom[0].bodyMd).toBe(slightlyOver);
+
+    // Past the raw ceiling nothing valid could have written it: the card is dropped whole.
+    const garbage = parseSidebarLayout({
+      custom: [
+        { id: 'custom:huge0001', title: 'garbage', bodyMd: 'y'.repeat(SIDEBAR_CARD_BODY_MAX * RICH_TEXT_RAW_CEILING_FACTOR + 1) },
+        { id: 'custom:fine0001', title: 'fine', bodyMd: 'ok' },
+      ],
+    });
+    expect(garbage.custom.map((c) => c.id)).toEqual(['custom:fine0001']);
+    expect(garbage.order).not.toContain('custom:huge0001');
   });
 
   it('caps custom cards at MAX_SIDEBAR_CUSTOM_CARDS and appends unlisted ones to order', () => {

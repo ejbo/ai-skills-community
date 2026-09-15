@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { logAdmin } from '@/lib/audit';
@@ -68,7 +69,8 @@ const formField = z.enum(['required', 'optional', 'off']);
 
 const contentSchema = z.object({
   title: z.string().trim().min(1).max(VOTE_TITLE_MAX).optional(),
-  descriptionMd: z.string().max(VOTE_DESCRIPTION_MAX).optional(),
+  // RichTextEditor field (VoteEditor): VISIBLE length, like its counter (lib/rich-text-limit.ts).
+  descriptionMd: withRichTextLimit(z.string(), VOTE_DESCRIPTION_MAX).optional(),
   announcement: z.string().trim().max(VOTE_ANNOUNCEMENT_MAX).optional(),
   coverKey: z.string().max(200).nullable().optional(),
   startAt: isoDate.nullable().optional(),

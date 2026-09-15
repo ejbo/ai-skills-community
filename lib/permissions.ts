@@ -140,10 +140,16 @@ export function isStaff(holder: PermissionHolder | null | undefined): boolean {
  * where role information belongs.
  */
 export function publicRoleBadge(
-  role: { key: string; name: string; permissions?: readonly string[] | null } | null | undefined,
-): { key: string; name: string } | null {
+  role:
+    | { key: string; name: string; description?: string | null; permissions?: readonly string[] | null }
+    | null
+    | undefined,
+): { key: string; name: string; description?: string | null } | null {
   if (!role || role.key === MEMBER_ROLE_KEY) return null;
   if (isStaff({ roleKey: role.key, permissions: role.permissions })) return null;
+  // `description` rides along only when the caller SELECTED it (the 名片 badge
+  // detail shows what 专家 means); existing callers keep the exact old shape.
+  if ('description' in role) return { key: role.key, name: role.name, description: role.description ?? null };
   return { key: role.key, name: role.name };
 }
 

@@ -12,6 +12,7 @@ import { Avatar } from '@/components/Avatar';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
 import { ZONE_LIMITS } from '@/lib/zones/shared';
+import { isRichTextTooLong } from '@/lib/markdown-text';
 import type { ZoneCommentView, ZoneCurrentUser } from '@/lib/zones/types';
 import { currentLoginHref } from '@/lib/auth/callback-path';
 
@@ -44,7 +45,8 @@ export function CommentBox({
   const router = useRouter();
   const [bodyMd, setBodyMd] = useState(editing?.initialBody ?? '');
   const [busy, setBusy] = useState(false);
-  const tooLong = bodyMd.trim().length > ZONE_LIMITS.commentMax;
+  // Visible length, like the server (lib/rich-text-limit.ts): formatting spans are not counted.
+  const tooLong = isRichTextTooLong(bodyMd.trim(), ZONE_LIMITS.commentMax);
 
   async function submit() {
     const trimmed = bodyMd.trim();

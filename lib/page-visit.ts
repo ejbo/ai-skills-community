@@ -33,6 +33,7 @@ export const PAGE_NAMES: readonly PageNameEntry[] = [
   ['/dashboard', '我的面板'],
   ['/users/[handle]', '用户主页'],
   ['/settings', '账号设置'],
+  ['/settings/card', '名片设置'],
   ['/settings/notifications', '通知设置'],
   ['/settings/privacy', '隐私设置'],
   ['/settings/tags', '我的标签'],

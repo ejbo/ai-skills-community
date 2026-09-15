@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { prisma } from '@/lib/db';
 import { apiReason } from '@/lib/api-errors';
 import { auth } from '@/lib/auth';
@@ -8,12 +9,13 @@ import { logAdmin } from '@/lib/audit';
 import { deleteUnreferencedMediaFiles } from '@/lib/discussion-media';
 import { MAX_PINNED_POSTS } from '@/lib/discussion-queries';
 import { notifyMentions } from '@/lib/mention-notify';
+import { markdownToPlainText } from '@/lib/markdown-text';
 
 export const dynamic = 'force-dynamic';
 
 const patchSchema = z
   .object({
-    bodyMd: z.string().trim().min(1).max(8000).optional(),
+    bodyMd: withRichTextLimit(z.string().trim().min(1), 8000).optional(),
     pinned: z.boolean().optional(),
   })
   .refine((v) => v.bodyMd !== undefined || v.pinned !== undefined, {
@@ -127,7 +129,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
       action: 'delete_post',
       targetType: 'post',
       targetId: before.id,
-      details: { excerpt: before.bodyMd.slice(0, 80) },
+      details: { excerpt: markdownToPlainText(before.bodyMd, { max: 80 }) },
     });
   }
 

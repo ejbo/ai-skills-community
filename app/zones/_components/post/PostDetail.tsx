@@ -11,6 +11,11 @@
 // section header stay in step with live inserts/deletes; like / bookmark
 // state is created ONCE (useLikeBookmark) and shared by the action bar and
 // the context strip. View recording is the RSC page's job.
+//
+// `canEdit` is decided by the RSC (`canViewerEditZonePost` → the PATCH route's
+// own `canEditZonePostContent`) and is the ONLY edit gate on this page: the
+// draft banner, the header's 编辑 and the action bar's 编辑 pill all read it,
+// so a co-author the zone gate would refuse never sees an entry that 403s.
 
 import { useRef, useState } from 'react';
 import Link from 'next/link';
@@ -40,6 +45,7 @@ export function PostDetail({
   focusId,
   related = [],
   leadRoles,
+  canEdit,
 }: {
   post: ZonePostDetailView;
   zone: { id: string; slug: string; name: string };
@@ -50,6 +56,8 @@ export function PostDetail({
   related?: ZonePostCardView[];
   /** handle → 主版主 / 版主 (built by the RSC page from the zone owner + moderators). */
   leadRoles?: LeadRoles;
+  /** Server-decided content-edit gate (see the file header). */
+  canEdit: boolean;
 }) {
   const t = useTranslations('zones');
   const band = usePageBand();
@@ -59,7 +67,6 @@ export function PostDetail({
   const titleRef = useRef<HTMLHeadingElement>(null);
   const commentsRef = useRef<HTMLElement>(null);
   const authors = [post.author, ...post.coauthors];
-  const canEdit = post.isAuthor || access.canModerate;
 
   const jumpToComments = () => commentsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -96,7 +103,7 @@ export function PostDetail({
 
         {/* First in the column so `sticky` pins it at the top; zero-height until the h1 leaves. */}
 
-        <PostHeader post={post} zone={zone} leadRoles={leadRoles} titleRef={titleRef} />
+        <PostHeader post={post} zone={zone} leadRoles={leadRoles} titleRef={titleRef} canEdit={canEdit} />
 
         <div className={`mt-8 ${HEADING_SCROLL_MARGIN}`}>
           {post.bodyMd.trim() ? (
@@ -113,6 +120,7 @@ export function PostDetail({
           post={post}
           zoneSlug={zone.slug}
           access={access}
+          canEdit={canEdit}
           currentUser={currentUser}
           lb={lb}
           commentCount={commentCount}

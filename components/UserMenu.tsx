@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   ChevronDown,
-  LayoutDashboard,
   LibraryBig,
   LogOut,
   Settings,
@@ -26,9 +25,11 @@ import { useAnchoredPanel } from '@/components/useAnchoredPanel';
 import { withBasePath } from '@/lib/base-path';
 import { Avatar } from '@/components/Avatar';
 
-// Avatar dropdown. Navigation to the viewer's OWN surfaces (主页 / 面板 / 书架 /
-// 设置) plus sign-out — never an authoring action, which is why 上传 Skill lives
-// on /skills and not here.
+// Avatar dropdown. Navigation to the viewer's OWN surfaces (主页 / 书架 / 设置)
+// plus sign-out — never an authoring action, which is why 上传 Skill lives on
+// /skills and not here. There is no 面板 entry any more: /dashboard merged into
+// the 个人主页 as its owner-only 工作台 tab, so 主页 IS the way in (the old URL
+// only redirects).
 //
 // Shares the bubble-menu motion and the portaled panel with 收纳 and the
 // language menu (components/BubbleMenuPanel.tsx).
@@ -54,7 +55,6 @@ export function UserMenu({ user }: { user: MenuUser }) {
 
   const links: { href: string; Icon: LucideIcon; label: string }[] = [
     { href: `/users/${user.handle ?? user.id}`, Icon: User, label: t('profile') },
-    { href: '/dashboard', Icon: LayoutDashboard, label: t('dashboard') },
     { href: '/library/shelf', Icon: LibraryBig, label: t('shelf') },
     { href: '/settings', Icon: Settings, label: t('settings') },
     // The operator seeing their own tools — not a role badge shown to others.

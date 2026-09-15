@@ -8,6 +8,7 @@ import { relativeTime } from '@/lib/i18n-date';
 import { CornerDownRight, Loader2, Trash2 } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 import { RichTextEditor } from '@/components/RichTextEditor';
+import { isRichTextTooLong } from '@/lib/markdown-text';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
@@ -369,7 +370,8 @@ function CommentBox({
   const g = useTranslations();
   const [bodyMd, setBodyMd] = useState('');
   const [busy, setBusy] = useState(false);
-  const tooLong = bodyMd.trim().length > 2000;
+  // Visible length, like the server (lib/rich-text-limit.ts): formatting spans are not counted.
+  const tooLong = isRichTextTooLong(bodyMd.trim(), 2000);
 
   async function submit() {
     const trimmed = bodyMd.trim();

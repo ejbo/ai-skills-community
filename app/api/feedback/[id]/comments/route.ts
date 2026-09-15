@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
@@ -9,7 +10,7 @@ import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
 import { notifyMentions } from '@/lib/mention-notify';
 
 const createSchema = z.object({
-  bodyMd: z.string().trim().min(1).max(2000),
+  bodyMd: withRichTextLimit(z.string().trim().min(1), 2000),
   // parentId must be a TOP-LEVEL comment (2-level flat threads, same contract
   // as video comments); replyToId marks which comment gets the notification.
   // min(1): an empty string would skip validation yet still hit the FK.

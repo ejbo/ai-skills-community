@@ -45,7 +45,14 @@ import {
   type ZoneSort,
   withConfiguredInstitutes,
 } from './shared';
-import { parseSidebarLayout, type ZoneSidebarLayout } from './sidebar';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
+import {
+  MAX_SIDEBAR_CUSTOM_CARDS,
+  SIDEBAR_CARD_BODY_MAX,
+  SIDEBAR_CARD_TITLE_MAX,
+  parseSidebarLayout,
+  type ZoneSidebarLayout,
+} from './sidebar';
 import { deleteZoneMediaFile, isValidZoneMediaKey, zoneMediaPublicUrl } from './storage';
 import type { ZoneCardView, ZoneDetailView, ZoneMemberView, ZoneMembershipView, ZoneRoleView } from './types';
 
@@ -657,6 +664,32 @@ export interface ZoneInput {
   sidebar: ZoneSidebarLayout;
 }
 
+/**
+ * zod: a 主页布局 write (版块设置 → 主页布局 PATCH, and the create payload). The
+ * SHAPE is validated here — card count and field lengths are a 400, never a
+ * truncation — and parseSidebarLayout then normalises the rest (unknown ids
+ * dropped, missing built-ins appended, `about` never hidden). A card body is a
+ * RichTextEditor field, so it is capped by VISIBLE length like the editor's
+ * counter shows (lib/rich-text-limit.ts); trimmed first, because the parser
+ * judges the trimmed body and the two must reach the same verdict.
+ */
+export const sidebarLayoutInputSchema = z
+  .object({
+    order: z.array(z.string().max(40)).max(40).optional(),
+    hidden: z.array(z.string().max(40)).max(20).optional(),
+    custom: z
+      .array(
+        z.object({
+          id: z.string().max(40),
+          title: z.string().max(SIDEBAR_CARD_TITLE_MAX),
+          bodyMd: withRichTextLimit(z.string().trim(), SIDEBAR_CARD_BODY_MAX),
+        }),
+      )
+      .max(MAX_SIDEBAR_CUSTOM_CARDS)
+      .optional(),
+  })
+  .transform((v) => parseSidebarLayout(v));
+
 /** zod: full create payload (defaults applied); use `zoneInputSchema.partial()` for PATCH bodies. */
 export const zoneInputSchema = z.object({
   name: z.string().trim().min(ZONE_LIMITS.nameMin).max(ZONE_LIMITS.nameMax),
@@ -666,7 +699,8 @@ export const zoneInputSchema = z.object({
     .toLowerCase()
     .refine(isValidZoneSlug, { message: 'invalid_slug' }),
   tagline: z.string().trim().max(ZONE_LIMITS.taglineMax).default(''),
-  descriptionMd: z.string().max(ZONE_LIMITS.descriptionMax).default(''),
+  // RichTextEditor field: VISIBLE length, the editor counter's measure (lib/rich-text-limit.ts).
+  descriptionMd: withRichTextLimit(z.string(), ZONE_LIMITS.descriptionMax).default(''),
   lab: z.string().trim().max(ZONE_LIMITS.labMax).default(''),
   department: z.string().trim().max(ZONE_LIMITS.departmentMax).default(''),
   themeColor: z
@@ -680,7 +714,9 @@ export const zoneInputSchema = z.object({
   allowMemberColumns: z.boolean().default(true),
   links: z.unknown().transform((v) => parseZoneLinks(v)).default([]),
   topics: z.unknown().transform((v) => sanitizeZoneTopics(v)).default([]),
-  sidebar: z.unknown().transform((v) => parseSidebarLayout(v)).default({}),
+  // Same shape as the PATCH route: an over-long card body is a 400 here too, never
+  // a normaliser cut (parseSidebarLayout never slices a body).
+  sidebar: sidebarLayoutInputSchema.default({}),
 });
 
 export const zonePatchSchema = zoneInputSchema.partial();
@@ -714,7 +750,9 @@ export async function createZone(input: ZoneInput, ownerId: string): Promise<{ i
           slug,
           name,
           tagline: input.tagline.trim().slice(0, ZONE_LIMITS.taglineMax),
-          descriptionMd: input.descriptionMd.slice(0, ZONE_LIMITS.descriptionMax),
+          // No raw `.slice()`: zod capped it by VISIBLE length, and a raw cut would
+          // truncate a formatted body the counter said fit (or split a tag).
+          descriptionMd: input.descriptionMd,
           lab: input.lab.trim().slice(0, ZONE_LIMITS.labMax),
           department: input.department.trim().slice(0, ZONE_LIMITS.departmentMax),
           themeColor: normalizeThemeColor(input.themeColor),
@@ -794,7 +832,8 @@ export async function updateZone(
     throw new ZoneError('slug_immutable');
   }
   if (patch.tagline !== undefined) data.tagline = patch.tagline.trim().slice(0, ZONE_LIMITS.taglineMax);
-  if (patch.descriptionMd !== undefined) data.descriptionMd = patch.descriptionMd.slice(0, ZONE_LIMITS.descriptionMax);
+  // Validated by visible length upstream (zoneInputSchema / the PATCH route) — never re-cut raw here.
+  if (patch.descriptionMd !== undefined) data.descriptionMd = patch.descriptionMd;
   if (patch.lab !== undefined) data.lab = patch.lab.trim().slice(0, ZONE_LIMITS.labMax);
   if (patch.department !== undefined) data.department = patch.department.trim().slice(0, ZONE_LIMITS.departmentMax);
   if (patch.themeColor !== undefined) data.themeColor = normalizeThemeColor(patch.themeColor);

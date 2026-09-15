@@ -68,7 +68,8 @@ const FINISHED_PERCENT = 98;
 
 const AUTHOR_SELECT = { select: { handle: true, displayName: true, avatarUrl: true } };
 
-const DOC_CARD_SELECT = {
+/** Fields a `DocCard` needs — exported so the 个人主页 docs tab renders the same card as browse. */
+export const DOC_CARD_SELECT = {
   id: true,
   slug: true,
   title: true,

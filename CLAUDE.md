@@ -578,6 +578,101 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   must look complete without it. Contributor avatars are deliberately NOT rendered: the intranet
   cannot reach `avatars.githubusercontent.com`. i18n namespace `github_trending`; star/fork totals
   are formatted `en-US` on purpose so a 中文 viewer sees `12.4k` like github.com, not `1.2万`.
+- **富文本编辑器 v2 (2026-09-14, NO migration) — 继续书写、文字样式、代码块、任意附件、帖子可编辑.** Owner:
+  「粘贴或插入表格/图片后无法切换到下一行」「文字颜色、背景色、选中文字变行内代码、字号字体」「附件支持 json、py、各类文件，
+  能预览就预览，不能就下载」「技术专区发完的帖子要能再次编辑」「code block 参照 aceternity code-block」. It touches every
+  `RichTextEditor` surface (发帖/Wiki/话题/活动/视频描述/公告/Skill/评论…). Contracts, each load-bearing:
+  - **ONE extension list**: `components/editor/rich-text-extensions.ts#buildRichTextExtensions(opts)` (React-free).
+    `RichTextEditor` passes its React node views through `views`; tests build the SAME list — never hand-copy an
+    extension array into a test again (six copies had drifted, one with the table/mention order reversed). Order is
+    load-bearing: `StarterKit.configure({ code: false, codeBlock: false })`, Link, `TABLE_EXTENSIONS` BEFORE
+    `MentionSuggestion` (the @ popup must get Enter inside a cell), images, CodeBlock, format marks, poll, embed/upload,
+    Placeholder, Markdown, `FlowExtension` last.
+  - **Flow (`components/editor/flow-*.ts`)**: (1) the block-image serializer calls `state.closeBlock(node)` (skipped when
+    `node.isInline` — stickers). Before this EVERY block after an image was glued onto the image line (`![](x)## H`) and a
+    second save flattened tables/headings/code for good; `pnpm content:repair-glued-images` (dry-run by default,
+    `--apply` to write, `lib/glued-images.ts`) finds and repairs rows written by the old serializer — run it on
+    production. (2) A trailing-paragraph `appendTransaction` with `addToHistory:false`: a pristine editor emits 0
+    updates and `can().undo()` is false; the poll/embed normalizers are `addToHistory:false` too (Undo used to turn
+    cards back into tokens), and the value-sync effect skips its first run per editor instance. (3) One placement rule
+    for block inserts (`flow-insert.ts#placeBlockNode`): the author's empty line is kept, a paragraph always follows,
+    blocks never land in a cell; image uploads use insert BATCHES with mapped positions so N parallel uploads all land.
+    (4) A NodeSelection on a block atom + typing/IME/Enter opens a paragraph after it instead of replacing the node.
+    (5) Tables: Enter/Shift-Enter in a cell = hard break stored as `<br>` (the table stays GFM — a split cell used to
+    silently turn the whole table into raw HTML); Mod-Enter / ArrowDown on the last row / ArrowRight at the last cell
+    leave the table; the strip has 上方/下方加段落 and stays MOUNTED (hidden) while the doc has a table so the page does not
+    jump; `isGfmTable` accepts only one-paragraph cells (anything richer takes the raw-HTML path intact) and column
+    alignment round-trips. (6) The gap cursor is a visible full-width 2px line; clicking below the last block lands in
+    the trailing paragraph; the block image wrapper keeps its prose margins OUTSIDE the hit box. (7)
+    `flow-markdown.ts` replaces tiptap-markdown's serializer state so emphasis delimiters never move across `[ ] ( )`,
+    another delimiter kind, a surrogate half/ZWJ/combining mark — else `**看[文档](/x**)` corrupted links and bold
+    mentions; when a run cannot be valid markdown it is written as `<strong>/<em>/<del>`. (8) `flow-parse.ts`: soft
+    breaks parse as a space (no more `codeis` gluing), own-line `[poll:]`/`[embed:]` tokens are isolated into their own
+    block before parsing, pasted HTML images are lifted out of `<p>` with width/height/style dropped. (9)
+    `unsupported-markdown.ts` warns when a body holds constructs the schema cannot keep (linked images, images in list
+    items, task lists, footnotes, raw HTML) — opening and saving such a body still loses them.
+  - **文字样式 = four custom marks** (`components/editor/format-marks.ts`, NO `@tiptap/extension-text-style` — it is not
+    importable under pnpm strict): textColor / textBg / fontSize / fontFamily stored as `<span data-color|data-bg|
+    data-size|data-font="v">` with CLOSED value sets from `lib/rich-marks.ts` (the single contract the marks, the
+    sanitize schema, the palette CSS and the plain-text helpers all read). Priority 1001–1004 — ABOVE Link: at 100 bold+CJK
+    corrupts, at 101 a coloured @mention stops extracting (no notification). Never store `style=`, class names or raw
+    colours (sanitize cannot restrict CSS per property; raw colours cannot follow the themes). parseHTML accepts only our
+    span shape, so pasted Word/web colours come in as plain text; a guard plugin strips invalid values. `InlineCode`
+    (replaces StarterKit's `code`) coexists with the four formats and links but still refuses bold/italic/strike (probed:
+    corrupts saved code next to CJK) and refuses code over a mention. UI = `TextStyleMenu` (one Baseline trigger after
+    行内代码; compact = colour/background/clear, full adds 字号/字体), portaled, moves off the selection it formats
+    (`avoid-selection.ts`), `tone="reader"` auto-detected inside `.reader-root`. Palette = `app/rich-text.css` RGB tokens
+    for light/dark AND the 知识库 reader themes (`lib/rich-text-ground.ts` decides which ground a surface paints on).
+  - **`lib/markdown.ts` closed the arbitrary-class hole**: `span`/`code`/`pre` className used to accept ANY value, so a
+    body posted through the API could render `<span class="fixed inset-0 z-[100]">` as a full-page overlay link. span now
+    keeps only highlight.js token classes + the four data attributes with enumerated values; code keeps
+    `language-*`/`hljs`; pre takes none. Do not widen it back.
+  - **Plain text & limits**: every excerpt/notification/search/heading-id sink goes through `lib/markdown-text.ts`
+    (`markdownToPlainText`, `markdownInlineToPlainText`, `richTextLength`, `stripRichFormatting`, `htmlMarkupIn`) — real
+    tags only (`a < b > c` survives), entities decoded, code-only bodies fall back to their first code line.
+    `extractHeadings` uses `headingPlainText` so server ids match the client's textContent ids. Length caps on
+    RichTextEditor fields count VISIBLE length: server `withRichTextLimit(z.string(), N)` (`lib/rich-text-limit.ts`, raw
+    ceiling ×4) and client `isRichTextTooLong` — the editor counter uses the same function, so a comment the client
+    allows can never 400. SKILL.md fallback bodies and AI contexts use `stripRichFormatting`. 技术专区 `summary`: an auto
+    excerpt is no longer frozen on first save (`lib/zones/post-summary.ts#nextPostSummary`).
+  - **代码块 = Aceternity Code Block look** (owner reference): dark slate-900 panel in BOTH themes, header = filename or
+    language + copy (Check for 2 s), line numbers, `{1,3-5}` highlighted lines. Reader: `lib/markdown-code-lines.ts`
+    rehype plugin runs AFTER sanitize (so it needs no schema entry) and rebuilds frame attributes from validated values
+    only; fence meta is recovered by source offset because rehype-raw drops `code.data.meta`; `measureCodeLines` bounds
+    the split work (the naive splitter was breaks × depth — one small body could stall the single server process);
+    over budget = plain frame without numbers. `components/code/CodeFrame.tsx` (reader) and `CodeBlock.tsx` (raw code,
+    file preview) share the frame; highlight.js comes from `lib/hljs-client.ts#getHljs()` (the SAME core + 37 grammar
+    modules rehype-highlight already bundles — never `import('highlight.js/lib/common')`, that shipped a second copy);
+    NO auto-detect (plain .txt/.log were painted as YAML/SQL). Editor: `code-block-extension.ts` + `CodeBlockView.tsx`
+    (language select, filename input, copy, decoration highlighting only when an edit touches code, Enter keeps
+    indentation, Tab = 4 spaces for python else 2); the original fence info string is kept verbatim in `rawInfo` until
+    language/filename/highlight change.
+  - **任意附件**: `lib/files/file-types.ts` is THE table (key ext `safeKeyExt` = `[a-z0-9]{1,10}` else `bin`, MIME only a
+    hint — most source files arrive with an EMPTY type and .svg arrives as image/*; `serveClassOf`, `contentTypeFor`,
+    `previewClassOf`, `languageForExt`, `DANGEROUS_EXTS` = warning, not a block). Every key regex (`ZONE_MEDIA_KEY_RE`,
+    `EMBED_FILE_KEY_RE`, `lib/uploads/post-media-keys.ts`) is built from `SAFE_KEY_EXT_PATTERN` — widen them TOGETHER or
+    re-editing a post drops the row and unlinks the file. Decisions read the KEY's extension, never the display name.
+    Serving = `lib/uploads/serve.ts` for zone AND discussion media: real Content-Type only for raster image / mp4-webm-mov
+    / audio / PDF (inline); html/svg/xml/js/code → `text/plain`, everything else octet-stream, both `attachment` +
+    `CSP: sandbox` + `CORP: same-origin` (never on PDF); nosniff always; the download name gets the key's extension forced
+    on (`?name=run.bat` on a .py key → `run.bat.py`). The X-Accel handoff drops app headers, so
+    `deploy/ai-community.nginx.conf` re-adds them via `map $uri` (a test pins the map to the table) — **reload nginx after
+    deploying** (pitfall #3: `kill -HUP`, never systemctl). Zone upload route has `hasFreeSpace()` now. Preview =
+    `components/files/FileViewer.tsx` (surface-neutral, lazy): code/text via CodeBlock (first 1 MiB by Range, NUL sniff,
+    UTF-8 → GB18030 fallback), JSON pretty, CSV table (200 rows per page, 50 cols), markdown rendered/source,
+    html/svg/xml SOURCE only, office via the host's node, everything else ONE 不支持预览 card + ink 下载. 讨论区 uses it in
+    `FileViewerDrawer`. 打开原页面 is offered only when `opensInBrowser(key)` (a download-served file would just download).
+  - **帖子编辑入口**: `lib/zones/post-edit.ts#canViewerEditZonePost` wraps the same `canEditZonePostContent` the PATCH
+    route enforces and is the ONE check for the edit page, the header 编辑 button (published posts; drafts have the
+    banner's 继续编辑), the action bar 编辑 pill and PostRow's author link. The ⋯ trigger had `px-3.5` beating `px-0`
+    (dots squeezed invisible) and the bar was `lg:static` inside a blur stacking context (menu painted UNDER the
+    comments) — keep `pillBase` padding-free and the bar `lg:relative`.
+  - **Phone navbar**: below `sm` the right cluster no longer overflows (it made the layout viewport 415 px on a 390 px
+    phone, clipping every right-anchored popover/drawer); 主题 and 语言 move into `NavMoreMenu` there, and
+    `useAnchoredPanel` clamps to `visualViewport`.
+  - Known, deliberately not done: pasted external (hotlinked) images are kept as external links (re-hosting needs an
+    egress route — owner decision); zip entry listing / ipynb cells; search still ILIKEs raw bodies (markup words can
+    match); 意见反馈 has no author edit and shorts have no caption-edit UI.
 - **表情包 (Stickers, migration `20260807150000_add_stickers_polls`)**: WeChat-style personal
   meme library, ONE integration pair — the 😊 button in `RichTextEditor`'s toolbar (every
   composer gets it) and a src-prefix branch in `MarkdownRenderer`. `UserSticker` = per-user
@@ -960,8 +1055,8 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
     drafts; the embed AND poll normalizers dispatch their initial transaction with `preventUpdate`, else a pristine
     post is "dirty" on open (autosave + a 恢复 banner nobody asked for). Reading page: `MarkdownRenderer
     size="article"`, `PostRail` (240 px rail ↔ 40 px strip whose hover/tap opens an OVERLAY — never a width tween
-    while someone is mid-sentence), `PostContextStrip` (`top-[var(--nav-offset)]`), `ReadProgress` hairline,
-    `useLikeBookmark` shared by the action bar and the strip, `BodyImageLightbox` (ONE delegated click on
+    while someone is mid-sentence), `ReadProgress` hairline (the old scroll-up `PostContextStrip` was DELETED in
+    1951333 — do not target it), `useLikeBookmark` shared by the action bar, `BodyImageLightbox` (ONE delegated click on
     `ZoneMarkdown`; stickers by RAW src prefix, linked images and embed thumbnails are skipped).
   - **Motion grammar** = `lib/motion.ts` `TWEEN_FAST` / `TWEEN` / `TWEEN_PANE` (+ the used-for / never-for table
     there); the whole budget is the M1–M27 table in the redesign spec — titles, prose, avatars, first-paint
@@ -1173,8 +1268,8 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   raw header is that page's full URL — storing it raw would re-leak the redacted path). The roles
   migration ALSO rewrites existing staff rows (path → template, referrer → NULL); `pnpm roles:sync`
   repeats that data step for `db push` deploys.
-- **用户卡片 (hover card)**: `components/user/UserHoverCard.tsx` — hover any person and a
-  profile card (banner/avatar/角色/@handle/DeptTag/签名/标签/counts) fades in from
+- **用户卡片 (hover card)**: `components/user/UserHoverCard.tsx` — hover any person and their
+  customizable 名片 (see 「名片 ProfileCard + 悬停卡片」 below) fades in from
   `GET /api/users/[handle]/card`. It is wired app-wide through `Avatar`: **pass `handle` to
   `<Avatar/>` and it self-wraps** — that is the one thing to remember when adding a new surface
   that renders another user. Omit `handle` ONLY for the viewer's own avatar (navbar, composers,
@@ -1184,8 +1279,8 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   box — same trap as `DeptTag`'s tooltip and `ImageLightbox`); nesting is **self-suppressing**
   via context, so a call site may still wrap an avatar+name cluster in `<UserHoverCard>` to make
   the NAME hoverable without stacking two cards on the avatar inside; and a null/401 fetch
-  **closes** rather than leaving a skeleton (the endpoint needs a session, so anonymous visitors
-  get no card). One fetch per handle per page (module-level cache) on 150 ms hover intent.
+  **closes** rather than leaving a skeleton (the endpoint needs a session; signed-out viewers now
+  get no hover at all). One fetch per handle per viewer (60 s cache) on 150 ms hover intent.
   标签 (`UserTag`/`UserTagAssignment`): admin-assigned in bulk or singly at `/manage/user-tags`,
   auto-granted ones (版主) synced by `lib/user-tags.ts`, and the user picks which to display at
   `/settings/tags`.
@@ -1391,17 +1486,81 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
     translated text in.
   - **`/manage` admin UI stays Chinese by design** (internal ops tool); notification/email bodies are
     stored data, not UI, so they don't follow the viewer's locale either.
-- **Profile vs Dashboard (deliberately different products)**: `/users/[handle]` is the **public
-  showcase** — skills, library submissions, posts, forum topics, recent comments, shelf, events —
-  every row deep-links into the real surface. `/dashboard` is the **private workspace** (drafts,
-  subscriptions with update flags, pending download requests, edit/manage buttons). Don't merge them,
-  and don't add owner-only tooling to the profile beyond the small "面板 / 隐私 / 设置" links.
-  Per-section visibility is user-controlled via six `User.showProfile*` booleans (migration
-  `20260730213610_add_profile_section_visibility`, toggles at Settings → 隐私). Same contract as
-  `isPrivate`: `lib/profile-queries.ts` gates each section **server-side** — a hidden section is
-  never queried for other viewers, so its rows never reach the client. Owner + admins always see
-  everything, marked with a 仅自己可见 badge. Shelf/comment/doc sections only ever surface
-  `visibility: public` + `status: ready` docs, even for the owner.
+- **个人主页 = 展示 + 工作台 (2026-09-14, migration `20260914000000_user_profile_card`)** — owner
+  decision 「个人主页和我的面板功能重复了，合并一下」 REVERSED the old "Profile vs Dashboard, never
+  merge" rule. `/users/[handle]` is now the one page: a public showcase of EVERYTHING the member
+  published, plus an owner-only **工作台** tab (`?tab=workspace`, the old dashboard: drafts, all-state
+  skills/docs, subscriptions with updates, favourites, pending requests, attended events).
+  `/dashboard` is kept ONLY as a login-gated redirect to that tab (PAGE_NAMES pins the route); the
+  avatar menu has no 面板 entry any more. Contracts:
+  - **Data**: `UserProfile` (1:1, kept off the hot `User` row): `headline`, `aboutMd`, `interests`,
+    `links`, `layout`, `pins`, `card`, `cardMedia{Kind,Key}`/`cardPosterKey`/`cardLoopKey` (keys only,
+    `@unique`). Every JSON column has ONE sanitizer in the import-free `lib/profile/shared.ts`
+    (`parseProfileLayout` / `parseCardConfig` / `sanitizeProfileLinks` (http(s) only) / `sanitizePins`)
+    that runs on write AND read; view types in `lib/profile/types.ts`.
+  - **板块** = `PROFILE_SECTIONS` (11: skills docs posts topics videos zones events votes feedback
+    comments shelf), ordered + hidden via `UserProfile.layout`, edited at 设置 → 隐私 → 主页板块.
+    The six `User.showProfile*` booleans are LEGACY and read-only: `layout` NULL ⇒ derive from them
+    (the `db push` safety net; the migration backfills rows for members who had turned any off; all
+    six off ⇒ everything hidden, including sections added later). Never write those columns again.
+  - **Viewer model** is `resolveProfileViewer` (`lib/profile/queries.ts`) and `viewer.allowed` is the
+    ONLY list of sections that are ever queried: `LOGIN_ONLY_SECTIONS` (videos/zones/votes — their
+    source surfaces are login-walled) never reach anonymous viewers; hidden sections are visible only
+    to the owner and `identity` holders (badged 仅自己可见). `?as=visitor` (owner only) re-runs every
+    gate with `PREVIEW_VISITOR_ID`, a signed-in member with no memberships. Each section reuses its
+    domain's own gate (`DISCOVERABLE_SKILL_WHERE`, `BROWSABLE_DOC_WHERE`, `PUBLIC_READY_DOC` for
+    shelf/doc comments (doc comments signed-in only), `SHORTS_PUBLIC`+`PUBLISHED_PUBLIC`,
+    `listZoneFeed({authorId})` = readable zones + post visibility incl. co-authors,
+    `listEventsByAuthor`/`toPublicEvent`, `listVoteActivitiesByCreator`) — never re-derive one here.
+    Hero figures and card stats count only sections the viewer may see.
+  - **精选 pins** (≤6, `POST /api/me/profile/pins`): pinning checks ownership + the item's public gate;
+    rendering re-gates per viewer and silently drops dead pins; the write path prunes dead pins when
+    the list is full and the owner sees a 「N 个精选已失效 · 清理」 affordance (`{prune:true}`).
+  - **工作台** data (`lib/profile/workspace.ts`) reads only the owner's own rows and `WorkspaceTab`
+    re-checks the session itself; `loadWorkspaceAttentionCount` feeds the tab badge and must agree
+    with the 待处理 panel.
+- **名片 ProfileCard + 悬停卡片 (2026-09-14)** — `components/profile-card/**` is THE card, three styles
+  from `CardConfig.style`: `holo` (React Bits `<ProfileCard/>` port: tilt engine writing CSS vars,
+  pattern-masked holographic shine, glass bar), `reflective` (React Bits `<ReflectiveCard/>`: member
+  photo/loop under frosted metal, per-instance SVG filter id, never a webcam), `minimal` (site-themed
+  surface). All CSS is scoped under `.pc-root` in `profile-card.css`; the idle shine runs only for an
+  interactive card in the viewport; tilt is gated on fine pointer + reduced motion + `card.tilt`.
+  Colour comes only from `cardPalette(theme)` (numbers → rgba, no stored string reaches CSS) — the card
+  is the member's MATERIAL, so colour is allowed there (配色契约), chrome around it stays ink.
+  - **Hover card**: `UserHoverCard` renders `<ProfileCard size="sm">` from
+    `GET /api/users/[handle]/card` (built by `loadProfileCardView`, the ONE builder shared with the
+    profile hero and the editor preview). The card module is LAZY-loaded on first hover intent so its
+    JS/CSS stay out of the root layout bundle; signed-out viewers get no hover at all (session
+    context); `components/user/card-cache.ts` caches only 200/404 for 60 s per viewer — call
+    `invalidateUserCard(handle)` after any save that changes a card. Portal at `z-[105]` (above the
+    z-[100] lightbox/drawers, below z-[115] badge popovers and the z-[120] toaster); clicks inside it
+    stop propagation (an avatar often sits inside a whole-card `<Link>`); keyboard focus on the
+    nearest `/users/<handle>` link opens it and Tab walks into it. The Avatar `handle` rule above still
+    applies — names are not wrapped yet (copy says 头像).
+  - **Card media** (`lib/profile/card-media-storage.ts`, root `uploads/profile-card/` so the existing
+    `/_uploads/` X-Accel location covers it): upload `POST /api/profile/media/upload` → attach
+    `PUT /api/me/profile/media`. Every key id carries an HMAC owner tag (`ownerTagFor(userId)`) and
+    attach rejects keys not minted for the caller. The PUBLIC route `/api/profile/media/[...key]`
+    serves a key only while an ACTIVE user's profile references it in the matching column, has an
+    explicit HEAD that never opens the file (Next maps HEAD→GET and never drains the body — an fd
+    leak), opens GET bodies lazily, and **404s every `video/` key: a video's original (full length,
+    audio, location atoms) is never public** — cards show the server poster and play the generated
+    ≤8 s muted loop (`-an -map_metadata -1`); no loop ⇒ poster only. Photos are metadata-stripped
+    twice: canvas re-encode in the browser (`app/settings/_components/strip-image.ts`, also avatar and
+    banner) and a container-level strip on the server keeping only EXIF Orientation — which is why
+    card uploads refuse AVIF (the server cannot strip it). The generic public `/api/uploads/[...key]`
+    404s the `profile-card/` namespace (`isPublicUploadKey`) so it can never bypass the gate, and both
+    routes share the lazy-body helper `openLazyFileBody`. Uploads that are never attached are swept
+    best-effort (owner-tagged, > 24 h, unreferenced) from the upload/delete routes.
+  - **Badges**: `ProfileBadge` = honorific role (`publicRoleBadge`, now with description) + visible
+    `UserTag`s (`icon` from `BADGE_ICONS`, description, granted date). `BadgeChip` opens a portaled
+    detail popover on hover/focus/tap; its Esc is captured so it closes only itself. Anonymous viewers
+    never trigger the 版主 reconcile write and never see login-walled auto badges.
+  - **Editors**: 设置 → 个人资料 (headline, 签名, 关于我, interests, links, banner), 设置 → **名片**
+    (`/settings/card`: media, style, theme, text, toggles, effects; live preview renders the owner view
+    in 名片 mode and the `PREVIEW_VISITOR_ID` view in 悬停时 mode so a 隐私账号 previews what others
+    really see; touch devices reframe only with the 调整取景 toggle on), 设置 → 隐私 → 主页板块,
+    设置 → 我的标签. Admin tag icons/descriptions at `/manage/user-tags`.
 - **Skill upload has exactly ONE entry**: the 上传 Skill button on `/skills` (Skills Center).
   It was removed from the user menu on purpose — the avatar dropdown is navigation to *your own*
-  surfaces (主页 / 面板 / 书架 / 设置), not an authoring action.
+  surfaces (主页 / 书架 / 设置 — 面板 merged into 主页's 工作台 tab), not an authoring action.

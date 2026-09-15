@@ -204,6 +204,64 @@ export async function listVoteActivities(
   };
 }
 
+export type CreatedVoteCard = PublicVoteCard & { publishedAt: string | null };
+
+export interface VotesByCreatorOptions {
+  page?: number;
+  pageSize?: number;
+  /** Narrow to these ids (个人主页精选) — still published + not deleted. */
+  ids?: string[];
+}
+
+/**
+ * 个人主页: the PUBLISHED activities a member created (drafts stay in their own
+ * 我发起的 tab / the 工作台). Same card mapping as the hub, so results
+ * visibility and creator trimming are decided exactly as they are there.
+ * Member SUBMISSIONS are deliberately not listable by account: under 匿名评选
+ * that list would reveal who made which work.
+ */
+export async function listVoteActivitiesByCreator(
+  creatorId: string,
+  viewer: VoteViewer,
+  opts: VotesByCreatorOptions = {},
+): Promise<Omit<VoteListResult, 'items'> & { items: CreatedVoteCard[] }> {
+  const pageSize = Math.min(48, Math.max(1, Math.trunc(opts.pageSize ?? VOTE_PAGE_SIZE)));
+  const where: Prisma.VoteActivityWhereInput = {
+    ...BASE_WHERE,
+    status: 'published',
+    creatorId,
+    ...(opts.ids ? { id: { in: [...new Set(opts.ids)].slice(0, 100) } } : {}),
+  };
+  const total = await prisma.voteActivity.count({ where });
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(Math.max(1, Math.trunc(opts.page ?? 1) || 1), pageCount);
+  const rows = await prisma.voteActivity.findMany({
+    where,
+    orderBy: [{ publishedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }, { id: 'desc' }],
+    skip: (safePage - 1) * pageSize,
+    take: pageSize,
+    include: CARD_INCLUDE,
+  });
+  const winnerIds = rows
+    .filter((r) => voteOver(r) && resultsVisibleFor(r, r.startAt, viewer))
+    .map((r) => r.id);
+  const winners = await winnerThumbsFor(winnerIds);
+  return {
+    items: rows.map((r) => ({
+      ...toVoteCard(r, viewer, winners.get(r.id) ?? null),
+      publishedAt: r.publishedAt?.toISOString() ?? null,
+    })),
+    total,
+    page: safePage,
+    pageCount,
+  };
+}
+
+/** How many activities `listVoteActivitiesByCreator` would list. */
+export async function countVoteActivitiesByCreator(creatorId: string): Promise<number> {
+  return prisma.voteActivity.count({ where: { ...BASE_WHERE, status: 'published', creatorId } });
+}
+
 /** Admin-featured published votes for the hub's 精选 band (newest featured first). */
 export async function listFeaturedVoteActivities(viewer: VoteViewer): Promise<PublicVoteCard[]> {
   const rows = await prisma.voteActivity.findMany({

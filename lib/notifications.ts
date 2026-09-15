@@ -6,6 +6,7 @@
 
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { markdownToPlainText } from '@/lib/markdown-text';
 import {
   appUrl,
   notifyAuthorOfRequest,
@@ -64,9 +65,21 @@ function stripMeta(row: Record<string, unknown>): Partial<Pref> {
   return out as Partial<Pref>;
 }
 
+/** PLAIN strings only (titles, names, request messages) — a markdown body goes through `bodySnippet`. */
 function truncate(s: string, n = 140): string {
   const t = s.replace(/\s+/g, ' ').trim();
   return t.length > n ? `${t.slice(0, n)}…` : t;
+}
+
+/**
+ * A markdown body (comment, reply, mention site) as the bell/email snippet. The
+ * bell renders it as text and the email HTML-escapes it, so anything left in it
+ * shows literally: formatting spans, `<img width>`, mention link syntax, `&lt;`.
+ * lib/markdown-text.ts strips all of that and cuts on code points. Rows written
+ * before this existed keep their raw snippet — only new notifications are clean.
+ */
+function bodySnippet(md: string, n = 140): string {
+  return markdownToPlainText(md, { max: n });
 }
 
 // ─── Comment / reply ───────────────────────────────────────────────────────
@@ -85,7 +98,7 @@ export async function notifyCommentReply(opts: {
   if (opts.recipientId === opts.actorId) return; // never notify yourself
   try {
     const pref = await getPref(opts.recipientId);
-    const snippet = truncate(opts.bodyMd);
+    const snippet = bodySnippet(opts.bodyMd);
     const what = opts.isReplyToReply ? '回复' : '评论';
     const link = `/videos/${opts.videoSlug}?focus=${opts.focusId}`;
     if (pref.inAppCommentReply) {
@@ -132,7 +145,7 @@ export async function notifyFeedbackReply(opts: {
   if (opts.recipientId === opts.actorId) return; // never notify yourself
   try {
     const pref = await getPref(opts.recipientId);
-    const snippet = truncate(opts.bodyMd);
+    const snippet = bodySnippet(opts.bodyMd);
     const what = opts.isReplyToComment ? '评论' : '反馈';
     const link = `/feedback/${opts.feedbackId}?focus=${opts.focusId}`;
     if (pref.inAppCommentReply) {
@@ -179,7 +192,7 @@ export async function notifyPostReply(opts: {
   if (opts.recipientId === opts.actorId) return; // never notify yourself
   try {
     const pref = await getPref(opts.recipientId);
-    const snippet = truncate(opts.bodyMd);
+    const snippet = bodySnippet(opts.bodyMd);
     const what = opts.isReplyToComment ? '评论' : '动态';
     const link = `/discussion/posts/${opts.postId}?focus=${opts.focusId}`;
     if (pref.inAppCommentReply) {
@@ -225,7 +238,7 @@ export async function notifyTopicReply(opts: {
   if (opts.recipientId === opts.actorId) return; // never notify yourself
   try {
     const pref = await getPref(opts.recipientId);
-    const snippet = truncate(opts.bodyMd);
+    const snippet = bodySnippet(opts.bodyMd);
     const what = opts.isReplyToComment ? '回复' : '帖子';
     const link = `/discussion/topics/${opts.topicId}?focus=${opts.focusId}`;
     if (pref.inAppCommentReply) {
@@ -400,7 +413,7 @@ export async function notifyLibraryReply(opts: {
       actorId: opts.actorId,
       type: opts.isReplyToComment ? 'reply_reply' : 'comment_reply',
       title: `${opts.actorName} ${opts.isReplyToComment ? '回复了你的评论' : `评论了《${truncate(opts.docTitle, 40)}》`}`,
-      body: truncate(opts.bodyMd),
+      body: bodySnippet(opts.bodyMd),
       link: `/library/${opts.docSlug}?focus=${opts.focusId}`,
     });
   } catch (e) {
@@ -427,6 +440,8 @@ export async function notifyLibraryNoteReply(opts: {
       actorId: opts.actorId,
       type: 'reply_reply',
       title: `${opts.actorName} 回复了你的阅读笔记`,
+      // Note replies are written in a plain textarea and shown as plain text
+      // (AnnotationsTab), so a markdown pass would only eat their `1.` / `- `.
       body: truncate(opts.bodyMd),
       link: `/library/${opts.docSlug}/read?ch=${opts.chapterIndex}&hl=${opts.highlightId}`,
     });
@@ -549,7 +564,7 @@ export async function notifyZoneReply(opts: {
   if (opts.recipientId === opts.actorId) return; // never notify yourself
   try {
     const pref = await getPref(opts.recipientId);
-    const snippet = truncate(opts.bodyMd);
+    const snippet = bodySnippet(opts.bodyMd);
     const what = opts.isReplyToComment ? '评论' : '帖子';
     const link = `/zones/${opts.zoneSlug}/posts/${opts.postId}?focus=${opts.focusId}`;
     if (pref.inAppCommentReply) {
@@ -686,7 +701,7 @@ export async function notifyMention(opts: {
 }): Promise<void> {
   const recipients = [...new Set(opts.recipientIds)].filter((id) => id && id !== opts.actorId);
   if (recipients.length === 0) return;
-  const snippet = truncate(opts.bodyMd);
+  const snippet = bodySnippet(opts.bodyMd);
   const where = opts.site.title ? `${opts.site.what}「${truncate(opts.site.title, 40)}」` : opts.site.what;
   await Promise.all(
     recipients.map(async (recipientId) => {

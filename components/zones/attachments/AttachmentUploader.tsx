@@ -18,7 +18,7 @@ import { useTranslations } from 'next-intl';
 import { FileUp, ImagePlus, Loader2, Video } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 import { LiveList } from '@/components/motion';
-import { ZONE_FILE_ACCEPT, ZONE_IMAGE_TYPES, ZONE_VIDEO_TYPES, formatBytes } from '@/lib/zones/shared';
+import { ZONE_IMAGE_TYPES, ZONE_VIDEO_TYPES, formatBytes } from '@/lib/zones/shared';
 import type { ZoneAttachmentView } from '@/lib/zones/types';
 import { AttachmentCard, attachmentPreviewRef } from './AttachmentCard';
 import {
@@ -168,11 +168,13 @@ export function AttachmentUploader({
     if (!list || disabled) return;
     const files = Array.from(list);
     for (const file of files) {
-      const kind = forcedKind ?? classify(file);
-      if (!kind) {
-        pushToast('error', t('attach_upload_error', { name: clampAttachmentName(file.name), error: t('attach_err_unsupported_type') }));
-        continue;
-      }
+      // The 图片 / 视频 buttons are a HINT, not a gate: an svg picked through 图片
+      // (or anything through the OS dialog's "All files") would 415 on the strict
+      // media kinds, so a file that is not what the button says goes up as a FILE —
+      // every file is attachable. 文件 forces `file` for real (a .png picked there is
+      // filed under 文件 and still previews as an image — serving and preview read
+      // the key's extension, not the kind). classify() is total: nothing is refused here.
+      const kind: UploadKind = forcedKind === 'file' ? 'file' : classify(file);
       // Sequential: the server's burst limiter and the disk both prefer it, and
       // progress rows stay readable.
       // eslint-disable-next-line no-await-in-loop
@@ -232,7 +234,8 @@ export function AttachmentUploader({
 
       <input ref={imageInput} type="file" accept={IMAGE_ACCEPT} multiple hidden onChange={(e) => { void addFiles(e.target.files, 'image'); e.target.value = ''; }} />
       <input ref={videoInput} type="file" accept={VIDEO_ACCEPT} multiple hidden onChange={(e) => { void addFiles(e.target.files, 'video'); e.target.value = ''; }} />
-      <input ref={fileInput} type="file" accept={ZONE_FILE_ACCEPT} multiple hidden onChange={(e) => { void addFiles(e.target.files, 'file'); e.target.value = ''; }} />
+      {/* No `accept` on 文件: any file type is attachable (lib/files/file-types.ts decides how it is served and previewed). */}
+      <input ref={fileInput} type="file" multiple hidden onChange={(e) => { void addFiles(e.target.files, 'file'); e.target.value = ''; }} />
 
       {busy && (
         <ul className="mt-3 space-y-1.5">

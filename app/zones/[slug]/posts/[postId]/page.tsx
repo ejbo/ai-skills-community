@@ -7,6 +7,7 @@ import { prisma } from '@/lib/db';
 import { loadZoneBySlug, resolveZoneAccess, zoneSiteViewer, type ZoneAccessRow, type ZoneSiteViewer } from '@/lib/zones/access';
 import { buildLeadRoles, type LeadRoles } from '@/lib/zones/lead-roles';
 import { ZONE_MODERATOR_ROLE_KEY } from '@/lib/zones/permissions';
+import { canViewerEditZonePost } from '@/lib/zones/post-edit';
 import { getZonePostDetail, listZonePosts, recordZonePostView } from '@/lib/zones/post-queries';
 import type { ZoneAccess, ZoneCurrentUser, ZonePostCardView, ZonePostDetailView } from '@/lib/zones/types';
 import { PostDetail } from '@/app/zones/_components/post/PostDetail';
@@ -117,6 +118,8 @@ export default async function ZonePostPage({
   }
 
   const related = post.status === 'published' && !post.accessLocked ? await loadRelated(zone, access, viewer, post) : [];
+  // The edit entries (header 编辑, action-bar pill, draft banner) follow the PATCH policy, never `isAuthor || canModerate`.
+  const canEdit = await canViewerEditZonePost({ postId: post.id, isAuthor: post.isAuthor, access });
   const currentUser: ZoneCurrentUser | null = session?.user
     ? { id: session.user.id, handle: session.user.handle, displayName: session.user.displayName, avatarUrl: session.user.avatarUrl ?? null }
     : null;
@@ -132,6 +135,7 @@ export default async function ZonePostPage({
         focusId={focus || undefined}
         related={related}
         leadRoles={leadRoles}
+        canEdit={canEdit}
       />
     </div>
   );

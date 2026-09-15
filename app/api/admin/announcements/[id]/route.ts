@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { prisma } from '@/lib/db';
 import { gateApi } from '@/lib/admin';
 import { logAdmin } from '@/lib/audit';
@@ -10,7 +11,8 @@ export const dynamic = 'force-dynamic';
 
 const schema = z.object({
   title: z.string().min(1).max(200).optional(),
-  bodyMd: z.string().max(40000).optional(),
+  // RichTextEditor field (AnnouncementEditor maxLength 40000): VISIBLE length, like its counter.
+  bodyMd: withRichTextLimit(z.string(), 40000).optional(),
   publish: z.boolean().optional(), // true → publish (fan out if newly published); false → unpublish
 });
 

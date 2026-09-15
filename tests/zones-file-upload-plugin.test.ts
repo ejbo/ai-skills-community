@@ -17,6 +17,8 @@ import {
   type FileUploadDeps,
 } from '@/components/zones/embeds/file-upload-plugin';
 import { UploadError, type AttachmentDraft } from '@/components/zones/attachments/upload-core';
+import { beginInsertBatch, flowBatchKey } from '@/components/editor/flow-extension';
+import { buildRichTextExtensions } from '@/components/editor/rich-text-extensions';
 import { EMBED_TOKEN_RE } from '@/lib/zones/shared';
 
 function makeEditor(content: string) {
@@ -304,6 +306,107 @@ describe('removing a body card while another file is still uploading', () => {
     expect(out).toContain(`[embed:file:${KEY}]`);
     expect(out).not.toContain('file/first.pdf');
     expect(out).toContain('tail');
+    ed.destroy();
+  });
+});
+
+// ED-13: a 5-file 📎 pick in the REAL composer stack. Each card used to bring its
+// own empty paragraph (the waiting widgets mapped past it) and the caret stayed
+// above all of them, so typing landed ABOVE the attachments.
+describe('a multi-file pick in the shipped editor stack', () => {
+  const makeRealEditor = (content: string) =>
+    new Editor({
+      extensions: buildRichTextExtensions({
+        embed: {},
+        upload: { labels: { uploading: 'up', queued: 'queued', failed: 'failed', cancel: 'cancel', retry: 'retry' } },
+        codeHighlight: false,
+      }),
+      content,
+    });
+  const tops = (ed: Editor) => {
+    const out: string[] = [];
+    ed.state.doc.forEach((n) => out.push(n.type.name === 'paragraph' ? `p(${n.textContent})` : n.type.name));
+    return out;
+  };
+  const pick = (ed: Editor, count: number, upload: FileUploadDeps['upload']) => {
+    const view = ed.view;
+    const at = view.state.selection.to;
+    const batch = beginInsertBatch(view, at);
+    for (let i = 0; i < count; i += 1) {
+      startFileUpload(view, new File(['x'], `f${i}.py`), at, deps(upload).d, { batch });
+    }
+    return batch;
+  };
+  const settleAll = async () => {
+    for (let i = 0; i < 20; i += 1) await tick();
+  };
+  let n = 0;
+  const instant: FileUploadDeps['upload'] = async () => {
+    n += 1;
+    return { key: `file/k${n}.py`, draft: draft(`file/k${n}.py`) };
+  };
+
+  it('after Enter on a new line: cards in order, no blank lines, typing continues BELOW them', async () => {
+    const ed = makeRealEditor('Attachments below:');
+    await tick();
+    ed.commands.setTextSelection(ed.state.doc.firstChild!.nodeSize - 1);
+    ed.view.someProp('handleKeyDown', (f) => f(ed.view, new KeyboardEvent('keydown', { key: 'Enter' })));
+    const batch = pick(ed, 5, instant);
+    await settleAll();
+    expect(placeholders(ed)).toBe(0);
+    ed.commands.insertContent('text after attachments');
+    expect(tops(ed)).toEqual(['p(Attachments below:)', ...Array(5).fill('contentEmbed'), 'p(text after attachments)']);
+    expect(flowBatchKey.getState(ed.state)?.has(batch)).toBe(false); // ended once the last file settled
+    ed.destroy();
+  });
+
+  it('with the caret at the end of the text: same, on a new line after the cards', async () => {
+    const ed = makeRealEditor('intro');
+    await tick();
+    ed.commands.setTextSelection(ed.state.doc.firstChild!.nodeSize - 1);
+    pick(ed, 3, instant);
+    await settleAll();
+    ed.commands.insertContent('next');
+    expect(tops(ed)).toEqual(['p(intro)', 'contentEmbed', 'contentEmbed', 'contentEmbed', 'p(next)']);
+    ed.destroy();
+  });
+
+  it('the waiting placeholders sit right after the last card that landed', async () => {
+    const ed = makeRealEditor('intro');
+    await tick();
+    ed.commands.setTextSelection(ed.state.doc.firstChild!.nodeSize - 1);
+    const first = deferred<{ key: string; draft: AttachmentDraft }>();
+    let calls = 0;
+    pick(ed, 3, () => {
+      calls += 1;
+      return calls === 1 ? first.promise : new Promise(() => {});
+    });
+    first.resolve({ key: 'file/one.py', draft: draft('file/one.py') });
+    await settleAll();
+    const card = nodes(ed)[0];
+    const cardEnd = card.pos + ed.state.doc.nodeAt(card.pos)!.nodeSize;
+    const positions = (uploadKey.getState(ed.state)?.find() ?? []).map((d) => d.from);
+    expect(positions).toEqual([cardEnd, cardEnd]);
+    ed.destroy();
+  });
+
+  it('when the author moves the caret meanwhile, the cards still stack and the caret stays put', async () => {
+    const ed = makeRealEditor('intro\n\nelsewhere');
+    await tick();
+    ed.commands.setTextSelection(ed.state.doc.firstChild!.nodeSize - 1);
+    const gate = deferred<void>();
+    pick(ed, 2, async () => {
+      await gate.promise;
+      n += 1;
+      return { key: `file/m${n}.py`, draft: draft(`file/m${n}.py`) };
+    });
+    ed.commands.setTextSelection(ed.state.doc.content.size - 2); // inside "elsewhere"
+    const caret = ed.state.selection.from;
+    gate.resolve();
+    await settleAll();
+    expect(tops(ed)).toEqual(['p(intro)', 'contentEmbed', 'contentEmbed', 'p(elsewhere)']);
+    expect(ed.state.selection.$from.parent.textContent).toBe('elsewhere');
+    expect(ed.state.selection.from).toBeGreaterThan(caret); // mapped past the cards, not moved
     ed.destroy();
   });
 });

@@ -1,4 +1,5 @@
 import yaml from 'js-yaml';
+import { stripRichFormatting } from '@/lib/markdown-text';
 
 /**
  * Pure SKILL.md synthesis — no DB/storage/env coupling, so it is safe to import
@@ -35,6 +36,11 @@ export function synthesizeSkillMd(skill: SkillMdSource, version: VersionMdSource
   if (Array.isArray(manifest.triggers) && manifest.triggers.length > 0) {
     frontmatter.triggers = manifest.triggers;
   }
-  const body = version.contentInline ?? skill.descriptionMd ?? '';
+  // The overview fallback was written in the site editor, so it may carry the
+  // editor's formatting spans (`<span data-color="red">`). They mean nothing in
+  // a SKILL.md that is installed into another agent's skill folder — strip them
+  // (markdown and any other HTML stay). `contentInline` is the author's own
+  // file and is served byte-for-byte.
+  const body = version.contentInline ?? stripRichFormatting(skill.descriptionMd ?? '');
   return `---\n${yaml.dump(frontmatter).trim()}\n---\n\n${body}`;
 }

@@ -1,16 +1,22 @@
 'use client';
 
+// 隐私账号 — saves on toggle (a single boolean has nothing to batch), rolls back on failure.
+// It changes what a hover card shows (@handle, 部门), so a saved flip drops this
+// tab's cached card of the member.
+
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
+import { invalidateUserCard } from '@/components/user/UserHoverCard';
+import { Switch } from '../_components/Switch';
 
-export function PrivacyForm({ initialIsPrivate }: { initialIsPrivate: boolean }) {
+export function PrivacyForm({ initialIsPrivate, handle }: { initialIsPrivate: boolean; handle: string }) {
   const t = useTranslations('settings');
   const [isPrivate, setIsPrivate] = useState(initialIsPrivate);
   const [saving, setSaving] = useState(false);
 
-  async function toggle() {
-    const next = !isPrivate;
+  async function toggle(next: boolean) {
+    if (saving) return;
     setIsPrivate(next);
     setSaving(true);
     try {
@@ -20,6 +26,7 @@ export function PrivacyForm({ initialIsPrivate }: { initialIsPrivate: boolean })
         body: JSON.stringify({ isPrivate: next }),
       });
       if (!res.ok) throw new Error();
+      invalidateUserCard(handle);
       pushToast('success', t('saved'));
     } catch {
       setIsPrivate(!next);
@@ -32,24 +39,21 @@ export function PrivacyForm({ initialIsPrivate }: { initialIsPrivate: boolean })
   return (
     <div className="flex items-start justify-between gap-6">
       <div>
-        <h3 className="text-sm font-medium">{t('privacy_toggle_label')}</h3>
-        <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted">{t('privacy_toggle_desc')}</p>
+        <h3 id="privacy-account-title" className="text-sm font-semibold tracking-tight">
+          {t('privacy_toggle_label')}
+        </h3>
+        <p id="privacy-account-desc" className="mt-1 max-w-lg text-xs leading-relaxed text-muted">
+          {t('privacy_toggle_desc')}
+        </p>
       </div>
-      <button
-        role="switch"
-        aria-checked={isPrivate}
-        disabled={saving}
-        onClick={toggle}
-        className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition ${
-          isPrivate ? 'bg-zinc-900 dark:bg-zinc-100' : 'bg-zinc-300 dark:bg-zinc-700'
-        } disabled:opacity-60`}
-      >
-        <span
-          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
-            isPrivate ? 'left-[22px]' : 'left-0.5'
-          }`}
-        />
-      </button>
+      <Switch
+        checked={isPrivate}
+        onChange={(v) => void toggle(v)}
+        busy={saving}
+        labelledBy="privacy-account-title"
+        describedBy="privacy-account-desc"
+        className="mt-0.5"
+      />
     </div>
   );
 }

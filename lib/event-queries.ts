@@ -297,6 +297,64 @@ export async function listPinnedUpcoming(viewer: Viewer): Promise<PublicEventIte
   return rows.map((r) => toPublicEvent(r, viewer, attending.has(r.id)));
 }
 
+export interface EventsByAuthorOptions {
+  page?: number;
+  pageSize?: number;
+  /** Narrow to these ids (个人主页精选) — still under the soft-delete gate. */
+  ids?: string[];
+  /** `start` (default): newest start first · `created`: newest organised first (最近动态). */
+  order?: 'start' | 'created';
+}
+
+export type AuthoredEventItem = PublicEventItem & { createdAt: string };
+
+/**
+ * 个人主页: the events a member organised — every non-deleted one, cancelled
+ * included (they stay visible and badged, as on /events). Not a date-tab view,
+ * so no upcoming/past filter. `attending` is only ever the VIEWER's own flag;
+ * who else attends is never listed anywhere.
+ */
+export async function listEventsByAuthor(
+  authorId: string,
+  viewer: Viewer,
+  opts: EventsByAuthorOptions = {},
+): Promise<{ items: AuthoredEventItem[]; total: number; page: number; pageCount: number }> {
+  const pageSize = Math.min(50, Math.max(1, Math.trunc(opts.pageSize ?? 20)));
+  const where: Prisma.EventWhereInput = {
+    ...BASE_WHERE,
+    authorId,
+    ...(opts.ids ? { id: { in: [...new Set(opts.ids)].slice(0, 100) } } : {}),
+  };
+  const total = await prisma.event.count({ where });
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(Math.max(1, Math.trunc(opts.page ?? 1) || 1), pageCount);
+  const rows = await prisma.event.findMany({
+    where,
+    include: EVENT_INCLUDE,
+    orderBy:
+      opts.order === 'created'
+        ? [{ createdAt: 'desc' }, { id: 'desc' }]
+        : [{ startAt: 'desc' }, { id: 'desc' }],
+    skip: (safePage - 1) * pageSize,
+    take: pageSize,
+  });
+  const attending = await attendingIdsFor(viewer.id, rows.map((r) => r.id));
+  return {
+    items: rows.map((r) => ({
+      ...toPublicEvent(r, viewer, attending.has(r.id)),
+      createdAt: r.createdAt.toISOString(),
+    })),
+    total,
+    page: safePage,
+    pageCount,
+  };
+}
+
+/** How many events `listEventsByAuthor` would list. */
+export async function countEventsByAuthor(authorId: string): Promise<number> {
+  return prisma.event.count({ where: { ...BASE_WHERE, authorId } });
+}
+
 export async function getEventDetail(id: string, viewer: Viewer): Promise<PublicEventDetail | null> {
   const row = await prisma.event.findFirst({
     where: { id, deletedAt: null },

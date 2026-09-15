@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { Prisma, PostReaction } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { AUTHOR_IDENTITY_FIELDS, AUTHOR_IDENTITY_SELECT } from '@/lib/user-identity';
-import { POLL_TOKEN_GLOBAL_RE } from '@/lib/polls-shared';
+import { markdownToPlainText } from '@/lib/markdown-text';
 import {
   RETIRED_TAG_SLUGS,
   normalizeTagName,
@@ -595,20 +595,19 @@ export async function listTopics(filters: ListTopicsFilters) {
   return { items, page, pageSize, total, hasMore: page * pageSize < total };
 }
 
-/** Plain-text preview of a markdown body for list rows (CocoLoop-style 阅读更多). */
+/**
+ * Plain-text preview of a markdown body for list rows (CocoLoop-style 阅读更多),
+ * profile excerpts and the homepage 社区此刻 hot posts.
+ *
+ * Topic and reply bodies carry own-line `[embed:<kind>:<ref>]` / `[poll:<id>]`
+ * tokens, formatting spans, resized `<img width>` and raw-HTML tables; all of
+ * that — plus code blocks (a code-only body shows its first code line),
+ * entities and code-point-safe truncation — is decided
+ * in lib/markdown-text.ts, the one markdown → plain-text path, so a list row
+ * can never show `<span data color="red"` garbage again.
+ */
 export function excerptOf(md: string, max = 140): string {
-  const text = md
-    .replace(/```[\s\S]*?```/g, ' ') // code fences
-    .replace(POLL_TOKEN_GLOBAL_RE, ' ') // embedded 投票 tokens (incl. \[poll:…\] escaped form)
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ') // images
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // links → label
-    .replace(/[#>*_~`|-]+/g, ' ') // md syntax noise
-    .replace(/\s+/g, ' ')
-    .trim();
-  // Slice on code points, not UTF-16 units — a cut surrogate pair (emoji,
-  // CJK-Ext ideographs) would render as a lone '�'.
-  const cps = [...text];
-  return cps.length > max ? `${cps.slice(0, max).join('')}…` : text;
+  return markdownToPlainText(md, { max });
 }
 
 type ParticipantIdentity = {

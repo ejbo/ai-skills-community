@@ -41,8 +41,9 @@ model User {
   isPrivate           Boolean    @default(false)
   // 知识库阅读动态：关闭后不出现在文档的「正在阅读」名单里（计数不受影响）。
   showLibraryActivity Boolean    @default(true)
-  // 个人主页板块可见性（/users/[handle]）：关闭后该板块仅本人与管理员可见。
-  // 服务端裁剪 —— 关闭的板块数据不查询、不下发（同 isPrivate 的合同）。
+  // 个人主页板块可见性 —— LEGACY（2026-09-14 起由 UserProfile.layout 取代）。
+  // 只读兜底：UserProfile.layout 为 NULL（从未保存过布局，或 db push 部署跳过了迁移回填）
+  // 时，parseProfileLayout 按这六个开关推出 hidden。新写入一律进 layout，不要再写这些列。
   showProfileSkills   Boolean    @default(true)
   showProfileDocs     Boolean    @default(true)
   showProfilePosts    Boolean    @default(true)
@@ -173,6 +174,9 @@ model User {
   zonePostGrants        ZonePostViewer[]      @relation("ZonePostGrants")
   zonePostGrantsIssued  ZonePostViewer[]      @relation("ZonePostGrantsIssued")
 
+  // ── 个人主页与名片 (1:1, lib/profile/*) ──
+  profile UserProfile?
+
   @@index([handle])
   @@index([email])
   @@index([isAdmin])
@@ -269,6 +273,8 @@ model UserTag {
   description String?
   /// Palette token (zinc | blue | green | amber | rose | violet) — never raw CSS.
   color       String      @default("zinc")
+  /// 徽章图标 — BADGE_ICONS 里的一个 key（lib/profile/shared.ts），null ⇒ 按 kind 的默认图标。
+  icon        String?
   kind        UserTagKind @default(manual)
   sortOrder   Int         @default(100)
   createdAt   DateTime    @default(now())
@@ -298,6 +304,40 @@ model UserTagAssignment {
 
   @@id([userId, tagId])
   @@index([tagId])
+}
+
+// ─── 个人主页与名片 ───────────────────────────────────────────────────────
+// 1:1 with User, kept off the User row because User is read on every auth
+// lookup. Every JSON column has exactly one sanitizer in lib/profile/shared.ts
+// (parseProfileLayout / parseCardConfig / sanitizeProfileLinks / sanitizePins)
+// and is re-sanitized on READ as well as on write, so a hand-edited row can
+// never crash a render. Card media columns hold KEYS only (validated shape +
+// on-disk + unique); URLs are rebuilt server-side from them, never stored.
+model UserProfile {
+  userId        String   @id
+  /// 一句话头衔（名片 + 主页），≤ HEADLINE_MAX
+  headline      String?
+  /// 关于我 markdown，≤ ABOUT_MAX
+  aboutMd       String?
+  /// 兴趣 / 专长标签（成员自填），≤ MAX_INTERESTS
+  interests     String[] @default([])
+  /// [{label,url}] — http(s) only
+  links         Json     @default("[]")
+  /// {order, hidden}; NULL ⇒ derive from the legacy User.showProfile* flags
+  layout        Json?
+  /// [{kind,id}] 精选置顶 — re-gated per viewer at render
+  pins          Json     @default("[]")
+  /// 名片外观 {style, theme, status, label, …}
+  card          Json     @default("{}")
+  /// image | video
+  cardMediaKind String?
+  cardMediaKey  String?  @unique
+  cardPosterKey String?  @unique
+  cardLoopKey   String?  @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ─── Taxonomy ────────────────────────────────────────────────────────────
@@ -638,6 +678,7 @@ model FeedbackComment {
 
   @@index([feedbackId, createdAt])
   @@index([parentId])
+  @@index([authorId, createdAt])
 }
 
 /// 点赞 on a 意见反馈 comment or reply. One row per user per comment; the
@@ -1189,6 +1230,7 @@ model PostComment {
   @@index([postId, createdAt])
   @@index([postId, likeCount])
   @@index([parentId])
+  @@index([authorId, createdAt])
 }
 
 model PostCommentLike {
@@ -1337,6 +1379,7 @@ model DiscussionReply {
 
   @@index([topicId, createdAt])
   @@index([parentId])
+  @@index([authorId, createdAt])
 }
 
 /// 点赞 on a forum reply (both levels of the flat thread).

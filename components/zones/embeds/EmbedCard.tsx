@@ -32,9 +32,11 @@ import {
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { withBasePath } from '@/lib/base-path';
-import { formatBytes, hostnameOf, type EmbedKind } from '@/lib/zones/shared';
+import { fileDownloadHref, fileMetaParts } from '@/lib/files/display';
+import { hostnameOf, type EmbedKind } from '@/lib/zones/shared';
 import type { EmbedData, EmbedFailReason } from '@/lib/zones/types';
 import { usePreview } from '@/components/zones/preview/PreviewProvider';
+import { attachmentPreviewBadgeKey } from '@/components/zones/attachments/preview-badge';
 
 export const EMBED_KIND_ICONS: Record<EmbedKind, LucideIcon> = {
   library: BookOpen,
@@ -235,8 +237,9 @@ export function describeEmbed(
     }
     case 'file': {
       const d = embed.data;
-      const previewable =
-        d.kind === 'image' || d.kind === 'video' || d.ext === 'pdf' || d.previewStatus === 'ready';
+      // The same decision the attachment list and the preview panel use (keyed on
+      // the storage key's extension): 可预览 / 转换中 / 无法预览 / 仅下载.
+      const badgeKey = attachmentPreviewBadgeKey(d);
       return {
         title: d.name || d.ext.toUpperCase(),
         subtitle: null,
@@ -244,12 +247,14 @@ export function describeEmbed(
         description: '',
         image: d.kind === 'image' ? d.url : d.posterUrl,
         imageShape: 'wide',
-        meta: [d.ext ? d.ext.toUpperCase() : d.mimeType, formatBytes(d.sizeBytes)],
+        // EXT · size through the shared helper: a localized 文件 for an extension-less
+        // upload, never the client MIME (`application/octet-stream` wrapped the row).
+        meta: fileMetaParts(d.ext, d.sizeBytes, t('attach_type_generic')),
         author: null,
         // Plain anchor (not a Next Link) — the media route is not a page.
-        href: `${withBasePath(d.url)}?name=${encodeURIComponent(d.name)}`,
+        href: fileDownloadHref(d.url, d.name),
         external: true,
-        badge: previewable ? t('embed_badge_previewable') : d.previewStatus === 'pending' ? t('attach_preview_pending') : null,
+        badge: badgeKey === 'attach_previewable' ? t('embed_badge_previewable') : badgeKey ? t(badgeKey) : null,
       };
     }
     case 'link': {

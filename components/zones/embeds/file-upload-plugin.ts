@@ -7,8 +7,18 @@
 // contains a half-uploaded token, the composer's autosave stores nothing, and
 // a failed upload just drops the decoration. The DecorationSet is mapped
 // through every transaction, so typing above the placeholder keeps it glued
-// to its block. The final insert (`contentEmbed{kind:'file', ref:<key>}` +
-// an empty paragraph, at the mapped position) is ONE ordinary, undoable step.
+// to its block. The final insert (`contentEmbed{kind:'file', ref:<key>}` at the
+// mapped position, placed by the shared block rule — components/editor/flow-insert.ts)
+// is ONE ordinary, undoable step.
+//
+// A PICK is one group (`startFileUpload(…, { batch })`, an id from
+// FlowExtension's beginInsertBatch): after each card lands, the group's other
+// placeholders move to right after it, and the caret follows onto the line
+// below the cards while the author has not moved it. Before, every card brought
+// its own empty paragraph (the waiting widgets mapped PAST it, so the next card
+// found no text line to reuse — 70 px of blank between cards that the markdown
+// could not even store), and the caret stayed above all of them, so typing
+// "continued" above the attachments.
 //
 // Queue: one sequential FIFO per EditorView (WeakMap). The upload route's
 // burst limiter answers 429 + `retry-after`; the queue sleeps that long with
@@ -20,6 +30,8 @@
 // are handed in as strings by the editor — this module never imports next-intl.
 
 import { Extension } from '@tiptap/core';
+import { endInsertBatch, flowBatchKey, insertIntoBatch } from '@/components/editor/flow-extension';
+import { placeBlockNode } from '@/components/editor/flow-insert';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import { formatBytes } from '@/lib/zones/shared';
@@ -36,9 +48,11 @@ export const uploadKey = new PluginKey<DecorationSet>('zoneFileUpload');
 export type UploadPlaceholderState = 'uploading' | 'queued' | 'failed';
 
 export interface UploadPlaceholderMeta {
-  add?: { id: string; pos: number; name: string; sizeBytes: number };
+  add?: { id: string; pos: number; name: string; sizeBytes: number; batch?: string };
   remove?: { id: string };
   state?: { id: string; state: UploadPlaceholderState };
+  /** Re-seat every placeholder of a pick at `pos` (in the transaction's resulting doc). */
+  move?: { batch: string; pos: number };
 }
 
 /** Copy for the widget — translated by the editor, opaque here. */
@@ -62,6 +76,8 @@ const PAPERCLIP_SVG =
 
 interface WidgetSpec {
   id: string;
+  /** The pick this placeholder belongs to. */
+  batch?: string;
   el: HTMLElement;
   key: string;
   side: number;
@@ -159,6 +175,7 @@ export const FileUploadPlaceholder = Extension.create<FileUploadPlaceholderOptio
               const el = buildWidget(labels, meta.add);
               const spec: WidgetSpec = {
                 id: meta.add.id,
+                batch: meta.add.batch,
                 el,
                 key: `zone-upload-${meta.add.id}`,
                 // side 1: a widget maps with assoc 1, so when an EARLIER file of
@@ -179,6 +196,18 @@ export const FileUploadPlaceholder = Extension.create<FileUploadPlaceholderOptio
               const deco = findDecoration(set, meta.remove.id);
               if (deco) set = set.remove([deco]);
             }
+            if (meta.move) {
+              const { batch, pos } = meta.move;
+              const group = set.find(undefined, undefined, (spec) => (spec as WidgetSpec).batch === batch);
+              if (group.length > 0) {
+                const at = Math.max(0, Math.min(pos, tr.doc.content.size));
+                // Same element and key: the widget DOM is moved, not rebuilt (its progress bar keeps its width).
+                set = set.remove(group).add(
+                  tr.doc,
+                  group.map((d) => Decoration.widget(at, (d.spec as WidgetSpec).el, d.spec as WidgetSpec)),
+                );
+              }
+            }
             return set;
           },
         },
@@ -190,11 +219,20 @@ export const FileUploadPlaceholder = Extension.create<FileUploadPlaceholderOptio
   },
 });
 
-/** Top-level block boundary for a resolved pos — the same rule as insertContentEmbed. */
+/**
+ * The top-level block boundary a file dropped / picked at `pos` lands on — the
+ * same rule placeBlockNode applies to the card: an EMPTY top-level line, or the
+ * START of one, gets the card ABOVE it (the line the author just made stays the
+ * line after the cards); anywhere else, after the top-level block.
+ */
 export function blockPosFor(state: EditorState, pos: number): number {
   const clamped = Math.max(0, Math.min(pos, state.doc.content.size));
   const $pos = state.doc.resolve(clamped);
-  return $pos.depth === 0 ? $pos.pos : $pos.after(1);
+  if ($pos.depth === 0) return $pos.pos;
+  if ($pos.depth === 1 && $pos.parent.isTextblock && !$pos.parent.type.spec.code && ($pos.parent.content.size === 0 || $pos.parentOffset === 0)) {
+    return $pos.before(1);
+  }
+  return $pos.after(1);
 }
 
 /** Current (mapped) position of a placeholder; null once its block was deleted. */
@@ -224,6 +262,10 @@ interface Job {
   id: string;
   file: File;
   deps: FileUploadDeps;
+  /** The pick (FlowExtension insert batch id) this file belongs to. */
+  batch?: string;
+  /** First terminal state reached (inserted / failed / cancelled) — releases its hold on the batch once. */
+  settled: boolean;
   attempts: number;
   controller: AbortController | null;
   cancelled: boolean;
@@ -237,7 +279,33 @@ interface Queue {
 }
 
 const queues = new WeakMap<EditorView, Queue>();
+/** Unsettled jobs per insert batch; the batch is ended when the last one settles. */
+const batchHolds = new WeakMap<EditorView, Map<string, number>>();
 let seq = 0;
+
+function holdBatch(view: EditorView, batch: string) {
+  let holds = batchHolds.get(view);
+  if (!holds) {
+    holds = new Map();
+    batchHolds.set(view, holds);
+  }
+  holds.set(batch, (holds.get(batch) ?? 0) + 1);
+}
+
+/** A job reached its first terminal state: release its hold on the batch (once). */
+function settle(view: EditorView, job: Job) {
+  if (job.settled) return;
+  job.settled = true;
+  if (!job.batch) return;
+  const holds = batchHolds.get(view);
+  const left = (holds?.get(job.batch) ?? 1) - 1;
+  if (left > 0) {
+    holds?.set(job.batch, left);
+    return;
+  }
+  holds?.delete(job.batch);
+  endInsertBatch(view, job.batch);
+}
 
 function queueFor(view: EditorView): Queue {
   let q = queues.get(view);
@@ -258,17 +326,26 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 function finishInsert(view: EditorView, job: Job, key: string) {
   const pos = findPlaceholderPos(view.state, job.id);
   if (pos === null) return; // host block deleted mid-upload: the draft stays in the ledger only
-  const schema = view.state.schema;
-  const embed = schema.nodes[CONTENT_EMBED_NODE];
-  const paragraph = schema.nodes.paragraph;
-  if (!embed || !paragraph) return;
-  // ONE undoable step: the placeholder goes, the card comes in — plus an empty
-  // paragraph when nothing editable follows (doc end / another atom), so the
-  // caret always has a home; a batch of files does not stack blank lines.
-  const after = view.state.doc.resolve(pos).nodeAfter;
-  const content = after?.isTextblock ? [embed.create({ kind: 'file', ref: key })] : [embed.create({ kind: 'file', ref: key }), paragraph.create()];
-  const tr = view.state.tr.setMeta(uploadKey, { remove: { id: job.id } } satisfies UploadPlaceholderMeta);
-  tr.insert(pos, content);
+  const embed = view.state.schema.nodes[CONTENT_EMBED_NODE];
+  if (!embed) return;
+  const node = embed.create({ kind: 'file', ref: key });
+  // ONE undoable step: the placeholder goes and the card comes in at the
+  // placeholder's position — a text line after it is reused or created by the
+  // shared rule — and the rest of the pick's placeholders move to right AFTER
+  // this card, so the next card reuses the same line instead of stacking another.
+  const configure = (tr: Transaction, nodeEnd: number) =>
+    tr.setMeta(uploadKey, {
+      remove: { id: job.id },
+      ...(job.batch ? { move: { batch: job.batch, pos: nodeEnd } } : {}),
+    } satisfies UploadPlaceholderMeta);
+  if (job.batch && flowBatchKey.getState(view.state)?.has(job.batch)) {
+    // The flow batch decides whether the caret follows (the author has not moved it since the pick).
+    insertIntoBatch(view, job.batch, node, { at: pos, topLevel: true, configure: (tr, placed) => configure(tr, placed.nodePos + node.nodeSize) });
+    return;
+  }
+  const tr = view.state.tr;
+  const placed = placeBlockNode(tr, node, pos, { topLevel: true });
+  configure(tr, placed.nodePos + node.nodeSize);
   view.dispatch(tr);
 }
 
@@ -290,6 +367,7 @@ async function runJob(view: EditorView, job: Job): Promise<void> {
       job.deps.onDone(draft);
       finishInsert(view, job, key);
       job.deps.onBusy?.(false);
+      settle(view, job);
       return;
     } catch (err) {
       if (job.cancelled) return;
@@ -302,6 +380,8 @@ async function runJob(view: EditorView, job: Job): Promise<void> {
       job.failed = true;
       dispatchMeta(view, { state: { id: job.id, state: 'failed' } });
       job.deps.onBusy?.(false);
+      // A retry later lands at the placeholder without the batch (the caret no longer follows).
+      settle(view, job);
       job.deps.onError(job.file, err, () => retryJob(view, job));
       return;
     }
@@ -343,6 +423,16 @@ function cancelJob(view: EditorView, job: Job) {
   job.controller?.abort();
   dispatchMeta(view, { remove: { id: job.id } });
   if (wasWaiting) job.deps.onBusy?.(false);
+  settle(view, job);
+}
+
+export interface StartFileUploadOptions {
+  /**
+   * The pick this file belongs to: an id from FlowExtension's `beginInsertBatch`
+   * (one per pick / paste / drop). Its cards stack without blank lines and the
+   * caret follows them; the batch is ended once every file of it settled.
+   */
+  batch?: string;
 }
 
 /**
@@ -350,12 +440,19 @@ function cancelJob(view: EditorView, job: Job) {
  * upload. Returns the placeholder id + a cancel that aborts the XHR and
  * removes the widget.
  */
-export function startFileUpload(view: EditorView, file: File, rawPos: number, deps: FileUploadDeps): { id: string; cancel: () => void } {
+export function startFileUpload(
+  view: EditorView,
+  file: File,
+  rawPos: number,
+  deps: FileUploadDeps,
+  opts: StartFileUploadOptions = {},
+): { id: string; cancel: () => void } {
   seq += 1;
   const id = `u${Date.now().toString(36)}-${seq}`;
-  const job: Job = { id, file, deps, attempts: 0, controller: null, cancelled: false, failed: false };
+  const job: Job = { id, file, deps, batch: opts.batch, settled: false, attempts: 0, controller: null, cancelled: false, failed: false };
+  if (job.batch) holdBatch(view, job.batch);
 
-  dispatchMeta(view, { add: { id, pos: blockPosFor(view.state, rawPos), name: file.name, sizeBytes: file.size } });
+  dispatchMeta(view, { add: { id, pos: blockPosFor(view.state, rawPos), name: file.name, sizeBytes: file.size, batch: opts.batch } });
 
   // Wire the widget's own buttons (the DOM node lives as long as the decoration).
   const el = placeholderEl(view.state, id);

@@ -21,6 +21,7 @@
     "refresh-trending": "tsx scripts/refresh-trending.ts",
     "backfill:files": "tsx scripts/backfill-skill-files.ts",
     "votes:backfill-previews": "tsx scripts/backfill-vote-previews.ts",
+    "content:repair-glued-images": "tsx scripts/repair-glued-images.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

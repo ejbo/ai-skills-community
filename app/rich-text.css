@@ -1,0 +1,186 @@
+/* 富文本格式标记的调色板 — see lib/rich-marks.ts for the storage contract.
+   Imported from app/layout.tsx, so it reaches every surface that renders a
+   stored body (MarkdownRenderer → `.prose`) and every editor (`.rte-content`,
+   which is also the `.ProseMirror` element).
+
+   This palette is CONTENT, not chrome (配色契约): the author chose "red", so it
+   is red. What the page decides is only WHICH red, per ground, so a colour
+   stays readable wherever the body is shown:
+     • light ground (site light, 知识库 浅色 / 护眼 paper) — text ≈ Tailwind 600–700,
+       every text colour ≥ 4.5 : 1 (WCAG AA body text) on the page ground AND on
+       the sepia 护眼 paper, measured in Chrome; backgrounds are the 200 shades, solid;
+     • dark ground (site dark, 知识库 深色, or 自动 under a dark site) — text ≈ 300–400,
+       backgrounds are the 500–600 shades at --rt-bg-a alpha, so a highlight blends
+       into whatever card or panel it sits on instead of punching a hole in it.
+   Values are RGB triplets (the house `--text` convention) so a rule can add alpha.
+
+   The 知识库 reader has its OWN theme axis (`.reader-root[data-reader-theme]`,
+   app/library/[slug]/read/reader.css) and markdown renders inside it.
+   Redefining the tokens ON `.reader-root` makes its subtree inherit the
+   reader's choice even when it disagrees with the site's — the same pattern
+   reader.css uses for its --hl-* highlight palette. Stored content cannot carry
+   Tailwind `dark:` classes, so attribute selectors on CSS variables are the
+   only mechanism that follows both axes.
+
+   The palette must follow the GROUND the text is painted on, and inside the
+   reader not every ground is the reader's: the 评论 tab mounts the shared
+   DocComments board, whose cards (and the comment editor inside them) are the
+   site's `.surface` — white or zinc-900 by the SITE theme, with prose text
+   and `dark:` chrome that follow the site too. With the reader's tokens there,
+   reader 深色 on a site-light page painted yellow at 1.5 : 1 on white, and
+   reader 护眼 on a site-dark page put zinc-300 text on a solid yellow-200
+   highlight (1.3 : 1). So a `.surface` inside the reader takes the SITE tokens
+   back: the light block below matches it at (0,2,0), the dark block at (0,3,0)
+   under a dark site, and a declaration on the element beats what it would
+   inherit from `.reader-root`. lib/rich-text-ground.ts is the JS half of the
+   same rule (the editor picks its popover tone from it). */
+
+:root,
+.reader-root[data-reader-theme='light'],
+.reader-root[data-reader-theme='sepia'],
+.reader-root .surface {
+  --rt-c-gray: 105 105 115; /* between zinc-500 and 600 — 500 is 4.4:1 on 护眼 paper */
+  --rt-c-red: 205 32 32; /* red-600 deepened — 600 is 4.4:1 on 护眼 paper */
+  --rt-c-orange: 194 65 12; /* orange-700 */
+  --rt-c-yellow: 150 92 6; /* below yellow-700 — 600 is 2.9:1 on white, 700 4.5:1 on 护眼 */
+  --rt-c-green: 21 128 61; /* green-700 */
+  --rt-c-teal: 15 118 110; /* teal-700 */
+  --rt-c-blue: 37 99 235; /* blue-600 */
+  --rt-c-purple: 147 51 234; /* purple-600 */
+  --rt-c-pink: 200 30 105; /* pink-600 deepened — 600 is 4.2:1 on 护眼 paper */
+
+  --rt-bg-gray: 228 228 231; /* zinc-200 */
+  --rt-bg-red: 254 202 202;
+  --rt-bg-orange: 254 215 170;
+  --rt-bg-yellow: 254 240 138;
+  --rt-bg-green: 187 247 208;
+  --rt-bg-teal: 153 246 228;
+  --rt-bg-blue: 191 219 254;
+  --rt-bg-purple: 233 213 255;
+  --rt-bg-pink: 251 207 232;
+  --rt-bg-a: 1;
+
+  /* An inline-code chip sitting on a highlight: a translucent wash of the ink
+     instead of the zinc-100 chip, which would punch a grey hole in the colour. */
+  --rt-code-on-bg: rgb(24 24 27 / 0.08);
+
+  /* Font stacks — system fonts only (the intranet cannot load web fonts; the
+     self-hosted Inter / JetBrains Mono are latin subsets). */
+  --rt-font-serif: 'Songti SC', STSong, SimSun, 'Noto Serif CJK SC', 'Noto Serif SC', 'Source Han Serif SC', serif;
+  --rt-font-kai: 'Kaiti SC', STKaiti, KaiTi, 'Kaiti TC', BiauKai, serif;
+  --rt-font-mono: var(--font-geist-mono), 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+[data-theme='dark'],
+.reader-root[data-reader-theme='dark'],
+[data-theme='dark'] .reader-root[data-reader-theme='auto'],
+[data-theme='dark'] .reader-root .surface {
+  --rt-c-gray: 161 161 170; /* zinc-400 */
+  --rt-c-red: 248 113 113; /* red-400 */
+  --rt-c-orange: 251 146 60; /* orange-400 */
+  --rt-c-yellow: 250 204 21; /* yellow-400 */
+  --rt-c-green: 74 222 128; /* green-400 */
+  --rt-c-teal: 45 212 191; /* teal-400 */
+  --rt-c-blue: 96 165 250; /* blue-400 */
+  --rt-c-purple: 192 132 252; /* purple-400 */
+  --rt-c-pink: 244 114 182; /* pink-400 */
+
+  --rt-bg-gray: 113 113 122; /* zinc-500 */
+  --rt-bg-red: 220 38 38;
+  --rt-bg-orange: 234 88 12;
+  --rt-bg-yellow: 202 138 4;
+  --rt-bg-green: 22 163 74;
+  --rt-bg-teal: 13 148 136;
+  --rt-bg-blue: 37 99 235;
+  --rt-bg-purple: 147 51 234;
+  --rt-bg-pink: 219 39 119;
+  --rt-bg-a: 0.36;
+
+  --rt-code-on-bg: rgb(255 255 255 / 0.12);
+}
+
+/* ── the four formats ───────────────────────────────────────────────────────
+   Scoped to markdown surfaces + editors. `:is()` keeps one selector per rule
+   while the specificity stays that of a class, so the descendant rules below
+   still beat Typography's `.prose :where(a)` / the editor's `.rte .ProseMirror a`. */
+
+:is(.prose, .rte-content, .ProseMirror) span[data-color='gray'] { color: rgb(var(--rt-c-gray)); }
+:is(.prose, .rte-content, .ProseMirror) span[data-color='red'] { color: rgb(var(--rt-c-red)); }
+:is(.prose, .rte-content, .ProseMirror) span[data-color='orange'] { color: rgb(var(--rt-c-orange)); }
+:is(.prose, .rte-content, .ProseMirror) span[data-color='yellow'] { color: rgb(var(--rt-c-yellow)); }
+:is(.prose, .rte-content, .ProseMirror) span[data-color='green'] { color: rgb(var(--rt-c-green)); }
+:is(.prose, .rte-content, .ProseMirror) span[data-color='teal'] { color: rgb(var(--rt-c-teal)); }
+:is(.prose, .rte-content, .ProseMirror) span[data-color='blue'] { color: rgb(var(--rt-c-blue)); }
+:is(.prose, .rte-content, .ProseMirror) span[data-color='purple'] { color: rgb(var(--rt-c-purple)); }
+:is(.prose, .rte-content, .ProseMirror) span[data-color='pink'] { color: rgb(var(--rt-c-pink)); }
+
+/* Format marks rank ABOVE link / bold / code (components/editor/format-marks.ts),
+   so the colour span is their ANCESTOR — and Typography paints `a`, `strong`
+   and `code` with their own colour, as does the editor's link rule and the
+   @mention chip. Without this a red bold word or a red link stayed ink.
+   `inherit` (not the colour itself) so the NEAREST colour span wins. */
+:is(.prose, .rte-content, .ProseMirror) span[data-color] :is(a, strong, b, em, i, code, del, s) {
+  color: inherit;
+}
+
+:is(.prose, .rte-content, .ProseMirror) span[data-bg] {
+  border-radius: 0.25em;
+  padding: 0.06em 0.14em;
+  /* Each wrapped line gets its own rounded, padded piece of the highlight. */
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+:is(.prose, .rte-content, .ProseMirror) span[data-bg='gray'] { background-color: rgb(var(--rt-bg-gray) / var(--rt-bg-a)); }
+:is(.prose, .rte-content, .ProseMirror) span[data-bg='red'] { background-color: rgb(var(--rt-bg-red) / var(--rt-bg-a)); }
+:is(.prose, .rte-content, .ProseMirror) span[data-bg='orange'] { background-color: rgb(var(--rt-bg-orange) / var(--rt-bg-a)); }
+:is(.prose, .rte-content, .ProseMirror) span[data-bg='yellow'] { background-color: rgb(var(--rt-bg-yellow) / var(--rt-bg-a)); }
+:is(.prose, .rte-content, .ProseMirror) span[data-bg='green'] { background-color: rgb(var(--rt-bg-green) / var(--rt-bg-a)); }
+:is(.prose, .rte-content, .ProseMirror) span[data-bg='teal'] { background-color: rgb(var(--rt-bg-teal) / var(--rt-bg-a)); }
+:is(.prose, .rte-content, .ProseMirror) span[data-bg='blue'] { background-color: rgb(var(--rt-bg-blue) / var(--rt-bg-a)); }
+:is(.prose, .rte-content, .ProseMirror) span[data-bg='purple'] { background-color: rgb(var(--rt-bg-purple) / var(--rt-bg-a)); }
+:is(.prose, .rte-content, .ProseMirror) span[data-bg='pink'] { background-color: rgb(var(--rt-bg-pink) / var(--rt-bg-a)); }
+/* `:not(pre code)` also lifts this above the editor's dark chip rule below. */
+:is(.prose, .rte-content, .ProseMirror) span[data-bg] code:not(pre code) {
+  background-color: var(--rt-code-on-bg);
+}
+
+/* Sizes are RELATIVE (em): the same body renders at 13 px (compact), 15 px
+   (default) and 17 px (article), and each keeps its proportions. A unitless
+   line-height is inherited as a factor, so an enlarged run would open a tall
+   gap above its line; large text gets a tighter factor instead. */
+:is(.prose, .rte-content, .ProseMirror) span[data-size='sm'] { font-size: 0.875em; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='lg'] { font-size: 1.25em; line-height: 1.5; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='xl'] { font-size: 1.5em; line-height: 1.35; }
+/* Inline code is pinned at the house 13 px chip (MarkdownRenderer CODE_TABLE and
+   the editor chip below); inside a sized run it scales from THAT size, so
+   "特大" enlarges the code with the words around it. */
+:is(.prose, .rte-content, .ProseMirror) span[data-size='sm'] code { font-size: calc(13px * 0.875); }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='lg'] code { font-size: calc(13px * 1.25); }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='xl'] code { font-size: calc(13px * 1.5); }
+
+:is(.prose, .rte-content, .ProseMirror) span[data-font='serif'] { font-family: var(--rt-font-serif); }
+:is(.prose, .rte-content, .ProseMirror) span[data-font='kai'] { font-family: var(--rt-font-kai); }
+:is(.prose, .rte-content, .ProseMirror) span[data-font='mono'] { font-family: var(--rt-font-mono); }
+
+/* ── inline code in the EDITOR ──────────────────────────────────────────────
+   The reader paints inline code as a 13 px zinc chip without backticks
+   (MarkdownRenderer's CODE_TABLE); the editor only had Typography's default —
+   literal backtick pseudo-elements and no chip — so writing looked nothing like
+   reading. Same geometry here. `:not(pre code)` leaves code BLOCKS alone: as an
+   inline element a padded <code> inside <pre> indents only its first line. */
+.rte-content code:not(pre code) {
+  border-radius: 0.25rem;
+  background-color: rgb(244 244 245); /* zinc-100 */
+  padding: 0.125rem 0.25rem;
+  font-family: var(--rt-font-mono);
+  font-size: 13px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.rte-content code:not(pre code)::before,
+.rte-content code:not(pre code)::after {
+  content: none;
+}
+[data-theme='dark'] .rte-content code:not(pre code) {
+  background-color: rgb(39 39 42); /* zinc-800 */
+}

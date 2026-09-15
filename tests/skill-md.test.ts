@@ -29,4 +29,13 @@ describe('synthesizeSkillMd', () => {
     expect(out).toContain('version: 1.0.0');
     expect(out).toContain('triggers:');
   });
+
+  it('strips the editor formatting spans from the overview fallback, never from contentInline', () => {
+    const colored = '# Title\n\n<span data-color="red">**重点**</span> <span class="keep">x</span>';
+    const fallback = synthesizeSkillMd({ ...skill, descriptionMd: colored }, { ...version, contentInline: null });
+    expect(fallback).toContain('# Title\n\n**重点** <span class="keep">x</span>');
+    expect(fallback).not.toContain('data-color');
+    const inline = synthesizeSkillMd(skill, { ...version, contentInline: colored });
+    expect(inline).toContain(colored);
+  });
 });

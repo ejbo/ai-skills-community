@@ -1,6 +1,11 @@
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { getTranslations } from 'next-intl/server';
 
+// 账号、隐私与通知. Since 2026-09-14 the 个人主页 and the old 我的面板 are ONE page:
+// public section tabs + an owner-only 工作台 tab, a customisable 名片 that is also
+// the app-wide hover card, and badges with hover details. The profile block
+// below follows that order: 主页 → 工作台 (with the public-vs-private table) →
+// 名片 → 徽章 → 板块与隐私.
 export default async function AccountDocsPage() {
   const t = await getTranslations('docs_page');
   const content = `
@@ -20,13 +25,39 @@ ${t('acct_profile_avatar')}
 
 ${t('acct_profile_readonly')}
 
-## ${t('acct_h_private')}
+## ${t('acct_h_home')}
 
-${t('acct_private_where')}
+${t('acct_home_intro')}
 
-${t('acct_private_table')}
+${t('acct_home_tabs')}
 
-${t('acct_private_admins')}
+${t('acct_home_pins')}
+
+${t('acct_home_visitor')}
+
+## ${t('acct_h_profile_vs_dashboard')}
+
+${t('acct_pvd_intro')}
+
+${t('acct_pvd_table')}
+
+${t('acct_ws_redirect')}
+
+## ${t('acct_h_card')}
+
+${t('acct_card_intro')}
+
+${t('acct_card_styles')}
+
+${t('acct_card_media')}
+
+${t('acct_card_hover')}
+
+## ${t('acct_h_badges')}
+
+${t('acct_badges_intro')}
+
+${t('acct_badges_hide')}
 
 ## ${t('acct_h_sections')}
 
@@ -36,17 +67,19 @@ ${t('acct_sections_table')}
 
 ${t('acct_sections_docs_note')}
 
+## ${t('acct_h_private')}
+
+${t('acct_private_where')}
+
+${t('acct_private_table')}
+
+${t('acct_private_admins')}
+
 ## ${t('acct_h_reading')}
 
 ${t('acct_reading_toggle')}
 
 ${t('acct_reading_notes')}
-
-## ${t('acct_h_profile_vs_dashboard')}
-
-${t('acct_pvd_intro')}
-
-${t('acct_pvd_table')}
 
 ## ${t('acct_h_dept')}
 

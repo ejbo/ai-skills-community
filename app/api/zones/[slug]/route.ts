@@ -15,14 +15,9 @@ import {
   parseZoneLinks,
   sanitizeZoneTopics,
 } from '@/lib/zones/shared';
-import {
-  MAX_SIDEBAR_CUSTOM_CARDS,
-  SIDEBAR_CARD_BODY_MAX,
-  SIDEBAR_CARD_TITLE_MAX,
-  parseSidebarLayout,
-} from '@/lib/zones/sidebar';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { zoneContext } from '@/lib/zones/access';
-import { getZoneDetail, softDeleteZone, updateZone } from '@/lib/zones/queries';
+import { getZoneDetail, sidebarLayoutInputSchema, softDeleteZone, updateZone } from '@/lib/zones/queries';
 import { isValidZoneMediaKey, statZoneMediaAsync, type ZoneMediaKind } from '@/lib/zones/storage';
 import { actingAsSiteAdmin, auditIp, invalidInput, zoneErrorResponse, zoneFail } from '../_zone-api';
 
@@ -42,7 +37,8 @@ const patchSchema = z
       .refine((s) => isValidZoneSlug(s))
       .optional(),
     tagline: z.string().trim().max(ZONE_LIMITS.taglineMax).optional(),
-    descriptionMd: z.string().max(ZONE_LIMITS.descriptionMax).optional(),
+    // RichTextEditor field: VISIBLE length, the editor counter's measure (lib/rich-text-limit.ts).
+    descriptionMd: withRichTextLimit(z.string(), ZONE_LIMITS.descriptionMax).optional(),
     lab: z.string().trim().max(ZONE_LIMITS.labMax).optional(),
     department: z.string().trim().max(ZONE_LIMITS.departmentMax).optional(),
     // null clears the theme (back to the name-hashed hue); a bad string is rejected.
@@ -66,26 +62,10 @@ const patchSchema = z
       .max(MAX_ZONE_TOPICS)
       .transform((v) => sanitizeZoneTopics(v))
       .optional(),
-    // 主页布局: the SHAPE is validated here (card count + field lengths are a
-    // 400, not a truncation); parseSidebarLayout then normalises the rest
-    // (unknown ids dropped, missing built-ins appended, `about` never hidden).
-    sidebar: z
-      .object({
-        order: z.array(z.string().max(40)).max(40).optional(),
-        hidden: z.array(z.string().max(40)).max(20).optional(),
-        custom: z
-          .array(
-            z.object({
-              id: z.string().max(40),
-              title: z.string().max(SIDEBAR_CARD_TITLE_MAX),
-              bodyMd: z.string().max(SIDEBAR_CARD_BODY_MAX),
-            }),
-          )
-          .max(MAX_SIDEBAR_CUSTOM_CARDS)
-          .optional(),
-      })
-      .transform((v) => parseSidebarLayout(v))
-      .optional(),
+    // 主页布局: shape + card count + field lengths are a 400, not a truncation;
+    // card bodies by VISIBLE length. Shared with zoneInputSchema so create and
+    // edit can never disagree (lib/zones/queries.ts sidebarLayoutInputSchema).
+    sidebar: sidebarLayoutInputSchema.optional(),
   })
   .refine((v) => Object.values(v).some((x) => x !== undefined));
 

@@ -43,7 +43,8 @@ export type VideoDetail = Prisma.VideoGetPayload<{ include: typeof VIDEO_DETAIL_
 
 // isShort: false — 随刷短视频 live in the same table but have their own feed
 // (/videos/shorts); they must never leak into the long-video rails/browse.
-const PUBLISHED_PUBLIC = {
+// Exported for the 个人主页 videos tab (a member's long videos, same gate).
+export const PUBLISHED_PUBLIC = {
   status: 'published',
   visibility: 'public',
   deletedAt: null,

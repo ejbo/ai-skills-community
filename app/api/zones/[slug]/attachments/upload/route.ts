@@ -2,11 +2,11 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { apiReason } from '@/lib/api-errors';
 import { rateLimit } from '@/lib/rate-limit';
+import { hasFreeSpace } from '@/lib/uploads/disk-space';
 import { zoneContext } from '@/lib/zones/access';
 import {
   deleteZoneMediaFile,
   faststartRemuxZoneMedia,
-  isAllowedZoneFileType,
   isAllowedZoneImageType,
   isAllowedZoneVideoType,
   maxBytesForZoneKind,
@@ -35,9 +35,15 @@ function parseKind(raw: string | null): UploadKind {
 
 // POST /api/zones/[slug]/attachments/upload (access.canPost || canModerate) — raw-body upload.
 // Headers:
-//   content-type:   file MIME (validated per kind)
+//   content-type:   file MIME (validated for image / video / poster; only a key-extension HINT for file)
 //   x-upload-kind:  'image' | 'video' | 'file' | 'poster'
-//   x-filename:     encodeURIComponent(file.name) — extension hint + display name
+//   x-filename:     encodeURIComponent(file.name) — the file kind's key extension + display name
+// The `file` kind accepts ANY non-empty file (owner decision 2026-09): what
+// keeps that safe is not an allowlist but the serving side — the key extension
+// is clamped to `[a-z0-9]{1,10}` / `bin` here and GET /api/zones/media serves
+// anything outside the inline media set as a nosniff, sandboxed download
+// (lib/uploads/serve.ts). Image / video / poster stay MIME-strict because they
+// are rendered inline as what they claim to be.
 // → { key, url, size, width, height, kind, durationSec, name }
 export async function POST(req: Request, { params }: { params: { slug: string } }) {
   const session = await auth();
@@ -74,11 +80,7 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
   const displayName = filename.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 200);
 
   const allowed =
-    kind === 'video'
-      ? isAllowedZoneVideoType(contentType)
-      : kind === 'file'
-        ? isAllowedZoneFileType(contentType, filename)
-        : isAllowedZoneImageType(contentType);
+    kind === 'video' ? isAllowedZoneVideoType(contentType) : kind === 'file' ? true : isAllowedZoneImageType(contentType);
   if (!allowed) {
     return NextResponse.json(
       { error: 'unsupported_type', reason: await apiReason('zone_unsupported_type') },
@@ -93,6 +95,12 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
       { error: 'file_too_large', reason: await apiReason('zone_file_too_large') },
       { status: 413 },
     );
+  }
+  // Unlimited counts × any file type × 200 MB each can fill the volume that
+  // also holds PostgreSQL's data directory — refuse before writing a byte, like
+  // every other upload route (discussion / library / shorts / votes).
+  if (!(await hasFreeSpace(declared))) {
+    return NextResponse.json({ error: 'insufficient_storage' }, { status: 507 });
   }
   if (!req.body) return NextResponse.json({ error: 'empty_body' }, { status: 400 });
 

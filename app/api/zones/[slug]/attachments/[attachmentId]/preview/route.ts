@@ -4,7 +4,8 @@ import { prisma } from '@/lib/db';
 import { apiReason } from '@/lib/api-errors';
 import { zoneContext } from '@/lib/zones/access';
 import { extractOfficeHtml, scheduleOfficePreview } from '@/lib/zones/office-preview';
-import { OFFICE_PREVIEW_EXTS, extOfName, isOfficePreviewable } from '@/lib/zones/shared';
+import { keyExtOf } from '@/lib/files/file-types';
+import { OFFICE_PREVIEW_EXTS, isOfficePreviewable } from '@/lib/zones/shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -67,8 +68,10 @@ const ATTACHMENT_SELECT = {
   },
 } as const;
 
-function attachmentExt(att: { name: string; key: string }): string {
-  return extOfName(att.name) || extOfName(att.key);
+// The format is the STORAGE KEY's extension, never the client-supplied name:
+// the name is display text, the key is what the upload route wrote.
+function attachmentExt(att: { key: string }): string {
+  return keyExtOf(att.key);
 }
 
 // GET /api/zones/[slug]/attachments/[attachmentId]/preview (canRead of its post)

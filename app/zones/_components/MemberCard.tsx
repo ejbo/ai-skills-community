@@ -22,6 +22,12 @@ import { MemberMenu } from './MemberMenu';
 import { RolePill } from './RolePill';
 import { BTN_DANGER, BTN_GHOST, BTN_PRIMARY, BTN_SECONDARY, CARD_CLS, INPUT_CLS, PILL_MONO, SELECT_CLS, readError } from './ui';
 
+// Icon-only ghost button (设置头衔 ✓ / ✕). BTN_GHOST carries `px-2.5`, and
+// appending `px-0` does NOT cancel it — there is no tailwind-merge, so the rule
+// emitted later in the generated CSS wins, which is `px-2.5`: the 14 px icon was
+// squeezed into a 12 px content box. Strip the padding from the base instead.
+const BTN_GHOST_ICON = `${BTN_GHOST.replace(/(^|\s)px-\S+/g, '')} w-8 justify-center`;
+
 const MENU_ITEM_CLS =
   'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-zinc-700 outline-none transition hover:bg-zinc-100 focus-visible:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:focus-visible:bg-zinc-800';
 
@@ -239,8 +245,8 @@ export function MemberCard({
               className={`${INPUT_CLS} h-8`}
               autoFocus
             />
-            <button type="submit" disabled={busy} aria-label={t('save')} className={`${BTN_GHOST} h-8 w-8 justify-center px-0`}>
-              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            <button type="submit" disabled={busy} aria-label={t('save')} className={BTN_GHOST_ICON}>
+              {busy ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <Check className="h-3.5 w-3.5 shrink-0" />}
             </button>
             <button
               type="button"
@@ -249,9 +255,9 @@ export function MemberCard({
                 setEditingTitle(false);
               }}
               aria-label={t('cancel')}
-              className={`${BTN_GHOST} h-8 w-8 justify-center px-0`}
+              className={BTN_GHOST_ICON}
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-3.5 w-3.5 shrink-0" />
             </button>
           </form>
         ) : member.title ? (

@@ -1,57 +1,19 @@
 // @vitest-environment jsdom
-// Headless smoke test of the two riskiest editor embed mechanisms. The node
-// definitions REPLICATE components/RichTextEditor.tsx (nodeview omitted — it
-// needs a live editor view); if you change StickerImageNode / the poll
-// insertion there, mirror it here. Guards against tiptap upgrades silently
-// breaking:
+// Headless smoke test of the two riskiest editor embed mechanisms, on the REAL
+// extension list: buildRichTextExtensions (components/editor/rich-text-extensions.ts)
+// is what components/RichTextEditor.tsx registers, minus the React node views.
+// This file used to hand-copy that list and its image serializer, which is how
+// the missing closeBlock went unnoticed — never copy it back.
+// Guards against tiptap upgrades silently breaking:
 // 1) inline sticker node round-trips markdown and wins parse priority
-// 2) poll token insertion lifts to top level from inside a blockquote
+// 2) a block image ends its block (whatever follows is not glued onto its line)
+// 3) poll token insertion lifts to top level from inside a blockquote
 import { describe, expect, it } from 'vitest';
 import { Editor } from '@tiptap/core';
-import StarterKit from '@tiptap/starter-kit';
-import Image from '@tiptap/extension-image';
-import { Markdown } from 'tiptap-markdown';
-import { PollEmbedBase } from '@/components/polls/poll-embed-extension';
-
-const STICKER_URL_PREFIX = '/api/uploads/stickers/';
-
-const BaseImage = Image.extend({
-  addStorage() {
-    return {
-      markdown: {
-        serialize(state: any, node: any) {
-          const { src, alt, title } = node.attrs;
-          state.write(
-            '![' + state.esc(alt || '') + '](' + String(src ?? '').replace(/[()]/g, '\\$&') +
-            (title ? ' "' + String(title).replace(/"/g, '\\"') + '"' : '') + ')',
-          );
-        },
-      },
-    };
-  },
-});
-
-const StickerImageNode = BaseImage.extend({
-  name: 'stickerImage',
-  draggable: false,
-  inline() { return true; },
-  group() { return 'inline'; },
-  addCommands() { return {}; },
-  parseHTML() {
-    return [{ tag: `img[src^="${STICKER_URL_PREFIX}"]`, priority: 100 }];
-  },
-});
+import { buildRichTextExtensions } from '@/components/editor/rich-text-extensions';
 
 function makeEditor(content: string) {
-  return new Editor({
-    extensions: [
-      StarterKit,
-      BaseImage,
-      StickerImageNode,
-      Markdown.configure({ html: true, transformPastedText: true, breaks: false }),
-    ],
-    content,
-  });
+  return new Editor({ extensions: buildRichTextExtensions(), content });
 }
 
 describe('sticker inline node', () => {
@@ -90,6 +52,30 @@ describe('sticker inline node', () => {
     ed.destroy();
   });
 
+  it('a block image ends its block; a sticker next to it does not', () => {
+    const ed = makeEditor('');
+    ed.commands.setContent(
+      {
+        type: 'doc',
+        content: [
+          { type: 'image', attrs: { src: '/api/uploads/images/a.png', alt: 'a' } },
+          { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'H' }] },
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: 'hi ' },
+              { type: 'stickerImage', attrs: { src: '/api/uploads/stickers/s.gif', alt: 'sticker' } },
+              { type: 'text', text: ' there' },
+            ],
+          },
+        ],
+      },
+      false,
+    );
+    expect(ed.storage.markdown.getMarkdown()).toBe('![a](/api/uploads/images/a.png)\n\n## H\n\nhi ![sticker](/api/uploads/stickers/s.gif) there');
+    ed.destroy();
+  });
+
   it('setImage still targets the block image node (commands not hijacked)', () => {
     const ed = makeEditor('');
     ed.chain().setImage({ src: '/api/uploads/images/n.png', alt: 'n' } as any).run();
@@ -106,14 +92,7 @@ describe('poll embed node (the REAL extension, minus its React nodeview)', () =>
   const OWN_LINE = /^ {0,3}\\?\[poll:([a-z0-9]{8,40})\\?\][ \t]*$/m;
 
   function makePollEditor(content: string) {
-    return new Editor({
-      extensions: [
-        StarterKit,
-        PollEmbedBase,
-        Markdown.configure({ html: true, transformPastedText: true, breaks: false }),
-      ],
-      content,
-    });
+    return new Editor({ extensions: buildRichTextExtensions(), content });
   }
   const nodeIds = (ed: Editor) => {
     const ids: string[] = [];

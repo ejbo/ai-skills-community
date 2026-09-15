@@ -6,7 +6,6 @@ import {
   MAX_POST_FILE_BYTES,
   MAX_POST_VIDEO_BYTES,
   faststartRemuxPostMedia,
-  isAllowedPostFileType,
   isAllowedPostVideoType,
   newPostMediaKey,
   postMediaExtFor,
@@ -50,9 +49,20 @@ function refundBytes(userId: string, bytes: number): void {
 // POST /api/discussion/upload (any logged-in user) — direct, self-hosted upload
 // of a post attachment. The browser sends the raw file as the request body; we
 // stream it to local disk. Headers:
-//   content-type:   the file's MIME type (validated against a per-kind allowlist)
-//   x-upload-kind:  'video' (inline-playable upload) | 'file' (pdf/ppt/word)
-//   x-filename:     encodeURIComponent(file.name)  (extension fallback only)
+//   content-type:   the file's MIME type. `video` validates it against the three
+//                   inline containers; for `file` it is only a HINT (browsers
+//                   report no type for most source files) used when the name
+//                   carries no usable extension.
+//   x-upload-kind:  'video' (inline-playable upload) | 'file' (ANY file type)
+//   x-filename:     encodeURIComponent(file.name) — decides a file's key extension
+//
+// The `file` kind takes any non-empty body (owner decision 2026-09). That is
+// safe because nothing about how the bytes come back is decided here: the key
+// gets `safeKeyExt(name, mime)` (`[a-z0-9]{1,10}` or `bin`), and the media route
+// serves by that extension through lib/uploads/serve.ts — an `.html` / `.svg`
+// key goes out as nosniff `text/plain` attachment under `CSP: sandbox`. What
+// bounds abuse is unchanged: the per-file cap, 6/min, the 5 GB rolling daily
+// byte budget and the free-space floor.
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
@@ -72,18 +82,23 @@ export async function POST(req: Request) {
     filename = '';
   }
 
-  const allowed =
-    kind === 'video' ? isAllowedPostVideoType(contentType) : isAllowedPostFileType(contentType);
-  if (!allowed) {
+  // Only a video is type-checked: it must be something the inline player plays.
+  if (kind === 'video' && !isAllowedPostVideoType(contentType)) {
     return NextResponse.json({ error: 'unsupported_type' }, { status: 415 });
   }
 
   const max = kind === 'video' ? MAX_POST_VIDEO_BYTES : MAX_POST_FILE_BYTES;
   // Reject oversized uploads up front when the client declares Content-Length,
   // before streaming anything to disk. (The stream cap below is the real guard.)
-  const declared = Number(req.headers.get('content-length') ?? '');
+  const declaredHeader = req.headers.get('content-length');
+  const declared = Number(declaredHeader ?? '');
   if (Number.isFinite(declared) && declared > max) {
     return NextResponse.json({ error: 'file_too_large' }, { status: 413 });
+  }
+  // A declared 0-byte body is refused before any budget or disk work (the stream
+  // check below still catches an undeclared empty one).
+  if (declaredHeader !== null && declaredHeader.trim() !== '' && declared === 0) {
+    return NextResponse.json({ error: 'empty_body' }, { status: 400 });
   }
   // The per-file and per-day caps bound one user; they do not bound the volume,
   // and PostgreSQL's data directory lives on it. Refuse before writing a byte.

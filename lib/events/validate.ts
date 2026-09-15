@@ -3,6 +3,7 @@
 // zod messages are user-facing Chinese strings (shown verbatim in toasts).
 
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import {
   DEFAULT_EVENT_TIMEZONE,
   EVENT_CITIES,
@@ -45,7 +46,8 @@ const speakerSchema = z.object({
 export const eventContentSchema = z.object({
   title: z.string().trim().min(4, '标题至少 4 个字').max(140, '标题最多 140 字'),
   summary: z.string().trim().max(300, '一句话简介最多 300 字').default(''),
-  descriptionMd: z.string().max(20000, '活动介绍过长').default(''),
+  // RichTextEditor field (EventForm maxLength 20000): VISIBLE length, like its counter.
+  descriptionMd: withRichTextLimit(z.string(), 20000, '活动介绍过长').default(''),
   kind: z.enum(['external', 'internal', 'expert_talk', 'seminar'], {
     errorMap: () => ({ message: '请选择活动大类' }),
   }),

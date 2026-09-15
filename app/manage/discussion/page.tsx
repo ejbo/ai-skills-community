@@ -2,6 +2,7 @@ import { format } from 'date-fns';
 import { requirePermission } from '@/lib/admin';
 import { prisma } from '@/lib/db';
 import { discussionTagMap } from '@/lib/discussion-queries';
+import { markdownToPlainText } from '@/lib/markdown-text';
 import { DiscussionManager } from './DiscussionManager';
 
 export const dynamic = 'force-dynamic';
@@ -51,7 +52,7 @@ export default async function AdminDiscussionPage() {
       <DiscussionManager
         posts={posts.map((p) => ({
           id: p.id,
-          excerpt: p.bodyMd.replace(/\s+/g, ' ').trim().slice(0, 80) || '（无文字，仅媒体）',
+          excerpt: markdownToPlainText(p.bodyMd, { max: 80 }) || '（无文字，仅媒体）',
           pinned: p.pinned,
           likeCount: p.likeCount,
           commentCount: p.commentCount,

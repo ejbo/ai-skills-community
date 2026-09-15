@@ -2,7 +2,7 @@
 // the right-rail accordion splits its markdown into one row per heading.
 // Plain module (no 'use client'): the RSC rail calls it, vitest pins it.
 
-import { extractHeadings } from './shared';
+import { extractHeadings, headingPlainText } from './shared';
 
 export const ZONE_RULES_WIKI_SLUG = 'rules';
 
@@ -14,7 +14,7 @@ export interface MdSection {
 
 /** Same fence + heading grammar as `extractHeadings` (kept in step by construction — see below). */
 const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
-const HEADING_RE = /^ {0,3}(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/;
+const HEADING_RE = /^ {0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/;
 // h2 / h3 are rule boundaries. An h1 stays in the body: a wiki page already has
 // its own title field, so an in-body `#` is a lead heading, not rule 01.
 const MIN_LEVEL = 2;
@@ -53,7 +53,7 @@ export function splitMarkdownSections(md: string): MdSection[] {
     if (!fence) {
       const m = HEADING_RE.exec(line);
       const level = m ? m[1].length : 0;
-      if (m && level >= MIN_LEVEL && level <= MAX_LEVEL && next < heads.length && m[2].replace(/[*_`~]/g, '').trim()) {
+      if (m && level >= MIN_LEVEL && level <= MAX_LEVEL && next < heads.length && headingPlainText(m[2])) {
         flush();
         heading = heads[next].text;
         next += 1;

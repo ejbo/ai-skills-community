@@ -5,14 +5,24 @@ import { useTranslations } from 'next-intl';
 import {
   ChevronLeft,
   ChevronRight,
+  Download,
   ExternalLink,
-  FileText,
   Play,
-  Presentation,
   X,
 } from 'lucide-react';
+import { fileIconFor } from '@/components/files/file-icon';
 import { withBasePath } from '@/lib/base-path';
-import { formatBytes, type MediaView } from './types';
+import { fileDownloadHref, fileMetaParts } from '@/lib/files/display';
+import { previewPlanFor } from '@/lib/files/file-types';
+import { FileViewerDrawer } from './FileViewerDrawer';
+import {
+  discussionFileExt,
+  discussionFileTarget,
+  fileTileClass,
+  isDownloadOnlyFile,
+  type DiscussionFileTarget,
+} from './file-attachments';
+import type { MediaView } from './types';
 
 // Renders a post's attachments below the body text:
 // - images  → count-aware grid (1 full / 2 half / 3 = 1+2 / 4 = 2×2 / 5+ = "+N"
@@ -20,14 +30,18 @@ import { formatBytes, type MediaView } from './types';
 // - video   → inline <video> player (self-hosted upload; same-origin Range route).
 // - video_link → link card opening in a new tab (external iframes are blocked
 //             on the intranet, so we never embed).
-// - file    → document rows; PDF opens inline in a new tab (browser viewer),
-//             PPT/Word downloads with the original filename.
+// - file    → rows of ANY file type. The row opens the shared FileViewer in a
+//             modal drawer (code / json / csv / markdown / pdf / media preview in
+//             place; everything else is the viewer's 不支持预览 card with 下载),
+//             and a separate ↓ link downloads without opening anything. Types
+//             the viewer cannot render say 仅下载 on the row before it is opened.
 export function PostMediaGallery({ media }: { media: MediaView[] }) {
   const images = media.filter((m) => m.kind === 'image');
   const video = media.find((m) => m.kind === 'video') ?? null;
   const videoLink = media.find((m) => m.kind === 'video_link') ?? null;
   const files = media.filter((m) => m.kind === 'file');
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [openFile, setOpenFile] = useState<DiscussionFileTarget | null>(null);
 
   if (media.length === 0) return null;
 
@@ -56,10 +70,12 @@ export function PostMediaGallery({ media }: { media: MediaView[] }) {
       {files.length > 0 && (
         <div className="space-y-2">
           {files.map((f) => (
-            <FileCard key={f.id} media={f} />
+            <FileCard key={f.id} media={f} onOpen={setOpenFile} />
           ))}
         </div>
       )}
+
+      {files.length > 0 && <FileViewerDrawer file={openFile} onClose={() => setOpenFile(null)} />}
 
       {lightboxIndex !== null && (
         <Lightbox
@@ -294,47 +310,70 @@ function VideoLinkCard({ media }: { media: MediaView }) {
   );
 }
 
-function fileMeta(m: MediaView): { label: string; className: string; inline: boolean } {
-  const ext = (m.name.split('.').pop() ?? '').toLowerCase();
-  const fromUrl = (m.url.split('.').pop() ?? '').toLowerCase();
-  const kind = ext || fromUrl;
-  if (kind === 'pdf') return { label: 'PDF', className: 'bg-rose-500/10 text-rose-600 dark:text-rose-400', inline: true };
-  if (kind === 'ppt' || kind === 'pptx')
-    return { label: 'PPT', className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400', inline: false };
-  return { label: 'DOC', className: 'bg-sky-500/10 text-sky-600 dark:text-sky-400', inline: false };
-}
-
-function FileCard({ media }: { media: MediaView }) {
+function FileCard({ media, onOpen }: { media: MediaView; onOpen: (target: DiscussionFileTarget) => void }) {
   const t = useTranslations('discussion_ui');
-  const meta = fileMeta(media);
-  // Non-inline files carry the original name so the download keeps it.
-  const href = withBasePath(
-    meta.inline ? media.url : `${media.url}?name=${encodeURIComponent(media.name || 'attachment')}`,
-  );
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex items-center gap-3 rounded-xl border border-zinc-200 p-3 transition hover:border-zinc-400 dark:hover:border-zinc-500 dark:border-zinc-800"
-    >
-      <span
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${meta.className}`}
-      >
-        {meta.label === 'PPT' ? (
-          <Presentation className="h-5 w-5" />
-        ) : (
-          <FileText className="h-5 w-5" />
-        )}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{media.name || meta.label}</span>
-        <span className="mt-0.5 block text-xs text-muted">
-          {meta.label}
-          {media.sizeBytes > 0 ? ` · ${formatBytes(media.sizeBytes)}` : ''}
-          {meta.inline ? ` · ${t('click_preview')}` : ` · ${t('click_download')}`}
+  const tz = useTranslations('zones');
+  const target = discussionFileTarget(media);
+  const name = media.name || 'attachment';
+  const downloadHref = fileDownloadHref(media.url, name);
+  const rowClass =
+    'flex items-center gap-1 rounded-xl border border-zinc-200 transition hover:border-zinc-400 dark:border-zinc-800 dark:hover:border-zinc-500';
+
+  // A URL that is not a post-media key (should not exist) keeps the old
+  // behaviour: a plain download link, never a viewer guessing at the bytes.
+  if (!target) {
+    return (
+      <a href={downloadHref} className={`${rowClass} gap-3 p-3`}>
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${fileTileClass('')}`}>
+          <Download className="h-5 w-5" aria-hidden />
         </span>
-      </span>
-    </a>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">{name}</span>
+      </a>
+    );
+  }
+
+  const ext = discussionFileExt(target, media.mimeType);
+  const Icon = fileIconFor(previewPlanFor(target.storageKey, target.name).cls, ext);
+  const downloadOnly = isDownloadOnlyFile(target.storageKey, target.name);
+  const meta = fileMetaParts(ext, media.sizeBytes, tz('attach_type_generic')).join(' · ');
+
+  return (
+    <div className={rowClass}>
+      <button
+        type="button"
+        onClick={() => onOpen(target)}
+        aria-haspopup="dialog"
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+      >
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${fileTileClass(ext)}`}>
+          <Icon className="h-5 w-5" aria-hidden />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium" title={name}>
+            {name}
+          </span>
+          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
+            <span className="font-mono text-[11px] tabular-nums">{meta}</span>
+            {downloadOnly ? (
+              <span className="rounded-full border border-zinc-300 px-1.5 py-px text-[10px] dark:border-zinc-700">
+                {tz('attach_download_only')}
+              </span>
+            ) : (
+              <span>{t('click_preview')}</span>
+            )}
+          </span>
+        </span>
+      </button>
+      {/* `download`: a PDF / video key is served inline, and this control means "save", not "open". */}
+      <a
+        href={downloadHref}
+        download
+        aria-label={t('download_file_aria', { name })}
+        title={tz('attach_download')}
+        className="mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted transition hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+      >
+        <Download className="h-4 w-4" aria-hidden />
+      </a>
+    </div>
   );
 }

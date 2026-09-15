@@ -1,9 +1,18 @@
 'use client';
 
 // Like (whileTap + rolling count) · bookmark · share (copy link) · comments
-// jump, plus the per-access 更多 menu (编辑 / 置顶 / 锁定 / 设为公告 / 删除).
+// jump · 编辑, plus the per-access 更多 menu (置顶 / 锁定 / 设为公告 / 删除).
 // Sticky at the viewport bottom on small screens — where it hides on
 // scroll-down and returns on scroll-up (M14) — inline on desktop.
+//
+// 编辑 is a LABELLED pill, not a ⋯ item. It used to be the only edit entry for a
+// published post and three things buried it: the ⋯ glyph was squeezed to a 6 px
+// sliver (the trigger carried `pill`'s px-3.5 AND px-0, and without
+// tailwind-merge the later rule in the generated CSS — px-3.5 — wins, so the
+// icon-only pills now build on the padding-free `pillBase`), the bar sat after
+// the whole article on desktop, and the opened menu was painted UNDER
+// `section#comments` (see the `lg:relative` note on the bar). `canEdit` comes
+// from the RSC (`canViewerEditZonePost`), the same policy PATCH enforces.
 //
 // Like / bookmark state is NOT owned here: `lb` is the page's single
 // optimistic useLikeBookmark state (a hook so a second surface could share it),
@@ -66,6 +75,7 @@ export function PostActionBar({
   post,
   zoneSlug,
   access,
+  canEdit,
   currentUser,
   lb,
   commentCount,
@@ -75,6 +85,8 @@ export function PostActionBar({
   post: ZonePostDetailView;
   zoneSlug: string;
   access: ZoneAccess;
+  /** Server-decided content-edit gate (canViewerEditZonePost). */
+  canEdit: boolean;
   currentUser: ZoneCurrentUser | null;
   /** The page's shared optimistic like/bookmark state (useLikeBookmark). */
   lb: LikeBookmarkState;
@@ -89,6 +101,7 @@ export function PostActionBar({
   const [busy, setBusy] = useState<'flag' | 'delete' | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
 
   // M14 — hide on scroll-down below `lg`. `lgRef` gates the scroll handler
   // (the bar is static on lg+); reduced motion never hides.
@@ -115,14 +128,14 @@ export function PostActionBar({
   });
   const barHidden = hidden && !menuOpen && !reduce;
 
-  const canEdit = post.isAuthor || access.canModerate;
   // DELETE /posts/[postId] accepts the PRIMARY author or a `moderate` holder —
   // `post.isAuthor` also covers co-authors, who may edit but never delete.
   // PublicAuthor keeps the handle exactly for this ownership check.
   const isPrimaryAuthor = !!currentUser && post.author.handle === currentUser.handle;
   const canDelete = isPrimaryAuthor || access.canModerate;
   const canFlag = access.canModerate;
-  const hasMenu = canEdit || canDelete || canFlag;
+  // 编辑 has its own pill, so a co-author (edit, no delete, no flags) gets no ⋯ at all.
+  const hasMenu = canDelete || canFlag;
   const isAnnouncement = post.type === 'announcement';
   const base = `/api/zones/${encodeURIComponent(zoneSlug)}/posts/${encodeURIComponent(post.id)}`;
 
@@ -131,8 +144,17 @@ export function PostActionBar({
     const close = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setMenuOpen(false);
+      menuTriggerRef.current?.focus();
+    };
     document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [menuOpen]);
 
   async function share() {
@@ -194,8 +216,20 @@ export function PostActionBar({
     }
   }
 
-  const pill =
-    'inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium transition disabled:opacity-60';
+  // Padding lives OUTSIDE the base so an icon-only pill never has to "undo" it:
+  // `px-0` appended to `px-3.5` loses (generated-CSS order, no tailwind-merge).
+  //
+  // Phone widths are measured, not guessed: at 390 px the sticky bar has 316 px
+  // inside it, and like · bookmark · comments · share · 编辑 · ⋯ at the sm+
+  // metrics need 380 px, which wrapped the bar onto a second 98 px-tall row over
+  // the article. Below sm the count pills tighten (px-3 / gap-1), 分享 and 编辑
+  // drop to icon-only circles (their accessible names stay), and the bar gap is
+  // 6 px: ≈301 px with single-digit counts. The labelled 编辑 a phone reader
+  // needs is the header's, which sits on the first screen.
+  const pillBase = 'inline-flex h-9 shrink-0 items-center gap-1 rounded-full border text-sm font-medium transition disabled:opacity-60 sm:gap-1.5';
+  const pill = `${pillBase} px-3 sm:px-3.5`;
+  /** Icon-only circle below sm, labelled pill from sm up. */
+  const labelPill = `${pillBase} w-9 justify-center sm:w-auto sm:px-3.5`;
   const idle = 'border-zinc-200 text-zinc-700 hover:border-zinc-400 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-50';
   const on = 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-zinc-900';
   const menuItem =
@@ -207,7 +241,14 @@ export function PostActionBar({
       animate={{ y: barHidden ? HIDDEN_Y : '0%' }}
       transition={reduce ? { duration: 0 } : TWEEN}
       onFocus={() => setHidden(false)}
-      className={`sticky bottom-3 z-20 flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-200 bg-white/95 px-3 py-2 shadow-lg shadow-black/5 backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:border-zinc-800 dark:bg-zinc-950/95 dark:shadow-black/30 dark:supports-[backdrop-filter]:bg-zinc-950/80 lg:static lg:border-0 lg:bg-transparent lg:px-0 lg:shadow-none lg:backdrop-blur-0 lg:supports-[backdrop-filter]:bg-transparent dark:lg:bg-transparent dark:lg:supports-[backdrop-filter]:bg-transparent ${className}`}
+      // `lg:relative`, never `lg:static`: the bar keeps `backdrop-filter:
+      // blur(0)` at lg, which makes it a stacking context, and the next sibling
+      // `section#comments.cv-auto` (content-visibility ⇒ paint containment ⇒ its
+      // own stacking context) comes later in tree order. With `static` the z-20
+      // did nothing and that section was painted OVER the opened ⋯ menu, so 置顶 /
+      // 锁定 / 设为公告 / 删除 clicked the comment composer instead. A positioned
+      // bar lets z-20 lift the menu above it.
+      className={`sticky bottom-3 z-20 flex flex-wrap items-center gap-1.5 rounded-2xl border border-zinc-200 bg-white/95 px-3 py-2 shadow-lg shadow-black/5 backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:border-zinc-800 dark:bg-zinc-950/95 dark:shadow-black/30 dark:supports-[backdrop-filter]:bg-zinc-950/80 lg:relative lg:border-0 lg:bg-transparent lg:px-0 lg:shadow-none lg:backdrop-blur-0 lg:supports-[backdrop-filter]:bg-transparent dark:lg:bg-transparent dark:lg:supports-[backdrop-filter]:bg-transparent sm:gap-2 ${className}`}
     >
       <motion.button
         type="button"
@@ -244,30 +285,32 @@ export function PostActionBar({
         <span className="font-mono tabular-nums">{commentCount}</span>
       </button>
 
-      <button type="button" onClick={share} aria-label={t('post_share')} className={`${pill} ${idle}`}>
-        <Share2 className="h-4 w-4" />
+      <button type="button" onClick={share} aria-label={t('post_share')} className={`${labelPill} ${idle}`}>
+        <Share2 className="h-4 w-4 shrink-0" />
         <span className="hidden sm:inline">{t('post_share')}</span>
       </button>
+
+      {canEdit && (
+        <Link href={`${zonePostHref(zoneSlug, post.id)}/edit`} aria-label={tc('edit')} className={`${labelPill} ${idle}`}>
+          <Pencil className="h-4 w-4 shrink-0" aria-hidden />
+          <span className="hidden sm:inline">{tc('edit')}</span>
+        </Link>
+      )}
 
       {hasMenu && (
         <div ref={menuRef} className="relative ml-auto">
           <button
+            ref={menuTriggerRef}
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
             aria-expanded={menuOpen}
             aria-label={t('post_more_actions')}
-            className={`${pill} ${idle} w-9 justify-center px-0`}
+            className={`${pillBase} ${idle} w-9 justify-center`}
           >
-            <MoreHorizontal className="h-4 w-4" />
+            <MoreHorizontal className="h-4 w-4 shrink-0" aria-hidden />
           </button>
           {menuOpen && (
             <div className="surface absolute bottom-full right-0 z-30 mb-2 w-52 rounded-xl p-1 shadow-lg lg:bottom-auto lg:top-full lg:mb-0 lg:mt-2">
-              {canEdit && (
-                <Link href={`/zones/${zoneSlug}/posts/${post.id}/edit`} className={menuItem} onClick={() => setMenuOpen(false)}>
-                  <Pencil className="h-4 w-4 text-muted" />
-                  {tc('edit')}
-                </Link>
-              )}
               {canFlag && (
                 <>
                   <button type="button" onClick={() => setFlag('pinned', !post.pinned)} disabled={busy !== null} className={menuItem}>

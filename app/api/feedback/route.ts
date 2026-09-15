@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
@@ -9,7 +10,7 @@ const HOUR_MS = 60 * 60 * 1000;
 
 const createSchema = z.object({
   title: z.string().trim().min(4, '标题至少 4 个字').max(120),
-  bodyMd: z.string().max(10000).default(''),
+  bodyMd: withRichTextLimit(z.string(), 10000).default(''),
   category: z.enum(['feature', 'bug', 'other']).default('other'),
 });
 

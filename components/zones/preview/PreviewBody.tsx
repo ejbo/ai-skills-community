@@ -31,11 +31,11 @@ import { useEffect, useMemo, useState, type RefObject } from 'react';
 import { motion } from 'framer-motion';
 import { useTranslations } from 'next-intl';
 import { withBasePath } from '@/lib/base-path';
+import { fileDownloadHref, formatBytes } from '@/lib/files/display';
 import { TWEEN_FAST } from '@/lib/motion';
-import { formatBytes } from '@/lib/zones/shared';
 import type { EmbedData } from '@/lib/zones/types';
 import { describeEmbed, fetchEmbed } from '@/components/zones/embeds/EmbedCard';
-import { previewShellClasses } from './panel-shared';
+import { fileOpensInNewTab, previewShellClasses } from './panel-shared';
 import type { PreviewTarget } from './PreviewProvider';
 import type { FullscreenMode } from './useFullscreen';
 import { PreviewToolbar } from './PreviewToolbar';
@@ -131,7 +131,10 @@ export function PreviewBody({
 
   useEffect(() => {
     if (!model || !embed) return;
-    onResolved({ title: model.title, href: model.href, external: model.external, embed });
+    // A file that downloads when navigated to gets no 打开原页面 (panel-shared
+    // `fileOpensInNewTab`); the card's own anchor keeps its href for middle-click.
+    const href = embed.ok && embed.kind === 'file' && !fileOpensInNewTab(embed.data.url) ? undefined : model.href;
+    onResolved({ title: model.title, href, external: model.external, embed });
     // onResolved is stable per frame (provider closure) — re-running on identity churn is harmless but pointless.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model]);
@@ -180,8 +183,8 @@ export function PreviewBody({
     <PreviewToolbar
       title={embed.data.name}
       meta={formatBytes(embed.data.sizeBytes)}
-      downloadHref={`${fileUrl}?name=${encodeURIComponent(embed.data.name)}`}
-      openHref={fileUrl}
+      downloadHref={fileDownloadHref(embed.data.url, embed.data.name)}
+      openHref={fileOpensInNewTab(embed.data.url) ? fileUrl : null}
       onExit={onToggleFullscreen}
     />
   ) : model ? (

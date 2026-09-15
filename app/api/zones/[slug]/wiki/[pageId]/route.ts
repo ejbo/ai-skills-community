@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { Prisma } from '@prisma/client';
 import { getLocale } from 'next-intl/server';
 import { auth } from '@/lib/auth';
@@ -44,7 +45,8 @@ const patchSchema = z
       .toLowerCase()
       .refine((s) => isValidWikiSlug(s), { message: 'invalid_slug' })
       .optional(),
-    bodyMd: z.string().max(ZONE_LIMITS.wikiBodyMax).optional(),
+    // RichTextEditor field: VISIBLE length, the editor counter's measure (lib/rich-text-limit.ts).
+    bodyMd: withRichTextLimit(z.string(), ZONE_LIMITS.wikiBodyMax).optional(),
     parentId: z.string().min(1).max(64).nullable().optional(),
     note: z.string().trim().max(ZONE_LIMITS.wikiNoteMax).optional(),
   })

@@ -176,6 +176,105 @@ export function openImageFile(key: string): fs.ReadStream | null {
 }
 
 /**
+ * Top-level folders of the uploads root that the PUBLIC `/api/uploads/[...key]`
+ * route must never serve. `profile-card/` holds 名片 media, which rides this root
+ * only for the `/_uploads/` nginx handoff: whether a card file is public is
+ * decided by `/api/profile/media/[...key]` (attached to an active member's card,
+ * never a video original) — served from here, every never-attached upload and
+ * every original would be an anonymous, year-cached download.
+ */
+export const GATED_UPLOAD_NAMESPACES: readonly string[] = ['profile-card'];
+
+/**
+ * May the public uploads route serve this key? It must resolve inside the
+ * uploads root (the traversal guard) and its FIRST resolved segment must not be
+ * a gated namespace. Decided on the RESOLVED path, not the raw string, so
+ * `images/../profile-card/…`, `./profile-card/…` and a case variant (a macOS
+ * dev volume is case-insensitive) are refused as well.
+ */
+export function isPublicUploadKey(key: string): boolean {
+  if (typeof key !== 'string' || !key || key.includes('\0')) return false;
+  const full = uploadFileAbsPath(key);
+  if (!full || full === UPLOAD_ROOT) return false;
+  const first = path.relative(UPLOAD_ROOT, full).split(path.sep)[0]?.toLowerCase() ?? '';
+  return !!first && !GATED_UPLOAD_NAMESPACES.includes(first);
+}
+
+const LAZY_READ_CHUNK_BYTES = 256 * 1024;
+
+/**
+ * A web ReadableStream over bytes start..end (inclusive) of an ABSOLUTE path
+ * (already through a traversal guard) that opens the file LAZILY — on the first
+ * pull — and closes it on EOF, error or cancel. null for an invalid range.
+ *
+ * Why not `Readable.toWeb(fs.createReadStream())`: createReadStream opens the fd
+ * at construction, and a body nobody reads is never destroyed — Next answers a
+ * HEAD from the GET handler without cancelling the body, and a client that
+ * disconnects before piping starts does the same. Each such request pinned one
+ * fd until the process ran out (EMFILE takes the whole site down).
+ * `highWaterMark: 0` is load-bearing: with the default of 1 the stream pulls
+ * once on construction, which would open the file before anyone reads.
+ *
+ * The response length is already on the wire when bytes flow, so a file that
+ * SHRANK fails the body (`short_read`) instead of ending it early, and one that
+ * grew is cut at `end`.
+ */
+export function openLazyFileBody(fullPath: string, start: number, end: number): ReadableStream<Uint8Array> | null {
+  if (!fullPath || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start) return null;
+  let handle: fsp.FileHandle | null = null;
+  let done = false;
+  let pos = start;
+  const release = async () => {
+    done = true;
+    const h = handle;
+    handle = null;
+    await h?.close().catch(() => undefined);
+  };
+  return new ReadableStream<Uint8Array>(
+    {
+      async pull(controller) {
+        try {
+          if (done) return;
+          if (!handle) {
+            const opened = await fsp.open(fullPath, 'r');
+            if (done) {
+              // cancelled while the open was in flight
+              await opened.close().catch(() => undefined);
+              return;
+            }
+            handle = opened;
+          }
+          const want = Math.min(LAZY_READ_CHUNK_BYTES, end - pos + 1);
+          const chunk = new Uint8Array(want);
+          const { bytesRead } = await handle.read(chunk, 0, want, pos);
+          if (bytesRead <= 0) throw new Error('short_read');
+          pos += bytesRead;
+          controller.enqueue(bytesRead === want ? chunk : chunk.subarray(0, bytesRead));
+          if (pos > end) {
+            await release();
+            controller.close();
+          }
+        } catch (e) {
+          await release();
+          controller.error(e);
+        }
+      },
+      async cancel() {
+        await release();
+      },
+    },
+    { highWaterMark: 0 },
+  );
+}
+
+/** The whole stored upload (`size` from its stat) as a lazy body; null for a bad key or an empty file. */
+export function openImageFileBody(key: string, size: number): ReadableStream<Uint8Array> | null {
+  const full = uploadFileAbsPath(key);
+  if (!full || !Number.isSafeInteger(size) || size <= 0) return null;
+  return openLazyFileBody(full, 0, size - 1);
+}
+
+/**
  * Delete a stored image (best-effort; ignores missing files). Mirrors
  * deleteVideoFile so callers can reclaim disk when an image is dereferenced.
  * Not yet wired to *Md edits/deletes — orphan reclamation is a follow-up; see

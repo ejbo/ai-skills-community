@@ -12,6 +12,7 @@ import { Prisma } from '@prisma/client';
 import { customAlphabet } from 'nanoid';
 import type { Session } from 'next-auth';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { prisma } from '@/lib/db';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
 import type { ZoneSiteViewer } from './access';
@@ -154,7 +155,8 @@ export interface WikiPageInput {
 export const wikiPageInputSchema = z.object({
   title: z.string().trim().min(1).max(ZONE_LIMITS.wikiTitleMax),
   slug: z.string().trim().max(WIKI_SLUG_MAX).optional(),
-  bodyMd: z.string().max(ZONE_LIMITS.wikiBodyMax).default(''),
+  // RichTextEditor field: VISIBLE length, the editor counter's measure (lib/rich-text-limit.ts).
+  bodyMd: withRichTextLimit(z.string(), ZONE_LIMITS.wikiBodyMax).default(''),
   parentId: z.string().min(1).max(64).nullable().optional(),
   note: z.string().trim().max(ZONE_LIMITS.wikiNoteMax).optional(),
 }) satisfies z.ZodType<WikiPageInput, z.ZodTypeDef, unknown>;

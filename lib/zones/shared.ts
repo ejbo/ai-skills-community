@@ -1,8 +1,15 @@
 // 技术专区 — pure, import-free helpers shared by server and client (unit-tested
 // in tests/zones-shared.test.ts). No env, no prisma, no next-intl here.
 
-import { POLL_TOKEN_GLOBAL_RE } from '@/lib/polls-shared';
+import { markdownInlineToPlainText, markdownToPlainText } from '@/lib/markdown-text';
 import { defaultOrg, type OrgApi } from '@/lib/org';
+import {
+  INLINE_VIDEO_MIMES,
+  OFFICE_EXTS,
+  RASTER_IMAGE_MIMES,
+  SAFE_KEY_EXT_PATTERN,
+  extOfName as fileExtOfName,
+} from '@/lib/files/file-types';
 
 // ── Slugs ────────────────────────────────────────────────────────────────────
 
@@ -292,54 +299,34 @@ export const MAX_ZONE_VIDEO_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
 export const MAX_ZONE_FILE_BYTES = 200 * 1024 * 1024; // 200 MB
 export const MAX_ZONE_COVER_BYTES = 20 * 1024 * 1024; // 20 MB
 
-/** Storage key shape for every zone media kind (lib/zones/storage.ts writes them). */
-export const ZONE_MEDIA_KEY_RE = /^(image|video|file|cover|icon|poster|preview)\/[A-Za-z0-9_-]+\.[a-z0-9]{2,5}$/;
+/**
+ * Storage key shape for every zone media kind (lib/zones/storage.ts writes them).
+ * The extension part is `SAFE_KEY_EXT_PATTERN` (`[a-z0-9]{1,10}`) — the SAME
+ * source as `safeKeyExt`, which is what writes it, and as EMBED_FILE_KEY_RE
+ * below. They must move together: a key the storage layer writes but this regex
+ * rejects is silently DROPPED by draftFromView when the post is re-opened, and
+ * the next save then unlinks the file (the ledger is replaced wholesale).
+ */
+export const ZONE_MEDIA_KEY_RE = new RegExp(`^(image|video|file|cover|icon|poster|preview)\\/[A-Za-z0-9_-]+\\.${SAFE_KEY_EXT_PATTERN}$`);
 
-export const ZONE_FILE_EXT: Readonly<Record<string, string>> = {
-  'application/pdf': 'pdf',
-  'application/vnd.ms-powerpoint': 'ppt',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
-  'application/msword': 'doc',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
-  'application/vnd.ms-excel': 'xls',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
-  'application/zip': 'zip',
-  'application/x-zip-compressed': 'zip',
-  'text/plain': 'txt',
-  'text/markdown': 'md',
-  'text/csv': 'csv',
-  'application/json': 'json',
-};
-export const ZONE_FILE_EXTS: ReadonlySet<string> = new Set(Object.values(ZONE_FILE_EXT));
-export const ZONE_FILE_ACCEPT = '.pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.zip,.txt,.md,.csv,.json';
-export const ZONE_IMAGE_TYPES: ReadonlySet<string> = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif']);
-export const ZONE_VIDEO_TYPES: ReadonlySet<string> = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
+/** The zone `image` kind's MIME allowlist (raster only — svg/heic/bmp/tiff are FILES). */
+export const ZONE_IMAGE_TYPES: ReadonlySet<string> = RASTER_IMAGE_MIMES;
+export const ZONE_VIDEO_TYPES: ReadonlySet<string> = INLINE_VIDEO_MIMES;
 
 /** Office formats we try to turn into a PDF preview (LibreOffice) — slides also get the HTML fallback. */
-export const OFFICE_PREVIEW_EXTS: ReadonlySet<string> = new Set(['ppt', 'pptx', 'doc', 'docx', 'xls', 'xlsx']);
+export const OFFICE_PREVIEW_EXTS: ReadonlySet<string> = OFFICE_EXTS;
 export const SLIDE_EXTS: ReadonlySet<string> = new Set(['ppt', 'pptx']);
 
-export function extOfName(name: string): string {
-  const m = /\.([a-z0-9]{1,8})$/i.exec(name.trim());
-  return m ? m[1].toLowerCase() : '';
-}
+/** Display extension of a file name (compound-aware: `tar.gz`). Serving / preview decisions read the KEY instead. */
+export const extOfName = fileExtOfName;
 
 export function isOfficePreviewable(nameOrExt: string): boolean {
   const ext = nameOrExt.includes('.') ? extOfName(nameOrExt) : nameOrExt.toLowerCase();
   return OFFICE_PREVIEW_EXTS.has(ext);
 }
 
-export function formatBytes(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let v = n;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return `${v < 10 && i > 0 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
-}
+/** The ONE byte formatter (lib/files/display.ts), re-exported for the zone call sites that import it from here. */
+export { formatBytes } from '@/lib/files/display';
 
 // ── Native embed tokens `[embed:<kind>:<ref>]` ───────────────────────────────
 //
@@ -381,7 +368,7 @@ export const EMBED_REF_RE = /^[A-Za-z0-9_-]{1,80}$/;
  * server gate anyway). The server resolves keys through `ZonePostAttachment.key`
  * (@unique) under the SAME `canSeeZonePost` gate as ids.
  */
-export const EMBED_FILE_KEY_RE = /^(image|video|file)\/[A-Za-z0-9_-]{1,80}\.[a-z0-9]{2,5}$/;
+export const EMBED_FILE_KEY_RE = new RegExp(`^(image|video|file)\\/[A-Za-z0-9_-]{1,80}\\.${SAFE_KEY_EXT_PATTERN}$`);
 export function isEmbedFileKey(ref: string): boolean {
   return EMBED_FILE_KEY_RE.test(ref);
 }
@@ -501,28 +488,53 @@ export function mergeBodyFileKeys<T extends { key: string }>(items: readonly T[]
 
 // ── Excerpts ─────────────────────────────────────────────────────────────────
 
-/** Plain-text excerpt of a markdown body (code-point safe, strips tokens/images/md noise). */
+/**
+ * Plain-text excerpt of a markdown body — code-point safe; tokens, images,
+ * formatting spans and markdown syntax removed, code blocks dropped (a code-only
+ * body falls back to its first code line), entities decoded. The
+ * rules live in lib/markdown-text.ts (shared with every other excerpt, the
+ * notification snippets and the search titles); this name stays because the
+ * stored ZonePost.summary, the notice band and the rail 关于 card call it.
+ */
 export function excerptOf(md: string, max = 160): string {
-  const text = md
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(EMBED_TOKEN_GLOBAL_RE, ' ')
-    .replace(POLL_TOKEN_GLOBAL_RE, ' ')
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/[#>*_~`|-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const cps = [...text];
-  return cps.length > max ? `${cps.slice(0, max).join('')}…` : text;
+  return markdownToPlainText(md, { max });
 }
 
-/** Rough reading time from a markdown body (CJK counts per char, latin per word). */
+/**
+ * Rough reading time from a markdown body (CJK counts per char, latin per word).
+ *
+ * Counted over the PLAIN TEXT (lib/markdown-text.ts), never the raw string: the
+ * editor stores formatting as inline HTML (`<span data-color="red" data-size="xl">`),
+ * and a raw word count read `span`, `data`, `color`, `red`, `xl` as five words per
+ * formatted phrase \u2014 a fully coloured 300-word post came out at 29 minutes
+ * instead of 1. The same plain text also drops code blocks (as this always
+ * did — a code-only body keeps just its first line, which the 1-minute floor
+ * absorbs), link URLs, image/embed/poll tokens and markdown syntax, none of which
+ * anyone reads as prose. Shown in the composer AND on the published post
+ * (PostHeader / PostRail / PostRow), so every surface gets the same number.
+ *
+ * The count is one charCode pass (kana + CJK ideographs per char; a maximal
+ * `[A-Za-z0-9]` run per word, which a CJK char also ends) instead of two regex
+ * `match`es that each built an array as long as the text: list rows run this
+ * for every post on the page, and the plain-text pass already costs its share.
+ */
 export function estimateReadMinutes(md: string): number {
-  const text = md.replace(/```[\s\S]*?```/g, ' ');
-  const CJK = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g;
-  const cjk = (text.match(CJK) ?? []).length;
-  const words = (text.replace(CJK, ' ').match(/[A-Za-z0-9]+/g) ?? []).length;
+  const text = markdownToPlainText(md);
+  let cjk = 0;
+  let words = 0;
+  let inWord = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if ((c >= 0x3040 && c <= 0x30ff) || (c >= 0x3400 && c <= 0x4dbf) || (c >= 0x4e00 && c <= 0x9fff) || (c >= 0xf900 && c <= 0xfaff)) {
+      cjk++;
+      inWord = false;
+    } else if ((c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a)) {
+      if (!inWord) words++;
+      inWord = true;
+    } else {
+      inWord = false;
+    }
+  }
   return Math.max(1, Math.round(cjk / 400 + words / 220));
 }
 
@@ -532,6 +544,19 @@ export interface MdHeading {
   level: number;
   text: string;
   id: string;
+}
+
+/**
+ * The TEXT of a heading line's content, as the rendered heading's textContent
+ * reads: inline code kept, links → label, images / formatting spans / other
+ * tags removed, entities decoded (a typed `<` is stored as `&lt;`). The id is
+ * slugged from this, and ZoneMarkdown's client-side assignHeadingIds slugs the
+ * DOM textContent — so a coloured heading, or one containing `<`, still gets
+ * the id its TOC link points at. lib/zones/rules.ts uses the same predicate to
+ * decide which heading lines count, so its labels stay index-aligned.
+ */
+export function headingPlainText(raw: string): string {
+  return markdownInlineToPlainText(raw);
 }
 
 /** Fence-aware `#` heading scan; ids match rehype-slug-style slugs for the same text. */
@@ -549,11 +574,14 @@ export function extractHeadings(md: string, maxLevel = 3): MdHeading[] {
       continue;
     }
     if (fence) continue;
-    const m = /^ {0,3}(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/.exec(line);
+    // A closing `#` run only counts after whitespace (CommonMark), so `## 学习 C#`
+    // keeps its `C#` and an escaped `\#` is never eaten. rules.ts#HEADING_RE is
+    // the same pattern — keep them identical.
+    const m = /^ {0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/.exec(line);
     if (!m) continue;
     const level = m[1].length;
     if (level > maxLevel) continue;
-    const text = m[2].replace(/[*_`~]/g, '').trim();
+    const text = headingPlainText(m[2]);
     if (!text) continue;
     const base = headingSlug(text);
     const n = counts.get(base) ?? 0;

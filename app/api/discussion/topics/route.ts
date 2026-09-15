@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { prisma } from '@/lib/db';
 import { apiReason } from '@/lib/api-errors';
 import { auth } from '@/lib/auth';
@@ -27,7 +28,8 @@ const categoriesSchema = z
 
 const createSchema = z.object({
   title: z.string().trim().min(4, '标题至少 4 个字').max(120),
-  bodyMd: z.string().max(20000).default(''),
+  // RichTextEditor field (TopicForm maxLength 20000): VISIBLE length, like its counter.
+  bodyMd: withRichTextLimit(z.string(), 20000).default(''),
   categories: categoriesSchema,
   media: mediaArraySchema,
 });

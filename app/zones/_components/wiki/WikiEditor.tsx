@@ -15,6 +15,7 @@ import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
 import { Magnetic } from '@/components/motion';
 import { ZONE_LIMITS, isValidWikiSlug, slugifyAscii, zoneWikiHref } from '@/lib/zones/shared';
+import { isRichTextTooLong } from '@/lib/markdown-text';
 import type { WikiTreeNode } from '@/lib/zones/types';
 import { currentLoginHref } from '@/lib/auth/callback-path';
 
@@ -112,7 +113,8 @@ export function WikiEditor({ zoneSlug, tree, page = null, initialParentId = null
       : titleTrimmed.length > ZONE_LIMITS.wikiTitleMax
         ? t('wiki_title_too_long', { max: ZONE_LIMITS.wikiTitleMax })
         : null;
-  const bodyError = bodyMd.length > ZONE_LIMITS.wikiBodyMax ? t('wiki_body_too_long') : null;
+  // Visible length, the same measure as the editor's counter and the server schema.
+  const bodyError = isRichTextTooLong(bodyMd, ZONE_LIMITS.wikiBodyMax) ? t('wiki_body_too_long') : null;
   const canSubmit = !busy && !titleError && !slugError && !bodyError && (!editing || slugTrimmed !== '');
 
   async function submit() {

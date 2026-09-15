@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
@@ -40,7 +41,7 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
 }
 
 const createSchema = z.object({
-  bodyMd: z.string().min(1).max(2000),
+  bodyMd: withRichTextLimit(z.string().min(1), 2000),
   parentId: z.string().optional(),
   // The specific comment being answered (a reply, when replying within a thread).
   // DB threading stays flat (parentId = the top comment); replyToId only steers

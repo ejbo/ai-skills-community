@@ -12,6 +12,7 @@ import { DeptTag } from '@/components/DeptTag';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { withBasePath } from '@/lib/base-path';
 import { RichTextEditor } from '@/components/RichTextEditor';
+import { isRichTextTooLong } from '@/lib/markdown-text';
 import { formatCount } from '@/lib/video/types';
 import type { VideoCommentView } from '@/lib/video/queries';
 import { CommentComposer } from './CommentComposer';
@@ -218,7 +219,7 @@ export function CommentItem({ slug, comment, currentUser, onChanged, onAddSiblin
             <div className="flex items-center gap-2">
               <button
                 onClick={saveEdit}
-                disabled={savingEdit || !editDraft.trim() || editDraft.length > 2000}
+                disabled={savingEdit || !editDraft.trim() || isRichTextTooLong(editDraft, 2000)}
                 className="flex h-8 items-center gap-1.5 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
               >
                 {savingEdit && <Loader2 className="h-3 w-3 animate-spin" />}

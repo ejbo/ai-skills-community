@@ -2,12 +2,15 @@
 
 import { useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { Loader2, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
+import { workspaceHref } from '@/app/users/[handle]/_components/workspace/href';
 
 export function DeleteSkillButton({ slug }: { slug: string }) {
   const router = useRouter();
+  const { data: session } = useSession();
   const t = useTranslations('skill_manage');
   const [pending, start] = useTransition();
 
@@ -20,7 +23,11 @@ export function DeleteSkillButton({ slug }: { slug: string }) {
         return;
       }
       pushToast('success', t('deleted'));
-      router.push('/dashboard');
+      // Back to 工作台 (the skill is gone from its own page). /dashboard would only
+      // redirect there anyway; the session handle skips the extra hop, and the
+      // redirect still covers a session that has not loaded yet.
+      const handle = session?.user?.handle;
+      router.push(handle ? workspaceHref(handle) : '/dashboard');
       router.refresh();
     });
   }

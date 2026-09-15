@@ -45,7 +45,8 @@ export type ShortRow = Prisma.VideoGetPayload<{ select: typeof SHORT_FEED_SELECT
 /** Feed row + per-viewer flags (annotated in 2 batched queries, never per-row). */
 export type ShortFeedRow = ShortRow & { likedByMe: boolean; favoritedByMe: boolean };
 
-const SHORTS_PUBLIC = {
+/** The public shorts gate — exported so the 个人主页 can COUNT a member's shorts with the same rule `listShorts` lists by. */
+export const SHORTS_PUBLIC = {
   isShort: true,
   status: 'published',
   visibility: 'public',

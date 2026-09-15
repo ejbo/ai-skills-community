@@ -1,10 +1,27 @@
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { imagePublicUrl } from '@/lib/uploads/image-storage';
-import { deletePostMediaFile, postMediaPublicUrl } from '@/lib/uploads/post-media-storage';
+import { deletePostMediaFile } from '@/lib/uploads/post-media-storage';
+import {
+  MAX_POST_FILES,
+  MAX_POST_IMAGES,
+  MAX_POST_MEDIA_ITEMS,
+  MAX_POST_VIDEOS,
+  POST_IMAGE_KEY_RE,
+  isValidPostMediaKey,
+  postMediaPublicUrl,
+} from '@/lib/uploads/post-media-keys';
 
 // Shared attachment validation for the 讨论区 composers (feed posts AND forum
 // topics — both persist the same shape into PostMedia / TopicMedia).
+//
+// Key shapes and count limits come from lib/uploads/post-media-keys.ts, the
+// module the upload route WRITES keys with. That lockstep is the point: a
+// `file/<id>.properties` or `file/<id>.c` key the storage produced but a copy of
+// the regex here rejected would make every later edit of that topic a 400
+// (media_invalid) — and resolveMedia refuses the whole list rather than
+// filtering it, precisely so a key it does not understand can never silently
+// fall out of an edit and get its file unlinked (see removedUploadKeys).
 
 export const mediaItemSchema = z.object({
   kind: z.enum(['image', 'video', 'video_link', 'file']),
@@ -21,7 +38,7 @@ export const mediaItemSchema = z.object({
 
 // 9 images + 1 video/link + 4 files — must fit everything the picker allows
 // (resolveMedia enforces the real per-kind limits).
-export const mediaArraySchema = z.array(mediaItemSchema).max(14, '附件数量过多').default([]);
+export const mediaArraySchema = z.array(mediaItemSchema).max(MAX_POST_MEDIA_ITEMS, '附件数量过多').default([]);
 
 export type MediaInput = z.infer<typeof mediaItemSchema>;
 
@@ -40,7 +57,9 @@ export interface ResolvedMedia {
 /**
  * Re-derive each attachment's URL from its storage key so a crafted request
  * can never make a post/topic point at an arbitrary path. Returns null on any
- * invalid item (the caller 400s).
+ * invalid item (the caller 400s) — ALL or nothing, never a filtered subset: a
+ * topic edit replaces its media wholesale and unlinks what dropped out, so a
+ * silently skipped item would delete a file its author never removed.
  */
 export function resolveMedia(items: MediaInput[]): ResolvedMedia[] | null {
   const out: ResolvedMedia[] = [];
@@ -63,14 +82,14 @@ export function resolveMedia(items: MediaInput[]): ResolvedMedia[] | null {
       url = parsed.toString();
       videos++;
     } else if (item.kind === 'image') {
-      if (!item.key || !/^images\/[A-Za-z0-9_-]+\.[a-z0-9]{2,5}$/.test(item.key)) return null;
+      if (!item.key || !POST_IMAGE_KEY_RE.test(item.key)) return null;
       key = item.key;
       url = imagePublicUrl(key);
       images++;
     } else {
-      const prefix = item.kind === 'video' ? 'video/' : 'file/';
-      if (!item.key || !item.key.startsWith(prefix)) return null;
-      if (!/^(video|file)\/[A-Za-z0-9_-]+\.[a-z0-9]{2,5}$/.test(item.key)) return null;
+      // `video` keys are the three inline containers; `file` keys carry any
+      // extension safeKeyExt writes (`[a-z0-9]{1,10}`, `bin` for none).
+      if (!item.key || !isValidPostMediaKey(item.key, item.kind)) return null;
       key = item.key;
       url = postMediaPublicUrl(key);
       if (item.kind === 'video') videos++;
@@ -91,8 +110,29 @@ export function resolveMedia(items: MediaInput[]): ResolvedMedia[] | null {
 
   // Card layout limits: an image gallery, at most ONE video (uploaded or
   // linked), and a short attachment list.
-  if (images > 9 || videos > 1 || files > 4) return null;
+  if (images > MAX_POST_IMAGES || videos > MAX_POST_VIDEOS || files > MAX_POST_FILES) return null;
   return out;
+}
+
+/**
+ * The uploaded (video / file) keys an edit DROPS: stored on the entity before,
+ * absent from the validated replacement. Only these may be handed to
+ * deleteUnreferencedMediaFiles. Images are shared editor infrastructure and
+ * never reclaimed here. Call it only with a non-null resolveMedia result.
+ */
+export function removedUploadKeys(
+  before: { kind: string; key: string | null }[],
+  next: Pick<ResolvedMedia, 'key'>[],
+): string[] {
+  const kept = new Set(next.map((m) => m.key).filter(Boolean));
+  return [
+    ...new Set(
+      before
+        .filter((m): m is { kind: string; key: string } => (m.kind === 'video' || m.kind === 'file') && Boolean(m.key))
+        .filter((m) => !kept.has(m.key))
+        .map((m) => m.key),
+    ),
+  ];
 }
 
 /**

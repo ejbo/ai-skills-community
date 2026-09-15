@@ -14,6 +14,7 @@ export default async function ManageUserTagsPage() {
       name: true,
       description: true,
       color: true,
+      icon: true,
       kind: true,
       sortOrder: true,
       _count: { select: { assignments: true } },
@@ -25,8 +26,8 @@ export default async function ManageUserTagsPage() {
       <div>
         <h2 className="text-2xl font-semibold tracking-tight">用户标签</h2>
         <p className="mt-1 text-sm text-muted">
-          标签显示在用户卡片上。手动标签可单独或批量指派；系统标签（如版主）按规则自动授予与回收，
-          不能手工指派或删除。成员可以在「设置 → 我的标签」里选择展示哪些。
+          标签就是成员名片与个人主页上的徽章称号：图标、名称、颜色，以及悬停时展示的说明。手动标签可单独或批量指派；
+          系统标签（如版主）按规则自动授予与回收，不能手工指派或删除。成员可以在「设置 → 我的标签」里选择展示哪些。
         </p>
       </div>
       <UserTagsManager
@@ -36,6 +37,7 @@ export default async function ManageUserTagsPage() {
           name: t.name,
           description: t.description ?? '',
           color: t.color,
+          icon: t.icon,
           kind: t.kind,
           sortOrder: t.sortOrder,
           assignedCount: t._count.assignments,

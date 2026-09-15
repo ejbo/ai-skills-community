@@ -3,6 +3,7 @@ import yaml from 'js-yaml';
 import crypto from 'node:crypto';
 import { StringDecoder } from 'node:string_decoder';
 import type { Readable } from 'node:stream';
+import { BINARY_EXTENSIONS, TEXT_EXTENSIONS } from '@/lib/files/file-types';
 
 // Internal deploy — intentionally generous (was 256KB). Bounds in-DB text size
 // without rejecting any realistic skill doc.
@@ -21,21 +22,8 @@ const MAX_ENTRIES = 4096;
 const MAX_ENTRY_BYTES = 64 * 1024 * 1024; // 8x the per-file text budget above
 const MAX_TOTAL_BYTES = 256 * 1024 * 1024; // whole-bundle expansion budget
 
-const TEXT_EXTENSIONS = new Set([
-  'md', 'markdown', 'txt', 'text', 'rst', 'py', 'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs',
-  'json', 'jsonc', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env', 'sh', 'bash',
-  'zsh', 'fish', 'rb', 'go', 'rs', 'java', 'kt', 'c', 'h', 'cpp', 'hpp', 'cc', 'cs',
-  'php', 'swift', 'scala', 'sql', 'html', 'htm', 'css', 'scss', 'less', 'xml', 'svg',
-  'csv', 'tsv', 'log', 'gitignore', 'dockerignore', 'editorconfig', 'gitattributes',
-  'lock', 'properties', 'gradle', 'makefile', 'make', 'mk', 'r', 'lua', 'pl', 'vim',
-  'dot', 'graphql', 'proto', 'tf', 'tfvars',
-]);
-
-const BINARY_EXTENSIONS = new Set([
-  'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'tiff', 'pdf', 'zip', 'gz', 'tar',
-  'tgz', 'rar', '7z', 'mp3', 'mp4', 'wav', 'ogg', 'mov', 'avi', 'woff', 'woff2', 'ttf',
-  'otf', 'eot', 'exe', 'dll', 'so', 'dylib', 'bin', 'wasm', 'class', 'pyc',
-]);
+// Text / binary extension tables live in lib/files/file-types.ts (import-free,
+// shared with the attachment viewer) — one table, never a second copy.
 
 function extensionOf(path: string): string {
   const base = (path.split('/').pop() ?? path).toLowerCase();

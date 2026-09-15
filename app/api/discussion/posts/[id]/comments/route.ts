@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { prisma } from '@/lib/db';
 import { apiReason } from '@/lib/api-errors';
 import { auth } from '@/lib/auth';
@@ -9,13 +10,17 @@ import { notifyPostReply } from '@/lib/notifications';
 import { listPostComments } from '@/lib/discussion-queries';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
 import { notifyMentions } from '@/lib/mention-notify';
+import { markdownToPlainText } from '@/lib/markdown-text';
 
 export const dynamic = 'force-dynamic';
 
-/** Post excerpt used in notifications — posts have no title. */
+/**
+ * Post excerpt used in notifications and email subjects — posts have no title.
+ * Plain text (lib/markdown-text.ts), so a formatted or image-only post never
+ * puts raw markup into 「…」; nothing readable left ⇒ the generic 动态.
+ */
 function postExcerpt(bodyMd: string): string {
-  const t = bodyMd.replace(/\s+/g, ' ').trim();
-  return t ? (t.length > 40 ? `${t.slice(0, 40)}…` : t) : '动态';
+  return markdownToPlainText(bodyMd, { max: 40 }) || '动态';
 }
 
 // GET /api/discussion/posts/[id]/comments?sort=relevant|recent&skip=&take=
@@ -45,7 +50,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 }
 
 const createSchema = z.object({
-  bodyMd: z.string().trim().min(1).max(2000),
+  bodyMd: withRichTextLimit(z.string().trim().min(1), 2000),
   // parentId must be a TOP-LEVEL comment (2-level flat threads, same contract
   // as video/feedback comments); replyToId marks which comment gets the
   // notification. min(1): an empty string would skip validation yet hit the FK.
@@ -166,15 +171,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   // @人 — no gate: 讨论区 是公开可读的，任何成员都能打开这条动态。
-  // An image-only post has no excerpt to name it by, and 「动态「动态」」 reads
-  // like a bug — leave the title off and let the body snippet carry it.
+  // A post with no readable text (only images / embeds; a code-only post still
+  // gets its first code line) has no excerpt to name it by, and 「动态「动态」」
+  // reads like a bug — leave the title off and let the body snippet carry it.
   void notifyMentions({
     bodyMd,
     actorId: session.user.id,
     actorName: session.user.displayName,
     site: {
       what: '动态',
-      title: post.bodyMd.trim() ? postExcerpt(post.bodyMd) : null,
+      title: markdownToPlainText(post.bodyMd, { max: 40 }) || null,
       link: `/discussion/posts/${post.id}?focus=${comment.id}`,
     },
   });

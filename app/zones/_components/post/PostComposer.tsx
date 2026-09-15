@@ -35,7 +35,6 @@ import {
   ZONE_IMAGE_TYPES,
   ZONE_LIMITS,
   collectEmbedRefs,
-  estimateReadMinutes,
   formatBytes,
   isZonePostVisibility,
   normalizeColumnName,
@@ -45,6 +44,7 @@ import {
   zonePostHref,
   type ZonePostVisibilityValue,
 } from '@/lib/zones/shared';
+import { isRichTextTooLong } from '@/lib/markdown-text';
 import { ARTICLE_MEASURE_CLASS } from '@/lib/zones/prose';
 import type { ZoneAccess, ZoneColumnView, ZoneCurrentUser, ZonePostDetailView } from '@/lib/zones/types';
 import { currentLoginHref } from '@/lib/auth/callback-path';
@@ -63,6 +63,7 @@ import { insertContentEmbed, removeContentEmbeds } from '@/components/zones/embe
 import { attachmentPreviewRef } from '@/components/zones/attachments/AttachmentCard';
 import { ComposerTopBar } from './ComposerTopBar';
 import { ComposerSettingsSheet } from './ComposerSettingsSheet';
+import { composerBodyStats } from './composer-stats';
 import type { CoauthorPick } from './CoauthorPicker';
 import { ColumnPicker, type ColumnPick } from './ColumnPicker';
 import type { DesignatedPick } from './PostAccessPanel';
@@ -299,8 +300,10 @@ export function PostComposer({
   }
 
   const uploading = attachmentUploading + editorUploading;
-  const readMinutes = estimateReadMinutes(draft.bodyMd);
-  const charCount = [...draft.bodyMd].length;
+  // 字数 / 阅读时长 follow the editor's own counter, not the raw markdown (see
+  // composer-stats.ts). Memoized — a 200 kB body would otherwise be re-scanned
+  // on every keystroke in the title or summary.
+  const { chars: charCount, readMinutes } = useMemo(() => composerBodyStats(draft.bodyMd), [draft.bodyMd]);
   const isPublished = post?.status === 'published';
   const titleLen = [...draft.title.trim()].length;
   const summaryLen = [...draft.summary].length;
@@ -322,7 +325,8 @@ export function PostComposer({
     if (titleLen < ZONE_LIMITS.postTitleMin) return t('composer_err_title_min', { min: ZONE_LIMITS.postTitleMin });
     if (titleLen > ZONE_LIMITS.postTitleMax) return t('composer_err_title_max', { max: ZONE_LIMITS.postTitleMax });
     if (summaryLen > ZONE_LIMITS.postSummaryMax) return t('composer_err_summary_max', { max: ZONE_LIMITS.postSummaryMax });
-    if (draft.bodyMd.length > ZONE_LIMITS.postBodyMax) return t('composer_err_body_max');
+    // Visible length, the same measure as the editor's counter and the server schema.
+    if (isRichTextTooLong(draft.bodyMd, ZONE_LIMITS.postBodyMax)) return t('composer_err_body_max');
     if (draft.linkUrl.trim() && !normalizeHttpUrl(draft.linkUrl)) return t('composer_err_link_invalid');
     return null;
   }

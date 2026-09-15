@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { prisma } from '@/lib/db';
 import { apiReason } from '@/lib/api-errors';
 import { auth } from '@/lib/auth';
@@ -12,7 +13,7 @@ import { notifyMentions } from '@/lib/mention-notify';
 export const dynamic = 'force-dynamic';
 
 const createSchema = z.object({
-  bodyMd: z.string().trim().min(1).max(5000),
+  bodyMd: withRichTextLimit(z.string().trim().min(1), 5000),
   // parentId must be a TOP-LEVEL reply (2-level flat threads, same contract as
   // video/feedback comments); replyToId marks which reply gets the
   // notification. min(1): an empty string would skip validation yet hit the FK.

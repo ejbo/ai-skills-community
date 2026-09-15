@@ -32,6 +32,8 @@ import { Toaster } from '@/components/Toaster';
 import { VisitTracker } from '@/components/VisitTracker';
 import { auth } from '@/lib/auth';
 import './globals.css';
+import './rich-text.css';
+import './code-block.css';
 
 export const metadata: Metadata = {
   title: 'AI Community',

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic';
 const MINUTE_MS = 60 * 1000;
 
 const createSchema = z.object({
-  bodyMd: z.string().trim().min(1, '评论不能为空').max(10_000),
+  bodyMd: withRichTextLimit(z.string().trim().min(1, '评论不能为空'), 10_000),
   parentId: z.string().optional(),
   // Transient reply-target inside the thread — routes notifications only,
   // never stored (feedback board contract).

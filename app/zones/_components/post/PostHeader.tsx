@@ -10,6 +10,13 @@
 // pill), not as a format. Lead roles (主版主 / 版主) reach the byline ONLY
 // through RolePill + `leadRoleOf`.
 //
+// 编辑 (canEdit, server-decided by the RSC): a LABELLED ink button closing the
+// meta row, because this is where an author lands after 发布. It used to live
+// only in the action bar's ⋯ menu — below the whole article on desktop, hidden
+// on scroll-down on phones, and the ⋯ glyph itself rendered as an empty circle —
+// so authors reported they "could not edit a published post". Drafts do not get
+// it: their banner right above the header already says 继续编辑.
+//
 // Hydration: the byline's `title` is the ISO instant, never
 // `toLocaleString()` — that string depends on the process locale and differed
 // between the server ("2026-09-01, 3:48:55 p.m.") and the browser
@@ -18,7 +25,7 @@
 import Link from 'next/link';
 import type { RefObject } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Clock, ExternalLink, Eye, FolderOpen, Lock, Megaphone, PencilLine, Pin } from 'lucide-react';
+import { Clock, ExternalLink, Eye, FolderOpen, Lock, Megaphone, Pencil, PencilLine, Pin } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { GlareHover } from '@/components/motion';
@@ -26,7 +33,7 @@ import { ImageLightbox } from '@/app/events/_components/ImageLightbox';
 import { withBasePath } from '@/lib/base-path';
 import { relativeTime } from '@/lib/i18n-date';
 import { leadRoleOf, type LeadRoles } from '@/lib/zones/lead-roles';
-import { hostnameOf, zoneHref } from '@/lib/zones/shared';
+import { hostnameOf, zoneHref, zonePostHref } from '@/lib/zones/shared';
 import type { ZonePostDetailView } from '@/lib/zones/types';
 import { RolePill } from '../RolePill';
 import { PILL_COLUMN, PILL_COLUMN_MEMBER, PILL_INK } from '../ui';
@@ -37,6 +44,7 @@ export function PostHeader({
   zone,
   leadRoles,
   titleRef,
+  canEdit = false,
 }: {
   post: ZonePostDetailView;
   zone: { slug: string; name: string };
@@ -44,8 +52,11 @@ export function PostHeader({
   leadRoles?: LeadRoles;
   /** Optional ref on the <h1>, kept for callers that want to observe it. */
   titleRef?: RefObject<HTMLHeadingElement>;
+  /** May this viewer edit the content? Decided on the server (canViewerEditZonePost). */
+  canEdit?: boolean;
 }) {
   const t = useTranslations('zones');
+  const tc = useTranslations('common');
   const tl = useTranslations('labels');
   const locale = useLocale();
   const VisibilityIcon = VISIBILITY_ICONS[post.visibility];
@@ -190,6 +201,15 @@ export function PostHeader({
           <Eye className="h-3 w-3" />
           {t('post_views', { count: post.viewCount })}
         </span>
+        {canEdit && post.status === 'published' && (
+          <Link
+            href={`${zonePostHref(zone.slug, post.id)}/edit`}
+            className="ml-auto inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-zinc-900 px-3 text-xs font-medium text-white outline-none transition hover:bg-zinc-700 focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white dark:focus-visible:ring-zinc-100 dark:focus-visible:ring-offset-zinc-950"
+          >
+            <Pencil className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            {tc('edit')}
+          </Link>
+        )}
       </div>
 
       {post.coverUrl && (

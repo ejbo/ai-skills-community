@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { markdownToPlainText } from '@/lib/markdown-text';
 
 // Site-wide search core, shared by the ⌘K palette API (app/api/search, small
 // perType) and the full results page (app/search, larger perType). Only
@@ -6,15 +7,13 @@ import { prisma } from '@/lib/db';
 // active users) so nothing private leaks. Per-tab in-page searches (skills
 // browse, library, videos, discussion) stay scoped to their own tab.
 
-/** Markdown body → short plain-text excerpt for untitled content (feed posts). */
+/**
+ * Markdown body → short plain-text excerpt for untitled content (feed posts).
+ * Goes through lib/markdown-text.ts so formatting spans, `<img width>` and
+ * entities never reach the ⌘K palette, and emoji are never cut in half.
+ */
 export function mdExcerpt(md: string, max = 48): string {
-  const text = md
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, '') // images
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // links → label
-    .replace(/[#>*`~_|-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return text.length > max ? `${text.slice(0, max)}…` : text;
+  return markdownToPlainText(md, { max });
 }
 
 export interface SiteSearchResults {

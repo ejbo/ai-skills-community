@@ -229,6 +229,12 @@ describe('excerptOf / estimateReadMinutes', () => {
     expect(excerptOf(md)).toBe('Title some bold link text');
   });
 
+  it('keeps prose with angle brackets, strips formatting spans and decodes entities', () => {
+    expect(excerptOf('a < b and c > d')).toBe('a < b and c > d');
+    expect(excerptOf('前文 <span data-color="red">重点</span> &lt;tag&gt; 2026-09-14')).toBe('前文 重点 <tag> 2026-09-14');
+    expect(excerptOf('![a](/a.png)\n\n<img src="/b.png" alt="" width="320">\n\n正文')).toBe('正文');
+  });
+
   it('cuts on code points and appends an ellipsis', () => {
     const emoji = '😀'.repeat(10);
     const out = excerptOf(emoji, 4);
@@ -240,6 +246,22 @@ describe('excerptOf / estimateReadMinutes', () => {
     expect(estimateReadMinutes('')).toBe(1);
     expect(estimateReadMinutes('字'.repeat(1200))).toBe(3);
     expect(estimateReadMinutes(Array.from({ length: 660 }, () => 'word').join(' '))).toBe(3);
+  });
+
+  it('read minutes count the visible text — formatting spans, URLs and code are not words', () => {
+    // Every word wrapped in all four formatting marks: the raw string has ~24×
+    // the characters and five markup "words" per span (span/data/color/red/…),
+    // which used to read as 29 minutes for a one-minute post.
+    const wrap = (w: string) =>
+      `<span data-size="xl"><span data-font="kai"><span data-bg="yellow"><span data-color="red">${w}</span></span></span></span>`;
+    const words = Array.from({ length: 300 }, () => 'word');
+    expect(estimateReadMinutes(words.map(wrap).join(' '))).toBe(estimateReadMinutes(words.join(' ')));
+    expect(estimateReadMinutes(words.map(wrap).join(' '))).toBe(1);
+    const cjk = '字'.repeat(1200);
+    expect(estimateReadMinutes(`<span data-color="blue">${cjk}</span>`)).toBe(3);
+    // A link counts its label, not the path segments of its URL.
+    const link = `[docs](https://example.com/${Array.from({ length: 700 }, (_, i) => `seg${i}`).join('/')})`;
+    expect(estimateReadMinutes(link)).toBe(1);
   });
 });
 
@@ -265,6 +287,27 @@ describe('extractHeadings', () => {
       { level: 2, text: 'code em heading', id: 'code-em-heading' },
     ]);
     expect(extractHeadings(md, 1)).toHaveLength(1);
+  });
+
+  it('heading text and id match what the rendered heading textContent gives', () => {
+    const md = [
+      '## 前 <span data-color="red">红</span> 后',
+      '## a &lt; b',
+      '## [@王伟](/users/z84412632) 的 `code` 和 ![img](/x.png)',
+      '## <span data-bg="yellow"></span>',
+      '## snake_case &amp; C\\#',
+      '## 学习 C#',
+    ].join('\n');
+    expect(extractHeadings(md)).toEqual([
+      { level: 2, text: '前 红 后', id: '前-红-后' },
+      { level: 2, text: 'a < b', id: 'a-b' },
+      { level: 2, text: '@王伟 的 code 和', id: '王伟-的-code-和' },
+      { level: 2, text: 'snake_case & C#', id: 'snakecase-c' },
+      { level: 2, text: '学习 C#', id: '学习-c' },
+    ]);
+    // The client (ZoneMarkdown#assignHeadingIds) slugs textContent with the same function.
+    expect(headingSlug('前 红 后')).toBe('前-红-后');
+    expect(headingSlug('a < b')).toBe('a-b');
   });
 
   it('headingSlug keeps CJK, drops punctuation and falls back to "section"', () => {

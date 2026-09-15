@@ -16,10 +16,23 @@
 // The metadata line is TWO groups, not one long grey run: identity + time wrap
 // inside the left group, the engagement figures stay hard right, so a column of
 // numbers forms down the list and the eye can scan either edge.
+//
+// 编辑 on the author's OWN published rows (a draft row already links to /edit):
+// a small link LEADING the right-hand anchor, before the figures — at the end of
+// the left group it wrapped onto an orphan line under any long byline — and
+// above the stretched overlay like every other inner link. Gated on `isAuthor` alone, which on the zone home and
+// the hub feed is the same answer as the edit policy (`canEditZonePostContent`):
+// both list posts under the zone READ gate (`canRead` / `readableZoneWhere`),
+// and the policy only ever refuses a co-author who cannot read. The one list
+// that relaxes that gate is the viewer's own profile (own posts survive leaving
+// a members-only zone); a co-author row there whose zone they can no longer
+// read still shows the link, and the edit page's policy check sends them back
+// to the post — never into a composer whose save 403s. Moderators are
+// deliberately not offered it on every row: theirs is a per-post decision.
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Clock, Eye, FileText, FolderOpen, Heart, Image as ImageIcon, Lock, MessageCircle, Paperclip, Pin, Video } from 'lucide-react';
+import { Clock, Eye, FileText, FolderOpen, Heart, Image as ImageIcon, Lock, MessageCircle, Paperclip, Pencil, Pin, Video } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { GlareHover } from '@/components/motion';
@@ -86,6 +99,7 @@ export function PostRow({
 }) {
   const t = useTranslations('zones');
   const tl = useTranslations('labels');
+  const tc = useTranslations('common');
   const VisibilityIcon = VISIBILITY_ICONS[post.visibility];
   const href =
     post.status === 'draft' ? `${zonePostHref(post.zone.slug, post.id)}/edit` : zonePostHref(post.zone.slug, post.id);
@@ -221,6 +235,15 @@ export function PostRow({
 
           {/* Right anchor — the figures, always on the first line at ≥sm. */}
           <span className="inline-flex shrink-0 items-center gap-3 sm:ml-auto">
+            {post.isAuthor && post.status === 'published' && (
+              <Link
+                href={`${zonePostHref(post.zone.slug, post.id)}/edit`}
+                className="relative z-[1] inline-flex items-center gap-1 rounded font-medium text-zinc-700 outline-none hover:text-zinc-900 hover:underline focus-visible:ring-2 focus-visible:ring-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100 dark:focus-visible:ring-zinc-100"
+              >
+                <Pencil className="h-3 w-3 shrink-0" aria-hidden />
+                {tc('edit')}
+              </Link>
+            )}
             <Stat icon={<Heart className="h-3 w-3" />} value={post.likeCount} label={t('post_row_likes')} />
             <Stat icon={<MessageCircle className="h-3 w-3" />} value={post.commentCount} label={t('post_row_comments')} />
             {!compact && <Stat icon={<Eye className="h-3 w-3" />} value={post.viewCount} label={t('post_row_views')} />}

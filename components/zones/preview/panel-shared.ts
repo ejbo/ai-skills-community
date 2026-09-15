@@ -3,6 +3,8 @@
 // tests/zones-panel-shared.test.ts. The provider, DockShell's hooks and
 // FilePreview consume them so the same rule is never spelled out twice.
 
+import { zoneMediaKeyFromPublicUrl } from '@/components/zones/attachments/upload-core';
+import { opensInBrowser } from '@/lib/files/file-types';
 import { NAV_BAR_HEIGHT_PX } from '@/lib/nav-chrome';
 import type { ZonePreviewStatusView } from '@/lib/zones/types';
 
@@ -23,6 +25,21 @@ export function dockTopOffset(input: { expanded: boolean; maximized: boolean; na
  */
 export function isDockSash(el: { getAttribute(name: string): string | null } | null | undefined, dockId: string): boolean {
   return !!el && el.getAttribute('role') === 'separator' && el.getAttribute('aria-controls') === dockId;
+}
+
+/**
+ * Whether the panel offers "open in a new tab" for a FILE embed — the header's
+ * 打开原页面 and the fullscreen toolbar's 在新标签页打开 alike. Only a key served
+ * inline (raster image, mp4/webm/mov, audio, PDF) opens in a tab; every other key
+ * goes out as `Content-Disposition: attachment` + `sandbox` (lib/uploads/serve.ts),
+ * so the icon was a second 下载 beside the real one — most visibly on the text /
+ * code / csv files the panel itself previews. Serving text inline instead would
+ * break the "a direct link downloads" policy, so the control is withheld. A URL
+ * that is not a zone media key answers false.
+ */
+export function fileOpensInNewTab(url: string): boolean {
+  const key = zoneMediaKeyFromPublicUrl(url);
+  return key !== null && opensInBrowser(key);
 }
 
 export type OfficeNoteKey =

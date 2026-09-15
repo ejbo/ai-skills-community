@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { prisma } from '@/lib/db';
 import { apiReason } from '@/lib/api-errors';
 import { auth } from '@/lib/auth';
@@ -33,7 +34,7 @@ export async function GET(req: Request) {
 }
 
 const createSchema = z.object({
-  bodyMd: z.string().max(8000).default(''),
+  bodyMd: withRichTextLimit(z.string(), 8000).default(''),
   media: mediaArraySchema,
 });
 

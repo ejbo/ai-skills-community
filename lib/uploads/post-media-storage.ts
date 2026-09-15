@@ -1,17 +1,37 @@
 // Discussion post media — LOCAL DISK adapter. Mirrors the video storage model
-// (lib/video/storage.ts) under its own root: members attach videos and document
-// files (PDF/PPT/Word) to feed posts; the browser POSTs the raw file to
+// (lib/video/storage.ts) under its own root: members attach videos and files
+// (ANY type since 2026-09 — source code, JSON, archives, Office, PDF…) to feed
+// posts and forum topics; the browser POSTs the raw file to
 // /api/discussion/upload, which streams it to disk under
-// LOCAL_STORAGE_DIR/post-media/<kind>/. Playback/download streams back through
-// GET /api/discussion/media/[...key] (login + unguessable key, Range support).
+// LOCAL_STORAGE_DIR/post-media/<kind>/. Bytes stream back through
+// GET /api/discussion/media/[...key] (login + unguessable key, Range support),
+// whose headers are decided by lib/uploads/serve.ts from the KEY's extension.
 // Post images reuse the existing editor image stack (/api/uploads/image).
+//
+// Key shapes, limits and the extension rule live in the client-safe
+// lib/uploads/post-media-keys.ts (re-exported here for the server callers), so
+// the picker, resolveMedia and both routes can never disagree about what a
+// valid key looks like.
 
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { nanoid } from 'nanoid';
+import { contentTypeFor, keyExtOf } from '@/lib/files/file-types';
 import { tryRunMediaJob } from './job-queue';
+import type { PostMediaUploadKind } from './post-media-keys';
+
+export {
+  MAX_POST_FILE_BYTES,
+  MAX_POST_VIDEO_BYTES,
+  isAllowedPostVideoType,
+  isValidPostMediaKey,
+  postMediaExtFor,
+  postMediaKeyFromUrl,
+  postMediaPublicUrl,
+  type PostMediaUploadKind,
+} from './post-media-keys';
 
 const MEDIA_ROOT = path.resolve(
   process.cwd(),
@@ -19,55 +39,7 @@ const MEDIA_ROOT = path.resolve(
   'post-media',
 );
 
-const VIDEO_EXT: Record<string, string> = {
-  'video/mp4': 'mp4',
-  'video/webm': 'webm',
-  'video/quicktime': 'mov',
-};
-
-const FILE_EXT: Record<string, string> = {
-  'application/pdf': 'pdf',
-  'application/vnd.ms-powerpoint': 'ppt',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
-  'application/msword': 'doc',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
-};
-
-// Generous safety caps (NOT a UX limit) — tune to your disk budget. Member
-// post videos are deliberately far below the admin video-board cap (5 GB).
-export const MAX_POST_VIDEO_BYTES = 1024 * 1024 * 1024; // 1 GB
-export const MAX_POST_FILE_BYTES = 100 * 1024 * 1024; // 100 MB
-
-// Extensions we will ever write/serve. The filename fallback in postMediaExtFor
-// is clamped to this set so a bogus filename can never make us store an
-// arbitrary (e.g. .html / .svg) extension.
-const ALLOWED_EXT = new Set(['mp4', 'webm', 'mov', 'pdf', 'ppt', 'pptx', 'doc', 'docx']);
-
-export type PostMediaUploadKind = 'video' | 'file';
-
-export function isAllowedPostVideoType(type: string): boolean {
-  return type in VIDEO_EXT;
-}
-
-export function isAllowedPostFileType(type: string): boolean {
-  return type in FILE_EXT;
-}
-
-/** Pick a file extension from the content type, falling back to the filename. */
-export function postMediaExtFor(
-  kind: PostMediaUploadKind,
-  contentType: string,
-  filename: string,
-): string {
-  const fromType = (kind === 'video' ? VIDEO_EXT : FILE_EXT)[contentType];
-  if (fromType) return fromType;
-  const m = filename.match(/\.([a-zA-Z0-9]{1,5})$/);
-  const fromName = m ? m[1].toLowerCase() : '';
-  if (ALLOWED_EXT.has(fromName)) return fromName;
-  return kind === 'video' ? 'mp4' : 'pdf';
-}
-
-/** A fresh unguessable storage key, e.g. "video/V1StGXR8.mp4". */
+/** A fresh unguessable storage key, e.g. "video/V1StGXR8.mp4" or "file/V1StGXR8.py". */
 export function newPostMediaKey(kind: PostMediaUploadKind, ext: string): string {
   return `${kind}/${nanoid()}.${ext}`;
 }
@@ -79,24 +51,14 @@ export function postMediaAbsPath(key: string): string | null {
   return full;
 }
 
-/** Root-relative URL the player/link uses (basePath applied at render via withBasePath). */
-export function postMediaPublicUrl(key: string): string {
-  return `/api/discussion/media/${key.split('/').map(encodeURIComponent).join('/')}`;
-}
-
+/**
+ * Content-Type a stored key is served with — the shared file-types table: the
+ * real type only for the inline media set (mp4/webm/mov, raster images, audio,
+ * PDF), `text/plain` for every text-like file (html / svg / js included),
+ * octet-stream for the rest.
+ */
 export function postMediaContentType(key: string): string {
-  const ext = key.split('.').pop()?.toLowerCase() ?? '';
-  const map: Record<string, string> = {
-    mp4: 'video/mp4',
-    webm: 'video/webm',
-    mov: 'video/quicktime',
-    pdf: 'application/pdf',
-    ppt: 'application/vnd.ms-powerpoint',
-    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    doc: 'application/msword',
-    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  };
-  return map[ext] ?? 'application/octet-stream';
+  return contentTypeFor(keyExtOf(key));
 }
 
 /**

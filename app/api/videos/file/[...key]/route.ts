@@ -14,7 +14,13 @@ export async function GET(req: Request, { params }: { params: { key: string[] } 
   const session = await auth();
   if (!session?.user) return new NextResponse('Unauthorized', { status: 401 });
 
-  const key = params.key.map(decodeURIComponent).join('/');
+  // A malformed %-escape must not 500 the route.
+  let key = '';
+  try {
+    key = params.key.map(decodeURIComponent).join('/');
+  } catch {
+    return new NextResponse('Not found', { status: 404 });
+  }
   const stat = await statVideoFileAsync(key);
   if (!stat) return new NextResponse('Not found', { status: 404 });
 
@@ -24,6 +30,10 @@ export async function GET(req: Request, { params }: { params: { key: string[] } 
   // safe to let the browser cache aggressively (private: the board is login-walled).
   // Without this every page showing posters re-downloads them through this route.
   const cacheControl = 'private, max-age=31536000, immutable';
+  // Always nosniff: the type comes from the key's extension, and a sniffing
+  // browser must never reinterpret a stored body as something else. (On the
+  // X-Accel path nginx re-adds it — the internal redirect drops this header.)
+  const nosniff = 'nosniff';
 
   // Offload the actual bytes to nginx (kernel sendfile) once we've authorized —
   // Node stops being in the data path, so concurrent viewers/seeks scale on nginx
@@ -36,6 +46,7 @@ export async function GET(req: Request, { params }: { params: { key: string[] } 
         'X-Accel-Redirect': videoXAccelUri(key),
         'content-type': contentType,
         'cache-control': cacheControl,
+        'x-content-type-options': nosniff,
       },
     });
   }
@@ -49,7 +60,7 @@ export async function GET(req: Request, { params }: { params: { key: string[] } 
     if (start > end || start >= size) {
       return new NextResponse('Range Not Satisfiable', {
         status: 416,
-        headers: { 'content-range': `bytes */${size}` },
+        headers: { 'content-range': `bytes */${size}`, 'x-content-type-options': nosniff },
       });
     }
     const stream = openVideoRange(key, start, end);
@@ -62,6 +73,7 @@ export async function GET(req: Request, { params }: { params: { key: string[] } 
         'content-range': `bytes ${start}-${end}/${size}`,
         'accept-ranges': 'bytes',
         'cache-control': cacheControl,
+        'x-content-type-options': nosniff,
       },
     });
   }
@@ -75,6 +87,7 @@ export async function GET(req: Request, { params }: { params: { key: string[] } 
       'content-length': String(size),
       'accept-ranges': 'bytes',
       'cache-control': cacheControl,
+      'x-content-type-options': nosniff,
     },
   });
 }

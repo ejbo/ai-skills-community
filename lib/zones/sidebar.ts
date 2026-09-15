@@ -1,4 +1,5 @@
-// 版块主页布局 (`Zone.sidebar`) — the pure contract, import-free and client-safe.
+// 版块主页布局 (`Zone.sidebar`) — the pure contract, client-safe; its only import
+// is the rich-text raw ceiling (lib/markdown-text.ts, itself client-safe).
 //
 // A 版主 decides which right-rail modules their board shows, in what order, and
 // can add their own cards (title + markdown) between them — 贴吧's 吧务自定义
@@ -9,9 +10,24 @@
 // are appended in default order (so a module added in a later release can
 // never vanish from an already-customised board), and custom cards are capped.
 //
+// A card BODY is never cut. It is edited in a RichTextEditor whose counter shows
+// VISIBLE length (formatting spans discounted — lib/markdown-text.ts), so the
+// write schemas validate it with `withRichTextLimit` and refuse an over-long one
+// with a 400 (the PATCH route and zoneInputSchema share `sidebarLayoutInputSchema`
+// in lib/zones/queries.ts). A raw `.slice(0, 4000)` here used to both truncate
+// bodies the counter said fit and store a split `<span data-color="…` tag. This
+// parser is not that gate — it also reads STORED rows, where a card a few
+// characters over the cap (a content repair that inserted a blank line) must
+// keep rendering and reach the editor, whose red counter asks for the trim. It
+// only bounds size: a body over the raw ceiling (cap × RICH_TEXT_RAW_CEILING_FACTOR,
+// which no validated write can produce) is garbage, and its card is dropped like
+// any other invalid card — never shortened into broken markup.
+//
 // Stored shape (JSON):
 //   { order: string[], hidden: string[], custom: [{ id, title, bodyMd }] }
 // `{}` (the column default) ⇒ DEFAULT_SIDEBAR_ORDER with nothing hidden.
+
+import { RICH_TEXT_RAW_CEILING_FACTOR } from '@/lib/markdown-text';
 
 export const SIDEBAR_BUILTIN_MODULES = ['about', 'pulse', 'rules', 'members', 'moderators', 'links'] as const;
 export type SidebarBuiltinModule = (typeof SIDEBAR_BUILTIN_MODULES)[number];
@@ -22,6 +38,7 @@ const CUSTOM_ID_RE = /^custom:[a-z0-9]{4,24}$/;
 
 export const MAX_SIDEBAR_CUSTOM_CARDS = 6;
 export const SIDEBAR_CARD_TITLE_MAX = 40;
+/** VISIBLE characters (lib/markdown-text.ts `richTextLength`), the editor counter's measure — not raw length. */
 export const SIDEBAR_CARD_BODY_MAX = 4_000;
 
 /** The fixed order every board had before layouts existed — and still the default. */
@@ -77,8 +94,10 @@ export function parseSidebarLayout(raw: unknown): ZoneSidebarLayout {
       const card = c as Record<string, unknown>;
       const id = typeof card.id === 'string' ? card.id : '';
       const title = str(card.title, SIDEBAR_CARD_TITLE_MAX);
-      const bodyMd = str(card.bodyMd, SIDEBAR_CARD_BODY_MAX);
+      const bodyMd = typeof card.bodyMd === 'string' ? card.bodyMd.trim() : '';
       if (!isCustomModuleId(id) || customIds.has(id) || (!title && !bodyMd)) continue;
+      // Size sanity bound, not the cap (zod enforces that on write) — see the header.
+      if (bodyMd.length > SIDEBAR_CARD_BODY_MAX * RICH_TEXT_RAW_CEILING_FACTOR) continue;
       customIds.add(id);
       custom.push({ id, title, bodyMd });
       if (custom.length >= MAX_SIDEBAR_CUSTOM_CARDS) break;

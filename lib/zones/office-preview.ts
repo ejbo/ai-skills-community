@@ -16,7 +16,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { prisma } from '@/lib/db';
 import { extractDocx, extractPptx } from '@/lib/library/extract-office';
-import { extOfName, isOfficePreviewable } from './shared';
+import { keyExtOf } from '@/lib/files/file-types';
+import { isOfficePreviewable } from './shared';
 import { deleteZoneMediaFile, newZoneMediaKey, zoneMediaAbsPath, zoneMediaPublicUrl } from './storage';
 
 const CONVERT_TIMEOUT_MS = 180_000;
@@ -108,29 +109,13 @@ async function setStatus(
   }
 }
 
-function attachmentExt(row: { name: string; key: string; mimeType: string }): string {
-  return extOfName(row.name) || extOfName(row.key) || extFromMime(row.mimeType);
-}
-
-function extFromMime(mime: string): string {
-  switch (mime.split(';')[0].trim().toLowerCase()) {
-    case 'application/vnd.ms-powerpoint':
-      return 'ppt';
-    case 'application/vnd.openxmlformats-officedocument.presentationml.presentation':
-      return 'pptx';
-    case 'application/msword':
-      return 'doc';
-    case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
-      return 'docx';
-    case 'application/vnd.ms-excel':
-      return 'xls';
-    case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
-      return 'xlsx';
-    case 'application/pdf':
-      return 'pdf';
-    default:
-      return '';
-  }
+/**
+ * The conversion input's format = the STORAGE KEY's extension. The display
+ * name is client-supplied: trusting it would hand soffice (or the OOXML
+ * extractor) arbitrary bytes under whatever format the name claims.
+ */
+function attachmentExt(row: { key: string }): string {
+  return keyExtOf(row.key);
 }
 
 function pump(): void {
@@ -196,7 +181,7 @@ export function scheduleOfficePreview(attachmentId: string): void {
     try {
       const row = await prisma.zonePostAttachment.findUnique({
         where: { id: attachmentId },
-        select: { id: true, kind: true, key: true, name: true, mimeType: true },
+        select: { id: true, kind: true, key: true },
       });
       if (!row) return;
       if (row.kind !== 'file' || !isOfficePreviewable(attachmentExt(row))) {
@@ -265,11 +250,11 @@ async function moveFile(from: string, to: string): Promise<void> {
  * Outcome is written to the row; the returned promise never rejects.
  */
 export async function generateOfficePreview(attachmentId: string): Promise<void> {
-  let row: { id: string; kind: string; key: string; name: string; mimeType: string; previewKey: string | null } | null = null;
+  let row: { id: string; kind: string; key: string; previewKey: string | null } | null = null;
   try {
     row = await prisma.zonePostAttachment.findUnique({
       where: { id: attachmentId },
-      select: { id: true, kind: true, key: true, name: true, mimeType: true, previewKey: true },
+      select: { id: true, kind: true, key: true, previewKey: true },
     });
   } catch {
     return;

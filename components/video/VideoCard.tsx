@@ -4,10 +4,10 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Eye, Heart, MessageCircle } from 'lucide-react';
-import { formatDistanceToNowStrict } from 'date-fns';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import type { VideoCard as VideoCardType } from '@/lib/video/queries';
 import { formatCount, formatDuration, withBasePath } from '@/lib/video/types';
+import { relativeTime } from '@/lib/i18n-date';
 
 const PREVIEW_DELAY_MS = 400;
 // Without a dedicated preview clip, loop only the first seconds of the source.
@@ -15,6 +15,7 @@ const FALLBACK_PREVIEW_SEC = 10;
 
 export function VideoCard({ video }: { video: VideoCardType }) {
   const t = useTranslations('video');
+  const locale = useLocale();
   const reduceMotion = useReducedMotion();
   const [hovered, setHovered] = useState(false);
   const [previewing, setPreviewing] = useState(false);
@@ -171,7 +172,9 @@ export function VideoCard({ video }: { video: VideoCardType }) {
                 {formatCount(video.commentCount)}
               </span>
               <span aria-hidden>·</span>
-              <span>{formatDistanceToNowStrict(new Date(published), { addSuffix: true })}</span>
+              {/* Locale-aware (a bare date-fns call printed "3 days ago" in the 中文 UI);
+                  text-only so the SSR→hydration tick is covered by the attribute. */}
+              <span suppressHydrationWarning>{relativeTime(published, locale)}</span>
             </div>
           </div>
         </div>

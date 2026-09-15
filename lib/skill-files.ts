@@ -4,6 +4,7 @@ import { storage, skillBundleKey } from '@/lib/storage';
 import { parseSkillBundle } from '@/lib/skill-parser';
 import { assembleSkillContext } from '@/lib/skill-context';
 import { synthesizeSkillMd } from '@/lib/skill-md';
+import { stripRichFormatting } from '@/lib/markdown-text';
 
 export interface VersionFileMeta {
   path: string;
@@ -125,7 +126,9 @@ export async function buildContextFromSkill(
 ): Promise<string | null> {
   if (!skill.currentVersion) return null;
   const version = skill.currentVersion;
-  const skillMd = version.contentInline ?? skill.descriptionMd ?? '';
+  // Same fallback as synthesizeSkillMd: the overview's formatting spans are
+  // tokens the model would read but never needs.
+  const skillMd = version.contentInline ?? stripRichFormatting(skill.descriptionMd ?? '');
 
   let files: { path: string; content: string | null; isText: boolean }[] = [];
   if (skill.skillFormat === 'bundle') {

@@ -7,25 +7,21 @@
 // RichTextEditor relies on. The extension list is imported from
 // components/markdown-table.ts so this pins the SHIPPED serializer, including
 // its pipe escaping (a cell holding `|` used to split into two cells).
+//
+// 2026-09-14: the image node is now the SHIPPED BasePathImage
+// (components/editor/flow-image.ts) instead of stock @tiptap/extension-image,
+// and two expectations that pinned the OLD behaviour were flipped — see the
+// "used to" notes on the cell Enter / image-in-cell / nested-table tests.
 import { describe, expect, it } from 'vitest';
 import { Editor } from '@tiptap/core';
-import StarterKit from '@tiptap/starter-kit';
-import Image from '@tiptap/extension-image';
-import { Markdown } from 'tiptap-markdown';
-import { TABLE_EXTENSIONS, isInsideTable, pasteEscapePos, sliceHasBlockAtom, tableEscapePos } from '@/components/markdown-table';
-import { ContentEmbedBase } from '@/components/zones/embeds/embed-node-extension';
+import { beginInsertBatch, insertIntoBatch } from '@/components/editor/flow-extension';
+import { buildRichTextExtensions } from '@/components/editor/rich-text-extensions';
+import { caretInTableCell, isGfmTable, isInsideTable, pasteEscapePos, sliceHasBlockAtom, tableEscapePos } from '@/components/markdown-table';
 
 function makeEditor(content: string) {
-  return new Editor({
-    extensions: [
-      StarterKit,
-      Image,
-      ContentEmbedBase,
-      ...TABLE_EXTENSIONS,
-      Markdown.configure({ html: true, transformPastedText: true, breaks: false }),
-    ],
-    content,
-  });
+  // The REAL list (components/editor/rich-text-extensions.ts), with the embed
+  // node the 技术专区 composer registers.
+  return new Editor({ extensions: buildRichTextExtensions({ embed: {} }), content });
 }
 
 const TABLE_MD = '| a | b |\n| --- | --- |\n| 1 | 2 |\n';
@@ -79,6 +75,27 @@ describe('GFM tables in the editor', () => {
     const out = ed.storage.markdown.getMarkdown();
     expect(out.split('\n').filter((l: string) => l.startsWith('|'))).toHaveLength(4); // header + delimiter + 2 rows
     expect(out).toContain('| --- | --- | --- |');
+    ed.destroy();
+  });
+
+  it('Enter in a cell is a hard break and the table stays GFM (it used to split the cell → raw HTML table)', () => {
+    const ed = makeEditor('| a | b |\n| --- | --- |\n| 1 | 2 |\n');
+    const at = caretInFirstCell(ed) + 1; // end of "1"
+    ed.commands.setTextSelection(at);
+    ed.view.dom.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    ed.commands.insertContent('more');
+    expect(isGfmTable(ed.state.doc.firstChild!)).toBe(true);
+    const out = ed.storage.markdown.getMarkdown();
+    expect(out).toContain('| 1<br>more | 2 |');
+    expect(out).not.toContain('<table');
+    ed.destroy();
+  });
+
+  it('inserting a table with the caret in a cell is refused (a nested table used to be stored as raw HTML)', () => {
+    const ed = makeEditor(TABLE_MD);
+    caretInFirstCell(ed);
+    expect(ed.chain().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run()).toBe(false);
+    expect(ed.storage.markdown.getMarkdown()).not.toContain('<table');
     ed.destroy();
   });
 
@@ -145,13 +162,14 @@ describe('block atoms and table cells', () => {
     ed.destroy();
   });
 
-  it('an image inserted at the caret inside a cell degrades the table to raw HTML (the bug)', () => {
+  it('an image inserted by the editor with the caret inside a cell lands after the table (raw setImage there used to degrade the table to HTML)', () => {
     const ed = makeEditor(TABLE_MD);
     caretInFirstCell(ed);
-    ed.chain().setImage({ src: '/x.png', alt: 'x' }).run();
+    const batch = beginInsertBatch(ed.view);
+    insertIntoBatch(ed.view, batch, ed.schema.nodes.image.create({ src: '/x.png', alt: 'x' }));
     const out = ed.storage.markdown.getMarkdown();
-    expect(out).toContain('<table');
-    expect(out).not.toContain('| a | b |');
+    expect(out).not.toContain('<table');
+    expect(out).toBe('| a | b |\n| --- | --- |\n| 1 | 2 |\n\n![x](/x.png)');
     ed.destroy();
   });
 
@@ -222,5 +240,219 @@ describe('block atoms and table cells', () => {
     expect(sliceHasBlockAtom(ed.state.doc.slice(positions.contentEmbed.from, positions.contentEmbed.to))).toBe(true);
     expect(sliceHasBlockAtom(ed.state.doc.slice(1, 3))).toBe(false); // 'on' out of the first paragraph
     ed.destroy();
+  });
+});
+
+/** Every row's cell texts, in order. */
+function tableRows(ed: Editor): string[][] {
+  const rows: string[][] = [];
+  ed.state.doc.descendants((n) => {
+    if (n.type.name !== 'tableRow') return true;
+    const cells: string[] = [];
+    n.forEach((c) => cells.push(c.textContent));
+    rows.push(cells);
+    return false;
+  });
+  return rows;
+}
+
+/** The node type of every cell's first block, row by row. */
+function cellShapes(ed: Editor): string[][] {
+  const rows: string[][] = [];
+  ed.state.doc.descendants((n) => {
+    if (n.type.name !== 'tableRow') return true;
+    const cells: string[] = [];
+    n.forEach((c) => cells.push(c.firstChild?.type.name ?? ''));
+    rows.push(cells);
+    return false;
+  });
+  return rows;
+}
+
+// ED-3: a cell whose ONLY block is a code block / list / quote / heading passed
+// `isGfmTable` (it refused only `childCount > 1`), and the row writer put that
+// block's newlines straight into the `| … |` row: extra rows, cells shifted out
+// of the table, the list / heading lost.
+describe('a cell holding something a GFM cell cannot say', () => {
+  const SOURCE = '| h1 | h2 |\n| --- | --- |\n| c1 | c2 |\n\nafter';
+  const caretAtEndOfC1 = (ed: Editor) => {
+    let at = -1;
+    ed.state.doc.descendants((n, pos) => {
+      if (at < 0 && n.isTextblock && n.textContent === 'c1') at = pos + 1 + n.content.size;
+      return at < 0;
+    });
+    ed.commands.setTextSelection(at);
+  };
+  const commands: Array<[string, (ed: Editor) => void, string]> = [
+    ['code block', (ed) => ed.chain().toggleCodeBlock().insertContent('line1').run(), 'codeBlock'],
+    ['bullet list', (ed) => ed.chain().toggleBulletList().run(), 'bulletList'],
+    ['ordered list', (ed) => ed.chain().toggleOrderedList().run(), 'orderedList'],
+    ['blockquote', (ed) => ed.chain().toggleBlockquote().run(), 'blockquote'],
+    ['heading', (ed) => ed.chain().toggleHeading({ level: 2 }).run(), 'heading'],
+  ];
+  for (const [name, run, shape] of commands) {
+    it(`${name}: the table goes to raw HTML and reopens with the same rows, cells and block`, () => {
+      const ed = makeEditor(SOURCE);
+      caretAtEndOfC1(ed);
+      run(ed);
+      const rowsBefore = tableRows(ed);
+      expect(isGfmTable(ed.state.doc.firstChild!)).toBe(false);
+      const out = ed.storage.markdown.getMarkdown();
+      expect(out).toContain('<table');
+      expect(out.endsWith('after')).toBe(true);
+
+      const again = makeEditor(out);
+      expect(tableRows(again)).toEqual(rowsBefore);
+      expect(cellShapes(again)[1][0]).toBe(shape);
+      expect(again.state.doc.lastChild?.textContent).toBe('after');
+      expect(again.storage.markdown.getMarkdown()).toBe(out);
+      ed.destroy();
+      again.destroy();
+    });
+  }
+
+  it('a code block with a BLANK line in a cell does not cut the HTML table in half', () => {
+    const ed = makeEditor(SOURCE);
+    caretAtEndOfC1(ed);
+    ed.chain().toggleCodeBlock().run();
+    ed.commands.insertContent({ type: 'text', text: 'a\n\n\nb' });
+    const code = (e: Editor) => {
+      let text = '';
+      e.state.doc.descendants((n) => {
+        if (n.type.name === 'codeBlock') text = n.textContent;
+        return true;
+      });
+      return text;
+    };
+    const before = code(ed);
+    const out = ed.storage.markdown.getMarkdown();
+    const tableHtml = out.slice(out.indexOf('<table'), out.indexOf('</table>'));
+    expect(tableHtml).toContain('<pre');
+    expect(tableHtml.split('\n').some((line: string) => line.trim() === '')).toBe(false);
+    const again = makeEditor(out);
+    expect(code(again)).toBe(before);
+    expect(tableRows(again)).toEqual(tableRows(ed));
+    expect(again.storage.markdown.getMarkdown()).toBe(out);
+    ed.destroy();
+    again.destroy();
+  });
+
+  it('a plain paragraph with a hard break stays GFM', () => {
+    const ed = makeEditor('| a | b |\n| --- | --- |\n| 1<br>x | 2 |');
+    expect(isGfmTable(ed.state.doc.firstChild!)).toBe(true);
+    expect(ed.storage.markdown.getMarkdown()).toContain('| 1<br>x | 2 |');
+    ed.destroy();
+  });
+
+  it('the block-type shortcuts are swallowed in a cell and still work outside one', () => {
+    const ed = makeEditor(SOURCE);
+    caretAtEndOfC1(ed);
+    expect(caretInTableCell(ed.state)).toBe(true);
+    for (const key of ['Mod-Alt-c', 'Mod-Shift-8', 'Mod-Shift-7', 'Mod-Shift-b', 'Mod-Alt-2']) {
+      const parts = key.split('-');
+      const event = new KeyboardEvent('keydown', {
+        key: parts[parts.length - 1],
+        ctrlKey: true,
+        altKey: parts.includes('Alt'),
+        shiftKey: parts.includes('Shift'),
+        bubbles: true,
+        cancelable: true,
+      });
+      ed.view.dom.dispatchEvent(event);
+      expect([key, isGfmTable(ed.state.doc.firstChild!)]).toEqual([key, true]);
+    }
+    ed.commands.setTextSelection(ed.state.doc.content.size - 1);
+    expect(caretInTableCell(ed.state)).toBe(false);
+    ed.destroy();
+  });
+});
+
+// ED-9: `| :--- | :---: | ---: |` was written back as `| --- | --- | --- |` —
+// every edit left-aligned a numeric column.
+describe('column alignment', () => {
+  it('survives a round trip, byte-identical, and the reader HTML keeps it', () => {
+    const src = '| a | b | c | d |\n| :--- | :---: | ---: | --- |\n| 1 | 2 | 3 | 4 |';
+    const ed = makeEditor(src);
+    const aligns: (string | null)[] = [];
+    ed.state.doc.firstChild!.firstChild!.forEach((c) => aligns.push(c.attrs.align as string | null));
+    expect(aligns).toEqual(['left', 'center', 'right', null]);
+    const out = ed.storage.markdown.getMarkdown();
+    expect(out).toContain('| :--- | :---: | ---: | --- |');
+    const again = makeEditor(out);
+    expect(again.storage.markdown.getMarkdown()).toBe(out);
+    ed.destroy();
+    again.destroy();
+  });
+
+  it('a column added next to an aligned one writes `---`; an unaligned table is unchanged', () => {
+    const ed = makeEditor('| a | b |\n| --- | ---: |\n| 1 | 2 |');
+    let at = -1;
+    ed.state.doc.descendants((n, pos) => {
+      if (at < 0 && n.type.name === 'tableHeader') at = pos + 2;
+      return true;
+    });
+    ed.commands.setTextSelection(at);
+    ed.commands.addColumnAfter();
+    expect(ed.storage.markdown.getMarkdown()).toContain('| --- | --- | ---: |');
+    const plain = makeEditor(TABLE_MD);
+    expect(plain.storage.markdown.getMarkdown()).toContain('| --- | --- |');
+    ed.destroy();
+    plain.destroy();
+  });
+
+  it('a raw-HTML table carries `align` (the reader sanitizer keeps it, drops style)', () => {
+    const ed = makeEditor('| a | b |\n| :---: | --- |\n| 1 | 2 |');
+    // Merge the header cells: markdown cannot say it, the table goes HTML.
+    const out0 = ed.storage.markdown.getMarkdown();
+    expect(out0).toContain(':---:');
+    let firstCell = -1;
+    ed.state.doc.descendants((n, pos) => {
+      if (firstCell < 0 && n.type.name === 'tableCell') firstCell = pos + 2;
+      return true;
+    });
+    ed.commands.setTextSelection(firstCell);
+    ed.chain().toggleBulletList().run();
+    const html = ed.storage.markdown.getMarkdown();
+    expect(html).toMatch(/<th[^>]*align="center"/);
+    ed.destroy();
+  });
+});
+
+// ED-11: a cell whose only content is a sticker (an inline atom — no text) or a
+// block image was written as an EMPTY cell.
+describe('image-only cells', () => {
+  it('a sticker-only header or body cell keeps its sticker', () => {
+    for (const src of [
+      '| ![s](/api/uploads/stickers/abc.png) | 开心 |\n| --- | --- |\n| 1 | 2 |',
+      '| a | b |\n| --- | --- |\n| ![s](/api/uploads/stickers/abc.png) | 2 |',
+    ]) {
+      const ed = makeEditor(src);
+      expect(typeNames(ed).has('stickerImage')).toBe(true);
+      const out = ed.storage.markdown.getMarkdown();
+      expect(out).toContain('![s](/api/uploads/stickers/abc.png)');
+      expect(out).not.toContain('<table');
+      const again = makeEditor(out);
+      expect(again.storage.markdown.getMarkdown()).toBe(out);
+      ed.destroy();
+      again.destroy();
+    }
+  });
+
+  it('a sticker inserted into an empty cell (the 😊 picker) is kept', () => {
+    const ed = makeEditor('');
+    ed.chain().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run();
+    ed.chain().insertContent({ type: 'stickerImage', attrs: { src: '/api/uploads/stickers/abc.png', alt: 'sticker' } }).run();
+    expect(ed.storage.markdown.getMarkdown()).toContain('/api/uploads/stickers/abc.png');
+    ed.destroy();
+  });
+
+  it('a block image as a cell’s only content keeps its src (the table goes HTML)', () => {
+    const ed = makeEditor('| ![a](/api/uploads/images/a.png) | b |\n| --- | --- |\n| 1 | 2 |');
+    const out = ed.storage.markdown.getMarkdown();
+    expect(out).toContain('/api/uploads/images/a.png');
+    const again = makeEditor(out);
+    expect(again.storage.markdown.getMarkdown()).toContain('/api/uploads/images/a.png');
+    ed.destroy();
+    again.destroy();
   });
 });

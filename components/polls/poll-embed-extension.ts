@@ -101,7 +101,11 @@ export const PollEmbedBase = Node.create<PollEmbedOptions>({
             // pristine post carrying a `[poll:…]` token was "dirty" (autosave + a
             // 恢复 banner on the next visit) before anyone typed. Same fix as the
             // 技术专区 embed normalizer.
-            if (tr) view.dispatch(tr.setMeta('preventUpdate', true));
+            // `addToHistory: false`: nor is it an undoable step — recorded, it lit
+            // Undo on a pristine body and pressing it turned the cards back
+            // into raw token text (appendTransaction skips history$, so
+            // nothing re-materialized them).
+            if (tr) view.dispatch(tr.setMeta('preventUpdate', true).setMeta('addToHistory', false));
           });
           return {};
         },

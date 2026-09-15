@@ -7,11 +7,12 @@ import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { prisma } from '@/lib/db';
 import { BackButton } from '@/components/BackButton';
+import { workspaceHref } from '@/app/users/[handle]/_components/workspace/href';
 import { ManagePanel, coerceSection } from './ManagePanel';
 
 export const dynamic = 'force-dynamic';
 
-// Standalone manage page (reachable from the dashboard / direct links). The skill detail page
+// Standalone manage page (reachable from 工作台 / direct links). The skill detail page
 // renders the SAME <ManagePanel> inline under its "Manage" tab, so authors usually stay there.
 export default async function ManageSkillPage({
   params,
@@ -43,8 +44,10 @@ export default async function ManageSkillPage({
           <BackButton fallbackHref={`/skills/${params.slug}`} />
         </div>
         <div className="text-xs text-muted">
-          <Link href="/dashboard" className="hover:text-zinc-900">
-            {td('title')}
+          {/* 工作台 is the VIEWER's own (it replaced /dashboard) — an admin managing
+              someone else's skill is taken back to their own workspace, as before. */}
+          <Link href={workspaceHref(session.user.handle)} className="hover:text-zinc-900 dark:hover:text-zinc-100">
+            {td('ws_title')}
           </Link>{' '}
           / {skill.name}
         </div>
