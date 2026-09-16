@@ -26,6 +26,7 @@ import { relativeTime } from '@/lib/i18n-date';
 import { currentLoginHref } from '@/lib/auth/callback-path';
 import { PostMediaGallery } from './PostMediaGallery';
 import { PostComments } from './PostComments';
+import { PostCommentPreview, type CommentsOpenOptions } from './PostCommentPreview';
 import { ReactionsPanel } from './ReactionsPanel';
 import { PinnedBadge } from './badges';
 import {
@@ -38,7 +39,9 @@ import type { CurrentUser, PostView } from './types';
 
 /**
  * One feed post — LinkedIn-style card: author row, clamped body with 展开,
- * media gallery, like/comment/share actions and an inline comment section.
+ * media gallery, like/comment/share actions and the conversation under it.
+ * In the feed the top comments are PREVIEWED (PostCommentPreview) until the
+ * reader asks for the thread; 评论 / 查看全部 / 回复 swap in the full section.
  * In `detail` mode (the shareable /discussion/posts/<id> page) the body is
  * unclamped and comments are open by default.
  */
@@ -69,6 +72,9 @@ export function PostCard({
   const [reactorsOpen, setReactorsOpen] = useState(false);
   const [commentCount, setCommentCount] = useState(post.commentCount);
   const [commentsOpen, setCommentsOpen] = useState(detail);
+  // What opened the section: focus its composer (评论) or a reply box under
+  // one previewed comment (回复). Consumed once by PostComments on mount.
+  const [openWith, setOpenWith] = useState<CommentsOpenOptions | null>(null);
   const [expanded, setExpanded] = useState(detail);
   const [overflowing, setOverflowing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -84,6 +90,12 @@ export function PostCard({
   const paletteLeaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isAuthor = currentUser?.handle === post.author.handle;
+  const previews = post.previewComments ?? [];
+
+  function openComments(opts?: CommentsOpenOptions) {
+    setOpenWith(opts ?? null);
+    setCommentsOpen(true);
+  }
   const canModerate = Boolean(currentUser?.canModerate);
   // LinkedIn's clamp split: fewer lines when the card also carries media.
   const clampMax = post.media.length > 0 ? '5.5rem' : '9rem';
@@ -284,7 +296,7 @@ export function PostCard({
                 <span>·</span>
               </>
             )}
-            <span>{relativeTime(post.createdAt, locale)}</span>
+            <span suppressHydrationWarning>{relativeTime(post.createdAt, locale)}</span>
             {editedAt && <span>· {t('edited')}</span>}
           </div>
         </div>
@@ -366,8 +378,9 @@ export function PostCard({
           <RichTextEditor
             value={editDraft}
             onChange={setEditDraft}
-            variant="compact"
+            variant="full"
             maxLength={8000}
+            maxHeight="32rem"
             ariaLabel={t('edit_post_aria')}
             autoFocus
           />
@@ -441,7 +454,10 @@ export function PostCard({
             <span />
           )}
           {commentCount > 0 && (
-            <button onClick={() => setCommentsOpen((v) => !v)} className="hover:underline">
+            <button
+              onClick={() => (commentsOpen ? setCommentsOpen(false) : openComments())}
+              className="hover:underline"
+            >
               {t('comment_count', { count: commentCount })}
             </button>
           )}
@@ -491,7 +507,8 @@ export function PostCard({
           </button>
         </div>
         <button
-          onClick={() => setCommentsOpen((v) => !v)}
+          onClick={() => (commentsOpen && !detail ? setCommentsOpen(false) : openComments({ compose: true }))}
+          aria-expanded={commentsOpen}
           className={`${actionBtn} text-zinc-600 dark:text-zinc-300`}
         >
           <MessageSquare className="h-4 w-4" />
@@ -505,16 +522,28 @@ export function PostCard({
 
       {reactorsOpen && <ReactionsPanel postId={post.id} onClose={() => setReactorsOpen(false)} />}
 
-      {/* Comments */}
-      {commentsOpen && (
+      {/* Comments — previewed in the feed, the full section once asked for */}
+      {commentsOpen ? (
         <div className="mt-3 border-t border-zinc-100 pt-3 dark:border-zinc-800/60">
           <PostComments
             postId={post.id}
             currentUser={currentUser}
             focusId={focusId}
+            autoFocusComposer={Boolean(openWith?.compose)}
+            openReplyTo={openWith?.replyTo}
             onCountChange={(delta) => setCommentCount((n) => Math.max(0, n + delta))}
           />
         </div>
+      ) : (
+        !detail &&
+        previews.length > 0 && (
+          <PostCommentPreview
+            comments={previews}
+            total={commentCount}
+            signedIn={Boolean(currentUser)}
+            onOpen={openComments}
+          />
+        )
       )}
     </article>
   );

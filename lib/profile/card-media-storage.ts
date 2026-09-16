@@ -10,10 +10,12 @@
 // internal location. Paths go through image-storage's traversal guard.
 //
 // What is PUBLIC is decided by the serving route, not by the disk: a card photo,
-// a poster and a generated hover loop are served only while an active member's
-// profile references them; the uploaded VIDEO ORIGINAL is never served (the card
-// promises an 8-second muted loop — the original has full length, audio and the
-// phone's container metadata). See profileMediaServeTarget.
+// a poster and a generated clip (`loop/`) are served only while an active
+// member's profile references them; the uploaded VIDEO ORIGINAL is never served
+// publicly (the card plays the ≤ PROFILE_CLIP_MAX_SECONDS muted segment the
+// member trimmed — the original has full length, audio and the phone's container
+// metadata). See profileMediaServeTarget. Its only reader is its own uploader,
+// through the owner-only GET /api/me/profile/media/source (re-trimming).
 //
 // Keys are BOUND TO THEIR UPLOADER without a ledger table: the id part starts
 // with an HMAC tag of the uploader's user id (AUTH_SECRET), so PUT /api/me/
@@ -21,23 +23,26 @@
 // owner just released. That is the only env this module reads; the tests mock
 // `@/lib/env`, every other helper here stays pure.
 //
-// ffmpeg work (hover loop + server poster) copies the house contract from
-// lib/votes/storage.ts: best-effort, NEVER throws, no ffmpeg / no queue slot ⇒
-// null, `.tmp` then rename, a sanity cap on our own output. The helpers are
-// private copies because every existing one is hard-wired to its own root.
+// ffmpeg work (the card clip + its poster, cut on POST /api/me/profile/media/clip)
+// goes through the reusable process layer lib/media/ffmpeg.ts and the renderers
+// in lib/media/video-clip.ts: never throws, `.tmp` then rename, verified output,
+// a sanity cap on our own encode, one media-queue slot with a bounded wait, a
+// thread cap, and a demuxer whitelist on every input. An uploaded video must
+// also LOOK like a video container (isStoredVideoContainer) before it gets a key.
 
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { nanoid } from 'nanoid';
 import { env } from '@/lib/env';
+import { hasFfmpeg, hasFfprobe, probeMediaFile, videoTimelineSec, type MediaProbe } from '@/lib/media/ffmpeg';
+import { sniffVideoContainerFile } from '@/lib/media/container-sniff';
+import { clipOutputFps, renderClip, renderFrame } from '@/lib/media/video-clip';
 import { tryRunMediaJob } from '@/lib/uploads/job-queue';
 import { openLazyFileBody, uploadFileAbsPath, uploadXAccelUri } from '@/lib/uploads/image-storage';
 import {
   PROFILE_IMAGE_MAX_BYTES,
-  PROFILE_LOOP_SECONDS,
   PROFILE_MEDIA_KINDS,
   PROFILE_POSTER_MAX_BYTES,
   PROFILE_VIDEO_MAX_BYTES,
@@ -225,6 +230,22 @@ export function profileMediaServeTarget(key: unknown): ProfileMediaServeTarget |
     default:
       return null;
   }
+}
+
+/**
+ * The owner-only source route's decision: a well-formed `video/` key minted for
+ * `userId` whose file is on disk (attached or a fresh upload of theirs), or null
+ * — and null means 404 for everyone, so a probe learns nothing about a key's
+ * existence. Never throws. (The route's URL is spelled once, client-safe, in
+ * lib/profile/shared.ts profileMediaSourceUrl.)
+ */
+export async function resolveOwnProfileSource(
+  userId: string,
+  rawKey: unknown,
+): Promise<{ key: string; size: number } | null> {
+  if (!isValidProfileMediaKey(rawKey, 'video') || !isProfileMediaKeyOwnedBy(rawKey, userId)) return null;
+  const stat = await statProfileMedia(rawKey);
+  return stat && stat.size > 0 ? { key: rawKey, size: stat.size } : null;
 }
 
 // ─── HTTP Range ─────────────────────────────────────────────────────────────
@@ -744,6 +765,18 @@ export interface ProfileMediaStat {
   contentType: string;
 }
 
+/**
+ * Does a stored `video/` upload START like a video container (ISO-BMFF / QuickTime
+ * or Matroska/WebM — lib/media/container-sniff.ts)? false for anything else,
+ * including a text playlist / concat list uploaded under a video type; the
+ * upload route then refuses it (400 unsupported_type) and deletes it. Never throws.
+ */
+export async function isStoredVideoContainer(key: string): Promise<boolean> {
+  if (!isValidProfileMediaKey(key, 'video')) return false;
+  const full = profileMediaAbsPath(key);
+  return !!full && (await sniffVideoContainerFile(full)) !== null;
+}
+
 /** Async stat of a stored file; null for a bad key, a missing file or a non-file. */
 export async function statProfileMedia(key: string | null | undefined): Promise<ProfileMediaStat | null> {
   if (!key) return null;
@@ -785,10 +818,11 @@ export async function deleteProfileMediaFiles(keys: readonly (string | null | un
 // ─── Abandoned-upload sweep ─────────────────────────────────────────────────
 //
 // Upload and attach are two requests, so an upload whose attach never happened
-// (tab closed mid-flow, a video no loop/poster could be cut for, a non-UI
-// client) leaves files nobody references — up to PROFILE_VIDEO_MAX_BYTES each.
-// Nothing serves them (the gated route needs an attachment; the public uploads
-// route refuses `profile-card/`), but they still fill the volume PostgreSQL
+// (tab closed mid-flow, a trim the member cancelled, a non-UI client) leaves
+// files nobody references — up to PROFILE_VIDEO_MAX_BYTES each.
+// Nobody else can fetch them (the gated route needs an attachment, the public
+// uploads route refuses `profile-card/`, the source route answers only the
+// uploader), but they still fill the volume PostgreSQL
 // lives on. The owner tag in every key lets a member's own requests reclaim
 // THEIR OWN leftovers without a ledger table: list the four kind folders, keep
 // entries minted under the caller's tag and older than the cutoff, and (in
@@ -878,239 +912,143 @@ export async function deleteOwnProfileMediaEntries(entries: readonly OwnProfileM
   );
 }
 
-// ─── ffmpeg: hover loop + poster ────────────────────────────────────────────
+// ─── ffmpeg: card clip + poster ─────────────────────────────────────────────
+//
+// The member picks the segment in the browser trimmer; POST /api/me/profile/
+// media/clip hands the range here. Rendering goes through the shared renderers
+// (lib/media/video-clip.ts), which never throw, write `.tmp` then rename, verify
+// the output and strip every piece of container metadata — both outputs are
+// PUBLIC while the original is not.
 
-/** Long edge of the generated loop / poster. A card is ≤ 360 CSS px wide, so 720 covers 2× DPR. */
-const DERIVED_MAX_EDGE = 720;
-/** Sanity bound on OUR OWN loop output (8 s at ≤720 px, CRF 28 lands well under 3 MB). */
-const LOOP_MAX_BYTES = 16 * 1024 * 1024;
+/** Long edge of the clip / poster. A card is ≤ 360 CSS px wide, so 720 covers 2× DPR. */
+export const PROFILE_CLIP_MAX_EDGE = 720;
+/** Frame-rate cap; slower sources keep their own rate (clipOutputFps). */
+export const PROFILE_CLIP_MAX_FPS = 30;
+const CLIP_CRF = 28;
+/** VBV peak: 30 s × 1.8 Mbps ≈ 6.8 MB worst case — a card clip is fetched on hover. */
+const CLIP_MAXRATE_KBPS = 1800;
+/** Sanity bound on OUR OWN clip output (the VBV cap lands far under it). */
+const CLIP_MAX_BYTES = 24 * 1024 * 1024;
+const POSTER_QUALITY = 3;
 
-// Budgets: this runs inside the upload request, which must answer inside nginx's
-// proxy_read_timeout 300s. 5 s queue wait + 10 s poster (+ one retry) + 25 s
-// loop keeps the worst case near a minute; blowing any budget just means no
-// loop / no server poster — the client-captured poster still covers the card.
-const JOB_MAX_WAIT_MS = 5_000;
-const POSTER_TIMEOUT_MS = 10_000;
-const LOOP_TIMEOUT_MS = 25_000;
-const DETECT_TIMEOUT_MS = 10_000;
-const FFPROBE_TIMEOUT_MS = 10_000;
+// Budgets — the clip request must answer inside nginx's proxy_read_timeout 300s:
+//   10 s tool check (only on a cold / recently failed availability cache)
+// + 10 s probe of the original (before the queue)
+// + 30 s waiting for a media-queue slot (503 media_busy past it)
+// + 150 s encode + ≤ 5 s verify probe (renderClip)
+// + 15 s poster (8 s from the original, then 4 s + 3 s fallbacks from the clip)
+// = 220 s worst case (~234 s with every kill grace), leaving the rest for auth,
+// the DB transaction and the response. The encode runs on DEFAULT_MEDIA_THREADS
+// (lib/media/video-clip.ts), and profile-store's clipOwnCardVideo lets one member
+// hold at most ONE render (queued or running) at a time — the queue slot is shared
+// with every domain's faststart remux, so chaining renders back to back must not
+// be something a single account can do.
+export const PROFILE_CLIP_PROBE_TIMEOUT_MS = 10_000;
+const CLIP_JOB_MAX_WAIT_MS = 30_000;
+const CLIP_TIMEOUT_MS = 150_000;
+const POSTER_TIMEOUT_MS = 8_000;
+const POSTER_FALLBACK_TIMEOUT_MS = 4_000;
+const POSTER_LAST_RESORT_TIMEOUT_MS = 3_000;
 
-// Both derivatives are PUBLIC while the original is not, so neither may carry
-// the source's container metadata (a phone MOV's ©xyz location, creation time,
-// device model): ffmpeg copies global tags into its output unless told not to.
-const NO_METADATA = ['-map_metadata', '-1', '-map_chapters', '-1'];
-
-// Fit inside the box keeping aspect, THEN force even sides with a ≥2 clamp —
-// libx264 dies on an odd side and `force_original_aspect_ratio=decrease` happily
-// produces one (full story in lib/votes/storage.ts#makeVotePreviewClip).
-const EVEN_BOX_FILTER =
-  `scale='min(${DERIVED_MAX_EDGE},iw)':'min(${DERIVED_MAX_EDGE},ih)':force_original_aspect_ratio=decrease,` +
-  `scale='max(2\\,trunc(iw/2)*2)':'max(2\\,trunc(ih/2)*2)'`;
-const BOX_FILTER = `scale='min(${DERIVED_MAX_EDGE},iw)':'min(${DERIVED_MAX_EDGE},ih)':force_original_aspect_ratio=decrease`;
-
-let ffmpegProbe: Promise<boolean> | null = null;
-function hasFfmpeg(): Promise<boolean> {
-  if (!ffmpegProbe) {
-    ffmpegProbe = new Promise<boolean>((resolve) => {
-      try {
-        const p = spawn('ffmpeg', ['-version'], { stdio: 'ignore' });
-        // Cached for the life of the process: a hung `-version` must not leave
-        // every later upload awaiting a promise that never settles.
-        const timer = setTimeout(() => {
-          p.kill('SIGKILL');
-          resolve(false);
-        }, DETECT_TIMEOUT_MS);
-        const done = (ok: boolean) => {
-          clearTimeout(timer);
-          resolve(ok);
-        };
-        p.on('error', () => done(false));
-        p.on('close', (code) => done(code === 0));
-      } catch {
-        resolve(false);
-      }
-    });
-  }
-  return ffmpegProbe;
+/** Can this box cut clips at all? Both binaries are needed (the real duration comes from ffprobe). */
+export async function profileClipToolsAvailable(): Promise<boolean> {
+  const [ffmpeg, ffprobe] = await Promise.all([hasFfmpeg(), hasFfprobe()]);
+  return ffmpeg && ffprobe;
 }
 
-function runFfmpeg(args: string[], timeoutMs: number): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    try {
-      const p = spawn('ffmpeg', args, { stdio: 'ignore' });
-      const timer = setTimeout(() => {
-        p.kill('SIGKILL');
-        resolve(false);
-      }, timeoutMs);
-      const done = (ok: boolean) => {
-        clearTimeout(timer);
-        resolve(ok);
-      };
-      p.on('error', () => done(false));
-      p.on('close', (code) => done(code === 0));
-    } catch {
-      resolve(false);
-    }
-  });
-}
-
-/** Move a finished `.tmp` output into place when it looks sane; always cleans the tmp. */
-async function promoteOutput(tmp: string, out: string, maxBytes: number): Promise<boolean> {
-  try {
-    const st = await fsp.stat(tmp);
-    if (!st.isFile() || st.size === 0 || st.size > maxBytes) throw new Error('bad_output');
-    await fsp.rename(tmp, out);
-    return true;
-  } catch {
-    await fsp.unlink(tmp).catch(() => undefined);
-    return false;
-  }
-}
-
-async function makePoster(src: string, ownerTag: string): Promise<string | null> {
-  const key = newProfileMediaKey('poster', 'jpg', ownerTag);
-  const out = profileMediaAbsPath(key);
-  if (!out) return null;
-  const tmp = `${out}.tmp.jpg`;
-  await fsp.mkdir(path.dirname(out), { recursive: true });
-  // 0.5 s skips the black/fade-in first frame most phone clips open with; a
-  // clip shorter than that yields nothing, so retry at 0.
-  for (const at of ['0.5', '0']) {
-    const ok = await runFfmpeg(
-      [
-        '-y',
-        '-ss',
-        at,
-        '-i',
-        src,
-        '-map',
-        '0:V:0',
-        ...NO_METADATA,
-        '-frames:v',
-        '1',
-        '-vf',
-        BOX_FILTER,
-        '-q:v',
-        '3',
-        '-update',
-        '1',
-        tmp,
-      ],
-      POSTER_TIMEOUT_MS,
-    );
-    if (ok && (await promoteOutput(tmp, out, PROFILE_POSTER_MAX_BYTES))) return key;
-    await fsp.unlink(tmp).catch(() => undefined);
-  }
-  return null;
-}
-
-async function makeLoop(src: string, ownerTag: string): Promise<string | null> {
-  const key = newProfileMediaKey('loop', 'mp4', ownerTag);
-  const out = profileMediaAbsPath(key);
-  if (!out) return null;
-  const tmp = `${out}.tmp.mp4`;
-  await fsp.mkdir(path.dirname(out), { recursive: true });
-  const ok = await runFfmpeg(
-    [
-      '-y',
-      // Input-side seek + duration: only the first PROFILE_LOOP_SECONDS are decoded.
-      '-ss',
-      '0',
-      '-t',
-      String(PROFILE_LOOP_SECONDS),
-      '-i',
-      src,
-      '-map',
-      '0:V:0', // first non-cover-art video stream
-      '-an', // a card loop is always muted
-      ...NO_METADATA,
-      '-vf',
-      EVEN_BOX_FILTER,
-      '-r',
-      '30', // a 240 fps slow-mo source must not balloon the loop
-      '-c:v',
-      'libx264',
-      '-preset',
-      'veryfast',
-      '-crf',
-      '28',
-      '-pix_fmt',
-      'yuv420p',
-      '-movflags',
-      '+faststart', // first frame on hover, not after the moov atom downloads
-      tmp,
-    ],
-    LOOP_TIMEOUT_MS,
-  );
-  if (!ok) {
-    await fsp.unlink(tmp).catch(() => undefined);
-    return null;
-  }
-  return (await promoteOutput(tmp, out, LOOP_MAX_BYTES)) ? key : null;
-}
-
-export interface ProfileVideoDerivatives {
-  posterKey: string | null;
-  loopKey: string | null;
+/** ffprobe an uploaded card video (duration, display size, fps); null on any failure or a non-video key. */
+export async function probeProfileVideo(videoKey: string): Promise<MediaProbe | null> {
+  if (!isValidProfileMediaKey(videoKey, 'video')) return null;
+  const full = profileMediaAbsPath(videoKey);
+  if (!full) return null;
+  return probeMediaFile(full, PROFILE_CLIP_PROBE_TIMEOUT_MS);
 }
 
 /**
- * Generate the ≤ PROFILE_LOOP_SECONDS muted hover loop and a server poster for
- * an uploaded card video, sharing ONE media-queue slot. Both keys carry
- * `ownerTag` (the uploader's), so they attach like any upload of theirs. NEVER
- * throws; either key may be null (no ffmpeg, queue busy, undecodable source,
- * bad output).
- *
- * The original itself gets no processing (no faststart remux): nothing ever
- * plays it — only these two derivatives are servable.
+ * Duration in seconds (one decimal) of an uploaded card video's PICTURE — the
+ * video stream's own length when ffprobe reports it (an audio track that runs
+ * past the last frame does not count: the clip is video-only and the route
+ * clamps ranges to the same videoTimelineSec). null when unknown (no ffprobe,
+ * not a video).
  */
-export async function makeProfileVideoDerivatives(videoKey: string, ownerTag: string): Promise<ProfileVideoDerivatives> {
-  const none: ProfileVideoDerivatives = { posterKey: null, loopKey: null };
+export async function probeProfileVideoDurationSec(videoKey: string): Promise<number | null> {
+  const probe = await probeProfileVideo(videoKey);
+  if (!probe || !probe.hasVideo) return null;
+  return Math.round(videoTimelineSec(probe) * 10) / 10;
+}
+
+export type ProfileClipRender =
+  | { ok: true; loopKey: string; posterKey: string }
+  | { ok: false; reason: 'busy' | 'failed' };
+
+/**
+ * Cut `range` of an uploaded card video into the muted card clip (≤ 720 px long
+ * edge, ≤ 30 fps, faststart, no metadata, `loop/` key) plus a poster at `cover`
+ * (source seconds, inside the range; `poster/` key), in ONE media-queue slot.
+ * Both keys carry `ownerTag`, so they attach like any upload of the member's.
+ *
+ * The range must already be normalised against the probed duration (the route
+ * does that with lib/media/clip-shared.ts). Never throws:
+ *   busy   — no queue slot inside CLIP_JOB_MAX_WAIT_MS (nothing ran, nothing written)
+ *   failed — the source would not decode / the output was not sane (nothing left behind)
+ * A poster is mandatory: if neither the original nor the fresh clip yields a
+ * frame, the clip is unlinked too — a card video with a loop but no poster would
+ * flash empty on every hover card.
+ */
+export async function renderProfileCardClip(
+  videoKey: string,
+  ownerTag: string,
+  range: { start: number; end: number; cover: number },
+  sourceFps: number | null,
+): Promise<ProfileClipRender> {
   try {
-    if (!isValidProfileMediaKey(videoKey, 'video')) return none;
+    if (!isValidProfileMediaKey(videoKey, 'video')) return { ok: false, reason: 'failed' };
     const src = profileMediaAbsPath(videoKey);
-    if (!src) return none;
-    if (!(await hasFfmpeg())) return none;
-    const job = await tryRunMediaJob(async () => {
-      const posterKey = await makePoster(src, ownerTag).catch(() => null);
-      const loopKey = await makeLoop(src, ownerTag).catch(() => null);
-      return { posterKey, loopKey };
-    }, JOB_MAX_WAIT_MS);
-    return job.ran ? job.value : none;
+    const loopKey = newProfileMediaKey('loop', 'mp4', ownerTag);
+    const posterKey = newProfileMediaKey('poster', 'jpg', ownerTag);
+    const loopPath = profileMediaAbsPath(loopKey);
+    const posterPath = profileMediaAbsPath(posterKey);
+    if (!src || !loopPath || !posterPath) return { ok: false, reason: 'failed' };
+
+    const job = await tryRunMediaJob(async (): Promise<ProfileClipRender> => {
+      const clipped = await renderClip({
+        input: src,
+        output: loopPath,
+        startSec: range.start,
+        endSec: range.end,
+        maxEdge: PROFILE_CLIP_MAX_EDGE,
+        fps: clipOutputFps(sourceFps, PROFILE_CLIP_MAX_FPS),
+        crf: CLIP_CRF,
+        maxrateKbps: CLIP_MAXRATE_KBPS,
+        mute: true,
+        timeoutMs: CLIP_TIMEOUT_MS,
+        maxBytes: CLIP_MAX_BYTES,
+      });
+      if (!clipped) return { ok: false, reason: 'failed' };
+
+      const frame = { output: posterPath, maxEdge: PROFILE_CLIP_MAX_EDGE, quality: POSTER_QUALITY, maxBytes: PROFILE_POSTER_MAX_BYTES };
+      // The original at full quality first; a container whose duration outruns its
+      // last frame can miss there, and the clip we just verified cannot.
+      const postered =
+        (await renderFrame({ ...frame, input: src, atSec: range.cover, timeoutMs: POSTER_TIMEOUT_MS })) ||
+        (await renderFrame({
+          ...frame,
+          input: loopPath,
+          atSec: Math.max(0, range.cover - range.start),
+          timeoutMs: POSTER_FALLBACK_TIMEOUT_MS,
+        })) ||
+        (await renderFrame({ ...frame, input: loopPath, atSec: 0, timeoutMs: POSTER_LAST_RESORT_TIMEOUT_MS }));
+      if (!postered) {
+        await deleteProfileMediaFiles([loopKey]);
+        return { ok: false, reason: 'failed' };
+      }
+      return { ok: true, loopKey, posterKey };
+    }, CLIP_JOB_MAX_WAIT_MS);
+    return job.ran ? job.value : { ok: false, reason: 'busy' };
   } catch {
-    return none;
+    return { ok: false, reason: 'failed' };
   }
 }
 
-/** Duration in seconds (one decimal) via ffprobe; null on any failure. */
-export function probeProfileVideoDurationSec(videoKey: string): Promise<number | null> {
-  const full = profileMediaAbsPath(videoKey);
-  if (!full) return Promise.resolve(null);
-  return new Promise((resolve) => {
-    try {
-      const p = spawn('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', full], {
-        stdio: ['ignore', 'pipe', 'ignore'],
-      });
-      const timer = setTimeout(() => {
-        p.kill('SIGKILL');
-        resolve(null);
-      }, FFPROBE_TIMEOUT_MS);
-      let out = '';
-      p.stdout.on('data', (d) => {
-        out += String(d);
-      });
-      p.on('error', () => {
-        clearTimeout(timer);
-        resolve(null);
-      });
-      p.on('close', (code) => {
-        clearTimeout(timer);
-        if (code !== 0) return resolve(null);
-        const sec = Number.parseFloat(out.trim());
-        resolve(Number.isFinite(sec) && sec > 0 ? Math.round(sec * 10) / 10 : null);
-      });
-    } catch {
-      resolve(null);
-    }
-  });
-}
+/** Seconds a client should wait before retrying a `busy` clip request. */
+export const PROFILE_CLIP_RETRY_AFTER_SEC = 15;

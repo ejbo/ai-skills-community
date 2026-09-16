@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { ChevronDown, Loader2, ThumbsUp } from 'lucide-react';
+import { ChevronDown, Loader2 } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
+import { CommentLikeButton } from '@/components/CommentLikeButton';
 import { DeptTag } from '@/components/DeptTag';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { RichTextEditor } from '@/components/RichTextEditor';
@@ -31,11 +32,17 @@ export function PostComments({
   postId,
   currentUser,
   focusId,
+  autoFocusComposer = false,
+  openReplyTo,
   onCountChange,
 }: {
   postId: string;
   currentUser: CurrentUser | null;
   focusId?: string;
+  /** Opened from the card's 评论 button: put the caret in the comment box. */
+  autoFocusComposer?: boolean;
+  /** Opened from a previewed comment's 回复: open the reply box under that comment. */
+  openReplyTo?: string;
   onCountChange: (delta: number) => void;
 }) {
   const t = useTranslations('discussion_ui');
@@ -199,7 +206,12 @@ export function PostComments({
   return (
     <div className="space-y-4 pt-1">
       {currentUser ? (
-        <CommentBox postId={postId} currentUser={currentUser} onPosted={addThread} />
+        <CommentBox
+          postId={postId}
+          currentUser={currentUser}
+          onPosted={addThread}
+          autoFocus={autoFocusComposer && !openReplyTo}
+        />
       ) : (
         <p className="text-sm text-muted">
           {t.rich('login_to_comment', {
@@ -252,6 +264,7 @@ export function PostComments({
                 thread={thread}
                 currentUser={currentUser}
                 focus={focus}
+                initialReplyOpen={openReplyTo === thread.id}
                 onReplyPosted={(c) => addReply(thread.id, c)}
                 onReplies={(replies) =>
                   setThreads((t) =>
@@ -291,6 +304,7 @@ function ThreadBlock({
   thread,
   currentUser,
   focus,
+  initialReplyOpen = false,
   onReplyPosted,
   onReplies,
   onRemoved,
@@ -299,12 +313,15 @@ function ThreadBlock({
   thread: PostThreadView;
   currentUser: CurrentUser | null;
   focus: { focusId: string | null; openRootId: string | null };
+  initialReplyOpen?: boolean;
   onReplyPosted: (c: PostCommentView) => void;
   onReplies: (replies: PostCommentView[]) => void;
   onRemoved: (commentId: string, tombstoned: boolean, prunedParent: boolean) => void;
 }) {
   const t = useTranslations('discussion_ui');
-  const [replyTo, setReplyTo] = useState<PostCommentView | null>(null);
+  const [replyTo, setReplyTo] = useState<PostCommentView | null>(
+    initialReplyOpen && currentUser ? thread : null,
+  );
   const [expanding, setExpanding] = useState(false);
   // After a full fetch the button must not reappear even if replyCount exceeds
   // the server's 200-reply render cap (clicking again could never load more).
@@ -411,13 +428,8 @@ function CommentBlock({
   const t = useTranslations('discussion_ui');
   const tc = useTranslations('common');
   const locale = useLocale();
-  const router = useRouter();
-  const pathname = usePathname();
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState(false);
-  const [liked, setLiked] = useState(comment.likedByMe);
-  const [likeCount, setLikeCount] = useState(comment.likeCount);
-  const [likeBusy, setLikeBusy] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const isTombstone = comment.status === 'deleted';
@@ -432,34 +444,6 @@ function CommentBlock({
     const timer = setTimeout(() => setFlash(false), 2500);
     return () => clearTimeout(timer);
   }, [focus.focusId, comment.id]);
-
-  async function toggleLike() {
-    if (likeBusy || isTombstone) return;
-    setLikeBusy(true);
-    const prev = { liked, likeCount };
-    setLiked(!liked);
-    setLikeCount(likeCount + (liked ? -1 : 1));
-    try {
-      const res = await fetch(`/api/discussion/comments/${comment.id}/like`, { method: 'POST' });
-      if (res.status === 401) {
-        setLiked(prev.liked);
-        setLikeCount(prev.likeCount);
-        pushToast('error', t('login_required'));
-        router.push(currentLoginHref());
-        return;
-      }
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error('failed');
-      setLiked(Boolean(data.liked));
-      setLikeCount(typeof data.likeCount === 'number' ? data.likeCount : prev.likeCount);
-    } catch {
-      setLiked(prev.liked);
-      setLikeCount(prev.likeCount);
-      pushToast('error', t('action_failed_retry'));
-    } finally {
-      setLikeBusy(false);
-    }
-  }
 
   async function remove() {
     if (!confirm(t('delete_comment_confirm'))) return;
@@ -514,19 +498,12 @@ function CommentBlock({
           )}
           {!isTombstone && (
             <div className="mt-1.5 flex items-center gap-3 text-xs text-muted">
-              <button
-                onClick={toggleLike}
-                disabled={likeBusy}
-                aria-pressed={liked}
-                className={`flex items-center gap-1 transition ${
-                  liked
-                    ? 'font-medium text-zinc-900 dark:text-zinc-50'
-                    : 'hover:text-zinc-700 dark:hover:text-zinc-200'
-                }`}
-              >
-                <ThumbsUp className={`h-3.5 w-3.5 ${liked ? 'fill-current' : ''}`} />
-                {likeCount > 0 ? likeCount : t('like')}
-              </button>
+              <CommentLikeButton
+                endpoint={`/api/discussion/comments/${comment.id}/like`}
+                initialLiked={comment.likedByMe}
+                initialCount={comment.likeCount}
+                signedIn={Boolean(currentUser)}
+              />
               {currentUser && (
                 <button onClick={onReply} className="transition hover:text-zinc-700 dark:hover:text-zinc-200">
                   {t('reply')}

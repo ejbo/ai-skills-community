@@ -1,7 +1,11 @@
 // Keyboard-shortcut hints for the editor toolbar. The combos are tiptap's own
-// keymap spellings (`Mod-Shift-s`), so a hint can only name a binding the
-// extension actually registers — see TOOLBAR_SHORTCUTS below, pinned by
-// tests/rte-stack.test.ts against the live keymap.
+// keymap spellings (`Mod-Shift-s`), so a hint can only name a binding that
+// really runs — see TOOLBAR_SHORTCUTS below, pinned by tests/rte-stack.test.ts
+// against the live keymap. `link` is the one binding that is NOT in the
+// extension list: it opens a React dialog, so the toolbar's LinkControls
+// registers it on the editor while it is mounted
+// (components/editor/toolbar/LinkControls.tsx), which is exactly where the
+// hint is rendered too.
 //
 // Shown in the platform's own notation: ⌘⇧S on Apple devices (modifier glyphs
 // in Apple's fixed order ⌃⌥⇧⌘, no separators), Ctrl+Shift+S elsewhere. Key
@@ -17,6 +21,8 @@ export const TOOLBAR_SHORTCUTS = {
   italic: 'Mod-i',
   strike: 'Mod-Shift-s',
   code: 'Mod-e',
+  superscript: 'Mod-.',
+  subscript: 'Mod-,',
   h1: 'Mod-Alt-1',
   h2: 'Mod-Alt-2',
   h3: 'Mod-Alt-3',
@@ -24,6 +30,9 @@ export const TOOLBAR_SHORTCUTS = {
   orderedList: 'Mod-Shift-7',
   blockquote: 'Mod-Shift-b',
   codeBlock: 'Mod-Alt-c',
+  // Word / 飞书 / Docs all open 插入链接 on ⌘K. The editor takes it only while it
+  // has focus; elsewhere on the page it still opens the site search palette.
+  link: 'Mod-k',
   undo: 'Mod-z',
   redo: 'Mod-Shift-z',
 } as const;
@@ -60,10 +69,19 @@ export function ariaKeyShortcuts(combo: string, mac: boolean): string {
   return [...PC_ORDER.filter((m) => mods.has(m)).map((m) => ARIA_NAME[m](mac)), key].join('+');
 }
 
-/** Apple platforms, where `Mod` is ⌘. Client-only (false on the server). */
+/**
+ * Apple platforms, where `Mod` is ⌘. Client-only (false on the server).
+ * Answered once per document: ~40 toolbar buttons ask on every render, and the
+ * platform cannot change under a loaded page. The cache is filled only once
+ * `navigator` exists, so an SSR evaluation can never pin it to false.
+ */
+let applePlatform: boolean | undefined;
 export function isApplePlatform(): boolean {
   if (typeof navigator === 'undefined') return false;
-  const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
-  const platform = nav.userAgentData?.platform || nav.platform || nav.userAgent || '';
-  return /mac|iphone|ipad|ipod/i.test(platform);
+  if (applePlatform === undefined) {
+    const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
+    const platform = nav.userAgentData?.platform || nav.platform || nav.userAgent || '';
+    applePlatform = /mac|iphone|ipad|ipod/i.test(platform);
+  }
+  return applePlatform;
 }

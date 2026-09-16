@@ -9,6 +9,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { listPosts } from '@/lib/discussion-queries';
 import { mediaArraySchema, mediaKeysAvailable, resolveMedia } from '@/lib/discussion-media';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
+import { publicPost } from '@/lib/discussion-views';
 import { notifyMentions } from '@/lib/mention-notify';
 
 export const dynamic = 'force-dynamic';
@@ -27,7 +28,7 @@ export async function GET(req: Request) {
   });
   const canSeeIdentity = can(session?.user, 'identity');
   return NextResponse.json({
-    items: items.map((p) => ({ ...p, author: toPublicAuthor(p.author, canSeeIdentity) })),
+    items: items.map((p) => publicPost(p, canSeeIdentity)),
     hasMore,
     nextCursor,
   });

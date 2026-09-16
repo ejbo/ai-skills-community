@@ -43,6 +43,12 @@ export interface PostView {
   myReaction: string | null;
   /** Per-type counts, sorted desc — feeds the summary pills. */
   reactions: { reaction: string; count: number }[];
+  /**
+   * The top visible root comments (最相关 order) a FEED card shows under the
+   * actions before 查看全部评论. Absent on the permalink page and on a freshly
+   * published post, where the full comment section is the only view.
+   */
+  previewComments?: PostCommentView[];
 }
 
 export interface PostCommentView {
@@ -60,6 +66,30 @@ export interface PostCommentView {
 export interface PostThreadView extends PostCommentView {
   replies: PostCommentView[];
 }
+
+/** A forum topic as a card in the 全部 stream (lib/discussion-queries.ts#listDiscussionStream). */
+export interface TopicCardView {
+  id: string;
+  title: string;
+  excerpt: string;
+  tags: { slug: string; name: string; nameEn: string; official: boolean }[];
+  pinned: boolean;
+  locked: boolean;
+  upvoteCount: number;
+  replyCount: number;
+  viewCount: number;
+  upvotedByMe: boolean;
+  lastActivityAt: string | Date;
+  createdAt: string | Date;
+  author: AuthorView;
+  /** Recent distinct repliers, newest first (≤4). */
+  participants: AuthorView[];
+}
+
+/** One row of the 全部 stream — a feed post or a forum topic. */
+export type StreamItemView =
+  | { kind: 'post'; post: PostView }
+  | { kind: 'topic'; topic: TopicCardView };
 
 export interface CurrentUser {
   handle: string;

@@ -1,4 +1,5 @@
-/* 富文本格式标记的调色板 — see lib/rich-marks.ts for the storage contract.
+/* 富文本格式标记的调色板 — see lib/rich-marks.ts for the storage contract (v3,
+   2026-09-15: named OR #rrggbb colours, px 字号, CJK + Latin 字体, 行高, 上标/下标).
    Imported from app/layout.tsx, so it reaches every surface that renders a
    stored body (MarkdownRenderer → `.prose`) and every editor (`.rte-content`,
    which is also the `.ProseMirror` element).
@@ -33,7 +34,24 @@
    back: the light block below matches it at (0,2,0), the dark block at (0,3,0)
    under a dark site, and a declaration on the element beats what it would
    inherit from `.reader-root`. lib/rich-text-ground.ts is the JS half of the
-   same rule (the editor picks its popover tone from it). */
+   same rule (the editor picks its popover tone from it).
+
+   HEX COLOURS (v3) cannot have a curated token per ground, so the same two
+   ground blocks publish ONE switch instead: `--rt-ground-dark` is 0 on light
+   grounds and 1 on dark ones, inherited like every other token (so the nearest
+   ground wins, `.surface` inside the reader included). The hex rules below read
+   it inside OKLCH relative-colour math, and they clamp text from BOTH sides:
+   on a dark ground text lightness is raised to at least 0.72 and a background's
+   lowered to at most 0.42; on a light ground text is capped at 0.58 and the
+   background is the author's colour exactly. The light cap is not symmetry for
+   its own sake — an author writing in the dark theme picked 黄色 #fdd835 or a
+   pastel, saw it fine, and every light-theme (and 护眼) reader got it at
+   ~1.3 : 1. Text sitting ON a hex background is exempt from the page's clamp
+   (it reads against the author's own background, which is painted as chosen).
+   The colour itself arrives as a custom property on the span (`--rt-c` /
+   `--rt-bg`), set by the reader's
+   post-sanitize plugin (lib/markdown-rich-style.ts) and by the editor's
+   renderHTML — never stored as `style`. */
 
 :root,
 .reader-root[data-reader-theme='light'],
@@ -64,10 +82,33 @@
      instead of the zinc-100 chip, which would punch a grey hole in the colour. */
   --rt-code-on-bg: rgb(24 24 27 / 0.08);
 
+  /* 0 = light ground, 1 = dark ground — drives the hex clamps (header). */
+  --rt-ground-dark: 0;
+
   /* Font stacks — system fonts only (the intranet cannot load web fonts; the
-     self-hosted Inter / JetBrains Mono are latin subsets). */
+     self-hosted Inter / JetBrains Mono are latin subsets). The SAME strings as
+     lib/rich-marks.ts#RICH_FONT_FAMILY_STACKS — tests/rich-marks-v3.test.ts
+     fails when the two drift. */
+  --rt-font-sans: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans SC', 'Source Han Sans SC', 'WenQuanYi Micro Hei', sans-serif;
   --rt-font-serif: 'Songti SC', STSong, SimSun, 'Noto Serif CJK SC', 'Noto Serif SC', 'Source Han Serif SC', serif;
+  --rt-font-hei: SimHei, 'Heiti SC', STHeiti, 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', sans-serif;
   --rt-font-kai: 'Kaiti SC', STKaiti, KaiTi, 'Kaiti TC', BiauKai, serif;
+  --rt-font-fangsong: FangSong, STFangsong, 'FangSong_GB2312', 'Fangsong SC', 'Songti SC', serif;
+  --rt-font-lishu: LiSu, STLiti, 'Libian SC', 'Baoli SC', 'Kaiti SC', serif;
+  --rt-font-arial: Arial, 'Helvetica Neue', Helvetica, 'Liberation Sans', sans-serif;
+  --rt-font-helvetica: 'Helvetica Neue', Helvetica, Arial, 'Liberation Sans', sans-serif;
+  --rt-font-times: 'Times New Roman', Times, 'Liberation Serif', 'Nimbus Roman', serif;
+  --rt-font-georgia: Georgia, 'DejaVu Serif', serif;
+  --rt-font-garamond: Garamond, 'EB Garamond', 'Apple Garamond', 'Adobe Garamond Pro', Baskerville, 'Times New Roman', serif;
+  --rt-font-palatino: 'Palatino Linotype', Palatino, 'Book Antiqua', 'URW Palladio L', serif;
+  --rt-font-verdana: Verdana, 'DejaVu Sans', Geneva, sans-serif;
+  --rt-font-tahoma: Tahoma, Verdana, Geneva, 'DejaVu Sans', sans-serif;
+  --rt-font-trebuchet: 'Trebuchet MS', 'Lucida Grande', 'Lucida Sans Unicode', 'DejaVu Sans', sans-serif;
+  --rt-font-segoe: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --rt-font-comic: 'Comic Sans MS', 'Comic Sans', 'Chalkboard SE', 'Comic Neue', cursive;
+  --rt-font-impact: Impact, Haettenschweiler, 'Arial Narrow Bold', 'Franklin Gothic Bold', sans-serif;
+  --rt-font-courier: 'Courier New', Courier, 'Liberation Mono', 'Nimbus Mono PS', monospace;
+  --rt-font-consolas: Consolas, 'Cascadia Mono', Menlo, Monaco, 'DejaVu Sans Mono', monospace;
   --rt-font-mono: var(--font-geist-mono), 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -97,9 +138,11 @@
   --rt-bg-a: 0.36;
 
   --rt-code-on-bg: rgb(255 255 255 / 0.12);
+
+  --rt-ground-dark: 1;
 }
 
-/* ── the four formats ───────────────────────────────────────────────────────
+/* ── the four formats — legacy named palette ────────────────────────────────
    Scoped to markdown surfaces + editors. `:is()` keeps one selector per rule
    while the specificity stays that of a class, so the descendant rules below
    still beat Typography's `.prose :where(a)` / the editor's `.rte .ProseMirror a`. */
@@ -144,7 +187,95 @@
   background-color: var(--rt-code-on-bg);
 }
 
-/* Sizes are RELATIVE (em): the same body renders at 13 px (compact), 15 px
+/* ── hex colours (v3) ───────────────────────────────────────────────────────
+   `^='#'` is safe as the whole test: the sanitizer only lets `#rrggbb` through
+   (lib/markdown.ts) and the editor only renders what isHexColor accepts. The
+   custom property is on the SAME span (lib/markdown-rich-style.ts / format-marks
+   renderHTML), so an enclosing span's value can never leak in.
+
+   Three tiers, each overriding the one before it where the browser supports it:
+     1. the author's colour as-is;
+     2. `color-mix` (wider support than relative colour): text is mixed 45 %
+        toward white on a dark ground and 30 % toward black on a light one, a
+        background 55 % toward black on a dark ground — not a clamp, but it
+        keeps #000 text, #ff0 highlights and pastel text legible;
+     3. OKLCH relative colour: the real clamp — text L ≥ 0.72 on a dark ground
+        and L ≤ 0.58 on a light one (both grounds, because the author writes on
+        ONE of them and everybody else reads on the other), a background
+        L ≤ 0.42 on a dark ground — plus an automatic text colour on a hex
+        background — near-white under a background darker than L 0.62, ink above
+        it — decided from the background AS PAINTED. An inner colour span sets
+        its own colour and wins for its text (and is exempt from the page's
+        clamp: it reads against the author's background, not the page); links,
+        bold, code… inside the background inherit the automatic colour (a
+        mention chip's wash is translucent, so its text stays readable too). */
+:is(.prose, .rte-content, .ProseMirror) span[data-color^='#'],
+.rte-swatch[data-kind='color'] {
+  color: var(--rt-c);
+}
+:is(.prose, .rte-content, .ProseMirror) span[data-bg^='#'],
+.rte-swatch[data-kind='bg'] {
+  background-color: var(--rt-bg);
+}
+:is(.prose, .rte-content, .ProseMirror) span[data-bg^='#'] :is(a, strong, b, em, i, code, del, s, sup, sub) {
+  color: inherit;
+}
+
+@supports (color: color-mix(in oklab, red 50%, blue)) {
+  :is(.prose, .rte-content, .ProseMirror) span[data-color^='#'],
+  .rte-swatch[data-kind='color'] {
+    color: color-mix(
+      in oklab,
+      color-mix(in oklab, var(--rt-c) calc(100% - var(--rt-ground-dark) * 45%), white)
+        calc(100% - (1 - var(--rt-ground-dark)) * 30%),
+      black
+    );
+  }
+  :is(.prose, .rte-content, .ProseMirror) span[data-bg^='#'] span[data-color^='#'] {
+    color: color-mix(in oklab, var(--rt-c) calc(100% - var(--rt-ground-dark) * 45%), white);
+  }
+  :is(.prose, .rte-content, .ProseMirror) span[data-bg^='#'],
+  .rte-swatch[data-kind='bg'] {
+    background-color: color-mix(in oklab, var(--rt-bg) calc(100% - var(--rt-ground-dark) * 55%), black);
+  }
+}
+
+/* The test uses math on a channel keyword: early relative-colour builds that
+   resolved `l` as a percentage cannot parse it and keep tier 2.
+   Chrome refuses `clamp()` around a bare `l`, hence min(max(…), …). */
+@supports (color: oklch(from red max(l, 0.5) c h)) {
+  :is(.prose, .rte-content, .ProseMirror) span[data-color^='#'],
+  .rte-swatch[data-kind='color'] {
+    color: oklch(
+      from var(--rt-c) min(max(l, calc(var(--rt-ground-dark) * 0.72)), calc(1 - (1 - var(--rt-ground-dark)) * 0.42)) c h
+    );
+  }
+  /* Text ON a hex highlight reads against THAT colour, not the page's: the
+     author's own pairing (white on navy) must survive both clamps. The
+     background span is always the outer one (bg ranks above color). */
+  :is(.prose, .rte-content, .ProseMirror) span[data-bg^='#'] span[data-color^='#'] {
+    color: oklch(from var(--rt-c) max(l, calc(var(--rt-ground-dark) * 0.72)) c h);
+  }
+  :is(.prose, .rte-content, .ProseMirror) span[data-bg^='#'],
+  .rte-swatch[data-kind='bg'] {
+    background-color: oklch(from var(--rt-bg) min(l, calc(1 - var(--rt-ground-dark) * 0.58)) c h);
+    color: oklch(
+      from var(--rt-bg) clamp(0.21, calc((0.62 - min(l, calc(1 - var(--rt-ground-dark) * 0.58))) * 1000), 0.985) 0 0
+    );
+  }
+}
+
+/* The 文字颜色 / 背景色 palette previews (components/editor/toolbar/ColorPicker.tsx)
+   ride the rules above ON PURPOSE — a swatch must promise exactly what the page
+   paints, and a second copy of the clamp formulas would drift from them. A text
+   swatch is filled with the clamped COLOUR it just computed; a background one is
+   already painted by the rule. `--rt-ground-dark` is inherited from the ground
+   the panel is portaled into (<body>, or the reader root for tone="reader"). */
+.rte-swatch[data-kind='color'] {
+  background-color: currentColor;
+}
+
+/* LEGACY sizes are RELATIVE (em): the same body renders at 13 px (compact), 15 px
    (default) and 17 px (article), and each keeps its proportions. A unitless
    line-height is inherited as a factor, so an enlarged run would open a tall
    gap above its line; large text gets a tighter factor instead. */
@@ -158,9 +289,90 @@
 :is(.prose, .rte-content, .ProseMirror) span[data-size='lg'] code { font-size: calc(13px * 1.25); }
 :is(.prose, .rte-content, .ProseMirror) span[data-size='xl'] code { font-size: calc(13px * 1.5); }
 
+/* v3 字号 — absolute px, the Word / 飞书 list (RICH_FONT_SIZES_PX). An author who
+   picks 24 means 24 on every surface. Same tighter-factor idea for large runs
+   (20+), so one big word does not double the gap above its line — except
+   inside a 行高 block, where the author asked for a factor and gets it on the
+   big text too (Word applies line spacing to the tallest glyph on the line).
+   Inline code inside keeps the chip's proportion to the text (0.875 em). */
+:is(.prose, .rte-content, .ProseMirror) span[data-size='10'] { font-size: 10px; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='12'] { font-size: 12px; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='13'] { font-size: 13px; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='14'] { font-size: 14px; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='15'] { font-size: 15px; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='16'] { font-size: 16px; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='18'] { font-size: 18px; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='20'] { font-size: 20px; line-height: 1.5; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='22'] { font-size: 22px; line-height: 1.5; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='24'] { font-size: 24px; line-height: 1.45; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='28'] { font-size: 28px; line-height: 1.35; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='32'] { font-size: 32px; line-height: 1.3; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='36'] { font-size: 36px; line-height: 1.25; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='40'] { font-size: 40px; line-height: 1.25; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='48'] { font-size: 48px; line-height: 1.2; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='56'] { font-size: 56px; line-height: 1.15; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='64'] { font-size: 64px; line-height: 1.15; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size='72'] { font-size: 72px; line-height: 1.1; }
+:is(.prose, .rte-content, .ProseMirror) span[data-size]:not([data-size='sm'], [data-size='lg'], [data-size='xl']) code {
+  font-size: 0.875em;
+}
+:is(.prose, .rte-content, .ProseMirror) [data-lh] span[data-size] {
+  line-height: inherit;
+}
+
+/* 字体 — one rule per key of RICH_FONT_FAMILY_STACKS (the stacks are the tokens above). */
+:is(.prose, .rte-content, .ProseMirror) span[data-font='sans'] { font-family: var(--rt-font-sans); }
 :is(.prose, .rte-content, .ProseMirror) span[data-font='serif'] { font-family: var(--rt-font-serif); }
+:is(.prose, .rte-content, .ProseMirror) span[data-font='hei'] { font-family: var(--rt-font-hei); }
 :is(.prose, .rte-content, .ProseMirror) span[data-font='kai'] { font-family: var(--rt-font-kai); }
+:is(.prose, .rte-content, .ProseMirror) span[data-font='fangsong'] { font-family: var(--rt-font-fangsong); }
+:is(.prose, .rte-content, .ProseMirror) span[data-font='lishu'] { font-family: var(--rt-font-lishu); }
+:is(.prose, .rte-content, .ProseMirror) span[data-font='arial'] { font-family: var(--rt-font-arial); }
+:is(.prose, .rte-content, .ProseMirror) span[data-font='helvetica'] { font-family: var(--rt-font-helvetica); }
+:is(.prose, .rte-content, .ProseMirror) span[data-font='times'] { font-family: var(--rt-font-times); }
+:is(.prose, .rte-content, .ProseMirror) span[data-font='georgia'] { font-family: var(--rt-font-georgia); }
+:is(.prose, .rte-content, .ProseMirror) span[data-font='garamond'] { font-family: var(--rt-font-garamond); }
+:is(.prose, .rte-content, .ProseMirror) span[data-font='palatino'] { font-family: var(--rt-font-palatino); }
+:is(.prose, .rte-content, .ProseMirror) span[data-font='verdana'] { font-family: var(--rt-font-verdana); }
+:is(.prose, .rte-content, .ProseMirror) span[data-font='tahoma'] { font-family: var(--rt-font-tahoma); }
+:is(.prose, .rte-content, .ProseMirror) span[data-font='trebuchet'] { font-family: var(--rt-font-trebuchet); }
+:is(.prose, .rte-content, .ProseMirror) span[data-font='segoe'] { font-family: var(--rt-font-segoe); }
+:is(.prose, .rte-content, .ProseMirror) span[data-font='comic'] { font-family: var(--rt-font-comic); }
+:is(.prose, .rte-content, .ProseMirror) span[data-font='impact'] { font-family: var(--rt-font-impact); }
+:is(.prose, .rte-content, .ProseMirror) span[data-font='courier'] { font-family: var(--rt-font-courier); }
+:is(.prose, .rte-content, .ProseMirror) span[data-font='consolas'] { font-family: var(--rt-font-consolas); }
 :is(.prose, .rte-content, .ProseMirror) span[data-font='mono'] { font-family: var(--rt-font-mono); }
+
+/* ── 行高 (line height) ─────────────────────────────────────────────────────
+   Reader: the stored run wrapper `div[data-lh]` (components/editor/line-height.ts).
+   Editor: the block element itself carries `data-lh` (p / h1–h6 / ul / ol /
+   blockquote at the top level). Both set the factor on the element AND on the
+   text-bearing descendants that Typography (or a size variant such as the
+   compact `prose-h1:text-sm`) gives an explicit line-height — headings above
+   all — so a heading inside a 2.0 run is 2.0 too. Code frames keep their own. */
+:is(.prose, .rte-content, .ProseMirror) :is([data-lh='1'], [data-lh='1'] :is(p, li, h1, h2, h3, h4, h5, h6, blockquote)) { line-height: 1; }
+:is(.prose, .rte-content, .ProseMirror) :is([data-lh='1.15'], [data-lh='1.15'] :is(p, li, h1, h2, h3, h4, h5, h6, blockquote)) { line-height: 1.15; }
+:is(.prose, .rte-content, .ProseMirror) :is([data-lh='1.5'], [data-lh='1.5'] :is(p, li, h1, h2, h3, h4, h5, h6, blockquote)) { line-height: 1.5; }
+:is(.prose, .rte-content, .ProseMirror) :is([data-lh='1.75'], [data-lh='1.75'] :is(p, li, h1, h2, h3, h4, h5, h6, blockquote)) { line-height: 1.75; }
+:is(.prose, .rte-content, .ProseMirror) :is([data-lh='2'], [data-lh='2'] :is(p, li, h1, h2, h3, h4, h5, h6, blockquote)) { line-height: 2; }
+:is(.prose, .rte-content, .ProseMirror) :is([data-lh='2.5'], [data-lh='2.5'] :is(p, li, h1, h2, h3, h4, h5, h6, blockquote)) { line-height: 2.5; }
+:is(.prose, .rte-content, .ProseMirror) :is([data-lh='3'], [data-lh='3'] :is(p, li, h1, h2, h3, h4, h5, h6, blockquote)) { line-height: 3; }
+/* The wrapper adds no box of its own (margins collapse through it), except at
+   the edges of the body: Typography zeroes the first / last CHILD's outer
+   margin, which is now the wrapper — pass that on to the block inside it, so a
+   body that starts or ends with a spaced run sits exactly where it did before. */
+.prose > div[data-lh]:first-child > :first-child { margin-top: 0; }
+.prose > div[data-lh]:last-child > :last-child { margin-bottom: 0; }
+
+/* ── blockquote: no quotation marks ─────────────────────────────────────────
+   Typography paints open-quote / close-quote around the first and last
+   paragraph of every blockquote. Authors use 引用 for quoted docs, notes and
+   callouts — not just speech — and the marks were never in what they wrote
+   (owner: 「引用不用非要加引号」). Removed for every markdown surface and the editor. */
+:is(.prose, .rte-content, .ProseMirror) blockquote p:first-of-type::before,
+:is(.prose, .rte-content, .ProseMirror) blockquote p:last-of-type::after {
+  content: none;
+}
 
 /* ── inline code in the EDITOR ──────────────────────────────────────────────
    The reader paints inline code as a 13 px zinc chip without backticks

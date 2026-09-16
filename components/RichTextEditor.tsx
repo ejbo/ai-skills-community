@@ -5,11 +5,12 @@
 // API validation, the MarkdownRenderer pipeline and AI-assist are all unchanged.
 //
 // Built on Tiptap v2 + tiptap-markdown. Supports bold/italic/strike, inline
-// code, text colour / background / font size / font family (one 文字样式
-// popover, components/editor/TextStyleMenu.tsx), headings, lists, quote, code
-// blocks with language + filename (components/editor/CodeBlockView.tsx), links,
+// code, 上标/下标, text colour / background (any hex) / 字号 / 字体 / 行高, 格式刷,
+// headings, lists, quote, code blocks with language + filename
+// (components/editor/CodeBlockView.tsx), links (插入/编辑链接 dialog + caret bubble),
 // horizontal rule, GFM tables, undo/redo, and inline IMAGE upload (toolbar pick
-// / drag-drop / paste) to /api/uploads/image.
+// / drag-drop / paste) to /api/uploads/image. The toolbar itself is
+// components/editor/toolbar/EditorToolbar.tsx (full / compact variants).
 //
 // The extension list is NOT written here: components/editor/rich-text-extensions.ts
 // builds it (React-free), this file only hands it the React node views, and the
@@ -40,45 +41,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent as Re
 import { useLocale, useTranslations } from 'next-intl';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useEditor, EditorContent, ReactNodeViewRenderer, type Editor } from '@tiptap/react';
-import { caretInTableCell, insertParagraphBesideTable, isInsideTable, pasteEscapePos, sliceHasBlockAtom } from '@/components/markdown-table';
+import { isInsideTable, pasteEscapePos, sliceHasBlockAtom } from '@/components/markdown-table';
 import { beginInsertBatch, endInsertBatch, insertIntoBatch } from '@/components/editor/flow-extension';
 import { ensureParagraphAt, setCaret } from '@/components/editor/flow-insert';
 import { buildRichTextExtensions } from '@/components/editor/rich-text-extensions';
 import { unsupportedMarkdownConstructs, type MarkdownParserLike, type UnsupportedConstruct } from '@/components/editor/unsupported-markdown';
 import { CodeBlockWithView } from '@/components/editor/CodeBlockView';
-import { TextStyleMenu } from '@/components/editor/TextStyleMenu';
-import { TOOLBAR_SHORTCUTS, ariaKeyShortcuts, formatShortcut, isApplePlatform, type ToolbarShortcut } from '@/components/editor/shortcuts';
-import {
-  AlertTriangle,
-  ArrowDownToLine,
-  ArrowUpToLine,
-  BarChart3,
-  Blocks,
-  Bold,
-  Italic,
-  Strikethrough,
-  Code,
-  SquareCode,
-  Columns3,
-  FileUp,
-  Heading1,
-  Heading2,
-  Heading3,
-  List,
-  ListOrdered,
-  Paperclip,
-  Quote,
-  Link as LinkIcon,
-  Image as ImageIcon,
-  Minus,
-  Rows3,
-  Smile,
-  Table as TableIcon,
-  Trash2,
-  Undo2,
-  Redo2,
-  Loader2,
-} from 'lucide-react';
+import { EditorToolbar } from '@/components/editor/toolbar/EditorToolbar';
+import { AlertTriangle, FileUp } from 'lucide-react';
 import { withBasePath } from '@/lib/base-path';
 import { RASTER_IMAGE_EXTS, RASTER_IMAGE_MIMES, isRasterImage, uploadContentTypeFor } from '@/lib/files/file-types';
 import { RICH_TEXT_RAW_CEILING_FACTOR, richTextLength } from '@/lib/markdown-text';
@@ -87,10 +57,9 @@ import { ARTICLE_PROSE_CLASS } from '@/lib/zones/prose';
 import { MAX_EMBEDS_PER_CONTENT, formatBytes, type EmbedKind } from '@/lib/zones/shared';
 import type { ZoneAttachmentView } from '@/lib/zones/types';
 import { pushToast } from '@/components/Toaster';
-import { StickerPicker } from '@/components/stickers/StickerPicker';
 import { MentionPicker } from '@/components/mention/MentionPicker';
 import { type MentionSession } from '@/components/mention/mention-suggestion';
-import { PollComposerDialog } from '@/components/polls/PollComposerDialog';
+import dynamic from 'next/dynamic';
 import { PollEmbedBase } from '@/components/polls/poll-embed-extension';
 import { PollEmbedView } from '@/components/polls/PollEmbedView';
 import {
@@ -101,7 +70,6 @@ import {
   type ContentEmbedPreviewTarget,
 } from '@/components/zones/embeds/embed-node-extension';
 import { EmbedNodeView } from '@/components/zones/embeds/EmbedNodeView';
-import { EmbedPickerDialog } from '@/components/zones/embeds/EmbedPickerDialog';
 import { blockPosFor, startFileUpload } from '@/components/zones/embeds/file-upload-plugin';
 import {
   MAX_BYTES,
@@ -117,6 +85,16 @@ import {
 } from '@/components/zones/attachments/upload-core';
 import { usePreview } from '@/components/zones/preview/PreviewProvider';
 import { richTextToneFor } from '@/lib/rich-text-ground';
+
+// The two MODAL dialogs are code-split. RichTextEditor is a static import of
+// two dozen client components (every comment box on 讨论区 / 视频 / 知识库 /
+// 意见反馈), and neither dialog can appear before someone clicks its toolbar
+// button — together they were ~20 KB of every one of those first-load chunks.
+// They stay mounted once opened (the latches below), so nothing else about
+// their lifecycle changes. The toolbar's own popovers are deliberately NOT
+// split: a menu or palette must open in the same frame as the click.
+const PollComposerDialog = dynamic(() => import('@/components/polls/PollComposerDialog').then((m) => m.PollComposerDialog), { ssr: false });
+const EmbedPickerDialog = dynamic(() => import('@/components/zones/embeds/EmbedPickerDialog').then((m) => m.EmbedPickerDialog), { ssr: false });
 
 export type RichTextVariant = 'full' | 'compact';
 
@@ -234,435 +212,6 @@ const IMAGE_ACCEPT = [...Array.from(RASTER_IMAGE_MIMES), ...Array.from(RASTER_IM
 
 const hasFiles = (dt: DataTransfer | null) => Boolean(dt && Array.from(dt.types).includes('Files'));
 
-function ToolbarButton({
-  onClick,
-  active,
-  disabled,
-  title,
-  shortcut,
-  children,
-}: {
-  onClick: () => void;
-  active?: boolean;
-  disabled?: boolean;
-  title: string;
-  /** tiptap keymap combo (components/editor/shortcuts.ts) — shown in the tooltip, announced via aria-keyshortcuts. */
-  shortcut?: ToolbarShortcut;
-  children: React.ReactNode;
-}) {
-  // Client-only: the toolbar never renders on the server (the editor is created
-  // with immediatelyRender:false), so there is no hydration text to disagree with.
-  const mac = isApplePlatform();
-  const combo = shortcut ? TOOLBAR_SHORTCUTS[shortcut] : null;
-  return (
-    <button
-      type="button"
-      title={combo ? `${title} (${formatShortcut(combo, mac)})` : title}
-      aria-label={title}
-      aria-keyshortcuts={combo ? ariaKeyShortcuts(combo, mac) : undefined}
-      aria-pressed={active}
-      disabled={disabled}
-      onMouseDown={(e) => e.preventDefault()} // keep editor selection
-      onClick={onClick}
-      className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-        active
-          ? 'bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-900 dark:text-zinc-50'
-          : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-50'
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Divider() {
-  return <span className="mx-0.5 h-5 w-px self-center bg-zinc-200 dark:bg-zinc-700" />;
-}
-
-/** True when the document holds a table anywhere (tables are block-level; text is never walked). */
-function docHasTable(doc: Editor['state']['doc']): boolean {
-  let found = false;
-  doc.descendants((node) => {
-    if (found) return false;
-    if (node.type.spec.tableRole === 'table') found = true;
-    return !found && !node.isTextblock && !node.isAtom;
-  });
-  return found;
-}
-
-/**
- * The table strip. Mounted while the DOCUMENT holds a table and merely hidden
- * (`visibility: hidden` + `inert`) while the caret is outside one: mounting it
- * on caret entry inserted a 33 px band above the document on mousedown in a cell
- * (59 px on a phone, where it wrapped to two rows), so the cell under the pointer
- * or finger jumped away and a quick second tap hit the wrong row. Its height now
- * changes only when a table is inserted or deleted, when the document reflows
- * anyway. Below `sm` it is ONE sideways-scrolling row like the main toolbar row —
- * a wrap would make its height depend on the width again.
- */
-function TableToolbar({ editor, hidden }: { editor: Editor; hidden: boolean }) {
-  const t = useTranslations('ui');
-  const rootRef = useRef<HTMLDivElement>(null);
-  // React 18 has no boolean `inert` prop; set it on the node.
-  useEffect(() => {
-    const el = rootRef.current;
-    if (!el) return;
-    if (hidden) el.setAttribute('inert', '');
-    else el.removeAttribute('inert');
-  }, [hidden]);
-  const icon = 'h-3.5 w-3.5';
-  const btn =
-    'inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] font-medium text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-50';
-  return (
-    <div
-      ref={rootRef}
-      className={`rte-toolbar-row rte-table-strip flex items-center gap-0.5 overflow-x-auto border-t border-[rgb(var(--border))] px-1.5 py-1 sm:flex-wrap sm:overflow-x-visible [&>*]:shrink-0 ${hidden ? 'invisible' : ''}`}
-      role="toolbar"
-      aria-label={t('rte_table_toolbar')}
-      aria-hidden={hidden || undefined}
-      data-hidden={hidden ? '' : undefined}
-    >
-      {/* A table that starts or ends the document used to leave nowhere to type
-          above / below it (markdown stores no empty line). These two put a text
-          line right there — reusing an empty one — and the caret on it. */}
-      <button
-        type="button"
-        className={btn}
-        title={t('rte_table_para_above_hint')}
-        aria-label={t('rte_table_para_above_hint')}
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => insertParagraphBesideTable(editor, 'before')}
-      >
-        <ArrowUpToLine className={icon} />
-        {t('rte_table_para_above')}
-      </button>
-      <button
-        type="button"
-        className={btn}
-        title={t('rte_table_para_below_hint')}
-        aria-label={t('rte_table_para_below_hint')}
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => insertParagraphBesideTable(editor, 'after')}
-      >
-        <ArrowDownToLine className={icon} />
-        {t('rte_table_para_below')}
-      </button>
-      <Divider />
-      <button type="button" className={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().addRowAfter().run()}>
-        <Rows3 className={icon} />
-        {t('rte_table_add_row')}
-      </button>
-      <button type="button" className={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().addColumnAfter().run()}>
-        <Columns3 className={icon} />
-        {t('rte_table_add_col')}
-      </button>
-      <Divider />
-      <button type="button" className={btn} disabled={!editor.can().deleteRow()} onMouseDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().deleteRow().run()}>
-        <Minus className={icon} />
-        {t('rte_table_del_row')}
-      </button>
-      <button type="button" className={btn} disabled={!editor.can().deleteColumn()} onMouseDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().deleteColumn().run()}>
-        <Minus className={icon} />
-        {t('rte_table_del_col')}
-      </button>
-      <Divider />
-      <button type="button" className={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().deleteTable().run()}>
-        <Trash2 className={icon} />
-        {t('rte_table_delete')}
-      </button>
-    </div>
-  );
-}
-
-function Toolbar({
-  editor,
-  variant,
-  uploading,
-  uploadingFiles,
-  disabled,
-  tone,
-  onPickImage,
-  onPickFile,
-  onOpenPoll,
-  onOpenEmbed,
-}: {
-  editor: Editor;
-  variant: RichTextVariant;
-  uploading: number;
-  uploadingFiles: number;
-  disabled: boolean;
-  /** 'reader' inside the 知识库 reader — the 文字样式 popover then wears the reader theme. */
-  tone: 'default' | 'reader';
-  onPickImage: () => void;
-  /** 📎 上传文件 — rendered only with `embedPicker.upload`. */
-  onPickFile?: () => void;
-  onOpenPoll: () => void;
-  /** 技术专区 插入引用 — rendered only when provided. */
-  onOpenEmbed?: () => void;
-}) {
-  const t = useTranslations('ui');
-  const icon = 'h-4 w-4';
-  // Walks only when the document changed (selection-only transactions re-render with the same doc).
-  const doc = editor.state.doc;
-  const hasTable = useMemo(() => docHasTable(doc), [doc]);
-
-  // 表情包 picker (portaled; the editor root is overflow-hidden, an in-place
-  // absolute panel would clip). The 投票 dialog lives in RichTextEditor — the
-  // in-editor poll cards need its edit mode too.
-  const [stickerOpen, setStickerOpen] = useState(false);
-  const stickerAnchorRef = useRef<HTMLSpanElement>(null);
-
-  const setLink = () => {
-    const prev = editor.getAttributes('link').href as string | undefined;
-    const url = window.prompt(t('rte_link_prompt'), prev ?? 'https://');
-    if (url === null) return; // cancelled
-    if (url.trim() === '') {
-      editor.chain().focus().extendMarkRange('link').unsetLink().run();
-      return;
-    }
-    editor.chain().focus().extendMarkRange('link').setLink({ href: url.trim() }).run();
-  };
-
-  // A button whose command cannot run HERE is disabled rather than left as a
-  // dead click: bold / italic / strike on inline code (InlineCode excludes them
-  // — components/editor/format-marks.ts), inline code over an @mention, a list
-  // or heading inside a code block, a link inside code. `can()` is a dry run of
-  // the very command the click would dispatch, so the two cannot disagree.
-  // A FRESH dry run per check: some commands touch the transaction they are
-  // handed even without dispatching (format-marks widens a selection over a
-  // mention first), so one shared `can()` would leak state between checks.
-  const can = () => editor.can();
-  const off = (runnable: boolean) => disabled || !runnable;
-  // tiptap's canSetMark answers a CARET from the marks around it and never asks
-  // whether the parent block allows marks at all — so a caret inside a code
-  // block (marks: '') reported bold as runnable, and the click only stored a
-  // mark nothing could carry. Asked here for the inline-mark buttons.
-  const caretRefuses = (mark: string) => {
-    const type = editor.schema.marks[mark];
-    const { selection } = editor.state;
-    return Boolean(type && selection.empty && !selection.$from.parent.type.allowsMarkType(type));
-  };
-  const markOff = (mark: string, runnable: boolean) => off(runnable && !caretRefuses(mark));
-  // Heading / list / quote / code block / rule in a table CELL: a GFM cell is
-  // one line, so the table would have to be stored as raw HTML
-  // (components/markdown-table.ts isGfmTable). Disabled there; the shortcuts
-  // are swallowed by the table extension.
-  const inCell = caretInTableCell(editor.state);
-  const blockOff = (runnable: boolean) => off(runnable && !inCell);
-
-  return (
-    <div className="rte-toolbar border-b border-[rgb(var(--border))]">
-      {/* Below `sm` the row SCROLLS sideways in one line instead of wrapping:
-          the 技术专区 composer's 21+ buttons wrapped into three rows (97 px of
-          sticky chrome above a phone keyboard). Every child is shrink-0 or the
-          flex row would squeeze the 28 px buttons to their 16 px icons before
-          it ever overflowed. The table strip below keeps its own row. */}
-      <div className="rte-toolbar-row flex items-center gap-0.5 overflow-x-auto px-1.5 py-1 sm:flex-wrap sm:overflow-x-visible [&>*]:shrink-0">
-        <ToolbarButton
-          title={t('rte_bold')}
-          shortcut="bold"
-          active={editor.isActive('bold')}
-          disabled={markOff('bold', can().toggleBold())}
-          onClick={() => editor.chain().focus().toggleBold().run()}
-        >
-          <Bold className={icon} />
-        </ToolbarButton>
-        <ToolbarButton
-          title={t('rte_italic')}
-          shortcut="italic"
-          active={editor.isActive('italic')}
-          disabled={markOff('italic', can().toggleItalic())}
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-        >
-          <Italic className={icon} />
-        </ToolbarButton>
-        <ToolbarButton
-          title={t('rte_strike')}
-          shortcut="strike"
-          active={editor.isActive('strike')}
-          disabled={markOff('strike', can().toggleStrike())}
-          onClick={() => editor.chain().focus().toggleStrike().run()}
-        >
-          <Strikethrough className={icon} />
-        </ToolbarButton>
-        {/* Inline code = `<>` (Code); the code BLOCK below is a framed square
-            (SquareCode). They used to be Code vs Code2 — `<>` vs `</>`, which
-            nobody could tell apart at 16 px. */}
-        <ToolbarButton
-          title={t('rte_inline_code')}
-          shortcut="code"
-          active={editor.isActive('code')}
-          disabled={editor.isActive('code') ? disabled : markOff('code', can().toggleCode())}
-          onClick={() => editor.chain().focus().toggleCode().run()}
-        >
-          <Code className={icon} />
-        </ToolbarButton>
-        {/* 文字样式: colour + background for every variant, 字号 / 字体 on 'full'
-            (the component decides). One trigger in the ALWAYS-visible group, so
-            the compact comment boxes get colour too without another row. */}
-        <TextStyleMenu editor={editor} variant={variant} disabled={markOff('textColor', can().setTextColor('red'))} tone={tone} />
-
-        {variant === 'full' && (
-          <>
-            <Divider />
-            <ToolbarButton
-              title={t('rte_h1')}
-              shortcut="h1"
-              active={editor.isActive('heading', { level: 1 })}
-              disabled={blockOff(can().toggleHeading({ level: 1 }))}
-              onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-            >
-              <Heading1 className={icon} />
-            </ToolbarButton>
-            <ToolbarButton
-              title={t('rte_h2')}
-              shortcut="h2"
-              active={editor.isActive('heading', { level: 2 })}
-              disabled={blockOff(can().toggleHeading({ level: 2 }))}
-              onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-            >
-              <Heading2 className={icon} />
-            </ToolbarButton>
-            <ToolbarButton
-              title={t('rte_h3')}
-              shortcut="h3"
-              active={editor.isActive('heading', { level: 3 })}
-              disabled={blockOff(can().toggleHeading({ level: 3 }))}
-              onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-            >
-              <Heading3 className={icon} />
-            </ToolbarButton>
-          </>
-        )}
-
-        <Divider />
-        <ToolbarButton
-          title={t('rte_bullet_list')}
-          shortcut="bulletList"
-          active={editor.isActive('bulletList')}
-          disabled={blockOff(can().toggleBulletList())}
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-        >
-          <List className={icon} />
-        </ToolbarButton>
-        <ToolbarButton
-          title={t('rte_ordered_list')}
-          shortcut="orderedList"
-          active={editor.isActive('orderedList')}
-          disabled={blockOff(can().toggleOrderedList())}
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        >
-          <ListOrdered className={icon} />
-        </ToolbarButton>
-
-        {variant === 'full' && (
-          <>
-            <ToolbarButton
-              title={t('rte_quote')}
-              shortcut="blockquote"
-              active={editor.isActive('blockquote')}
-              disabled={blockOff(can().toggleBlockquote())}
-              onClick={() => editor.chain().focus().toggleBlockquote().run()}
-            >
-              <Quote className={icon} />
-            </ToolbarButton>
-            <ToolbarButton
-              title={t('rte_code_block')}
-              shortcut="codeBlock"
-              active={editor.isActive('codeBlock')}
-              disabled={blockOff(can().toggleCodeBlock())}
-              onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-            >
-              <SquareCode className={icon} />
-            </ToolbarButton>
-            <ToolbarButton
-              title={t('rte_table_insert')}
-              active={editor.isActive('table')}
-              // markdown-table.ts's insertTable refuses a table inside a table
-              // (GFM cannot nest one) — `can()` is what greys the button there.
-              disabled={off(can().insertTable({ rows: 3, cols: 3, withHeaderRow: true }))}
-              onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
-            >
-              <TableIcon className={icon} />
-            </ToolbarButton>
-          </>
-        )}
-
-        <Divider />
-        <ToolbarButton
-          title={t('rte_link')}
-          active={editor.isActive('link')}
-          // Removing a link is always possible; adding one is not inside code.
-          disabled={editor.isActive('link') ? disabled : markOff('link', can().setLink({ href: 'https://example.com' }))}
-          onClick={setLink}
-        >
-          <LinkIcon className={icon} />
-        </ToolbarButton>
-        <ToolbarButton title={t('rte_insert_image')} disabled={disabled || uploading > 0} onClick={onPickImage}>
-          {uploading > 0 ? <Loader2 className={`${icon} animate-spin`} /> : <ImageIcon className={icon} />}
-        </ToolbarButton>
-        {onPickFile && (
-          // Stays enabled while a file uploads — the queue sequences them.
-          <ToolbarButton title={t('rte_upload_file')} disabled={disabled} onClick={onPickFile}>
-            {uploadingFiles > 0 ? <Loader2 className={`${icon} animate-spin`} /> : <Paperclip className={icon} />}
-          </ToolbarButton>
-        )}
-        <span ref={stickerAnchorRef} className="inline-flex">
-          <ToolbarButton
-            title={t('rte_sticker')}
-            active={stickerOpen}
-            disabled={disabled}
-            onClick={() => setStickerOpen((o) => !o)}
-          >
-            <Smile className={icon} />
-          </ToolbarButton>
-        </span>
-        <ToolbarButton title={t('rte_poll')} disabled={disabled} onClick={onOpenPoll}>
-          <BarChart3 className={icon} />
-        </ToolbarButton>
-        {onOpenEmbed && (
-          <ToolbarButton title={t('rte_embed')} disabled={disabled} onClick={onOpenEmbed}>
-            <Blocks className={icon} />
-          </ToolbarButton>
-        )}
-
-        {variant === 'full' && (
-          <ToolbarButton
-            title={t('rte_divider')}
-            disabled={blockOff(can().setHorizontalRule())}
-            onClick={() => editor.chain().focus().setHorizontalRule().run()}
-          >
-            <Minus className={icon} />
-          </ToolbarButton>
-        )}
-
-        <Divider />
-        <ToolbarButton title={t('rte_undo')} shortcut="undo" disabled={!can().undo()} onClick={() => editor.chain().focus().undo().run()}>
-          <Undo2 className={icon} />
-        </ToolbarButton>
-        <ToolbarButton title={t('rte_redo')} shortcut="redo" disabled={!can().redo()} onClick={() => editor.chain().focus().redo().run()}>
-          <Redo2 className={icon} />
-        </ToolbarButton>
-
-        <StickerPicker
-          open={stickerOpen}
-          anchor={stickerAnchorRef.current}
-          onClose={() => setStickerOpen(false)}
-          onSelect={(s) => {
-            // Inline node: the sticker lands in the text flow at the cursor.
-            editor
-              .chain()
-              .focus()
-              .insertContent({ type: 'stickerImage', attrs: { src: s.url, alt: 'sticker' } })
-              .run();
-          }}
-        />
-      </div>
-      {hasTable && <TableToolbar editor={editor} hidden={!editor.isActive('table')} />}
-    </div>
-  );
-}
-
 /** Local-first attachment map: saved rows by id + key, drafts by key (+ id). */
 function buildLocal(embedPicker: RichTextEditorProps['embedPicker']): ContentEmbedLocal {
   const map = new Map<string, ZoneAttachmentView>();
@@ -729,8 +278,9 @@ export function RichTextEditor({
   const rootRef = useRef<HTMLDivElement>(null);
   const dropLineRef = useRef<HTMLDivElement>(null);
   // Inside the 知识库 reader the page follows the READER's 浅色/护眼/深色 theme,
-  // and an editor sitting directly on that ground must portal its 文字样式
-  // popover into `.reader-root` and wear its variables. An editor on a site
+  // and an editor sitting directly on that ground must portal its toolbar
+  // panels (字体 / 字号 / 行高 / 颜色 / 链接) into `.reader-root` and wear its
+  // variables. An editor on a site
   // `.surface` card inside the reader (DocComments in the 评论 tab) is on the
   // SITE's ground and keeps the default tone (lib/rich-text-ground.ts, mirrored
   // by app/rich-text.css). Detected from the DOM so no host threads a prop.
@@ -763,10 +313,28 @@ export function RichTextEditor({
     open: false,
     pollId: null,
   });
+  // Latches: once a code-split dialog has been opened it stays mounted, exactly
+  // as it was before the split.
+  const [pollMounted, setPollMounted] = useState(false);
+  const [embedMounted, setEmbedMounted] = useState(false);
   const openPollEditRef = useRef<(pollId: string) => void>(() => {});
   useEffect(() => {
     openPollEditRef.current = (pollId) => setPollDialog({ open: true, pollId });
   }, []);
+  useEffect(() => {
+    if (pollDialog.open) setPollMounted(true);
+  }, [pollDialog.open]);
+  useEffect(() => {
+    if (embedDialog) setEmbedMounted(true);
+  }, [embedDialog]);
+
+  // Stable handlers: an inline arrow here is a NEW prop on the toolbar for every
+  // render of this host, which tore down and rebuilt the toolbar's divider
+  // ResizeObserver — a forced layout in the commit phase — each time.
+  const openPoll = useCallback(() => setPollDialog({ open: true, pollId: null }), []);
+  const openEmbed = useCallback(() => setEmbedDialog(true), []);
+  const closePoll = useCallback(() => setPollDialog({ open: false, pollId: null }), []);
+  const closeEmbed = useCallback(() => setEmbedDialog(false), []);
 
   // @人 — the suggestion plugin publishes the live `@…` session here and asks
   // `mentionKeyRef` whether the popup swallowed a key. Both are ref/stable-setter
@@ -841,6 +409,13 @@ export function RichTextEditor({
 
   const editor = useEditor({
     immediatelyRender: false, // SSR-safe for Next App Router
+    // tiptap's legacy default re-renders this host on EVERY transaction, and
+    // react-dom then walks the whole focused contenteditable to save and restore
+    // the selection around the commit (~3 ms per keystroke on a long post).
+    // Everything that needs the caret subscribes for itself now — the toolbar
+    // (EditorToolbar#useToolbarState, which re-renders only when a control
+    // actually changes), its open popovers, and the link bubble.
+    shouldRerenderOnTransaction: false,
     autofocus: autoFocus ? 'end' : false,
     editable: !disabled,
     // The shared list (components/editor/rich-text-extensions.ts) — the same
@@ -1227,10 +802,9 @@ export function RichTextEditor({
   // colouring a phrase adds ~30 raw characters of `<span data-color>` markup,
   // and the server's caps (lib/rich-text-limit.ts) discount exactly that — a raw
   // `value.length` here would turn red on a comment the server accepts.
-  // ONE scan per distinct `value`, never per render: the editor re-renders on
-  // every transaction (tiptap's default — the toolbar's active states need it),
-  // caret moves included, and the old inline pair scanned a long article twice
-  // each time. Same gate as isRichTextTooLong (lib/markdown-text.ts): visible
+  // ONE scan per distinct `value`, never per render: this host still re-renders
+  // for reasons of its own (an upload counter, a host feeding `value` back per
+  // keystroke), and the old inline pair scanned a long article twice each time. Same gate as isRichTextTooLong (lib/markdown-text.ts): visible
   // length never exceeds raw length, so `visible > limit` already implies it.
   const { visibleLength, over } = useMemo(() => {
     if (maxLength == null) return { visibleLength: 0, over: false };
@@ -1262,7 +836,7 @@ export function RichTextEditor({
       onDrop={uploadOn ? onRootDrop : undefined}
       onDragEnd={uploadOn ? endDrag : undefined}
     >
-      <Toolbar
+      <EditorToolbar
         editor={editor}
         variant={variant}
         uploading={uploading}
@@ -1271,8 +845,8 @@ export function RichTextEditor({
         tone={tone}
         onPickImage={onPickImage}
         onPickFile={uploadOn ? onPickFile : undefined}
-        onOpenPoll={() => setPollDialog({ open: true, pollId: null })}
-        onOpenEmbed={embedPicker && embedEnabledRef.current ? () => setEmbedDialog(true) : undefined}
+        onOpenPoll={openPoll}
+        onOpenEmbed={embedPicker && embedEnabledRef.current ? openEmbed : undefined}
       />
       {unsupported.length > 0 && (
         <div role="status" className="flex items-start gap-2 border-b border-[rgb(var(--border))] px-3 py-1.5 text-[12px] leading-5 text-muted">
@@ -1326,10 +900,11 @@ export function RichTextEditor({
           </AnimatePresence>
         </>
       )}
+      {(pollDialog.open || pollMounted) && (
       <PollComposerDialog
         open={pollDialog.open}
         pollId={pollDialog.pollId}
-        onClose={() => setPollDialog({ open: false, pollId: null })}
+        onClose={closePoll}
         onCreated={(pollId) => {
           // Insert the embed node at the document TOP LEVEL: at the selection,
           // a caret inside a blockquote/list would nest it and the own-line
@@ -1346,10 +921,11 @@ export function RichTextEditor({
             .run();
         }}
       />
-      {embedPicker && embedEnabledRef.current && (
+      )}
+      {embedPicker && embedEnabledRef.current && (embedDialog || embedMounted) && (
         <EmbedPickerDialog
           open={embedDialog}
-          onClose={() => setEmbedDialog(false)}
+          onClose={closeEmbed}
           kinds={embedPicker.kinds}
           attachments={embedPicker.attachments}
           drafts={embedPicker.upload?.drafts}
@@ -1411,6 +987,15 @@ export function RichTextEditor({
           min-height: 60vh;
           padding-left: 0;
           padding-right: 0;
+        }
+        /* 格式刷 armed (components/editor/format-painter.ts): a brush cursor over
+           the text, black with a white halo so it reads on light and dark
+           grounds. Hotspot = the bristle tip. The slashes of the SVG namespace
+           are percent-encoded: styled-jsx's CSS parser reads a literal double
+           slash as a line comment and silently dropped the whole declaration. */
+        .rte .ProseMirror.rte-painter-armed,
+        .rte .ProseMirror.rte-painter-armed * {
+          cursor: url("data:image/svg+xml,%3Csvg xmlns='http:%2F%2Fwww.w3.org%2F2000%2Fsvg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 2v2M14 2v4M17 2a1 1 0 0 1 1 1v9H6V3a1 1 0 0 1 1-1zM6 12a1 1 0 0 0-1 1v1a2 2 0 0 0 2 2h2a1 1 0 0 1 1 1v2.9a2 2 0 1 0 4 0V17a1 1 0 0 1 1-1h2a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1' stroke='white' stroke-width='4'/%3E%3Cpath d='M10 2v2M14 2v4M17 2a1 1 0 0 1 1 1v9H6V3a1 1 0 0 1 1-1zM6 12a1 1 0 0 0-1 1v1a2 2 0 0 0 2 2h2a1 1 0 0 1 1 1v2.9a2 2 0 1 0 4 0V17a1 1 0 0 1 1-1h2a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1' stroke='black' stroke-width='2'/%3E%3C/svg%3E") 12 22, copy;
         }
         .rte .ProseMirror p.is-editor-empty:first-child::before {
           content: attr(data-placeholder);

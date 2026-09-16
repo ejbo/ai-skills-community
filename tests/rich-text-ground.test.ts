@@ -5,7 +5,7 @@
 // 深色 over a site-light card painted yellow at 1.5 : 1 and reader 护眼 over a
 // site-dark card put zinc-300 text on solid yellow-200 (1.3 : 1). Two halves,
 // pinned together: app/rich-text.css resets the tokens on `.reader-root .surface`,
-// and lib/rich-text-ground.ts gives the editor's 文字样式 popover the same answer.
+// and lib/rich-text-ground.ts gives the editor's toolbar panels the same answer.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';

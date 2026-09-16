@@ -27,15 +27,21 @@ describe('unsupportedMarkdownConstructs', () => {
     expect(scan('- [ ] todo\n- [x] done')).toEqual(['task_list']);
     expect(scan('text[^1]\n\n[^1]: note')).toEqual(['footnote']);
     expect(scan('<details><summary>S</summary>\n\nbody\n\n</details>')).toEqual(['html']);
-    expect(scan('H<sub>2</sub>O and <kbd>Ctrl</kbd>')).toEqual(['html']);
+    expect(scan('H<sub>2</sub>O and <kbd>Ctrl</kbd>')).toEqual(['html']); // the kbd
+    expect(scan('<div align="center">\n\n# Title\n\n</div>')).toEqual(['html']);
+    expect(scan('a <span data-color="#AABBCC">x</span> <span data-size="24px">y</span>')).toEqual(['html']);
     expect(scan('<!-- hidden -->\n\ntext')).toEqual(['html']);
-    expect(scan('[![a](/a.png)](/x)\n\n- [ ] t\n\n<sup>1</sup>')).toEqual(['linked_image', 'task_list', 'html']);
+    expect(scan('[![a](/a.png)](/x)\n\n- [ ] t\n\n<kbd>1</kbd>')).toEqual(['linked_image', 'task_list', 'html']);
   });
 
   it('stays quiet on everything the editor keeps (and the proof: it round-trips)', () => {
     const kept = [
       'plain **bold** `code` [link](/x)',
       'a <span data-color="red">red</span> word',
+      // v3: hex colours, px sizes, new font keys, sup/sub and the 行高 wrapper are editor marks
+      'a <span data-color="#1f6feb">hex</span> <span data-bg="#fff3b0">bg</span> <span data-size="24">big</span> <span data-font="georgia">g</span>',
+      'x<sup>2</sup> and H<sub>2</sub>O',
+      '<div data-lh="2">\n\n## 标题\n\n正文\n\n</div>\n\n后文',
       '<strong>好的😀</strong>然后',
       '| a | b |\n| --- | --- |\n| 1<br>x | 2 |',
       '![pic](/api/uploads/images/a.png)',

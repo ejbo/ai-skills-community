@@ -14,7 +14,8 @@
 // So only three sections have panels, and each panel lists that section's own
 // real halves — nothing else:
 //   • /videos     — Geek Videos and Shorts (two boards, one nav link).
-//   • /discussion — 动态 (feed) and 讨论帖 (forum), the page's own two tabs.
+//   • /discussion — 全部 / 动态 / 讨论, the page's own three tabs (the section
+//                   is named 动态 since 2026-09-15; the route kept its name).
 //   • /zones      — the 研究所 grid, which is a picture-led INDEX that exists
 //                   nowhere else in the chrome (edit `INSTITUTES` in lib/org.ts).
 // /skills, /library and /events have NO entry here on purpose, and a section
@@ -72,16 +73,17 @@ export const NAV_MEGA: Record<string, MegaMenu> = {
     ],
   },
 
-  // Exactly the two tabs `DiscussionTabs` renders, and the same two strings.
-  // 动态 is the DEFAULT tab, so its href carries no `tab` param — `?tab=posts`
-  // would work by accident (the page tests for `=== 'forum'`) but would make
-  // the nav link and the tab strip disagree about the canonical URL.
+  // Exactly the three tabs `DiscussionTabs` renders, and the same strings.
+  // 全部 (posts + topics merged) is the DEFAULT tab, so its href carries no
+  // `tab` param — `discussionTabOf` (app/discussion/_components/tabs.ts) maps
+  // a missing param to it, and the tab strip deletes the param to select it.
   '/discussion': {
     kind: 'links',
     columns: [
       {
         links: [
-          { href: '/discussion', t: 'discussion:tab_posts' },
+          { href: '/discussion', t: 'discussion:tab_all' },
+          { href: '/discussion?tab=posts', t: 'discussion:tab_posts' },
           { href: '/discussion?tab=forum', t: 'discussion:tab_forum' },
         ],
       },

@@ -222,7 +222,7 @@ export type CardFileCheck =
 /**
  * Client pre-check mirroring the upload route: type allowlist (with the route's
  * extension fallback) + per-kind cap. The server re-checks everything; this only
- * saves a member from uploading 60 MB to learn it was 61.
+ * saves a member from uploading 200 MB to learn it was 201.
  */
 export function checkCardFile(file: { type: string; size: number; name?: string }): CardFileCheck {
   const format = mediaFormatOf(file);
@@ -269,8 +269,36 @@ export function bytesToMb(n: number): number {
   return Math.round(n / (1024 * 1024));
 }
 
-/** Upload / media-save error code → `settings` message key. Unknown codes fall back to the generic failure. */
-export function cardMediaErrorKey(code: string): string {
+/**
+ * Error code → `settings` message key. `context` says which request failed, because
+ * the same code means different things to the member: a 429 from the upload is
+ * 「上传太频繁」, from the clip route (POST /api/me/profile/media/clip) it is not an
+ * upload at all. Unknown codes fall back to the generic failure OF THAT REQUEST.
+ */
+export function cardMediaErrorKey(code: string, context: 'upload' | 'clip' = 'upload'): string {
+  if (context === 'clip') {
+    switch (code) {
+      case 'rate_limited':
+        return 'ce_err_clip_rate_limited';
+      case 'clip_in_progress':
+        return 'ce_err_clip_in_progress';
+      case 'media_busy':
+        return 'ce_err_media_busy';
+      case 'media_missing':
+        return 'ce_err_media_missing';
+      case 'invalid_input':
+      case 'payload_too_large':
+        return 'ce_err_clip_invalid';
+      case 'media_claimed':
+        return 'ce_err_claimed';
+      case 'unauthenticated':
+        return 'ce_err_unauthenticated';
+      case 'network_error':
+        return 'ce_err_network';
+      default:
+        return 'ce_err_clip_failed';
+    }
+  }
   switch (code) {
     case 'unsupported_type':
     case 'bad_kind':
@@ -291,6 +319,39 @@ export function cardMediaErrorKey(code: string): string {
       return 'ce_err_network';
     default:
       return 'ce_err_upload_failed';
+  }
+}
+
+// ─── 名片视频截取 ─────────────────────────────────────────────────────────
+
+/**
+ * What the open trimmer does after POST /api/me/profile/media/clip failed:
+ *  - `poster_fallback` — the box cannot cut this clip: attach the original with a
+ *    browser-captured poster at the chosen cover (the card shows only that cover).
+ *    501 ffmpeg_unavailable always; 500 clip_failed only for a NEW upload — there
+ *    the member is otherwise left with nothing at all, while a re-trim still has
+ *    its working clip and can pick another segment.
+ *  - `close` — retrying the same request cannot succeed (the key is not a usable
+ *    original of this member, the original is gone, the session ended): close the
+ *    dialog and say why.
+ *  - `retry` — transient (server busy, a clip already rendering, rate limit,
+ *    network) or fixable by picking another segment: keep the dialog and the
+ *    selection, offer 重试.
+ */
+export type ClipFailureAction = 'poster_fallback' | 'close' | 'retry';
+
+export function clipFailureAction(code: string, status: number, mode: 'new' | 'retrim'): ClipFailureAction {
+  if (status === 501 || code === 'ffmpeg_unavailable') return 'poster_fallback';
+  if (code === 'clip_failed' && mode === 'new') return 'poster_fallback';
+  switch (code) {
+    case 'invalid_input':
+    case 'payload_too_large':
+    case 'media_missing':
+    case 'media_claimed':
+    case 'unauthenticated':
+      return 'close';
+    default:
+      return 'retry';
   }
 }
 

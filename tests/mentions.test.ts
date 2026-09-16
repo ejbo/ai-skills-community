@@ -68,6 +68,34 @@ describe('extractMentionHandles', () => {
     expect(extractMentionHandles('plain **text** [link](/zones/x)')).toEqual([]);
     expect(extractMentionHandles('')).toEqual([]);
   });
+
+  // The rich-text marks rank above Link, so B / I / S, a colour + bold
+  // combination or the format brush pushes the emphasis delimiters INSIDE the
+  // label. The person must still be notified.
+  it('reads a label wrapped in emphasis delimiters', () => {
+    for (const label of ['**@x**', '*@x*', '~~@x~~', '***@x***', '~~**@x**~~', '_@x_', '__@x__']) {
+      expect(extractMentionHandles(`看 [${label}](/users/x) 这里`)).toEqual(['x']);
+    }
+    expect(extractMentionHandles('<span data-color="red">**看** [**@王伟**](/users/wangwei) **这里**</span>')).toEqual(['wangwei']);
+    // …and emphasising an existing mention is not a new mention.
+    expect(newMentionHandles('[**@x**](/users/x)', '[@x](/users/x)')).toEqual([]);
+    // A label that does not start with `@` is still not a mention.
+    expect(extractMentionHandles('[**profile**](/users/x)')).toEqual([]);
+  });
+
+  // A table markdown cannot express is stored as raw HTML built from the
+  // schema, so a mention in one of its cells is an anchor
+  // (components/markdown-table.ts).
+  it('reads the raw-HTML anchor the editor writes inside such a table', () => {
+    const cell = '<a target="_blank" rel="noopener noreferrer nofollow" href="/users/wangwei">@王伟</a>';
+    expect(extractMentionHandles(`<table><tbody><tr><td><p>${cell}</p><p>two</p></td></tr></tbody></table>`)).toEqual(['wangwei']);
+    expect(extractMentionHandles(`<a href='/users/a'><strong>@A</strong></a>`)).toEqual(['a']);
+    // Same gates as the markdown shape: fences never ping, the text must start with `@`.
+    expect(extractMentionHandles(`\`\`\`\n${cell}\n\`\`\``)).toEqual([]);
+    expect(extractMentionHandles('<a href="/users/x">profile</a>')).toEqual([]);
+    // Both shapes in one body come back in document order, once each.
+    expect(extractMentionHandles(`[@A](/users/a) ${cell} [@A](/users/a)`)).toEqual(['a', 'wangwei']);
+  });
 });
 
 describe('newMentionHandles', () => {

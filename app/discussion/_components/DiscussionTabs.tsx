@@ -3,25 +3,29 @@
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { motion } from 'framer-motion';
+import { discussionTabOf, type DiscussionTab } from './tabs';
 
-type Tab = 'posts' | 'forum';
-
-/** URL-param tabs for the Discussion hub — same pattern as SourceTabs. */
+/**
+ * URL-param tabs for the 动态 hub — same pattern as SourceTabs.
+ * 全部 (the default, no `tab` param) merges posts and topics; 动态 and 讨论
+ * are the two halves on their own.
+ */
 export function DiscussionTabs() {
   const t = useTranslations('discussion');
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const current: Tab = params.get('tab') === 'forum' ? 'forum' : 'posts';
+  const current = discussionTabOf(params.get('tab'));
 
-  const tabs: { key: Tab; label: string }[] = [
+  const tabs: { key: DiscussionTab; label: string }[] = [
+    { key: 'all', label: t('tab_all') },
     { key: 'posts', label: t('tab_posts') },
     { key: 'forum', label: t('tab_forum') },
   ];
 
-  function select(key: Tab) {
+  function select(key: DiscussionTab) {
     const sp = new URLSearchParams(params.toString());
-    if (key === 'posts') sp.delete('tab');
+    if (key === 'all') sp.delete('tab');
     else sp.set('tab', key);
     // Tab-specific list params must not leak across tabs.
     sp.delete('page');
@@ -39,6 +43,7 @@ export function DiscussionTabs() {
           <button
             key={tab.key}
             onClick={() => select(tab.key)}
+            aria-current={active ? 'page' : undefined}
             className={`relative shrink-0 whitespace-nowrap px-4 py-2 text-sm font-medium transition ${
               active
                 ? 'text-zinc-900 dark:text-white'

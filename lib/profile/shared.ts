@@ -531,8 +531,8 @@ export function cardPalette(theme: string): CardPalette {
 /**
  * Stored under `<uploads root>/profile-card/<key>` so the existing `/_uploads/`
  * nginx handoff (MEDIA_X_ACCEL_REDIRECT) covers it with no ops change.
- *   image  — card photo (metadata stripped)   poster — first frame of a card video
- *   video  — the uploaded original, NEVER served   loop — server-generated ≤ PROFILE_LOOP_SECONDS muted clip
+ *   image  — card photo (metadata stripped)   poster — cover frame of a card video
+ *   video  — the uploaded original, never public   loop — server-cut ≤ PROFILE_CLIP_MAX_SECONDS muted clip
  * A key's id is `<ownerTag>-<nanoid>` for uploads since the owner binding
  * (lib/profile/card-media-storage.ts); older untagged keys still match the shape.
  */
@@ -562,14 +562,30 @@ export function profileMediaUrl(key: string): string {
   return `/api/profile/media/${key.split('/').map(encodeURIComponent).join('/')}`;
 }
 
+/**
+ * OWNER-ONLY URL of a card video's uploaded original (the trimmer re-opens it
+ * to re-cut). Root-relative — withBasePath at render. The route itself enforces
+ * the owner check; this is only the one place the URL shape is spelled.
+ */
+export function profileMediaSourceUrl(videoKey: string): string {
+  return `/api/me/profile/media/source?key=${encodeURIComponent(videoKey)}`;
+}
+
 export const PROFILE_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 export const PROFILE_POSTER_MAX_BYTES = 5 * 1024 * 1024;
-export const PROFILE_VIDEO_MAX_BYTES = 60 * 1024 * 1024;
 /**
- * Length of the generated hover loop — the ONLY moving picture a card plays.
- * Without a loop a card video is poster-only; the original is never played.
+ * The uploaded ORIGINAL a member trims from (never public — only the clip cut
+ * from it is). Larger than the clip itself because the member picks the
+ * segment in the browser after uploading a whole phone video.
  */
-export const PROFILE_LOOP_SECONDS = 8;
+export const PROFILE_VIDEO_MAX_BYTES = 200 * 1024 * 1024;
+/**
+ * Longest segment a card video may be — the member chooses where it starts in
+ * the trimmer (lib/media/clip-shared.ts); a shorter source is used whole. The
+ * clip is the ONLY moving picture a card plays, always muted and looping.
+ * Without a clip a card video is poster-only; the original is never played.
+ */
+export const PROFILE_CLIP_MAX_SECONDS = 30;
 
 // ─── 徽章 ────────────────────────────────────────────────────────────────
 

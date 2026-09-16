@@ -1,12 +1,14 @@
 // Keeps a floating panel off the text it acts on. Pure (no DOM, no React) so the
-// geometry is unit-tested; TextStyleMenu feeds it live measurements.
+// geometry is unit-tested; every toolbar popover (components/editor/toolbar/
+// primitives.tsx#useToolbarPanel — 字体 / 字号 / 行高 menus, the colour
+// palettes, the 插入/编辑链接 dialog) feeds it live measurements.
 //
-// Why: the 文字样式 popover is anchored under its toolbar trigger, and the
-// toolbar is sticky — so the panel always opens in the same box right under the
+// Why: those popovers are anchored under their toolbar trigger, and the
+// toolbar is sticky — so a panel always opens in the same box right under the
 // toolbar, which is exactly where the selected text is whenever the author
 // formats the first lines of a post or scrolls a paragraph up under the toolbar.
-// For mouse users the panel stays open between picks (colour, then background,
-// size, font), so they picked every one of them blind.
+// The v2 文字样式 menu stayed open between picks, and mouse users picked colour,
+// background, size and font blind.
 
 export interface Rect {
   left: number;

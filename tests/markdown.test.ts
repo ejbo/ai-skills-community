@@ -7,7 +7,15 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import rehypeHighlight from 'rehype-highlight';
 import { sanitizeSchema } from '@/lib/markdown';
-import { RICH_BG_COLORS, RICH_FONT_FAMILIES, RICH_FONT_SIZES, RICH_TEXT_COLORS } from '@/lib/rich-marks';
+import {
+  RICH_BG_COLORS,
+  RICH_FONT_FAMILIES,
+  RICH_FONT_FAMILY_KEYS,
+  RICH_FONT_SIZES,
+  RICH_FONT_SIZES_PX,
+  RICH_LINE_HEIGHTS,
+  RICH_TEXT_COLORS,
+} from '@/lib/rich-marks';
 
 // The SAME plugin chain as components/MarkdownRenderer.tsx (sanitize last) —
 // the schema is only meaningful in the order it actually runs.
@@ -59,6 +67,24 @@ describe('sanitizeSchema — rendered through the real pipeline', () => {
     for (const v of RICH_BG_COLORS) expect(render(`a <span data-bg="${v}">x</span>`)).toContain(`<span data-bg="${v}">x</span>`);
     for (const v of RICH_FONT_SIZES) expect(render(`a <span data-size="${v}">x</span>`)).toContain(`<span data-size="${v}">x</span>`);
     for (const v of RICH_FONT_FAMILIES) expect(render(`a <span data-font="${v}">x</span>`)).toContain(`<span data-font="${v}">x</span>`);
+  });
+
+  it('v3: strict hex colours (RegExp entry), px sizes, every font key, div[data-lh] and sup/sub', () => {
+    expect(render('a <span data-color="#1f6feb">x</span>')).toContain('<span data-color="#1f6feb">x</span>');
+    expect(render('a <span data-bg="#000000">x</span>')).toContain('<span data-bg="#000000">x</span>');
+    for (const bad of ['#1F6FEB', '#abc', '#1f6feb80', '1f6feb', '#1f6feb;color:red']) {
+      expect([bad, render(`a <span data-color="${bad}">x</span>`)]).toEqual([bad, '<p>a <span>x</span></p>']);
+    }
+    for (const n of RICH_FONT_SIZES_PX) expect(render(`<span data-size="${n}">x</span>`)).toContain(`<span data-size="${n}">x</span>`);
+    expect(render('<span data-size="24px">x</span>')).toContain('<span>x</span>');
+    for (const k of RICH_FONT_FAMILY_KEYS) expect(render(`<span data-font="${k}">x</span>`)).toContain(`<span data-font="${k}">x</span>`);
+    for (const v of RICH_LINE_HEIGHTS) {
+      expect(render(`<div data-lh="${v}">\n\n**b**\n\n</div>`)).toMatch(new RegExp(`<div data-lh="${v.replace('.', '\\.')}">\\s*<p><strong>b</strong></p>\\s*</div>`));
+    }
+    expect(render('<div data-lh="1.3" class="fixed">\n\nx\n\n</div>')).toMatch(/<div>\s*<p>x<\/p>\s*<\/div>/);
+    expect(render('x<sup>2</sup> H<sub>2</sub>O')).toContain('x<sup>2</sup> H<sub>2</sub>O');
+    // The schema still never allows `style` — hex reaches CSS through the post-sanitize plugin only.
+    expect(render('<span data-color="#ff0000" style="color:red">x</span>')).toContain('<span data-color="#ff0000">x</span>');
   });
 
   it('keeps the editor’s nested output, markdown inside the spans, and spans in GFM cells', () => {

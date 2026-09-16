@@ -110,7 +110,12 @@ export function MentionPicker({
   const query = visible && session ? session.query.trim() : '';
 
   const [items, setItems] = useState<MentionPerson[]>([]);
-  const [loading, setLoading] = useState(false);
+  // The query `items` actually belongs to — `pending` is derived from it DURING
+  // render, so it is already true on the frame the keystroke paints. A
+  // `loading` flag written from the search effect would still read `false`
+  // there, and an Enter in that window would escape the list (see keyRef).
+  const [settledQuery, setSettledQuery] = useState<string | null>(null);
+  const pending = Boolean(query) && settledQuery !== query;
 
   const panel = useAnchoredPanel<HTMLElement>({
     width: PANEL_W,
@@ -139,16 +144,18 @@ export function MentionPicker({
   useEffect(() => {
     if (!visible || !query) {
       setItems([]);
-      setLoading(false);
+      // Forget which query the (now empty) rows were for, or re-opening the
+      // picker on the SAME text would read as already settled with 0 results
+      // and let the first Enter through.
+      setSettledQuery(null);
       return;
     }
     const hit = cache.get(query);
     if (hit) {
       setItems(hit);
-      setLoading(false);
+      setSettledQuery(query);
       return;
     }
-    setLoading(true);
     const ctrl = new AbortController();
     const timer = setTimeout(() => {
       // Root-relative on purpose — lib/patch-fetch.ts adds the deploy basePath.
@@ -158,14 +165,14 @@ export function MentionPicker({
           const list = res.ok && Array.isArray(data?.items) ? (data.items as MentionPerson[]) : [];
           remember(query, list);
           setItems(list);
-          setLoading(false);
+          setSettledQuery(query);
         })
         .catch(() => {
           // Abort is the common case (the next keystroke). A real failure just
           // shows the empty state — a composer must never toast for a typeahead.
           if (!ctrl.signal.aborted) {
             setItems([]);
-            setLoading(false);
+            setSettledQuery(query);
           }
         });
     }, DEBOUNCE_MS);
@@ -199,6 +206,11 @@ export function MentionPicker({
       dismiss();
       return true;
     }
+    // Results for THIS query are still on the way: swallow Enter rather than
+    // let it split the paragraph and abandon the @query (it would leave "@adm"
+    // as plain text), or pick a row that belongs to the PREVIOUS query — the
+    // stale rows stay on screen on purpose while the next page loads.
+    if (event.key === 'Enter' && pending) return true;
     if (items.length === 0 || !NAV_KEYS.has(event.key)) return false;
     nav.onKeyDown(asReactKey(event));
     return true;
@@ -252,6 +264,9 @@ export function MentionPicker({
           id={listId}
           role="listbox"
           aria-label={t('mention_label')}
+          // Rows for the PREVIOUS query stay up while the next ones load, and
+          // Enter is swallowed until they agree (keyRef) — say so out loud.
+          aria-busy={pending}
           className="scroll-thin min-h-0 flex-1 overflow-y-auto p-1"
         >
           {items.map((p, i) => {
@@ -296,13 +311,13 @@ export function MentionPicker({
 
           {items.length === 0 && (
             <li className="flex items-center gap-2 px-2 py-3 text-[13px] text-muted">
-              {loading ? (
+              {pending ? (
                 <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
               ) : (
                 <AtSign className="h-3.5 w-3.5 shrink-0" />
               )}
               <span className="min-w-0 truncate">
-                {loading ? t('mention_loading') : query ? t('mention_empty') : t('mention_hint')}
+                {pending ? t('mention_loading') : query ? t('mention_empty') : t('mention_hint')}
               </span>
             </li>
           )}

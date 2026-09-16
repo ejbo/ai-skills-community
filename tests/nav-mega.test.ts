@@ -5,6 +5,7 @@ import { NAV_MEGA, labHref } from '@/components/nav-mega-items';
 import { INSTITUTES, INSTITUTE_TILE_MAX, instituteNames, labsOf } from '@/lib/org';
 import { PRIMARY_NAV } from '@/components/nav-items';
 import { CLIENT_MESSAGE_NAMESPACES } from '@/lib/i18n-client-namespaces';
+import { discussionTabOf } from '@/app/discussion/_components/tabs';
 
 // The navbar hover panel is a CURATED list, not a mirror of every taxonomy.
 // The first cut listed skill sources, doc types, forum categories and event
@@ -88,17 +89,27 @@ describe('hrefs match the pages that read them', () => {
     for (const k of ['q', 'category', 'sort', 'page']) expect(params.has(k)).toBe(false);
   });
 
-  it('discussion: exactly the two tabs DiscussionTabs renders', () => {
+  it('discussion: exactly the three tabs DiscussionTabs renders', () => {
     const menu = NAV_MEGA['/discussion'];
-    expect(menu.columns[0].links.map((l) => l.href)).toEqual(['/discussion', '/discussion?tab=forum']);
-    // 动态 is the DEFAULT tab; its canonical URL has no `tab` at all, which is
-    // what `DiscussionTabs.select('posts')` produces (`sp.delete('tab')`).
+    expect(menu.columns[0].links.map((l) => l.href)).toEqual([
+      '/discussion',
+      '/discussion?tab=posts',
+      '/discussion?tab=forum',
+    ]);
+    // 全部 is the DEFAULT tab; its canonical URL has no `tab` at all, which is
+    // what `DiscussionTabs.select('all')` produces (`sp.delete('tab')`).
     expect(new URL('/discussion', 'http://x').searchParams.has('tab')).toBe(false);
+  });
+
+  it('discussion: every panel href lands on the tab it is labelled with', () => {
+    const tabOf = (href: string) => discussionTabOf(new URL(href, 'http://x').searchParams.get('tab'));
+    const links = NAV_MEGA['/discussion'].columns[0].links;
+    expect(links.map((l) => tabOf(l.href))).toEqual(['all', 'posts', 'forum']);
   });
 
   it("discussion: reuses the destination page's own tab strings", () => {
     const specs = NAV_MEGA['/discussion'].columns[0].links.map((l) => l.t);
-    expect(specs).toEqual(['discussion:tab_posts', 'discussion:tab_forum']);
+    expect(specs).toEqual(['discussion:tab_all', 'discussion:tab_posts', 'discussion:tab_forum']);
   });
 
   it("zones: the 研究所 grid, plus the hub's own tabs", () => {

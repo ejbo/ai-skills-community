@@ -25,8 +25,11 @@ export const dynamic = 'force-dynamic';
 // (image → cardMediaKey of an image card; poster / loop → cardPosterKey /
 // cardLoopKey of a video card). An upload nobody attached, a file its owner
 // removed, a deactivated member's card — all 404. A `video/` ORIGINAL is never
-// served at all (profileMediaServeTarget): the card plays the generated 8 s
-// muted loop, and the original has full length, audio and container metadata.
+// served at all (profileMediaServeTarget): the card plays the muted clip
+// (≤ PROFILE_CLIP_MAX_SECONDS, 30 s) cut from the range its member chose via
+// POST /api/me/profile/media/clip, and the original has full length, audio and
+// container metadata — only its uploader can read it back, through the owner-only
+// GET /api/me/profile/media/source.
 //
 // Because removal is meaningful, the cache is short and not `immutable`: a key
 // never changes content (a replacement is a new key), so 10 minutes is only the

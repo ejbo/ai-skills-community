@@ -1,8 +1,10 @@
 // 个人主页与名片 — the WRITE side (PUT /api/me/profile, PUT|DELETE
-// /api/me/profile/media, and the avatar/banner URL guard PUT /api/auth/me uses).
+// /api/me/profile/media, POST /api/me/profile/media/clip, and the avatar/banner
+// URL guard PUT /api/auth/me uses).
 //
 // Two layers on purpose:
-//   - pure planners (`planProfileWrite`, `parseCardMediaInput`, the URL guards)
+//   - pure planners (`planProfileWrite`, `parseCardMediaInput`, `parseCardClipInput`,
+//     the URL guards)
 //     decide what a request body is allowed to become; they are unit-tested
 //     (tests/profile-store.test.ts) and never touch the database
 //   - the async writers apply a plan inside a transaction
@@ -16,6 +18,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import {
+  PROFILE_CLIP_MAX_SECONDS,
   defaultProfileLayout,
   isValidProfileMediaKey,
   parseCardConfig,
@@ -27,14 +30,26 @@ import {
   type CardConfig,
 } from '@/lib/profile/shared';
 import {
+  PROFILE_CLIP_RETRY_AFTER_SEC,
   deleteOwnProfileMediaEntries,
   deleteProfileMediaFiles,
   isProfileMediaKeyTaggedFor,
   listStaleOwnProfileMedia,
   ownerTagFor,
+  probeProfileVideo,
+  profileClipToolsAvailable,
+  renderProfileCardClip,
   statProfileMedia,
   type OwnProfileMediaEntry,
 } from '@/lib/profile/card-media-storage';
+import {
+  CLIP_MIN_LENGTH_DEFAULT,
+  normalizeClipRange,
+  normalizeCover,
+  parseStoredClip,
+  type StoredClip,
+} from '@/lib/media/clip-shared';
+import { videoTimelineSec } from '@/lib/media/ffmpeg';
 import { resolveCardMedia } from '@/lib/profile/card-view';
 import type { ProfileCardMedia } from '@/lib/profile/types';
 
@@ -269,7 +284,7 @@ export async function saveOwnProfile(userId: string, body: unknown): Promise<Pro
   });
 }
 
-// ─── PUT / DELETE /api/me/profile/media ─────────────────────────────────────
+// ─── PUT / DELETE /api/me/profile/media, POST …/media/clip ───────────────────
 
 export interface CardMediaInput {
   kind: 'image' | 'video';
@@ -380,25 +395,24 @@ export function droppedMediaKeys(prev: StoredMediaKeys, next: StoredMediaKeys): 
   );
 }
 
-/** Apply PUT /api/me/profile/media. */
-export async function setOwnCardMedia(userId: string, body: unknown): Promise<CardMediaWriteResult> {
-  const parsed = parseCardMediaInput(body, ownerTagFor(userId));
-  if (!parsed.ok) return { ok: false, status: 400, error: 'invalid_input' };
-  const { kind, mediaKey, posterKey, loopKey } = parsed.input;
+type AttachResult = { ok: true } | { ok: false; error: 'media_missing' | 'media_claimed' };
 
-  // Every echoed key must be a real, non-empty file — the upload response is
-  // the only honest source of keys, but nothing stops a client inventing one.
-  // Checked again under the row lock below (see sweepOwnUnattachedCardMedia).
-  if (!(await allMediaPresent([mediaKey, posterKey, loopKey]))) {
-    return { ok: false, status: 400, error: 'media_missing' };
-  }
-  // A card never plays a video original, so a video with neither a generated
-  // loop nor a poster would attach as nothing visible (decideCardMedia ⇒ null).
-  if (kind === 'video' && !posterKey && !loopKey) return { ok: false, status: 400, error: 'media_missing' };
-
-  const next: StoredMediaKeys = { cardMediaKey: mediaKey, cardPosterKey: posterKey, cardLoopKey: loopKey };
-  const keys = [mediaKey, posterKey, loopKey].filter((k): k is string => !!k);
-
+/**
+ * THE attach transaction, shared by PUT /api/me/profile/media and the clip
+ * route: under MY row lock, re-stat every key (the sweep unlinks under the same
+ * lock), refuse keys another profile holds (read + the @unique backstop), write
+ * the keys together with `clip` — the segment a clip was cut from, or NULL for
+ * anything else, so a stored range can never describe media it did not produce
+ * — and after the commit unlink whatever the previous keys no longer reference
+ * (an original that stays attached is never among them).
+ */
+async function attachOwnCardMedia(
+  userId: string,
+  kind: 'image' | 'video',
+  next: StoredMediaKeys,
+  clip: StoredClip | null,
+): Promise<AttachResult> {
+  const keys = [next.cardMediaKey, next.cardPosterKey, next.cardLoopKey].filter((k): k is string => !!k);
   let prev: StoredMediaKeys;
   try {
     prev = await prisma.$transaction(async (tx) => {
@@ -423,38 +437,241 @@ export async function setOwnCardMedia(userId: string, body: unknown): Promise<Ca
       if (claimed) throw new MediaClaimedError();
       await tx.userProfile.update({
         where: { userId },
-        data: { cardMediaKind: kind, ...next },
+        data: {
+          cardMediaKind: kind,
+          ...next,
+          cardMediaClip: clip ? (clip as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
+        },
       });
       return locked;
     });
   } catch (e) {
-    if (e instanceof MediaClaimedError) return { ok: false, status: 409, error: 'media_claimed' };
-    if (e instanceof MediaMissingError) return { ok: false, status: 400, error: 'media_missing' };
+    if (e instanceof MediaClaimedError) return { ok: false, error: 'media_claimed' };
+    if (e instanceof MediaMissingError) return { ok: false, error: 'media_missing' };
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-      return { ok: false, status: 409, error: 'media_claimed' };
+      return { ok: false, error: 'media_claimed' };
     }
     throw e;
   }
-
   await unlinkIfUnreferenced(droppedMediaKeys(prev, next));
+  return { ok: true };
+}
+
+/** Apply PUT /api/me/profile/media. Clears any stored clip range (this media was not cut by the clip route). */
+export async function setOwnCardMedia(userId: string, body: unknown): Promise<CardMediaWriteResult> {
+  const parsed = parseCardMediaInput(body, ownerTagFor(userId));
+  if (!parsed.ok) return { ok: false, status: 400, error: 'invalid_input' };
+  const { kind, mediaKey, posterKey, loopKey } = parsed.input;
+
+  // Every echoed key must be a real, non-empty file — the upload response is
+  // the only honest source of keys, but nothing stops a client inventing one.
+  // Checked again under the row lock (attachOwnCardMedia).
+  if (!(await allMediaPresent([mediaKey, posterKey, loopKey]))) {
+    return { ok: false, status: 400, error: 'media_missing' };
+  }
+  // A card never plays a video original, so a video with neither a generated
+  // loop nor a poster would attach as nothing visible (decideCardMedia ⇒ null).
+  if (kind === 'video' && !posterKey && !loopKey) return { ok: false, status: 400, error: 'media_missing' };
+
+  const attached = await attachOwnCardMedia(
+    userId,
+    kind,
+    { cardMediaKey: mediaKey, cardPosterKey: posterKey, cardLoopKey: loopKey },
+    null,
+  );
+  if (!attached.ok) {
+    return attached.error === 'media_claimed'
+      ? { ok: false, status: 409, error: 'media_claimed' }
+      : { ok: false, status: 400, error: 'media_missing' };
+  }
   return {
     ok: true,
     media: await resolveCardMedia({ kind, media: mediaKey, poster: posterKey, loop: loopKey }),
   };
 }
 
-/** Apply DELETE /api/me/profile/media — clear the keys, then unlink the files. */
+/** Apply DELETE /api/me/profile/media — clear the keys (and the clip range), then unlink the files. */
 export async function clearOwnCardMedia(userId: string): Promise<CardMediaWriteResult> {
   const prev = await prisma.$transaction(async (tx) => {
     const locked = await lockOwnProfile(tx, userId);
     await tx.userProfile.update({
       where: { userId },
-      data: { cardMediaKind: null, cardMediaKey: null, cardPosterKey: null, cardLoopKey: null },
+      data: {
+        cardMediaKind: null,
+        cardMediaKey: null,
+        cardPosterKey: null,
+        cardLoopKey: null,
+        cardMediaClip: Prisma.DbNull,
+      },
     });
     return locked;
   });
   await unlinkIfUnreferenced(droppedMediaKeys(prev, { cardMediaKey: null, cardPosterKey: null, cardLoopKey: null }));
   return { ok: true, media: null };
+}
+
+// ─── POST /api/me/profile/media/clip ────────────────────────────────────────
+
+export interface CardClipInput {
+  videoKey: string;
+  start: number;
+  end: number;
+  /** Requested cover frame (source seconds); undefined ⇒ normalizeCover's default. */
+  cover: number | undefined;
+}
+
+export type CardClipInputResult = { ok: true; input: CardClipInput } | { ok: false; error: 'invalid_input' };
+
+const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/**
+ * Pure SHAPE check of a clip request: a `video/` key minted for `ownerTag`
+ * (the caller's own upload — the same binding PUT enforces) and finite numbers.
+ * Range CONTENT is not judged here: it is clamped against the probed duration
+ * by clip-shared's normalizeClipRange, exactly as the trimmer clamps it.
+ */
+export function parseCardClipInput(body: unknown, ownerTag: string): CardClipInputResult {
+  const bad = { ok: false, error: 'invalid_input' } as const;
+  if (!isPlainObject(body)) return bad;
+  const { videoKey, start, end, cover } = body;
+  if (!isValidProfileMediaKey(videoKey, 'video') || !isProfileMediaKeyTaggedFor(videoKey, ownerTag)) return bad;
+  if (!isFiniteNumber(start) || !isFiniteNumber(end)) return bad;
+  if (cover !== undefined && cover !== null && !isFiniteNumber(cover)) return bad;
+  return { ok: true, input: { videoKey, start, end, cover: isFiniteNumber(cover) ? cover : undefined } };
+}
+
+/**
+ * Pure: request range + the REAL source duration → the clip to render and store,
+ * or null when no valid range exists (no duration, a range that is not numbers).
+ * One function so the stored `cardMediaClip` is exactly what parseStoredClip
+ * reads back — the trimmer reopens on the very range that was cut.
+ */
+export function planCardClip(
+  input: Pick<CardClipInput, 'start' | 'end' | 'cover'>,
+  durationSec: number,
+): StoredClip | null {
+  const range = normalizeClipRange(input, durationSec, {
+    maxLength: PROFILE_CLIP_MAX_SECONDS,
+    minLength: CLIP_MIN_LENGTH_DEFAULT,
+  });
+  if (!range) return null;
+  return parseStoredClip({ ...range, cover: normalizeCover(input.cover, range), duration: durationSec });
+}
+
+export type CardClipResult =
+  | { ok: true; media: ProfileCardMedia | null; clip: StoredClip }
+  | {
+      ok: false;
+      status: 400 | 404 | 409 | 500 | 501 | 503;
+      error:
+        | 'invalid_input'
+        | 'media_missing'
+        | 'media_claimed'
+        | 'clip_in_progress'
+        | 'ffmpeg_unavailable'
+        | 'media_busy'
+        | 'clip_failed';
+      /** Seconds, for a `retry-after` header (503 media_busy, 409 clip_in_progress). */
+      retryAfter?: number;
+    };
+
+/** Seconds a client should wait before retrying while its own previous clip is still rendering. */
+export const CLIP_IN_PROGRESS_RETRY_AFTER_SEC = 5;
+
+/**
+ * Members with a clip request past the cheap refusals — probing, queued for the
+ * media slot, rendering or attaching. In-process on purpose (like the rate
+ * limiter and the media queue it protects): the queue is per process too, so a
+ * second process has its own slot to hold. Every entry is removed in a
+ * `finally`, so the set can only hold requests that are actually running.
+ */
+const clipsInFlight = new Set<string>();
+
+/**
+ * Apply POST /api/me/profile/media/clip: cut `[start, end]` of the caller's
+ * uploaded original into the card clip + a poster at `cover`, then attach
+ * video + poster + clip and store the range — ONE step for the editor.
+ *
+ * Order is cheapest-refusal first: shape/owner (400) → file on disk (404) →
+ * tools on the box (501, the editor's cue to fall back to poster-only) → this
+ * member already has a clip in flight (409 clip_in_progress) → real duration +
+ * range (400) → render in one media-queue slot (503 busy / 500) → the shared
+ * attach transaction (404 if the original vanished meanwhile — e.g. a DELETE
+ * raced the render — 409 media_claimed if claimed). A refused attach unlinks the
+ * fresh clip + poster; a re-cut unlinks the previous clip + poster after the
+ * commit and keeps the original, which stays referenced.
+ *
+ * One render per member at a time: the media-queue slot is shared with every
+ * domain's remux, and the per-minute rate limit alone let one account chain
+ * renders back to back (each up to ~175 s of the slot and two cores).
+ */
+export async function clipOwnCardVideo(userId: string, body: unknown): Promise<CardClipResult> {
+  const ownerTag = ownerTagFor(userId);
+  const parsed = parseCardClipInput(body, ownerTag);
+  if (!parsed.ok) return { ok: false, status: 400, error: 'invalid_input' };
+  const { videoKey } = parsed.input;
+
+  const source = await statProfileMedia(videoKey);
+  if (!source || source.size <= 0) return { ok: false, status: 404, error: 'media_missing' };
+
+  if (!(await profileClipToolsAvailable())) return { ok: false, status: 501, error: 'ffmpeg_unavailable' };
+
+  // Claimed synchronously right after the check — no await in between, so two
+  // concurrent requests from one member can never both get past it.
+  if (clipsInFlight.has(userId)) {
+    return { ok: false, status: 409, error: 'clip_in_progress', retryAfter: CLIP_IN_PROGRESS_RETRY_AFTER_SEC };
+  }
+  clipsInFlight.add(userId);
+  try {
+    return await probeRenderAttach(userId, ownerTag, parsed.input);
+  } finally {
+    clipsInFlight.delete(userId);
+  }
+}
+
+async function probeRenderAttach(userId: string, ownerTag: string, input: CardClipInput): Promise<CardClipResult> {
+  const { videoKey } = input;
+  // The client's duration is never trusted: a range is clamped against what the
+  // file really holds, so `end` past the source (or past 30 s from `start`) is
+  // cut back rather than rendered as a frozen tail. "What it holds" is the
+  // PICTURE: the clip is video-only, so an audio track running past the last
+  // frame must not stretch the range into a tail with nothing to encode.
+  const probe = await probeProfileVideo(videoKey);
+  if (!probe || !probe.hasVideo) return { ok: false, status: 400, error: 'invalid_input' };
+  const clip = planCardClip(input, videoTimelineSec(probe));
+  if (!clip) return { ok: false, status: 400, error: 'invalid_input' };
+
+  const rendered = await renderProfileCardClip(videoKey, ownerTag, clip, probe.fps);
+  if (!rendered.ok) {
+    return rendered.reason === 'busy'
+      ? { ok: false, status: 503, error: 'media_busy', retryAfter: PROFILE_CLIP_RETRY_AFTER_SEC }
+      : { ok: false, status: 500, error: 'clip_failed' };
+  }
+
+  const { loopKey, posterKey } = rendered;
+  let attached: AttachResult;
+  try {
+    attached = await attachOwnCardMedia(
+      userId,
+      'video',
+      { cardMediaKey: videoKey, cardPosterKey: posterKey, cardLoopKey: loopKey },
+      clip,
+    );
+  } catch (e) {
+    await deleteProfileMediaFiles([loopKey, posterKey]);
+    throw e;
+  }
+  if (!attached.ok) {
+    await deleteProfileMediaFiles([loopKey, posterKey]);
+    return attached.error === 'media_claimed'
+      ? { ok: false, status: 409, error: 'media_claimed' }
+      : { ok: false, status: 404, error: 'media_missing' };
+  }
+  return {
+    ok: true,
+    media: await resolveCardMedia({ kind: 'video', media: videoKey, poster: posterKey, loop: loopKey }),
+    clip,
+  };
 }
 
 // ─── Abandoned-upload sweep ─────────────────────────────────────────────────

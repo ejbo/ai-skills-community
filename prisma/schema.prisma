@@ -334,6 +334,9 @@ model UserProfile {
   cardMediaKey  String?  @unique
   cardPosterKey String?  @unique
   cardLoopKey   String?  @unique
+  /// {start,end,cover,duration} — the segment the loop was cut from (lib/media/clip-shared.ts
+  /// parseStoredClip); written ONLY by the clip route, cleared whenever the media changes.
+  cardMediaClip Json?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

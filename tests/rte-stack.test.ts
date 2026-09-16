@@ -8,8 +8,8 @@
 //      other suites rely on hold.
 //   2. Every keyboard hint the toolbar prints names a binding that really runs.
 //   3. components/RichTextEditor.tsx, mounted for real with the zh-CN messages:
-//      文字样式 sits right after 行内代码 in both variants, the two code icons
-//      differ, bold is disabled inside inline code, the code block renders its
+//      the v3 toolbar row keeps its wrap / scroll contract in both variants,
+//      the two code icons differ, bold is disabled inside inline code, the code block renders its
 //      node view, the counter counts visible text, a non-image drop on a
 //      comment box is refused out loud, an image upload failure toasts, no
 //      toolbar string is missing from messages/zh-CN.json, the table strip keeps
@@ -139,6 +139,9 @@ describe('toolbar shortcut hints', () => {
     expect(formatShortcut('Mod-Alt-1', false)).toBe('Ctrl+Alt+1');
     expect(ariaKeyShortcuts('Mod-Shift-z', true)).toBe('Meta+Shift+Z');
     expect(ariaKeyShortcuts('Mod-e', false)).toBe('Control+E');
+    expect(formatShortcut('Mod-.', true)).toBe('⌘.');
+    expect(formatShortcut('Mod-,', false)).toBe('Ctrl+,');
+    expect(ariaKeyShortcuts('Mod-.', true)).toBe('Meta+.');
   });
 
   // A real keydown through ProseMirror's handler chain (jsdom is not a Mac, so
@@ -169,6 +172,8 @@ describe('toolbar shortcut hints', () => {
       ['italic', 'italic'],
       ['strike', 'strike'],
       ['code', 'code'],
+      ['superscript', 'superscript'],
+      ['subscript', 'subscript'],
     ];
     for (const [key, mark] of marks) {
       const ed = fresh('hello world');
@@ -216,6 +221,17 @@ describe('RichTextEditor mounted', async () => {
     proto.getClientRects ??= () => [];
     proto.getBoundingClientRect ??= () => ({ top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0 });
     (Element.prototype as unknown as Record<string, unknown>).scrollIntoView ??= () => {};
+    // jsdom has no media queries; the colour palette asks for `(pointer: coarse)`.
+    (window as unknown as Record<string, unknown>).matchMedia ??= (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    });
   });
 
   let mounted: { root: Root; host: HTMLElement } | null = null;
@@ -268,17 +284,20 @@ describe('RichTextEditor mounted', async () => {
   }
 
   for (const variant of ['full', 'compact'] as const) {
-    it(`${variant}: 文字样式 sits right after 行内代码, in the one-row scrolling toolbar`, () => {
+    it(`${variant}: the v3 toolbar row — groups that wrap from sm, one scrolling row below it; every string translated`, () => {
       const { host, button } = mount({ value: 'hello', variant });
       const inline = button(ui.rte_inline_code)!;
       expect(inline).not.toBeNull();
-      const next = inline.nextElementSibling as HTMLButtonElement;
-      expect(next.getAttribute('aria-haspopup')).toBe('dialog');
-      expect(next.getAttribute('aria-label')).toBe(ui.rte_text_style);
-      const row = inline.parentElement!;
+      // 加粗 倾斜 删除线 行内代码 are one cluster in both variants (tests/editor-toolbar-v3.test.ts pins the full order).
+      const marks = inline.closest('[role="group"]')!;
+      for (const label of [ui.rte_bold, ui.rte_italic, ui.rte_strike]) expect(marks.querySelector(`button[aria-label="${label}"]`)).not.toBeNull();
+      // The colour split buttons replace the v2 文字样式 popover.
+      expect(host.querySelectorAll('.rte-color-split').length).toBe(2);
+      const row = host.querySelector('.rte-toolbar-row') as HTMLElement;
       expect(row.className).toContain('overflow-x-auto');
       expect(row.className).toContain('sm:flex-wrap');
       expect(row.className).toContain('[&>*]:shrink-0');
+      expect(marks.parentElement).toBe(row);
       expect(host.querySelector('input[type="file"]')?.getAttribute('accept')).not.toContain('image/*');
       expect(missing).toEqual([]);
     });
@@ -314,7 +333,7 @@ describe('RichTextEditor mounted', async () => {
     expect(button(ui.rte_bold)!.disabled).toBe(false);
   });
 
-  it('inline-mark buttons and 文字样式 are disabled at a caret inside a code block', () => {
+  it('inline-mark buttons, the colour split buttons and 字体 / 字号 are disabled at a caret inside a code block', () => {
     const { editor, button, host } = mount({ value: 'para\n\n```\ncode here\n```' });
     let at = -1;
     editor.state.doc.descendants((n, pos) => {
@@ -324,13 +343,20 @@ describe('RichTextEditor mounted', async () => {
     act(() => {
       editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, at)));
     });
-    for (const label of [ui.rte_bold, ui.rte_italic, ui.rte_strike, ui.rte_inline_code, ui.rte_link]) expect([label, button(label)!.disabled]).toEqual([label, true]);
-    expect((host.querySelector('button[aria-haspopup="dialog"]') as HTMLButtonElement).disabled).toBe(true);
+    const styleControls = () => [
+      ...Array.from(host.querySelectorAll<HTMLButtonElement>('.rte-color-split button')),
+      ...Array.from(host.querySelectorAll<HTMLButtonElement>('button[aria-haspopup="menu"]')),
+    ];
+    for (const label of [ui.rte_bold, ui.rte_italic, ui.rte_strike, ui.rte_inline_code, ui.rte_superscript, ui.rte_link_edit]) {
+      expect([label, button(label)!.disabled]).toEqual([label, true]);
+    }
+    expect(styleControls().length).toBe(7); // 2 × (glyph + caret) + 字体 + 字号 + 行高
+    expect(styleControls().every((b) => b.disabled)).toBe(true);
     act(() => {
       editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 2)));
     });
     expect(button(ui.rte_bold)!.disabled).toBe(false);
-    expect((host.querySelector('button[aria-haspopup="dialog"]') as HTMLButtonElement).disabled).toBe(false);
+    expect(styleControls().every((b) => !b.disabled)).toBe(true);
   });
 
   it('a fenced code block renders the framed node view with its language picker and filename', async () => {
@@ -407,14 +433,14 @@ describe('RichTextEditor mounted', async () => {
 
   // ED-14: the table strip mounted on caret entry, pushing the document down by
   // its height on mousedown in a cell (the cell under the pointer jumped away).
-  it('the table strip keeps its box while the caret moves in and out of the table', () => {
+  // v3 keeps that promise the other way round (V3-21): the strip is an OVERLAY
+  // anchored under the toolbar box, so it takes NO layout height — reserving one
+  // for the whole document left every body that merely contains a table with a
+  // dead band under the sticky toolbar (two rows of chrome on a phone).
+  it('the table strip takes no layout height: an overlay, shown only in a table', () => {
     const { host, editor } = mount({ value: 'intro\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\nafter' });
     const strip = () => host.querySelector('.rte-table-strip') as HTMLElement | null;
-    expect(strip()).not.toBeNull(); // the doc holds a table: reserved, even with the caret outside
-    const outside = strip()!;
-    expect(outside.className).toContain('invisible');
-    expect(outside.hasAttribute('inert')).toBe(true);
-    expect(outside.getAttribute('aria-hidden')).toBe('true');
+    expect(strip()).toBeNull(); // a table in the document is not enough
 
     let cell = -1;
     editor.state.doc.descendants((n, pos) => {
@@ -424,9 +450,14 @@ describe('RichTextEditor mounted', async () => {
     act(() => {
       editor.commands.setTextSelection(cell);
     });
-    expect(strip()).toBe(outside); // the SAME element — nothing mounted above the document
-    expect(strip()!.className).not.toContain('invisible');
-    expect(strip()!.hasAttribute('inert')).toBe(false);
+    expect(strip()!.className).toContain('absolute');
+    expect(strip()!.className).toContain('top-full');
+    // Anchored to the toolbar box, so it can only ever cover content, never move it.
+    expect((host.querySelector('.rte-toolbar') as HTMLElement).className).toContain('relative');
+    act(() => {
+      editor.commands.setTextSelection(1);
+    });
+    expect(strip()).toBeNull();
   });
 
   it('no table in the document ⇒ no table strip', () => {

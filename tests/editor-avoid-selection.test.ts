@@ -1,5 +1,6 @@
-// The 文字样式 popover must not cover the text it formats (ED-22). The geometry
-// is pure (components/editor/avoid-selection.ts); TextStyleMenu feeds it the
+// A toolbar panel (颜色 / 字体 / 字号 / 行高) must not cover the text it formats
+// (ED-22). The geometry
+// is pure (components/editor/avoid-selection.ts); the toolbar popovers feed it the
 // hook's anchored spot, the panel's real size and the selection's DOM rect.
 import { describe, expect, it } from 'vitest';
 import { panelAvoidingSelection } from '@/components/editor/avoid-selection';

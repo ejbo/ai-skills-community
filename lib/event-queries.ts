@@ -94,8 +94,13 @@ const effEndLt = (b: Date): Prisma.EventWhereInput => ({
   OR: [{ endAt: { lt: b } }, { endAt: null, startAt: { lt: b } }],
 });
 
-/** Still running or in the future — per-zone "start of today" boundaries. */
-function upcomingWhere(): Prisma.EventWhereInput {
+/**
+ * Still running or in the future — per-zone "start of today" boundaries.
+ * Exported because 插入引用 (lib/zones/embeds.ts#eventSource) lists upcoming
+ * events before past ones and must use THIS boundary, not a second copy of it.
+ * Its 「已结束」 half is `pastWhere()` — see the warning there.
+ */
+export function upcomingWhere(): Prisma.EventWhereInput {
   return {
     OR: [
       ...TZ_VALUES.map((z) => ({
@@ -107,7 +112,14 @@ function upcomingWhere(): Prisma.EventWhereInput {
   };
 }
 
-function pastWhere(): Prisma.EventWhereInput {
+/**
+ * Already over — the exact counterpart of `upcomingWhere()`, and NOT the same
+ * thing as `{ NOT: upcomingWhere() }`: `(endAt ?? startAt)` is an OR over a
+ * NULLABLE column, so for a row with `endAt IS NULL` the upcoming expression
+ * evaluates to NULL rather than FALSE, and `NOT NULL` is NULL — the row would
+ * match NEITHER half. (Exported for 插入引用, lib/zones/embeds.ts#eventSource.)
+ */
+export function pastWhere(): Prisma.EventWhereInput {
   return {
     OR: [
       ...TZ_VALUES.map((z) => ({

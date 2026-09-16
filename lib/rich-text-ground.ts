@@ -7,8 +7,8 @@
 // panels follow the reader. But a site `.surface` card mounted inside it — the
 // shared DocComments board in the 评论 tab — is painted by the SITE theme, and
 // so are its prose text and its `dark:` chrome. Formatting colours and the
-// 文字样式 popover must follow the ground they are shown on, or reader 深色 over
-// a white site card paints yellow at 1.5 : 1.
+// editor's toolbar panels must follow the ground they are shown on, or reader
+// 深色 over a white site card paints yellow at 1.5 : 1.
 
 export type RichTextTone = 'default' | 'reader';
 

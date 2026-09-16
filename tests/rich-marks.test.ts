@@ -18,7 +18,7 @@ import { buildRichTextExtensions } from '@/components/editor/rich-text-extension
 import {
   INLINE_CODE_PRIORITY,
   RICH_MARK_PRIORITY,
-  activeRichMarkValue,
+  activeRichValue,
 } from '@/components/editor/format-marks';
 import { extractMentionHandles } from '@/lib/mentions';
 import { RICH_MARK_KINDS, RICH_MARK_NAME, RICH_SPAN_TAG_RE } from '@/lib/rich-marks';
@@ -86,9 +86,11 @@ function runs(ed: Editor): string[] {
 }
 
 describe('schema order (priority is the nesting contract)', () => {
-  it('fontSize > fontFamily > textBg > textColor > link > bold > italic > strike > code', () => {
+  it('superscript/subscript > fontSize > fontFamily > textBg > textColor > link > bold > italic > strike > code', () => {
     const ed = makeEditor();
     expect(Object.keys(ed.schema.marks)).toEqual([
+      'superscript',
+      'subscript',
       'fontSize',
       'fontFamily',
       'textBg',
@@ -294,14 +296,16 @@ describe('format marks — parsing is a closed door', () => {
     ed.destroy();
   });
 
-  it('the commands refuse values outside the closed set', () => {
+  it('the commands refuse values outside the v3 sets (hex is accepted — tests/rich-marks-v3.test.ts)', () => {
     const ed = makeEditor('一 词 二');
     select(ed, '词');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const c = ed.commands as any;
-    expect(c.setTextColor('#ff0000')).toBe(false);
+    expect(c.setTextColor('#ff000080')).toBe(false);
+    expect(c.setTextColor('white')).toBe(false);
     expect(c.setTextBg('rgb(0,0,0)')).toBe(false);
     expect(c.setFontSize('24px')).toBe(false);
+    expect(c.setFontSize(11)).toBe(false);
     expect(c.setFontFamily('Comic Sans MS')).toBe(false);
     expect(md(ed)).toBe('一 词 二');
     ed.destroy();
@@ -367,7 +371,7 @@ describe('format marks — caret behaviour and helpers', () => {
     const ed = makeEditor('开头');
     ed.commands.focus('end');
     ed.commands.setTextColor('teal');
-    expect(activeRichMarkValue(ed, 'color')).toBe('teal');
+    expect(activeRichValue(ed, 'color')).toBe('teal');
     ed.commands.insertContent('新字');
     expect(md(ed)).toBe('开头<span data-color="teal">新字</span>');
     ed.destroy();
@@ -384,10 +388,10 @@ describe('format marks — caret behaviour and helpers', () => {
     ed.destroy();
   });
 
-  it('activeRichMarkValue reads each kind at the selection', () => {
+  it('activeRichValue reads each kind at the selection', () => {
     const ed = makeEditor('<p><span data-size="xl"><span data-font="serif"><span data-bg="gray"><span data-color="pink">字</span></span></span></span></p>');
     select(ed, '字');
-    expect(RICH_MARK_KINDS.map((k) => activeRichMarkValue(ed, k))).toEqual(['pink', 'gray', 'xl', 'serif']);
+    expect(RICH_MARK_KINDS.map((k) => activeRichValue(ed, k))).toEqual(['pink', 'gray', 'xl', 'serif']);
     expect(RICH_MARK_KINDS.map((k) => ed.isActive(RICH_MARK_NAME[k]))).toEqual([true, true, true, true]);
     ed.destroy();
   });
@@ -602,167 +606,5 @@ describe('InlineCode — coexists with formatting, never corrupts', () => {
   });
 });
 
-// ─── the toolbar menu, mounted for real (react-dom in jsdom) ────────────────
-// The menu only calls the commands above, but the wiring is what an author
-// touches: the popover must portal out, keep the editor selection on
-// mousedown, report the active format and close the way the brief says.
-describe('TextStyleMenu', async () => {
-  const { createElement } = await import('react');
-  const { act } = await import('react');
-  const { createRoot } = await import('react-dom/client');
-  const { NextIntlClientProvider } = await import('next-intl');
-  const { TextStyleMenu } = await import('@/components/editor/TextStyleMenu');
-
-  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  // prosemirror-view measures the caret when focus() scrolls it into view.
-  const proto = Range.prototype as unknown as Record<string, unknown>;
-  proto.getClientRects ??= () => [];
-  proto.getBoundingClientRect ??= () => ({ top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0 });
-
-  function mount(content: string, variant: 'full' | 'compact') {
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    const editorEl = document.createElement('div');
-    document.body.appendChild(editorEl);
-    const ed = new Editor({
-      element: editorEl,
-      extensions: buildRichTextExtensions(),
-      content,
-    });
-    const root = createRoot(host);
-    act(() => {
-      root.render(
-        createElement(
-          NextIntlClientProvider,
-          // Keys render as themselves: the test must not depend on the lead's message merge.
-          {
-            locale: 'zh-CN',
-            messages: {},
-            onError: () => {},
-            getMessageFallback: ({ key }: { key: string }) => key,
-            children: createElement(TextStyleMenu, { editor: ed, variant }),
-          },
-        ),
-      );
-    });
-    const trigger = host.querySelector('button[aria-haspopup="dialog"]') as HTMLButtonElement;
-    const cleanup = () => {
-      act(() => root.unmount());
-      ed.destroy();
-      host.remove();
-      editorEl.remove();
-    };
-    return { ed, host, trigger, cleanup };
-  }
-
-  const dialog = () => document.body.querySelector('[role="dialog"]') as HTMLElement | null;
-  /** Group 0 = 文字颜色, 1 = 背景色, 2 = 字号, 3 = 字体 — colour names repeat across 0 and 1. */
-  const group = (i: number) => dialog()!.querySelectorAll('[role="group"]')[i] as HTMLElement;
-  const swatch = (i: number, label: string) => group(i).querySelector(`button[aria-label="${label}"]`) as HTMLButtonElement;
-  const byText = (root: HTMLElement, text: string) =>
-    Array.from(root.querySelectorAll('button')).find((b) => b.textContent === text) as HTMLButtonElement;
-  const click = (el: HTMLElement, detail = 1) =>
-    act(() => {
-      el.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
-      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-      el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail }));
-    });
-
-  it('full: portals a dialog with colour, background, size, font and 清除格式', () => {
-    const { trigger, host, cleanup } = mount('<p>前文 重点 后文</p>', 'full');
-    expect(trigger.getAttribute('aria-label')).toBe('rte_text_style');
-    click(trigger);
-    const d = dialog();
-    expect(d).not.toBeNull();
-    expect(host.contains(d)).toBe(false); // portaled out of the (overflow-hidden) editor root
-    const groups = d!.querySelectorAll('[role="group"]');
-    expect(groups.length).toBe(4);
-    expect(groups[0].querySelectorAll('button').length).toBe(10); // 默认 + 9
-    expect(groups[1].querySelectorAll('button').length).toBe(10); // 无 + 9
-    expect(groups[2].querySelectorAll('button').length).toBe(4); // 默认/小/大/特大
-    expect(groups[3].querySelectorAll('button').length).toBe(4); // 默认/宋体/楷体/等宽
-    expect(d!.textContent).toContain('rte_clear_format');
-    cleanup();
-  });
-
-  it('compact: colour + background + 清除格式 only', () => {
-    const { trigger, cleanup } = mount('<p>x</p>', 'compact');
-    click(trigger);
-    expect(dialog()!.querySelectorAll('[role="group"]').length).toBe(2);
-    expect(dialog()!.textContent).toContain('rte_clear_format');
-    cleanup();
-  });
-
-  it('a swatch keeps the editor selection (mousedown cancelled) and colours exactly the selection', () => {
-    const { ed, trigger, cleanup } = mount('<p>前文 重点 后文</p>', 'full');
-    select(ed, '重点');
-    click(trigger);
-    const red = swatch(0, 'rte_color_red');
-    const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
-    red.dispatchEvent(down);
-    expect(down.defaultPrevented).toBe(true);
-    click(red);
-    expect(md(ed)).toBe('前文 <span data-color="red">重点</span> 后文');
-    // Mouse pick keeps the panel open, marks the swatch and paints the trigger bar.
-    expect(dialog()).not.toBeNull();
-    expect(swatch(0, 'rte_color_red').getAttribute('aria-pressed')).toBe('true');
-    expect(swatch(0, 'rte_color_default').getAttribute('aria-pressed')).toBe('false');
-    expect(trigger.querySelector('span[aria-hidden]')).not.toBeNull();
-    // Background, then size and font through the labelled buttons.
-    click(swatch(1, 'rte_color_yellow'));
-    click(byText(group(2), 'rte_size_xl'));
-    click(byText(group(3), 'rte_font_kai'));
-    expect(md(ed)).toBe(
-      '前文 <span data-size="xl"><span data-font="kai"><span data-bg="yellow"><span data-color="red">重点</span></span></span></span> 后文',
-    );
-    // 清除格式 removes all of it.
-    click(byText(dialog()!, 'rte_clear_format'));
-    expect(md(ed)).toBe('前文 重点 后文');
-    cleanup();
-  });
-
-  it('an empty selection formats the next typed text', () => {
-    const { ed, trigger, cleanup } = mount('<p>开头</p>', 'compact');
-    ed.commands.setTextSelection(ed.state.doc.content.size - 1);
-    click(trigger);
-    click(swatch(0, 'rte_color_blue'));
-    act(() => {
-      ed.commands.insertContent('新');
-    });
-    expect(md(ed)).toBe('开头<span data-color="blue">新</span>');
-    cleanup();
-  });
-
-  it('touch and keyboard picks close the panel; Esc and an outside press close it', () => {
-    const { ed, trigger, cleanup } = mount('<p>前文 重点 后文</p>', 'compact');
-    select(ed, '重点');
-    click(trigger);
-    const green = swatch(0, 'rte_color_green');
-    act(() => {
-      green.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' }));
-      green.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
-    });
-    expect(md(ed)).toBe('前文 <span data-color="green">重点</span> 后文');
-    expect(dialog()).toBeNull();
-
-    click(trigger);
-    expect(dialog()).not.toBeNull();
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    });
-    expect(dialog()).toBeNull();
-
-    click(trigger);
-    act(() => {
-      document.body.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true }));
-    });
-    expect(dialog()).toBeNull();
-
-    // Keyboard (click with detail 0) applies and closes.
-    click(trigger, 0);
-    click(swatch(1, 'rte_color_pink'), 0);
-    expect(md(ed)).toBe('前文 <span data-bg="pink"><span data-color="green">重点</span></span> 后文');
-    expect(dialog()).toBeNull();
-    cleanup();
-  });
-});
+// The v2 TextStyleMenu (one 文字样式 popover) was replaced by the v3 toolbar —
+// its mounted tests live in tests/editor-toolbar-v3.test.ts.

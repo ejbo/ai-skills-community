@@ -12,8 +12,9 @@
 //     closes the old leak where the card counted what the profile hid
 //   - media: keys → URLs rebuilt here (never stored), every file stat'ed; a key
 //     whose file is gone reads as "no media" instead of a broken <img>. A video
-//     is published ONLY as its poster + generated muted loop — the uploaded
+//     is published ONLY as its poster + the muted clip cut from it — the uploaded
 //     original (full length, audio, container metadata) never enters a view
+//     (the owner's own settings read-back carries an owner-only source URL)
 //   - badges: an anonymous viewer gets no badge derived from a login-walled
 //     domain (版主 comes from /zones) and never triggers the auto-tag reconcile
 //
@@ -24,7 +25,8 @@ import { identityColor } from '@/lib/identity-color';
 import { DISCOVERABLE_SKILL_WHERE } from '@/lib/skill-queries';
 import { BROWSABLE_DOC_WHERE } from '@/lib/library-queries';
 import { loadProfileBadges } from '@/lib/profile/badges';
-import { statProfileMedia } from '@/lib/profile/card-media-storage';
+import { parseStoredClip, type StoredClip } from '@/lib/media/clip-shared';
+import { isProfileMediaKeyOwnedBy, statProfileMedia } from '@/lib/profile/card-media-storage';
 import { PUBLISHED_PUBLIC } from '@/lib/video/queries';
 import { SHORTS_PUBLIC } from '@/lib/video/shorts-queries';
 import {
@@ -33,6 +35,7 @@ import {
   isValidProfileMediaKey,
   parseCardConfig,
   parseProfileLayout,
+  profileMediaSourceUrl,
   profileMediaUrl,
   sanitizeAbout,
   sanitizeHeadline,
@@ -128,10 +131,11 @@ export interface CardMediaFiles {
  * Keys + on-disk sizes → the media a card renders. Pure, so the rule is testable
  * without a disk:
  *   image — the photo, or nothing when its file is gone
- *   video — the generated loop (playUrl) and/or the poster; `url` = loop ?? poster.
+ *   video — the generated clip (playUrl) and/or the poster; `url` = loop ?? poster.
  *           The ORIGINAL is never referenced: it has the full length, the audio and
- *           the phone's metadata, while the member was promised an 8 s muted loop
- *           (and the serving route refuses `video/` keys anyway). Neither a loop
+ *           the phone's metadata, while the card plays only the ≤ 30 s muted clip
+ *           the member trimmed (and the serving route refuses `video/` keys
+ *           anyway). Neither a loop
  *           nor a poster ⇒ null, so a card falls back to avatar/monogram instead
  *           of an empty frame.
  */
@@ -290,6 +294,28 @@ export async function loadProfileCardView(
   };
 }
 
+/**
+ * Pure: the stored clip range the trimmer may reopen at — only for a video card
+ * that HAS a clip (a poster-only video, an image or legacy media has none; the
+ * attach paths also clear the column, this is the read-side belt).
+ */
+export function ownCardClip(kind: string | null, loopKey: string | null, stored: unknown): StoredClip | null {
+  if (kind !== 'video' || !isValidProfileMediaKey(loopKey, 'loop')) return null;
+  return parseStoredClip(stored);
+}
+
+/**
+ * The owner-only URL of a video card's original, or null when the source route
+ * would refuse it anyway: not a video, a legacy key without the caller's owner
+ * tag, or a file that is gone — the editor then offers no 剪辑片段 instead of a
+ * trimmer that cannot load.
+ */
+async function ownSourceUrl(userId: string, kind: string | null, key: string | null): Promise<string | null> {
+  if (kind !== 'video' || !isValidProfileMediaKey(key, 'video') || !isProfileMediaKeyOwnedBy(key, userId)) return null;
+  const st = await statProfileMedia(key);
+  return st && st.size > 0 ? profileMediaSourceUrl(key) : null;
+}
+
 /** What the settings editors start from (the owner's own, untrimmed values). */
 export async function loadOwnProfileSettings(userId: string): Promise<OwnProfileSettings> {
   const user = await prisma.user.findUnique({
@@ -310,6 +336,7 @@ export async function loadOwnProfileSettings(userId: string): Promise<OwnProfile
           cardMediaKey: true,
           cardPosterKey: true,
           cardLoopKey: true,
+          cardMediaClip: true,
         },
       },
     },
@@ -325,6 +352,11 @@ export async function loadOwnProfileSettings(userId: string): Promise<OwnProfile
   };
   const layout = parseProfileLayout(p?.layout ?? null, user ?? null);
 
+  const [media, sourceUrl] = await Promise.all([
+    resolveCardMedia(mediaKeys),
+    ownSourceUrl(userId, kind, mediaKeys.media),
+  ]);
+
   return {
     headline: sanitizeHeadline(p?.headline),
     aboutMd: sanitizeAbout(p?.aboutMd),
@@ -333,8 +365,10 @@ export async function loadOwnProfileSettings(userId: string): Promise<OwnProfile
     layout: { order: layout.order, hidden: layout.hidden },
     pins: sanitizePins(p?.pins),
     card: parseCardConfig(p?.card),
-    media: await resolveCardMedia(mediaKeys),
+    media,
     mediaKeys,
+    clip: ownCardClip(kind, mediaKeys.loop, p?.cardMediaClip ?? null),
+    sourceUrl,
     bannerUrl: user?.bannerUrl ?? null,
   };
 }

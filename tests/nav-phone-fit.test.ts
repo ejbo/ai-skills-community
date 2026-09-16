@@ -2,8 +2,9 @@
 //
 // ED-21: on a 390 px phone the navbar's action cluster overflowed, Chrome widened
 // the LAYOUT viewport to 415 px, and everything positioned against it slid off
-// the glass — the editor's 文字样式 popover lost its last swatch column and
-// 特大 / 等宽, the 讨论区 file drawer's ✕ sat at 367–399 px. Two fixes, pinned here:
+// the glass — the editor's colour panel lost its last swatch column and the
+// 字号 / 字体 menus their last rows, the 讨论区 file drawer's ✕ sat at 367–399 px.
+// Two fixes, pinned here:
 //
 //   1. useAnchoredPanel clamps to the VISIBLE viewport (window.visualViewport),
 //      so a popover can never extend past what the reader sees even when
@@ -37,7 +38,7 @@ vi.mock('next/navigation', () => ({
 const messages = JSON.parse(readFileSync(resolve(__dirname, '../messages/zh-CN.json'), 'utf8')) as Record<string, Record<string, string>>;
 
 describe('anchoredPosition — clamps to the visible viewport', () => {
-  // The 文字样式 popover: 264 px wide, left-aligned to a trigger near the right edge.
+  // An editor toolbar panel (the colour palette): 264 px wide, left-aligned to a trigger near the right edge.
   const trigger = { left: 300, right: 336, top: 200, bottom: 236 };
 
   it('a 390 px phone whose layout viewport grew to 415 px: the panel ends inside 390', () => {

@@ -3,7 +3,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Lock,
-  MessageSquare,
   MessageSquarePlus,
   Pin,
 } from 'lucide-react';
@@ -13,21 +12,25 @@ import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import {
   discussionTagMap,
+  listDiscussionStream,
   listPosts,
   listSidebarTags,
   listTopics,
   type TopicSort,
 } from '@/lib/discussion-queries';
 import { discussionTagLabel } from '@/lib/discussion-tags';
+import { publicPost, publicStreamItems } from '@/lib/discussion-views';
 import { EmptyState } from '@/components/EmptyState';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { toPublicAuthor } from '@/lib/user-identity';
 import { SearchBar } from '@/components/SearchBar';
 import { DiscussionTabs } from './_components/DiscussionTabs';
+import { HotTopicsRail } from './_components/HotTopicsRail';
 import { PostFeed } from './_components/PostFeed';
 import { TopicUpvoteButton } from './_components/TopicUpvoteButton';
 import { CategoryChipStatic, tagDotClass } from './_components/badges';
+import { discussionTabOf } from './_components/tabs';
 import type { CurrentUser } from './_components/types';
 
 export const dynamic = 'force-dynamic';
@@ -62,6 +65,18 @@ function firstParam(v: string | string[] | undefined): string {
   return (Array.isArray(v) ? v[0] : v ?? '').trim();
 }
 
+/**
+ * 动态 (the section was 讨论区 until 2026-09-15) — one hub, three tabs:
+ *
+ *   全部  feed posts AND forum topics in one stream (the default: nobody has
+ *         to switch tabs to see both — owner: 「进入后还需要再点进来分别看，就会分散」)
+ *   动态  posts only, 最新 / 热门
+ *   讨论  the Discourse-style topic list, its 分类 filter in a chip bar at the
+ *         TOP of the list rather than a left rail (owner: 「放在头部进行筛选」)
+ *
+ * 全部 and 动态 share the right rail (热门讨论, ranked, with authors).
+ * 发起讨论 lives in the header so it is one click from every tab.
+ */
 export default async function DiscussionPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await auth();
   const currentUser: CurrentUser | null = session?.user
@@ -72,50 +87,100 @@ export default async function DiscussionPage({ searchParams }: { searchParams: S
         canModerate: can(session.user, 'discussion'),
       }
     : null;
-  const tab = firstParam(searchParams.tab) === 'forum' ? 'forum' : 'posts';
+  const tab = discussionTabOf(firstParam(searchParams.tab));
   const q = firstParam(searchParams.q);
+  const viewerId = session?.user?.id ?? null;
+  const canSeeIdentity = can(session?.user, 'identity');
   const t = await getTranslations('discussion_pages');
 
   return (
-    <div className="container max-w-5xl py-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-3xl font-semibold tracking-tight">{t('title')}</h1>
-        {tab === 'forum' && (
+    <div className="container max-w-6xl py-6">
+      <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+        <div className="min-w-0">
+          <h1 className="text-3xl font-semibold tracking-tight">{t('title')}</h1>
+          <p className="mt-1 text-sm text-muted">{t('subtitle')}</p>
+        </div>
+        <div className="flex w-full items-center gap-2 sm:w-auto">
+          <div className="min-w-0 flex-1 sm:w-72 sm:flex-none">
+            <SearchBar />
+          </div>
           <Link
             href="/discussion/topics/new"
-            className="flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-4 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
+            aria-label={t('start_topic')}
+            className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
           >
-            <MessageSquarePlus className="h-4 w-4" />
-            {t('start_topic')}
+            <MessageSquarePlus className="h-4 w-4" aria-hidden />
+            <span className="hidden sm:inline">{t('start_topic')}</span>
           </Link>
-        )}
-      </div>
-
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-        <DiscussionTabs />
-        <div className="w-full sm:w-72">
-          <SearchBar />
         </div>
+      </header>
+
+      <div className="mt-5">
+        <DiscussionTabs />
       </div>
 
-      <div className="mt-6">
-        {tab === 'posts' ? (
-          <PostsTab
-            q={q}
-            sort={firstParam(searchParams.sort) === 'hot' ? 'hot' : 'new'}
-            currentUser={currentUser}
-            viewerId={session?.user?.id ?? null}
-            viewerCanSeeIdentity={can(session?.user, 'identity')}
-          />
+      <div className="mt-5">
+        {tab === 'forum' ? (
+          <ForumTab searchParams={searchParams} viewerId={viewerId} viewerCanSeeIdentity={canSeeIdentity} />
         ) : (
-          <ForumTab
-            searchParams={searchParams}
-            viewerId={session?.user?.id ?? null}
-            viewerCanSeeIdentity={can(session?.user, 'identity')}
-          />
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="mx-auto w-full min-w-0 max-w-3xl lg:max-w-none">
+              {tab === 'all' ? (
+                <AllTab q={q} currentUser={currentUser} viewerId={viewerId} canSeeIdentity={canSeeIdentity} />
+              ) : (
+                <PostsTab
+                  q={q}
+                  sort={firstParam(searchParams.sort) === 'hot' ? 'hot' : 'new'}
+                  currentUser={currentUser}
+                  viewerId={viewerId}
+                  canSeeIdentity={canSeeIdentity}
+                />
+              )}
+            </div>
+            <aside className="hidden lg:block">
+              <div className="sticky top-20">
+                <HotTopicsRail canSeeIdentity={canSeeIdentity} />
+              </div>
+            </aside>
+          </div>
         )}
       </div>
     </div>
+  );
+}
+
+async function AllTab({
+  q,
+  currentUser,
+  viewerId,
+  canSeeIdentity,
+}: {
+  q: string;
+  currentUser: CurrentUser | null;
+  viewerId: string | null;
+  canSeeIdentity: boolean;
+}) {
+  const t = await getTranslations('discussion_pages');
+  const { items, hasMore, nextCursor } = await listDiscussionStream({ limit: 10, viewerId, q });
+
+  return (
+    <>
+      {q && <p className="mb-3 text-xs text-muted">{t('stream_search', { q })}</p>}
+      <PostFeed
+        // Keyed per stream — a soft nav (search) must remount the feed, not
+        // keep the previous stream's items and cursor.
+        key={`all:${q}`}
+        mode="all"
+        initialItems={publicStreamItems(items, canSeeIdentity)}
+        initialHasMore={hasMore}
+        initialCursor={nextCursor}
+        currentUser={currentUser}
+        q={q}
+        showComposer={!q}
+        emptyTitle={q ? t('empty_search_stream', { q }) : t('empty_stream')}
+        emptyDescription={q ? t('try_other_keywords') : t('empty_stream_desc')}
+      />
+    </>
   );
 }
 
@@ -124,32 +189,23 @@ async function PostsTab({
   sort,
   currentUser,
   viewerId,
-  viewerCanSeeIdentity,
+  canSeeIdentity,
 }: {
   q: string;
   sort: 'new' | 'hot';
   currentUser: CurrentUser | null;
   viewerId: string | null;
-  viewerCanSeeIdentity: boolean;
+  canSeeIdentity: boolean;
 }) {
   const t = await getTranslations('discussion_pages');
-  const tp = await getTranslations('profile');
   // 搜索模式：一次取前 20 条命中，不再游标翻页（PostFeed 的 load-more 请求不带 q）。
-  const [{ items, hasMore, nextCursor }, hotTopics] = await Promise.all([
-    q ? listPosts({ limit: 20, viewerId, q }) : listPosts({ limit: 10, viewerId, sort }),
-    // Right-rail 热门讨论 (xl only) — LinkedIn-style context beside the feed.
-    q
-      ? Promise.resolve(null)
-      : listTopics({ sort: 'top', pageSize: 5, viewerId: null }).then((r) => r.items),
-  ]);
+  const { items, hasMore, nextCursor } = q
+    ? await listPosts({ limit: 20, viewerId, q })
+    : await listPosts({ limit: 10, viewerId, sort });
 
   return (
-    // Two columns (the left profile rail was dropped on purpose — 帖子内容优先).
-    // Explicit rows: the 最新/热门 row lives in row 1 of the LEFT column only,
-    // so the 热门讨论 rail (row 2) top-aligns with the composer card, not with
-    // the sort links.
-    <div className="grid grid-cols-1 gap-x-6 gap-y-3 xl:grid-cols-[minmax(0,1fr)_300px] xl:grid-rows-[auto_minmax(0,1fr)]">
-      <div className="mx-auto w-full max-w-3xl xl:col-start-1 xl:row-start-1">
+    <>
+      <div className="mb-3">
         {q ? (
           <p className="text-xs text-muted">
             {hasMore
@@ -168,7 +224,7 @@ async function PostsTab({
               return (
                 <Link
                   key={s.key}
-                  href={s.key === 'new' ? '/discussion' : '/discussion?sort=hot'}
+                  href={s.key === 'new' ? '/discussion?tab=posts' : '/discussion?tab=posts&sort=hot'}
                   className={
                     active
                       ? 'font-medium text-zinc-900 dark:text-white'
@@ -183,52 +239,21 @@ async function PostsTab({
         )}
       </div>
 
-      <div className="xl:col-start-1 xl:row-start-2">
-        <PostFeed
-          // Keyed per stream — a soft nav (sort toggle / search) must remount
-          // the feed, not keep the previous stream's state and cursor.
-          key={q ? `q:${q}` : `sort:${sort}`}
-          initialPosts={items.map((p) => ({ ...p, author: toPublicAuthor(p.author, viewerCanSeeIdentity) }))}
-          initialHasMore={q ? false : hasMore}
-          initialCursor={q ? null : nextCursor}
-          currentUser={currentUser}
-          sort={sort}
-          showComposer={!q}
-          emptyTitle={q ? t('empty_search_posts', { q }) : undefined}
-          emptyDescription={q ? t('try_other_keywords') : undefined}
-        />
-      </div>
-
-      <aside className="hidden xl:col-start-2 xl:row-start-2 xl:block">
-        {hotTopics && hotTopics.length > 0 && (
-          <div className="surface sticky top-20 rounded-2xl p-4">
-            <h3 className="text-sm font-semibold">{t('hot_topics_title')}</h3>
-            <ul className="mt-3 space-y-3">
-              {hotTopics.map((topic) => (
-                <li key={topic.id}>
-                  <Link href={`/discussion/topics/${topic.id}`} className="group block">
-                    <span className="line-clamp-2 text-sm text-zinc-700 transition group-hover:text-zinc-900 dark:text-zinc-200 dark:group-hover:text-zinc-50">
-                      {topic.title}
-                    </span>
-                    <span className="mt-0.5 flex items-center gap-2 text-[11px] text-muted">
-                      {topic.tags[0] && <CategoryChipStatic tag={topic.tags[0]} />}
-                      <span>{tp('n_replies', { count: topic.replyCount })}</span>
-                      <span>{t('views_compact', { count: formatViews(topic.viewCount) })}</span>
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-            <Link
-              href="/discussion?tab=forum&sort=top"
-              className="mt-3 inline-block text-xs font-medium text-zinc-900 dark:text-zinc-50 hover:underline"
-            >
-              {t('view_all_arrow')}
-            </Link>
-          </div>
-        )}
-      </aside>
-    </div>
+      <PostFeed
+        // Keyed per stream — a soft nav (sort toggle / search) must remount
+        // the feed, not keep the previous stream's state and cursor.
+        key={q ? `q:${q}` : `sort:${sort}`}
+        mode="posts"
+        initialItems={items.map((p) => ({ kind: 'post' as const, post: publicPost(p, canSeeIdentity) }))}
+        initialHasMore={q ? false : hasMore}
+        initialCursor={q ? null : nextCursor}
+        currentUser={currentUser}
+        sort={sort}
+        showComposer={!q}
+        emptyTitle={q ? t('empty_search_posts', { q }) : undefined}
+        emptyDescription={q ? t('try_other_keywords') : undefined}
+      />
+    </>
   );
 }
 
@@ -251,15 +276,14 @@ async function ForumTab({
   const tp = await getTranslations('profile');
   const tl = await getTranslations('labels');
   const tb = await getTranslations('browse');
-  const tn = await getTranslations('nav');
   const locale = await getLocale();
   const categoryRaw = firstParam(searchParams.category);
   const sortRaw = firstParam(searchParams.sort);
   const sort: TopicSort = sortRaw === 'top' ? 'top' : sortRaw === 'new' ? 'new' : 'latest';
   const q = firstParam(searchParams.q);
 
-  // 侧栏 = official 分类（成员自建的从不进来，见 lib/discussion-tags.ts）。
-  // 但筛选允许任何已存在的 slug —— 自建分类不在导航里，帖子上的 chip 仍可点。
+  // 筛选条 = official 分类（成员自建的从不进来，见 lib/discussion-tags.ts）。
+  // 但筛选允许任何已存在的 slug —— 自建分类不在筛选条里，帖子上的 chip 仍可点。
   const tagMap = await discussionTagMap();
   const category = tagMap.has(categoryRaw) ? categoryRaw : undefined;
 
@@ -274,263 +298,210 @@ async function ForumTab({
     listSidebarTags(),
   ]);
 
-  // Distinct topics — summing per-category membership would double-count
-  // multi-分类 topics.
-  const allCount = sidebar.total;
   const activeTag = category ? tagMap.get(category) : undefined;
   const labelOf = (tag: { slug: string; name: string; nameEn: string; official: boolean }) =>
     discussionTagLabel(tag, locale, tl as (key: string) => string);
 
-  const chips = [
-    { key: 'all', label: tb('all') },
-    ...sidebar.tags.map((tag) => ({ key: tag.slug, label: labelOf(tag) })),
-    // 正在筛一个不在侧栏里的自建分类：给它一个 chip，否则「当前在筛什么」
-    // 在移动端完全没有提示。
-    ...(activeTag && !activeTag.official
-      ? [{ key: activeTag.slug, label: `#${labelOf(activeTag)}` }]
-      : []),
+  // Distinct topics — summing per-category membership would double-count
+  // multi-分类 topics.
+  const chips: { key: string; label: string; count?: number; dot?: string }[] = [
+    { key: 'all', label: t('all_topics'), count: sidebar.total },
+    ...sidebar.tags.map((tag) => ({ key: tag.slug, label: labelOf(tag), count: tag.count, dot: tagDotClass(tag) })),
+    // 正在筛一个不在筛选条里的自建分类：给它一个 chip，否则「当前在筛什么」没有任何提示。
+    ...(activeTag && !activeTag.official ? [{ key: activeTag.slug, label: `#${labelOf(activeTag)}` }] : []),
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[200px_minmax(0,1fr)]">
-      {/* Category sidebar (Discourse-style) */}
-      <aside className="hidden lg:block">
-        <nav className="sticky top-20 space-y-0.5">
-          <Link
-            // 分类点击重置搜索词 — 侧栏计数是全局的，带着 q 会货不对板。
-            href={forumHref(searchParams, { category: 'all', page: '1', q: '' })}
-            className={`flex items-center justify-between rounded-lg px-3 py-1.5 text-sm transition ${
-              !category
-                ? 'bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-white'
-                : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
-            }`}
-          >
-            <span>{t('all_topics')}</span>
-            <span className="text-xs text-muted tabular-nums">{allCount}</span>
-          </Link>
-          <div className="px-3 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wider text-muted">
-            {tn('categories')}
-          </div>
-          {sidebar.tags.map((tag) => {
-            const key = tag.slug;
-            const active = category === key;
-            return (
-              <Link
-                key={key}
-                href={forumHref(searchParams, { category: key, page: '1', q: '' })}
-                className={`flex items-center justify-between rounded-lg px-3 py-1.5 text-sm transition ${
-                  active
-                    ? 'bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-white'
-                    : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <span className={`h-2.5 w-2.5 rounded-sm ${tagDotClass(tag)}`} />
-                  {labelOf(tag)}
-                </span>
-                <span className="text-xs text-muted tabular-nums">{tag.count}</span>
-              </Link>
-            );
-          })}
-        </nav>
-      </aside>
-
-      <div>
-        {/* Mobile fallback: category chips */}
-        <div className="flex flex-wrap items-center gap-2 lg:hidden">
+    <div>
+      {/* 分类筛选条 — the list's own header. One row that scrolls sideways on a
+          phone (a wrapped block of nine chips would push the list below the
+          fold), wrapping from sm up. */}
+      <nav aria-label={t('filter_by_category')} className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:overflow-visible sm:px-0">
+        <ul className="flex w-max gap-2 sm:w-auto sm:flex-wrap">
           {chips.map((chip) => {
             const active = chip.key === (category ?? 'all');
             return (
+              <li key={chip.key}>
+                <Link
+                  // 分类切换重置搜索词 — 计数是全局的，带着 q 会货不对板。
+                  href={forumHref(searchParams, { category: chip.key, page: '1', q: '' })}
+                  aria-current={active ? 'true' : undefined}
+                  className={`inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[13px] transition ${
+                    active
+                      ? 'border-zinc-900 bg-zinc-900 font-medium text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
+                      : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-50'
+                  }`}
+                >
+                  {chip.dot && <span aria-hidden className={`h-2 w-2 rounded-full ${chip.dot}`} />}
+                  {chip.label}
+                  {chip.count !== undefined && (
+                    <span
+                      className={`tabular-nums text-xs ${active ? 'text-white/70 dark:text-zinc-900/60' : 'text-muted'}`}
+                    >
+                      {chip.count}
+                    </span>
+                  )}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <span className="text-xs text-muted">
+          {q ? t('topics_search_matches', { q, count: total }) : t('topics_total', { count: total })}
+        </span>
+        <div className="flex items-center gap-3 text-xs">
+          {(
+            [
+              { key: 'latest', label: t('sort_latest_reply') },
+              { key: 'top', label: t('sort_top') },
+              { key: 'new', label: t('sort_new_created') },
+            ] as const
+          ).map((s) => {
+            const active = sort === s.key;
+            return (
               <Link
-                key={chip.key}
-                href={forumHref(searchParams, { category: chip.key, page: '1', q: '' })}
-                className={`rounded-full border px-3 py-1 text-xs transition ${
+                key={s.key}
+                href={forumHref(searchParams, { sort: s.key === 'latest' ? '' : s.key, page: '1' })}
+                className={
                   active
-                    ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10 font-medium text-zinc-900 dark:text-zinc-50'
-                    : 'border-zinc-200 text-zinc-600 hover:border-zinc-400 dark:border-zinc-800 dark:text-zinc-300'
-                }`}
+                    ? 'font-medium text-zinc-900 dark:text-white'
+                    : 'text-muted transition hover:text-zinc-700 dark:hover:text-zinc-200'
+                }
               >
-                {chip.label}
+                {s.label}
               </Link>
             );
           })}
         </div>
+      </div>
 
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 lg:mt-0">
-          <span className="text-xs text-muted">
-            {q
-              ? t('topics_search_matches', { q, count: total })
-              : t('topics_total', { count: total })}
-          </span>
-          <div className="flex items-center gap-3 text-xs">
-            {(
-              [
-                { key: 'latest', label: t('sort_latest_reply') },
-                { key: 'top', label: t('sort_top') },
-                { key: 'new', label: t('sort_new_created') },
-              ] as const
-            ).map((s) => {
-              const active = sort === s.key;
+      <div className="mt-3">
+        {items.length === 0 ? (
+          <EmptyState
+            title={
+              q
+                ? t('empty_search_topics', { q })
+                : category
+                  ? t('empty_category_topics', { category: activeTag ? labelOf(activeTag) : category })
+                  : t('empty_topics')
+            }
+            description={q ? t('try_other_keywords') : t('start_first_topic')}
+            actionLabel={t('start_topic')}
+            actionHref="/discussion/topics/new"
+          />
+        ) : (
+          <ul className="surface divide-y divide-zinc-100 overflow-hidden rounded-2xl dark:divide-zinc-800/60">
+            {items.map((topic) => {
+              const author = toPublicAuthor(topic.author, viewerCanSeeIdentity);
+              const participants = topic.participants.map((p) => toPublicAuthor(p, viewerCanSeeIdentity));
               return (
-                <Link
-                  key={s.key}
-                  href={forumHref(searchParams, { sort: s.key === 'latest' ? '' : s.key, page: '1' })}
-                  className={
-                    active
-                      ? 'font-medium text-zinc-900 dark:text-white'
-                      : 'text-muted transition hover:text-zinc-700 dark:hover:text-zinc-200'
-                  }
+                // The vote button is a SIBLING of the row link (not nested inside
+                // it) — interactive-in-interactive markup breaks a11y/aux-click.
+                <li
+                  key={topic.id}
+                  className="flex items-start gap-4 px-4 py-4 transition hover:bg-zinc-50 dark:hover:bg-zinc-900/60"
                 >
-                  {s.label}
-                </Link>
+                  <TopicUpvoteButton
+                    topicId={topic.id}
+                    initialCount={topic.upvoteCount}
+                    initialUpvoted={topic.upvotedByMe}
+                  />
+                  <Link href={`/discussion/topics/${topic.id}`} className="flex min-w-0 flex-1 items-start gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {topic.pinned && <Pin className="h-3.5 w-3.5 shrink-0 text-zinc-900 dark:text-zinc-50" />}
+                        {topic.locked && <Lock className="h-3.5 w-3.5 shrink-0 text-muted" />}
+                        <span className="truncate text-sm font-medium">{topic.title}</span>
+                        {topic.tags.map((tag) => (
+                          <CategoryChipStatic key={tag.slug} tag={tag} />
+                        ))}
+                      </div>
+                      {topic.excerpt && (
+                        <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-muted">{topic.excerpt}</p>
+                      )}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted">
+                        <Avatar name={author.displayName} src={author.avatarUrl} size="xs" handle={author.handle} />
+                        <span className="truncate">{author.displayName}</span>
+                        <DeptTag department={author.department} lab={author.lab} />
+                        <span>·</span>
+                        <span>{t('active_ago', { time: relativeTime(topic.lastActivityAt, locale) })}</span>
+                        <span className="flex items-center gap-2 sm:hidden">
+                          <span>· {tp('n_replies', { count: topic.replyCount })}</span>
+                          <span>{t('views_compact', { count: formatViews(topic.viewCount) })}</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Discourse-style numeric columns (participants / 回复 / 浏览) */}
+                    <span className="hidden shrink-0 items-center gap-4 self-center sm:flex">
+                      {participants.length > 0 && (
+                        <span className="flex items-center -space-x-2">
+                          {participants.map((p) => (
+                            <Avatar
+                              key={p.handle}
+                              name={p.displayName}
+                              src={p.avatarUrl}
+                              size="xs"
+                              className="ring-2 ring-white dark:ring-zinc-900"
+                              handle={p.handle}
+                            />
+                          ))}
+                        </span>
+                      )}
+                      <span className="w-12 text-center">
+                        <span className="block text-sm font-medium tabular-nums">{topic.replyCount}</span>
+                        <span className="block text-[10px] text-muted">{t('replies_col')}</span>
+                      </span>
+                      <span className="w-12 text-center">
+                        <span className="block text-sm font-medium tabular-nums">{formatViews(topic.viewCount)}</span>
+                        <span className="block text-[10px] text-muted">{t('views_col')}</span>
+                      </span>
+                    </span>
+                  </Link>
+                </li>
               );
             })}
-          </div>
-        </div>
+          </ul>
+        )}
 
-        <div className="mt-3">
-          {items.length === 0 ? (
-            <EmptyState
-              title={
-                q
-                  ? t('empty_search_topics', { q })
-                  : category
-                    ? t('empty_category_topics', { category: activeTag ? labelOf(activeTag) : category })
-                    : t('empty_topics')
-              }
-              description={q ? t('try_other_keywords') : t('start_first_topic')}
-              actionLabel={t('start_topic')}
-              actionHref="/discussion/topics/new"
-            />
-          ) : (
-            <ul className="surface divide-y divide-zinc-100 overflow-hidden rounded-2xl dark:divide-zinc-800/60">
-              {items.map((topic) => {
-                const author = toPublicAuthor(topic.author, viewerCanSeeIdentity);
-                const participants = topic.participants.map((p) =>
-                  toPublicAuthor(p, viewerCanSeeIdentity),
-                );
-                return (
-                  // The vote button is a SIBLING of the row link (not nested inside
-                  // it) — interactive-in-interactive markup breaks a11y/aux-click.
-                  <li
-                    key={topic.id}
-                    className="flex items-start gap-4 px-4 py-4 transition hover:bg-zinc-50 dark:hover:bg-zinc-900/60"
-                  >
-                    <TopicUpvoteButton
-                      topicId={topic.id}
-                      initialCount={topic.upvoteCount}
-                      initialUpvoted={topic.upvotedByMe}
-                    />
-                    <Link
-                      href={`/discussion/topics/${topic.id}`}
-                      className="flex min-w-0 flex-1 items-start gap-4"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {topic.pinned && <Pin className="h-3.5 w-3.5 shrink-0 text-zinc-900 dark:text-zinc-50" />}
-                          {topic.locked && <Lock className="h-3.5 w-3.5 shrink-0 text-muted" />}
-                          <span className="truncate text-sm font-medium">{topic.title}</span>
-                          {topic.tags.map((tag) => (
-                            <CategoryChipStatic key={tag.slug} tag={tag} />
-                          ))}
-                        </div>
-                        {topic.excerpt && (
-                          <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-muted">
-                            {topic.excerpt}
-                          </p>
-                        )}
-                        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted">
-                          <Avatar
-                            name={author.displayName}
-                            src={author.avatarUrl}
-                            size="xs"
-              handle={author.handle}
-            />
-                          <span className="truncate">{author.displayName}</span>
-                          <DeptTag department={author.department} lab={author.lab} />
-                          <span>·</span>
-                          <span>
-                            {t('active_ago', { time: relativeTime(topic.lastActivityAt, locale) })}
-                          </span>
-                          <span className="flex items-center gap-2 sm:hidden">
-                            <span>· {tp('n_replies', { count: topic.replyCount })}</span>
-                            <span>{t('views_compact', { count: formatViews(topic.viewCount) })}</span>
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Discourse-style numeric columns (participants / 回复 / 浏览) */}
-                      <span className="hidden shrink-0 items-center gap-4 self-center sm:flex">
-                        {participants.length > 0 && (
-                          <span className="flex items-center -space-x-2">
-                            {participants.map((p) => (
-                              <Avatar
-                                key={p.handle}
-                                name={p.displayName}
-                                src={p.avatarUrl}
-                                size="xs"
-                                className="ring-2 ring-white dark:ring-zinc-900"
-              handle={p.handle}
-            />
-                            ))}
-                          </span>
-                        )}
-                        <span className="w-12 text-center">
-                          <span className="block text-sm font-medium tabular-nums">
-                            {topic.replyCount}
-                          </span>
-                          <span className="block text-[10px] text-muted">{t('replies_col')}</span>
-                        </span>
-                        <span className="w-12 text-center">
-                          <span className="block text-sm font-medium tabular-nums">
-                            {formatViews(topic.viewCount)}
-                          </span>
-                          <span className="block text-[10px] text-muted">{t('views_col')}</span>
-                        </span>
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-
-          {(page > 1 || hasMore) && (
-            <div className="mt-6 flex items-center justify-center gap-3 text-sm">
-              {page > 1 ? (
-                <Link
-                  href={forumHref(searchParams, { page: String(page - 1) })}
-                  className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 font-medium text-zinc-700 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  {tb('prev_page')}
-                </Link>
-              ) : (
-                <span className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 px-3 font-medium text-muted opacity-40 dark:border-zinc-800">
-                  <ChevronLeft className="h-4 w-4" />
-                  {tb('prev_page')}
-                </span>
-              )}
-              <span className="text-muted tabular-nums">
-                {page} / {Math.max(1, Math.ceil(total / pageSize))}
+        {(page > 1 || hasMore) && (
+          <div className="mt-6 flex items-center justify-center gap-3 text-sm">
+            {page > 1 ? (
+              <Link
+                href={forumHref(searchParams, { page: String(page - 1) })}
+                className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 font-medium text-zinc-700 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                {tb('prev_page')}
+              </Link>
+            ) : (
+              <span className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 px-3 font-medium text-muted opacity-40 dark:border-zinc-800">
+                <ChevronLeft className="h-4 w-4" />
+                {tb('prev_page')}
               </span>
-              {hasMore ? (
-                <Link
-                  href={forumHref(searchParams, { page: String(page + 1) })}
-                  className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 font-medium text-zinc-700 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
-                >
-                  {tb('next_page')}
-                  <ChevronRight className="h-4 w-4" />
-                </Link>
-              ) : (
-                <span className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 px-3 font-medium text-muted opacity-40 dark:border-zinc-800">
-                  {tb('next_page')}
-                  <ChevronRight className="h-4 w-4" />
-                </span>
-              )}
-            </div>
-          )}
-        </div>
+            )}
+            <span className="text-muted tabular-nums">
+              {page} / {Math.max(1, Math.ceil(total / pageSize))}
+            </span>
+            {hasMore ? (
+              <Link
+                href={forumHref(searchParams, { page: String(page + 1) })}
+                className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 font-medium text-zinc-700 transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+              >
+                {tb('next_page')}
+                <ChevronRight className="h-4 w-4" />
+              </Link>
+            ) : (
+              <span className="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 px-3 font-medium text-muted opacity-40 dark:border-zinc-800">
+                {tb('next_page')}
+                <ChevronRight className="h-4 w-4" />
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

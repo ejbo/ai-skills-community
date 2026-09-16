@@ -374,13 +374,47 @@ export type EmbedData =
   | { kind: 'link'; ref: string; ok: true; data: EmbedLinkData }
   | { kind: EmbedKind; ref: string; ok: false; reason: EmbedFailReason };
 
-/** Picker search results (`GET /api/zones/embed/search`). */
+/**
+ * One picker row (`GET /api/zones/embed/search` → `{ items, nextCursor }`).
+ * `ref` is what gets inserted and is NEVER shown — rows lead with `title`
+ * (already fallen back through name / summary server-side; '' only when the
+ * row has no text at all).
+ */
 export interface EmbedCandidate {
   kind: EmbedKind;
   ref: string;
   title: string;
   subtitle: string;
   imageUrl: string | null;
+  /**
+   * ISO instant of the row's last CONTENT change as far as the schema can tell
+   * (never `updatedAt`, which counter increments bump — see the table in
+   * lib/zones/embeds.ts). Rendered as 「更新于 X」.
+   */
+  updatedAt: string;
+  /** The viewer published it (author / uploader / co-author). */
+  mine: boolean;
+  /** The viewer saved it (书架 / 稍后看 / 收藏 / 我参加的 — per kind). */
+  favorited: boolean;
+  /**
+   * 技术专区 posts only: the body changed after publishing. `updatedAt` stays
+   * the PUBLISH instant (the key 最新 sorts by), so the edit is a badge rather
+   * than a date that would read out of order against its neighbours.
+   */
+  edited?: boolean;
+}
+
+/** `GET /api/zones/embed/search` response. */
+export interface EmbedSearchPage {
+  items: EmbedCandidate[];
+  /** `null` = the stream ended — 已经到底了, unless `truncated` says why. */
+  nextCursor: string | null;
+  /**
+   * The 最热 offset cap ended the stream while rows remained (`nextCursor` is
+   * null but the list is NOT complete) — the dialog asks for a keyword instead
+   * of claiming 已经到底了. 最新 pages by keyset and never truncates.
+   */
+  truncated: boolean;
 }
 
 /** Library chapter payload for the preview drawer (`GET /api/zones/embed/library/[slug]`). */

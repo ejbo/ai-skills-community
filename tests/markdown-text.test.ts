@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MARKDOWN_MAX_NESTING_DEPTH,
   RICH_TEXT_RAW_CEILING_FACTOR,
+  exceedsNestingDepth,
   isRichTextTooLong,
   markdownInlineToPlainText,
   markdownToPlainText,
@@ -200,6 +202,88 @@ describe('stripRichFormatting', () => {
 
   it('keeps a stray closer and a foreign closer', () => {
     expect(stripRichFormatting(`<span class="a">${RED}x${CLOSE}</span>${CLOSE}`)).toBe(`<span class="a">x</span>${CLOSE}`);
+  });
+});
+
+describe('contract v3 — hex spans and the 行高 wrapper', () => {
+  const HEX = '<span data-color="#1f6feb">';
+  const WRAP = (inner: string, v = '2') => `<div data-lh="${v}">\n\n${inner}\n\n</div>`;
+
+  it('hex / px / font-key spans are ours: discounted, stripped, never plain text', () => {
+    const body = `前 ${HEX}<span data-size="24"><span data-font="consolas">蓝</span></span>${CLOSE} 后`;
+    expect(richTextLength(body)).toBe('前 蓝 后'.length);
+    expect(stripRichFormatting(body)).toBe('前 蓝 后');
+    expect(markdownToPlainText(body)).toBe('前 蓝 后');
+    const upper = '<span data-color="#1F6FEB">a</span>';
+    expect(richTextLength(upper)).toBe(upper.length); // not a stored value: foreign
+  });
+
+  it('a wrapper takes its blank-line margins with it: same visible length, exact unwrapped markdown back', () => {
+    const plain = '引言\n\n## 标题\n\n- 项\n\n结尾';
+    const wrapped = `引言\n\n${WRAP('## 标题\n\n- 项')}\n\n结尾`;
+    expect(richTextLength(wrapped)).toBe(plain.length);
+    expect(stripRichFormatting(wrapped)).toBe(plain);
+    expect(markdownToPlainText(wrapped)).toBe('引言 标题 项 结尾');
+    // back to back, at both document edges, and empty
+    expect(stripRichFormatting(`${WRAP('a', '1.5')}\n\n${WRAP('b', '3')}`)).toBe('a\n\nb');
+    expect(richTextLength(WRAP('').replace('\n\n\n\n', '\n\n'))).toBe(0);
+    // an invalid value or a foreign div is not ours
+    const foreign = '<div data-lh="1.3">\n\nx\n\n</div>';
+    expect(stripRichFormatting(foreign)).toBe(foreign);
+  });
+
+  it('a wrapper written inside code is literal text', () => {
+    const fence = `\`\`\`html\n${WRAP('x')}\n\`\`\``;
+    expect(richTextLength(fence)).toBe(fence.length);
+    expect(stripRichFormatting(fence)).toBe(fence);
+  });
+
+  // An API-written body may use CRLF. A wrapper's margins are markup whatever
+  // the line endings, and stripping must give the body back byte for byte.
+  it('counts a CRLF margin as one newline', () => {
+    const crlf = '<div data-lh="2">\r\n\r\nx\r\n\r\n</div>';
+    expect(richTextLength(crlf)).toBe(1);
+    expect(stripRichFormatting(crlf)).toBe('x');
+    const body = 'a\r\n\r\n<div data-lh="1.5">\r\n\r\npara one\r\n\r\npara two\r\n\r\n</div>\r\n\r\nb';
+    const plain = 'a\r\n\r\npara one\r\n\r\npara two\r\n\r\nb';
+    expect(stripRichFormatting(body)).toBe(plain);
+    expect(richTextLength(body)).toBe(plain.length);
+    expect(richTextLength('<div data-lh="2">\r\n\r\n\r\n\r\n</div>')).toBe(0);
+  });
+});
+
+describe('exceedsNestingDepth (the renderer’s guard)', () => {
+  it('passes real documents and catches the shapes that overflow the render stack', () => {
+    const post = [
+      '# 标题',
+      '> 引用\n> > 里面还有一层\n> > > 三层',
+      '- 一\n  - 二\n    - 三\n      - 四',
+      '<div data-lh="2">\n\n<span data-color="#1f6feb"><span data-size="24">蓝</span></span>\n\n</div>',
+      '| a | b |\n| --- | --- |\n| 1 | 2 |',
+      '```js\nconst a = { b: { c: { d: 1 } } };\n```',
+    ].join('\n\n');
+    expect(exceedsNestingDepth(post)).toBe(false);
+    expect(exceedsNestingDepth('')).toBe(false);
+    expect(exceedsNestingDepth('x'.repeat(5000))).toBe(false);
+
+    expect(exceedsNestingDepth(`${'>'.repeat(MARKDOWN_MAX_NESTING_DEPTH + 1)} x`)).toBe(true);
+    expect(exceedsNestingDepth(`${'>'.repeat(MARKDOWN_MAX_NESTING_DEPTH)} x`)).toBe(false);
+    expect(exceedsNestingDepth('<b>'.repeat(400) + 'x')).toBe(true);
+    expect(exceedsNestingDepth('<span data-color="#aabbcc">'.repeat(400) + 'x')).toBe(true);
+    expect(exceedsNestingDepth(`${' '.repeat(700)}- deep`)).toBe(true);
+    // the deepest body ever reported (ED-1: a <pre> with 230 nested <b>) still renders
+    expect(exceedsNestingDepth(`<pre>${'<b>'.repeat(230)}x`)).toBe(false);
+  });
+
+  it('does not mistake repeated, closed or void markup for nesting', () => {
+    expect(exceedsNestingDepth('<b>x</b>'.repeat(500))).toBe(false);
+    expect(exceedsNestingDepth('<p>x'.repeat(500))).toBe(false); // an opener implicitly closes the last <p>
+    expect(exceedsNestingDepth('<br>'.repeat(500))).toBe(false);
+    expect(exceedsNestingDepth('<img src="/a.png">'.repeat(500))).toBe(false);
+    // indented CODE is not a list: only a list-marker line counts its indent
+    expect(exceedsNestingDepth(`${' '.repeat(700)}const a = 1`)).toBe(false);
+    // …and nothing inside a fence counts at all
+    expect(exceedsNestingDepth(`\`\`\`\n${'>'.repeat(500)} x\n${'<b>'.repeat(500)}\n\`\`\``)).toBe(false);
   });
 });
 

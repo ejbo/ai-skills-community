@@ -12,8 +12,11 @@ import { EMPTY_MEDIA, MediaPicker, mediaCount, mediaPayload, type MediaDraft } f
 import type { CurrentUser, PostView } from './types';
 
 /**
- * The feed composer: a collapsed "分享你的想法…" trigger that expands into a
- * markdown editor with LinkedIn-style attachments (shared MediaPicker).
+ * The feed composer: a collapsed "分享你的想法…" trigger that expands into the
+ * FULL rich-text editor (headings, lists, colour, tables, code, 图片/@人/表情/投票
+ * — owner, 2026-09-15: 「发布动态也改成富文本编辑」) with LinkedIn-style
+ * attachments (shared MediaPicker). The body is still markdown, so the post
+ * API, the notification excerpts and the card renderer are unchanged.
  */
 export function PostComposer({
   currentUser,
@@ -116,9 +119,10 @@ export function PostComposer({
       <RichTextEditor
         value={bodyMd}
         onChange={setBodyMd}
-        variant="compact"
+        variant="full"
         maxLength={8000}
-        placeholder={t('composer_placeholder')}
+        maxHeight="32rem"
+        placeholder={t('composer_editor_placeholder')}
         ariaLabel={t('post_body_aria')}
         autoFocus
       />

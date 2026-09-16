@@ -3,8 +3,9 @@
 // Shared anchoring for any dropdown that must escape its own header.
 //
 // Written for the 技术专区 header menus (管理 / 已加入) and the navbar's overflow
-// menu; the language and user menus, the editor's 文字样式 popover and the @人
-// picker ride it too. The first two sit inside an ancestor that would otherwise eat the
+// menu; the language and user menus, the editor toolbar's panels (字体 / 字号 /
+// 行高 / 颜色 / 插入链接, via components/editor/toolbar/primitives.tsx) and the
+// @人 picker ride it too. The first two sit inside an ancestor that would otherwise eat the
 // panel — the zone header <section> is `relative overflow-hidden` (cover image
 // + HairlineGrid) so an absolutely positioned menu is CLIPPED at ANY z-index,
 // and `NavBarShell` carries a `transition-transform` that makes it a

@@ -19,6 +19,10 @@ const MAX_BODY_BYTES = 8 * 1024;
 // key → 400 invalid_input otherwise). A video needs a loop or a poster (400
 // media_missing) — a card never plays the original. URLs are rebuilt from the
 // keys, never accepted. The previous files are unlinked after the commit.
+// This path stores NO clip range (UserProfile.cardMediaClip is cleared): a card
+// video cut from a chosen segment attaches through POST /api/me/profile/media/clip
+// instead; PUT remains for photos and the poster-only fallback on a box without
+// ffmpeg.
 // → { media: ProfileCardMedia | null }
 export async function PUT(req: Request) {
   const session = await auth();
@@ -33,8 +37,8 @@ export async function PUT(req: Request) {
   return NextResponse.json({ media: result.media }, { headers: { 'cache-control': 'private, no-store' } });
 }
 
-// DELETE /api/me/profile/media — remove the card photo/video (the card falls
-// back to the avatar / monogram). → { media: null }
+// DELETE /api/me/profile/media — remove the card photo/video and its clip range
+// (the card falls back to the avatar / monogram). → { media: null }
 // Unconditional for the owner: it clears whatever the row holds — valid, legacy
 // or pointing at a missing file — so no stored state can make media unremovable.
 // An upload that was never attached is not "the card's media" and is not touched

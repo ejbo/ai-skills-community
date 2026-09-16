@@ -9,7 +9,7 @@ import {
   PROFILE_UPLOAD_VIDEO_TYPES,
   deleteProfileMediaFiles,
   isProfileUploadKind,
-  makeProfileVideoDerivatives,
+  isStoredVideoContainer,
   newProfileMediaKey,
   ownerTagFor,
   probeProfileVideoDurationSec,
@@ -28,7 +28,8 @@ const MINUTE_MS = 60 * 1000;
 const UPLOADS_PER_MINUTE = 12;
 
 // POST /api/profile/media/upload — raw-body upload of 名片 media (step 1 of 2;
-// PUT /api/me/profile/media attaches the keys). Any logged-in member.
+// POST /api/me/profile/media/clip — a video — or PUT /api/me/profile/media
+// attaches the keys). Any logged-in member.
 // Headers:
 //   content-type   the file's MIME, allowlisted per kind:
 //                    image / poster  image/jpeg image/png image/webp image/gif
@@ -36,16 +37,23 @@ const UPLOADS_PER_MINUTE = 12;
 //                  (no AVIF: its metadata cannot be stripped server-side; the
 //                  settings UI re-encodes photos to WebP/JPEG first). A refusal
 //                  is 400 { error: 'unsupported_type', accepted: [...] }.
-//   x-upload-kind  image | video | poster   (poster = the client-captured first frame)
+//   x-upload-kind  image | video | poster   (poster = the client-captured frame, used only without ffmpeg)
 //   x-filename     encodeURIComponent(name) — extension hint only, never stored or echoed
 //
 // → { kind, key, url, size, posterKey, posterUrl, loopKey, loopUrl, durationSec }
-// For a video the server also tries to cut the ≤ PROFILE_LOOP_SECONDS hover loop
-// and a poster frame (best-effort: both null without ffmpeg — the client then
-// uploads its own poster). A video's `url` is `loopUrl ?? posterUrl ?? null` —
-// the original is never served, so it never gets a URL. Nothing is attached to
-// the profile here, and nothing uploaded is served until PUT /api/me/profile/
-// media attaches it, so an abandoned upload is an unreachable orphan file — which
+// A video is ONLY stored, sniffed and probed: bytes that do not open like an
+// ISO-BMFF/QuickTime or Matroska/WebM container are refused as unsupported_type
+// and deleted (a text concat list / playlist declared as video/quicktime would
+// otherwise be stored, and ffmpeg picks its demuxer from the bytes);
+// `durationSec` is the picture's length from ffprobe (null without it), and
+// `url`/`posterKey`/`loopKey` are all null. The member then trims it in the
+// browser and POST /api/me/profile/media/clip cuts the ≤ PROFILE_CLIP_MAX_SECONDS
+// card clip + poster and attaches them in one step (or, on a box without ffmpeg,
+// the editor uploads its own poster and attaches poster-only through PUT). The
+// original is never served publicly, so it never gets a public URL; its uploader
+// alone can stream it back from GET /api/me/profile/media/source for the trimmer.
+// Nothing is attached to the profile here, and nothing uploaded is served until
+// it is attached, so an abandoned upload is an unreachable orphan file — which
 // every upload request also reclaims, best-effort, for the CALLER's own leftovers
 // older than 24 h (sweepOwnUnattachedCardMedia; bounded, throttled, never fails
 // the upload).
@@ -115,40 +123,48 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'upload_failed' }, { status: 500 });
   }
 
-  let posterKey: string | null = null;
-  let loopKey: string | null = null;
-  let durationSec: number | null = null;
   try {
     if (kind === 'video') {
-      const derived = await makeProfileVideoDerivatives(key, ownerTag);
-      posterKey = derived.posterKey;
-      loopKey = derived.loopKey;
-      durationSec = await probeProfileVideoDurationSec(key);
-    } else {
-      const stripped = await stripStoredImageMetadata(key);
-      if (stripped === null) {
+      if (!(await isStoredVideoContainer(key))) {
         await deleteProfileMediaFiles([key]);
         return unsupported();
       }
-      size = stripped;
+      // No derivation here any more: the segment is the member's choice, cut on
+      // the clip route. Probing is cheap (container header only) and lets the
+      // trimmer's server-side twin agree on the duration.
+      const durationSec = await probeProfileVideoDurationSec(key);
+      return NextResponse.json({
+        kind,
+        key,
+        url: null,
+        size,
+        durationSec,
+        posterKey: null,
+        posterUrl: null,
+        loopKey: null,
+        loopUrl: null,
+      });
     }
-    const posterUrl = posterKey ? profileMediaUrl(posterKey) : null;
-    const loopUrl = loopKey ? profileMediaUrl(loopKey) : null;
+    const stripped = await stripStoredImageMetadata(key);
+    if (stripped === null) {
+      await deleteProfileMediaFiles([key]);
+      return unsupported();
+    }
     return NextResponse.json({
       kind,
       key,
-      url: kind === 'video' ? loopUrl ?? posterUrl : profileMediaUrl(key),
-      size,
-      posterKey,
-      posterUrl,
-      loopKey,
-      loopUrl,
-      durationSec,
+      url: profileMediaUrl(key),
+      size: stripped,
+      durationSec: null,
+      posterKey: null,
+      posterUrl: null,
+      loopKey: null,
+      loopUrl: null,
     });
   } catch {
     // Every step above is best-effort and should not throw; if something still
     // does, leave nothing behind on the volume the database lives on.
-    await deleteProfileMediaFiles([key, posterKey, loopKey]);
+    await deleteProfileMediaFiles([key]);
     return NextResponse.json({ error: 'upload_failed' }, { status: 500 });
   }
 }

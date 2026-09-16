@@ -8,9 +8,12 @@
 // a bad / missing / forbidden ref becomes `{ ok: false, reason }` so one dead
 // token can never blank a whole post.
 
+import type { Prisma } from '@prisma/client';
 import type { Session } from 'next-auth';
 import { prisma } from '@/lib/db';
-import { eventViewerFromSession, getEventDetail } from '@/lib/event-queries';
+import { eventViewerFromSession, getEventDetail, pastWhere, upcomingWhere } from '@/lib/event-queries';
+import { eventLocalDayKey } from '@/lib/events/time';
+import { EVENT_TIMEZONES } from '@/lib/events/types';
 import { BROWSABLE_DOC_WHERE, canReadDoc, libraryViewerFromSession } from '@/lib/library-queries';
 import { asAiOverview, pickOverview, pickText } from '@/lib/library/i18n-content';
 import { INSTALLABLE_SKILL_WHERE } from '@/lib/pack-queries';
@@ -20,6 +23,26 @@ import { canViewVideo, videoActorFrom } from '@/lib/video/access';
 import { VIDEO_DETAIL_INCLUDE } from '@/lib/video/queries';
 import { SHORT_FEED_SELECT, annotateShortsViewer, toShortView } from '@/lib/video/shorts-queries';
 import { ZONE_ACCESS_SELECT, resolveZoneAccess, type ZoneAccessRow, type ZoneSiteViewer } from './access';
+import {
+  EMBED_SEARCH_MAX_QUERY,
+  EMBED_SEARCH_PAGE_SIZE,
+  encodeEmbedSearchCursor,
+  firstNonBlank,
+  isKeysetPosition,
+  paginateEmbedPhases,
+  pagingForSort,
+  phaseGroup,
+  phaseSlice,
+  phasesFor,
+  type EmbedKeysetKey,
+  type EmbedPhaseFetcher,
+  type EmbedPhaseGroup,
+  type EmbedPhasePosition,
+  type EmbedSearchCursor,
+  type EmbedSearchScope,
+  type EmbedSearchSort,
+  type SearchableEmbedKind,
+} from './embed-search-shared';
 import { getLinkPreview, linkPreviewHash } from './link-preview';
 import { normalizePreviewUrl } from './og-parse';
 import type { ZoneAccess } from './permissions';
@@ -41,6 +64,7 @@ import type {
   EmbedLibraryPreview,
   EmbedPackData,
   EmbedPostData,
+  EmbedSearchPage,
   EmbedShortData,
   EmbedSkillData,
   EmbedVideoData,
@@ -61,13 +85,6 @@ type Resolved = Map<string, EmbedData | null>;
 
 function fail(kind: EmbedKind, ref: string, reason: EmbedFailReason): EmbedData {
   return { kind, ref, ok: false, reason };
-}
-
-const MAX_CANDIDATES = 20;
-
-function clampTake(take: number | undefined): number {
-  const n = Number(take ?? 10);
-  return Number.isFinite(n) ? Math.min(MAX_CANDIDATES, Math.max(1, Math.trunc(n))) : 10;
 }
 
 // ── library ──────────────────────────────────────────────────────────────────
@@ -603,147 +620,638 @@ export async function resolveEmbed(kind: EmbedKind, ref: string, ctx: EmbedConte
 }
 
 // ── picker search ────────────────────────────────────────────────────────────
+//
+// 插入引用 is a content BROWSER: per kind, 全部 / 我发布的 / 我的收藏 × 最新 / 最热,
+// 20 rows a page, 全部 = the viewer's own rows first, then everyone else's.
+// What those words mean is decided per kind from the schema:
+//
+// | kind    | 我发布的 (publisher)                | 我的收藏 (per-viewer save)        | 最新 orders by / 「更新于」 shows          | 最热 orders by                                   |
+// |---------|-------------------------------------|-----------------------------------|-------------------------------------------|--------------------------------------------------|
+// | library | `uploaderId`                        | `LibraryShelfItem` (书架)          | `createdAt` (入库)                         | viewCount → shelfCount → likeCount               |
+// | video   | `uploaderId`                        | `VideoFavorite` (稍后看)           | `publishedAt` (nulls last)                 | viewCount → likeCount (the board's 最多观看)       |
+// | short   | `uploaderId`                        | `VideoFavorite` (稍后看)           | `createdAt` (shorts publish on create)     | likeCount → viewCount (the shorts hot feed)      |
+// | skill   | `authorId`                          | `Favorite` (收藏 — not Like/订阅)  | current version `createdAt` (a release)    | trendingScore → downloadCount (the 热门 sort)     |
+// | pack    | — admins curate (`createdById` is an operator) | — no favourite model   | `createdAt`                                | installCount                                     |
+// | event   | `authorId` (发起人)                  | `EventAttendee` (我参加的)          | `startAt`: 即将举行 first (ascending), then 已结束 | attendeeCount                              |
+// | post    | `authorId` OR a `ZonePostAuthor` 合著 | `ZonePostBookmark` (收藏)          | `publishedAt` (nulls last); 已编辑 is a badge | likeCount → commentCount → viewCount (feed 最热) |
+//
+// 讨论区 has no embed kinds of its own (DISCUSSION_EMBED_KINDS = these minus `file`).
+//
+// Why never `updatedAt`: Prisma's @updatedAt is bumped by EVERY `update`, and
+// every one of these models has counters incremented through one (a view, a
+// like, a 书架 click, a CLI install, the skills trending cron) — 「更新于 刚刚」
+// would just mean "someone looked at it". Each kind therefore shows and sorts
+// by the newest instant that only a CONTENT change moves.
+//
+// The date on the row is ALWAYS the one 最新 sorts by, so a list read top to
+// bottom never jumps backwards. ZonePost is the one model with a real edit
+// stamp and Prisma cannot order by COALESCE(editedAt, publishedAt), so a post
+// shows its PUBLISH time (what it sorts by) plus an 已编辑 badge — showing
+// `editedAt` while sorting by `publishedAt` put 「14 天前」 between two rows
+// reading 「19 天前」. 活动 are the one kind whose ordering key is the event's
+// own date rather than an authoring instant; that date is the row's subtitle
+// (in the event's OWN zone — a 21:00Z start in Asia/Shanghai is the NEXT day
+// there, and the UTC slice used to print the wrong day), so it is still the
+// visible ordering key.
+//
+// The gate: every phase is `AND[gate, phase clause, keyword]` with the SAME
+// discoverability filter this picker has always used (and the kind's browse
+// page uses) — 我的收藏 can never be a side door: a 书架 doc that went private,
+// a 稍后看 video that was unpublished, a bookmarked post that was deleted or
+// narrowed to 仅成员可见 simply stops matching. `mine` + `rest` partition the
+// gated set (publisher = viewer / ≠ viewer), so 全部 pages have no duplicates
+// and no gaps (lib/zones/embed-search-shared.ts#paginateEmbedPhases). Favourite
+// flags are ONE batched join-table read per page, never a per-row lookup.
+//
+// Paging: 最新 pages by KEYSET on the very column it orders by, so publishing
+// or deleting a row between two pages can no longer make a row vanish from the
+// stream; 最热 keeps offset paging (its counters move under any cursor) and
+// says `truncated` when the offset cap, not the data, ends the stream. Each
+// 最新 `orderBy` is therefore exactly `[<key>, id]` — a third column would put
+// rows in an order the keyset clause cannot express.
+
+const insensitive = (value: string) => ({ contains: value, mode: 'insensitive' as const });
+
+/** A page row before the per-page favourite flag is attached. */
+interface PickerRow {
+  id: string;
+  /**
+   * The value the kind's 最新 order sorts by — keyset cursors are minted from
+   * it. `null` = that column is NULL on this row (it then sorts last).
+   */
+  sortAt: Date | null;
+  candidate: Omit<EmbedCandidate, 'favorited'>;
+}
+
+interface PickerSource {
+  fetch: EmbedPhaseFetcher<PickerRow>;
+  /** The subset of `ids` (row ids) the viewer saved — one query. */
+  favoritedIds: (ids: string[]) => Promise<Set<string>>;
+}
+
+interface PhaseClauses<W> {
+  mine: (uid: string) => W;
+  rest: (uid: string) => W;
+  fav: (uid: string) => W;
+}
 
 /**
- * Candidates for the composer's 插入 dialog. Each kind searches with the same
- * discoverability filter its browse page uses; `file` / `link` are not
- * searchable (attachments come from the post, links are typed in).
+ * The publisher half of a `where`. `null` = the phase cannot match anything for
+ * this viewer (no id), so the fetch short-circuits instead of querying.
  */
-export async function searchEmbedCandidates(
-  kind: EmbedKind,
-  q: string,
-  ctx: EmbedContext,
-  take?: number,
-): Promise<EmbedCandidate[]> {
-  const query = q.trim().slice(0, 64);
-  const limit = clampTake(take);
-  const contains = { contains: query, mode: 'insensitive' as const };
-  try {
-    switch (kind) {
-      case 'library': {
-        const rows = await prisma.libraryDoc.findMany({
-          where: { ...BROWSABLE_DOC_WHERE, ...(query ? { OR: [{ title: contains }, { author: contains }] } : {}) },
-          orderBy: [{ viewCount: 'desc' }, { createdAt: 'desc' }],
-          take: limit,
-          select: { slug: true, title: true, author: true, docType: true, coverUrl: true },
-        });
-        return rows.map((d) => ({ kind, ref: d.slug, title: d.title, subtitle: d.author ?? d.docType, imageUrl: d.coverUrl }));
-      }
-      case 'short': {
-        const rows = await prisma.video.findMany({
-          where: {
-            isShort: true,
-            status: 'published',
-            visibility: 'public',
-            deletedAt: null,
-            ...(query ? { OR: [{ title: contains }, { summary: contains }] } : {}),
-          },
-          orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
-          take: limit,
-          select: { id: true, title: true, summary: true, posterUrl: true, uploader: { select: { displayName: true } } },
-        });
-        return rows.map((v) => ({
-          kind,
-          ref: v.id,
-          title: v.title || v.summary,
-          subtitle: v.uploader.displayName,
-          imageUrl: v.posterUrl,
-        }));
-      }
-      case 'video': {
-        const rows = await prisma.video.findMany({
-          where: {
-            isShort: false,
-            status: 'published',
-            visibility: 'public',
-            deletedAt: null,
-            ...(query ? { OR: [{ title: contains }, { summary: contains }] } : {}),
-          },
-          orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
-          take: limit,
-          select: { slug: true, title: true, posterUrl: true, uploader: { select: { displayName: true } } },
-        });
-        return rows.map((v) => ({ kind, ref: v.slug, title: v.title, subtitle: v.uploader.displayName, imageUrl: v.posterUrl }));
-      }
-      case 'skill': {
-        const rows = await prisma.skill.findMany({
-          where: { ...DISCOVERABLE_SKILL_WHERE, ...(query ? { OR: [{ name: contains }, { slug: contains }, { summary: contains }] } : {}) },
-          orderBy: [{ trendingScore: 'desc' }, { updatedAt: 'desc' }],
-          take: limit,
-          select: { slug: true, name: true, summary: true },
-        });
-        return rows.map((s) => ({ kind, ref: s.slug, title: s.name, subtitle: s.summary, imageUrl: null }));
-      }
-      case 'pack': {
-        const rows = await prisma.skillPack.findMany({
-          where: { isPublished: true, ...(query ? { OR: [{ name: contains }, { slug: contains }, { summary: contains }] } : {}) },
-          orderBy: [{ sortOrder: 'asc' }, { updatedAt: 'desc' }],
-          take: limit,
-          select: { slug: true, name: true, summary: true, icon: true },
-        });
-        return rows.map((p) => ({
-          kind,
-          ref: p.slug,
-          title: p.name,
-          subtitle: p.summary,
-          imageUrl: /^(\/|https?:\/\/)/i.test(p.icon) ? p.icon : null,
-        }));
-      }
-      case 'event': {
-        const now = new Date();
-        const where = { deletedAt: null, ...(query ? { title: contains } : {}) };
-        const select = { id: true, title: true, startAt: true, city: true, venue: true, coverUrl: true };
-        const upcoming = await prisma.event.findMany({
-          where: { ...where, startAt: { gte: now } },
-          orderBy: [{ startAt: 'asc' }, { id: 'asc' }],
-          take: limit,
-          select,
-        });
-        const past =
-          upcoming.length < limit
-            ? await prisma.event.findMany({
-                where: { ...where, startAt: { lt: now } },
-                orderBy: [{ startAt: 'desc' }, { id: 'desc' }],
-                take: limit - upcoming.length,
-                select,
-              })
-            : [];
-        return [...upcoming, ...past].map((e) => ({
-          kind,
-          ref: e.id,
-          title: e.title,
-          subtitle: [e.startAt.toISOString().slice(0, 10), e.city ?? e.venue ?? ''].filter(Boolean).join(' · '),
-          imageUrl: e.coverUrl,
-        }));
-      }
-      case 'post': {
-        const rows = await prisma.zonePost.findMany({
-          // AND-of-OR-groups: the visibility half carries its own `OR`, so the
-          // keyword match can never overwrite it. Without it the picker would
-          // list the TITLES of 仅成员可见 / 指定成员可见 posts to anyone who can
-          // read the 版块.
-          where: {
-            AND: [
-              { status: 'published', deletedAt: null, zone: readableZoneWhere(ctx.viewer) },
-              zonePostVisibilityWhere(null, ctx.viewer),
-              ...(query ? [{ OR: [{ title: contains }, { summary: contains }] }] : []),
-            ],
-          },
-          orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
-          take: limit,
-          select: { id: true, title: true, coverUrl: true, zone: { select: { name: true } } },
-        });
-        return rows.map((p) => ({ kind, ref: p.id, title: p.title, subtitle: p.zone.name, imageUrl: p.coverUrl }));
-      }
-      case 'file':
-      case 'link':
-        return [];
-    }
-  } catch (e) {
-    console.warn('[zones/embeds] search failed', kind, e instanceof Error ? e.message : e);
-    return [];
+function phaseWhere<W extends object>(group: EmbedPhaseGroup, uid: string | null, clauses: PhaseClauses<W>): W | null {
+  // Every WhereInput is all-optional, so `{}` (no narrowing) is a valid W.
+  const none = {} as W;
+  switch (group) {
+    case 'all':
+      return none;
+    case 'rest':
+      return uid ? clauses.rest(uid) : none;
+    case 'mine':
+      return uid ? clauses.mine(uid) : null;
+    case 'fav':
+      return uid ? clauses.fav(uid) : null;
   }
 }
+
+/** `skip` for an offset position; nothing at all for a keyset one. */
+function skipOf(position: EmbedPhasePosition): { skip?: number } {
+  return isKeysetPosition(position) ? {} : { skip: position.offset };
+}
+
+/** The keyset half of a `where` AND list — empty under offset paging and at the start of a phase. */
+function keysetAnd<W>(position: EmbedPhasePosition, clause: (key: EmbedKeysetKey) => W): W[] {
+  return isKeysetPosition(position) && position.after ? [clause(position.after)] : [];
+}
+
+// The two DESC helpers are NOT interchangeable, and picking the wrong one is a
+// runtime 500 rather than a type error: Prisma refuses `{ field: null }` on a
+// REQUIRED column ("Argument `createdAt` is missing"), and leaving the branch
+// out of a NULLABLE column's clause would strand every null-key row.
+// A null `at` on a required column can only come from a forged cursor, so those
+// helpers degrade to the id comparison instead of building an invalid filter.
+
+/** Keyset clause for `[<field> desc, id desc]` on a NOT NULL column. */
+function afterDesc<W>(field: string, key: EmbedKeysetKey): W {
+  if (key.at === null) return { id: { lt: key.id } } as W;
+  return { OR: [{ [field]: { lt: key.at } }, { [field]: key.at, id: { lt: key.id } }] } as W;
+}
+
+/**
+ * Keyset clause for `[<field> desc nulls last, id desc]` on a NULLABLE column:
+ * rows strictly after (at, id). NULL-key rows sort LAST, so a non-null cursor
+ * also admits them and a null cursor stays inside that trailing group.
+ */
+function afterDescNullsLast<W>(field: string, key: EmbedKeysetKey): W {
+  if (key.at === null) return { [field]: null, id: { lt: key.id } } as W;
+  return { OR: [{ [field]: { lt: key.at } }, { [field]: key.at, id: { lt: key.id } }, { [field]: null }] } as W;
+}
+
+/** Keyset clause for `[<field> asc, id asc]` on a NOT NULL column (活动 的 即将举行 半区). */
+function afterAsc<W>(field: string, key: EmbedKeysetKey): W {
+  if (key.at === null) return { id: { gt: key.id } } as W;
+  return { OR: [{ [field]: { gt: key.at } }, { [field]: key.at, id: { gt: key.id } }] } as W;
+}
+
+async function idSet<T>(uid: string | null, ids: string[], read: (uid: string) => Promise<T[]>, pick: (row: T) => string): Promise<Set<string>> {
+  if (!uid || ids.length === 0) return new Set();
+  return new Set((await read(uid)).map(pick));
+}
+
+const iso = (d: Date) => d.toISOString();
+
+function librarySource(q: string, sort: EmbedSearchSort, ctx: EmbedContext): PickerSource {
+  const uid = ctx.viewer.id;
+  const clauses: PhaseClauses<Prisma.LibraryDocWhereInput> = {
+    mine: (id) => ({ uploaderId: id }),
+    rest: (id) => ({ uploaderId: { not: id } }),
+    fav: (id) => ({ shelfItems: { some: { userId: id } } }),
+  };
+  const orderBy: Prisma.LibraryDocOrderByWithRelationInput[] =
+    sort === 'hot'
+      ? [{ viewCount: 'desc' }, { shelfCount: 'desc' }, { likeCount: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }]
+      : [{ createdAt: 'desc' }, { id: 'desc' }];
+  return {
+    fetch: async (phase, position, take) => {
+      const scoped = phaseWhere(phaseGroup(phase), uid, clauses);
+      if (!scoped) return [];
+      const rows = await prisma.libraryDoc.findMany({
+        where: {
+          AND: [
+            BROWSABLE_DOC_WHERE,
+            scoped,
+            ...keysetAnd<Prisma.LibraryDocWhereInput>(position, (k) => afterDesc('createdAt', k)),
+            ...(q ? [{ OR: [{ title: insensitive(q) }, { author: insensitive(q) }] }] : []),
+          ],
+        },
+        orderBy,
+        ...skipOf(position),
+        take,
+        select: {
+          id: true,
+          slug: true,
+          title: true,
+          author: true,
+          summary: true,
+          summaryEn: true,
+          coverUrl: true,
+          uploaderId: true,
+          createdAt: true,
+          uploader: { select: { displayName: true } },
+        },
+      });
+      return rows.map((d) => {
+        const summary = pickText(ctx.locale, d.summary, d.summaryEn);
+        const title = firstNonBlank(d.title, summary);
+        return {
+          id: d.id,
+          sortAt: d.createdAt,
+          candidate: {
+            kind: 'library' as const,
+            ref: d.slug,
+            title,
+            subtitle: firstNonBlank(d.author, d.uploader.displayName),
+            imageUrl: d.coverUrl,
+            updatedAt: iso(d.createdAt),
+            mine: d.uploaderId === uid,
+          },
+        };
+      });
+    },
+    favoritedIds: (ids) =>
+      idSet(
+        uid,
+        ids,
+        (id) => prisma.libraryShelfItem.findMany({ where: { userId: id, docId: { in: ids } }, select: { docId: true } }),
+        (r) => r.docId,
+      ),
+  };
+}
+
+function videoSource(kind: 'video' | 'short', q: string, sort: EmbedSearchSort, ctx: EmbedContext): PickerSource {
+  const uid = ctx.viewer.id;
+  const isShort = kind === 'short';
+  const clauses: PhaseClauses<Prisma.VideoWhereInput> = {
+    mine: (id) => ({ uploaderId: id }),
+    rest: (id) => ({ uploaderId: { not: id } }),
+    fav: (id) => ({ favorites: { some: { userId: id } } }),
+  };
+  // Today's gate, unchanged: only published PUBLIC rows (an unlisted video
+  // plays from its link but is not offered to strangers' posts).
+  const gate: Prisma.VideoWhereInput = { isShort, status: 'published', visibility: 'public', deletedAt: null };
+  // 最新 keys on one column + id (the keyset contract). Shorts publish on
+  // create; long videos carry a real publish stamp, and the rare published row
+  // without one sorts last and tie-breaks on id.
+  const afterKey = isShort
+    ? (k: EmbedKeysetKey) => afterDesc<Prisma.VideoWhereInput>('createdAt', k)
+    : (k: EmbedKeysetKey) => afterDescNullsLast<Prisma.VideoWhereInput>('publishedAt', k);
+  const orderBy: Prisma.VideoOrderByWithRelationInput[] = isShort
+    ? sort === 'hot'
+      ? [{ likeCount: 'desc' }, { viewCount: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }]
+      : [{ createdAt: 'desc' }, { id: 'desc' }]
+    : sort === 'hot'
+      ? [{ viewCount: 'desc' }, { likeCount: 'desc' }, { publishedAt: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }]
+      : [{ publishedAt: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }];
+  return {
+    fetch: async (phase, position, take) => {
+      const scoped = phaseWhere(phaseGroup(phase), uid, clauses);
+      if (!scoped) return [];
+      const rows = await prisma.video.findMany({
+        where: {
+          AND: [
+            gate,
+            scoped,
+            ...keysetAnd(position, afterKey),
+            ...(q ? [{ OR: [{ title: insensitive(q) }, { summary: insensitive(q) }] }] : []),
+          ],
+        },
+        orderBy,
+        ...skipOf(position),
+        take,
+        select: {
+          id: true,
+          slug: true,
+          title: true,
+          summary: true,
+          posterUrl: true,
+          uploaderId: true,
+          publishedAt: true,
+          createdAt: true,
+          uploader: { select: { displayName: true } },
+        },
+      });
+      return rows.map((v) => ({
+        id: v.id,
+        sortAt: isShort ? v.createdAt : v.publishedAt,
+        candidate: {
+          kind,
+          // shorts embed as `short:<id>`, long videos as `video:<slug>`
+          ref: isShort ? v.id : v.slug,
+          title: firstNonBlank(v.title, v.summary),
+          subtitle: v.uploader.displayName,
+          imageUrl: v.posterUrl,
+          updatedAt: iso(isShort ? v.createdAt : (v.publishedAt ?? v.createdAt)),
+          mine: v.uploaderId === uid,
+        },
+      }));
+    },
+    favoritedIds: (ids) =>
+      idSet(
+        uid,
+        ids,
+        (id) => prisma.videoFavorite.findMany({ where: { userId: id, videoId: { in: ids } }, select: { videoId: true } }),
+        (r) => r.videoId,
+      ),
+  };
+}
+
+function skillSource(q: string, sort: EmbedSearchSort, ctx: EmbedContext): PickerSource {
+  const uid = ctx.viewer.id;
+  const clauses: PhaseClauses<Prisma.SkillWhereInput> = {
+    mine: (id) => ({ authorId: id }),
+    rest: (id) => ({ authorId: { not: id } }),
+    fav: (id) => ({ favorites: { some: { userId: id } } }),
+  };
+  // A skill whose only version was yanked keeps `status: 'published'` with a
+  // null `currentVersionId` — nothing to install, and ORDER BY a nullable
+  // relation column DESC is NULLS FIRST in Postgres, so those rows sat at the
+  // very top of 最新 showing their original createdAt. They are not offered.
+  const released: Prisma.SkillWhereInput = { currentVersionId: { not: null } };
+  const orderBy: Prisma.SkillOrderByWithRelationInput[] =
+    sort === 'hot'
+      ? [{ trendingScore: 'desc' }, { downloadCount: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }]
+      : [{ currentVersion: { createdAt: 'desc' } }, { id: 'desc' }];
+  /** Keyset over the release instant, which `released` keeps non-null. */
+  const afterRelease = (k: EmbedKeysetKey): Prisma.SkillWhereInput =>
+    k.at === null
+      ? { id: { lt: k.id } }
+      : { OR: [{ currentVersion: { createdAt: { lt: k.at } } }, { currentVersion: { createdAt: k.at }, id: { lt: k.id } }] };
+  return {
+    fetch: async (phase, position, take) => {
+      const scoped = phaseWhere(phaseGroup(phase), uid, clauses);
+      if (!scoped) return [];
+      const rows = await prisma.skill.findMany({
+        where: {
+          AND: [
+            DISCOVERABLE_SKILL_WHERE,
+            released,
+            scoped,
+            ...keysetAnd(position, afterRelease),
+            ...(q ? [{ OR: [{ name: insensitive(q) }, { slug: insensitive(q) }, { summary: insensitive(q) }] }] : []),
+          ],
+        },
+        orderBy,
+        ...skipOf(position),
+        take,
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          summary: true,
+          authorId: true,
+          createdAt: true,
+          currentVersion: { select: { createdAt: true } },
+          author: { select: { displayName: true } },
+        },
+      });
+      return rows.map((s) => {
+        const title = firstNonBlank(s.name, s.summary);
+        const summary = s.summary.trim();
+        const releasedAt = s.currentVersion?.createdAt ?? s.createdAt;
+        return {
+          id: s.id,
+          sortAt: releasedAt,
+          candidate: {
+            kind: 'skill' as const,
+            ref: s.slug,
+            title,
+            subtitle: [s.author.displayName, summary && summary !== title ? summary : ''].filter(Boolean).join(' · '),
+            imageUrl: null,
+            updatedAt: iso(releasedAt),
+            mine: s.authorId === uid,
+          },
+        };
+      });
+    },
+    favoritedIds: (ids) =>
+      idSet(
+        uid,
+        ids,
+        (id) => prisma.favorite.findMany({ where: { userId: id, skillId: { in: ids } }, select: { skillId: true } }),
+        (r) => r.skillId,
+      ),
+  };
+}
+
+function packSource(q: string, sort: EmbedSearchSort): PickerSource {
+  const orderBy: Prisma.SkillPackOrderByWithRelationInput[] =
+    sort === 'hot'
+      ? [{ installCount: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'desc' }, { id: 'desc' }]
+      : [{ createdAt: 'desc' }, { id: 'desc' }];
+  return {
+    fetch: async (phase, position, take) => {
+      // 合集包 offer 全部 only (EMBED_SEARCH_SCOPES_BY_KIND) → the single `all` phase.
+      if (phaseGroup(phase) !== 'all') return [];
+      const rows = await prisma.skillPack.findMany({
+        where: {
+          AND: [
+            { isPublished: true },
+            ...keysetAnd<Prisma.SkillPackWhereInput>(position, (k) => afterDesc('createdAt', k)),
+            ...(q ? [{ OR: [{ name: insensitive(q) }, { slug: insensitive(q) }, { summary: insensitive(q) }] }] : []),
+          ],
+        },
+        orderBy,
+        ...skipOf(position),
+        take,
+        select: { id: true, slug: true, name: true, summary: true, icon: true, createdAt: true },
+      });
+      return rows.map((p) => {
+        const title = firstNonBlank(p.name, p.summary);
+        const summary = p.summary.trim();
+        return {
+          id: p.id,
+          sortAt: p.createdAt,
+          candidate: {
+            kind: 'pack' as const,
+            ref: p.slug,
+            title,
+            subtitle: summary !== title ? summary : '',
+            imageUrl: /^(\/|https?:\/\/)/i.test(p.icon) ? p.icon : null,
+            updatedAt: iso(p.createdAt),
+            mine: false,
+          },
+        };
+      });
+    },
+    favoritedIds: async () => new Set(),
+  };
+}
+
+function eventSource(q: string, sort: EmbedSearchSort, ctx: EmbedContext): PickerSource {
+  const uid = ctx.viewer.id;
+  const clauses: PhaseClauses<Prisma.EventWhereInput> = {
+    mine: (id) => ({ authorId: id }),
+    rest: (id) => ({ authorId: { not: id } }),
+    fav: (id) => ({ attendees: { some: { userId: id } } }),
+  };
+  // 最新 = 「快要发生的在前」. Ordering by `createdAt` buried next week's event
+  // under listings typed up yesterday for events that already ended, and an
+  // author embedding an event almost always means an upcoming one. The split
+  // is a PHASE (`<group>:up` then `<group>:past`, phasesFor), so 我发布的在前
+  // still holds inside each half, and `upcoming` is the SAME boundary the
+  // /events 即将举行 tab uses (per-zone start of today, `endAt ?? startAt`) —
+  // a live or multi-day event stays in the first half.
+  //
+  // The second half is `pastWhere()`, NOT `{ NOT: upcomingWhere() }`. SQL is
+  // three-valued: `(endAt ?? startAt)` is an OR over a nullable column, so for
+  // a row with `endAt IS NULL` the upcoming expression is NULL, and `NOT NULL`
+  // is NULL — a past all-day event with no end date matched NEITHER half and
+  // silently left the picker (caught on the real database, not by the
+  // in-memory test). `strayZone` closes the other end: a timed row whose
+  // `timezone` is outside the closed EVENT_TIMEZONES set matches no per-zone
+  // branch of either helper, so it is swept into 已结束 rather than dropped.
+  const upcoming = upcomingWhere();
+  const strayZone: Prisma.EventWhereInput = { allDay: false, timezone: { not: null, notIn: EVENT_TIMEZONES.map((t) => t.value) } };
+  const past: Prisma.EventWhereInput = { OR: [pastWhere(), strayZone] };
+  return {
+    fetch: async (phase, position, take) => {
+      const scoped = phaseWhere(phaseGroup(phase), uid, clauses);
+      if (!scoped) return [];
+      const slice = phaseSlice(phase);
+      const ascending = slice === 'up';
+      const orderBy: Prisma.EventOrderByWithRelationInput[] =
+        sort === 'hot'
+          ? [{ attendeeCount: 'desc' }, { startAt: 'desc' }, { id: 'desc' }]
+          : ascending
+            ? [{ startAt: 'asc' }, { id: 'asc' }]
+            : [{ startAt: 'desc' }, { id: 'desc' }];
+      const rows = await prisma.event.findMany({
+        where: {
+          AND: [
+            { deletedAt: null },
+            scoped,
+            ...(slice === 'up' ? [upcoming] : slice === 'past' ? [past] : []),
+            ...keysetAnd<Prisma.EventWhereInput>(position, (k) => (ascending ? afterAsc('startAt', k) : afterDesc('startAt', k))),
+            ...(q ? [{ OR: [{ title: insensitive(q) }, { summary: insensitive(q) }] }] : []),
+          ],
+        },
+        orderBy,
+        ...skipOf(position),
+        take,
+        select: {
+          id: true,
+          title: true,
+          summary: true,
+          startAt: true,
+          timezone: true,
+          allDay: true,
+          city: true,
+          venue: true,
+          coverUrl: true,
+          authorId: true,
+          createdAt: true,
+        },
+      });
+      return rows.map((e) => ({
+        id: e.id,
+        sortAt: e.startAt,
+        candidate: {
+          kind: 'event' as const,
+          ref: e.id,
+          title: firstNonBlank(e.title, e.summary),
+          // The event's own date — the key 最新 sorts by — in the event's OWN
+          // zone (eventLocalDayKey, the same day the /events list groups it
+          // under). The UTC slice this replaced printed 09-04 for a 21:00Z
+          // start in Asia/Shanghai, which is 09-05 05:00 there.
+          subtitle: [eventLocalDayKey(e.startAt, e.timezone, e.allDay), firstNonBlank(e.city, e.venue)].filter(Boolean).join(' · '),
+          imageUrl: e.coverUrl,
+          // 「更新于」 stays the listing's publish instant; the event's own date
+          // is the subtitle above.
+          updatedAt: iso(e.createdAt),
+          mine: e.authorId === uid,
+        },
+      }));
+    },
+    favoritedIds: (ids) =>
+      idSet(
+        uid,
+        ids,
+        (id) => prisma.eventAttendee.findMany({ where: { userId: id, eventId: { in: ids } }, select: { eventId: true } }),
+        (r) => r.eventId,
+      ),
+  };
+}
+
+function postSource(q: string, sort: EmbedSearchSort, ctx: EmbedContext): PickerSource {
+  const uid = ctx.viewer.id;
+  const clauses: PhaseClauses<Prisma.ZonePostWhereInput> = {
+    mine: (id) => ({ OR: [{ authorId: id }, { coauthors: { some: { userId: id } } }] }),
+    rest: (id) => ({ authorId: { not: id }, coauthors: { none: { userId: id } } }),
+    fav: (id) => ({ bookmarks: { some: { userId: id } } }),
+  };
+  const orderBy: Prisma.ZonePostOrderByWithRelationInput[] =
+    sort === 'hot'
+      ? [{ likeCount: 'desc' }, { commentCount: 'desc' }, { viewCount: 'desc' }, { publishedAt: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }]
+      : [{ publishedAt: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }];
+  return {
+    fetch: async (phase, position, take) => {
+      const scoped = phaseWhere(phaseGroup(phase), uid, clauses);
+      if (!scoped) return [];
+      const rows = await prisma.zonePost.findMany({
+        // AND-of-OR-groups: the visibility half and the 我发布的 half each carry
+        // their own `OR`, so neither the keyword nor the phase can overwrite it.
+        // Without the visibility half the picker would list the TITLES of
+        // 仅成员可见 / 指定成员可见 posts to anyone who can read the 版块.
+        where: {
+          AND: [
+            { status: 'published', deletedAt: null, zone: readableZoneWhere(ctx.viewer) },
+            zonePostVisibilityWhere(null, ctx.viewer),
+            scoped,
+            ...keysetAnd<Prisma.ZonePostWhereInput>(position, (k) => afterDescNullsLast('publishedAt', k)),
+            ...(q ? [{ OR: [{ title: insensitive(q) }, { summary: insensitive(q) }] }] : []),
+          ],
+        },
+        orderBy,
+        ...skipOf(position),
+        take,
+        select: {
+          id: true,
+          title: true,
+          summary: true,
+          coverUrl: true,
+          authorId: true,
+          publishedAt: true,
+          editedAt: true,
+          createdAt: true,
+          // Only the viewer's own co-author row — `mine` needs nothing else, and
+          // Prisma loads this relation for the whole page in ONE query.
+          coauthors: uid ? { where: { userId: uid }, select: { userId: true } } : { take: 0, select: { userId: true } },
+          author: { select: { displayName: true } },
+          zone: { select: { name: true } },
+        },
+      });
+      return rows.map((p) => ({
+        id: p.id,
+        sortAt: p.publishedAt,
+        candidate: {
+          kind: 'post' as const,
+          ref: p.id,
+          title: firstNonBlank(p.title, p.summary),
+          subtitle: [p.zone.name, p.author.displayName].filter(Boolean).join(' · '),
+          imageUrl: p.coverUrl,
+          // The PUBLISH time — the key 最新 sorts by. A later edit is a badge
+          // (`edited`), not a different date, or the column would read out of
+          // order against the rows around it.
+          updatedAt: iso(p.publishedAt ?? p.createdAt),
+          edited: !!p.editedAt,
+          mine: !!uid && (p.authorId === uid || p.coauthors.some((c) => c.userId === uid)),
+        },
+      }));
+    },
+    favoritedIds: (ids) =>
+      idSet(
+        uid,
+        ids,
+        (id) => prisma.zonePostBookmark.findMany({ where: { userId: id, postId: { in: ids } }, select: { postId: true } }),
+        (r) => r.postId,
+      ),
+  };
+}
+
+function pickerSource(kind: SearchableEmbedKind, q: string, sort: EmbedSearchSort, ctx: EmbedContext): PickerSource {
+  switch (kind) {
+    case 'library':
+      return librarySource(q, sort, ctx);
+    case 'short':
+    case 'video':
+      return videoSource(kind, q, sort, ctx);
+    case 'skill':
+      return skillSource(q, sort, ctx);
+    case 'pack':
+      return packSource(q, sort);
+    case 'event':
+      return eventSource(q, sort, ctx);
+    case 'post':
+      return postSource(q, sort, ctx);
+  }
+}
+
+export interface EmbedSearchOptions {
+  q?: string;
+  scope?: EmbedSearchScope;
+  sort?: EmbedSearchSort;
+  /** Already decoded against `phasesFor(kind, scope, sort)` + `pagingForSort(sort)` (the route 400s garbage). */
+  cursor?: EmbedSearchCursor | null;
+  /** Defaults to EMBED_SEARCH_PAGE_SIZE; tests shrink it. */
+  pageSize?: number;
+}
+
+/**
+ * One page of candidates for the composer's 插入引用 dialog. Throws on a
+ * database error — an empty page would read as 已经到底了, so the route turns a
+ * failure into a 500 the dialog can offer to retry.
+ */
+export async function searchEmbedCandidates(kind: SearchableEmbedKind, opts: EmbedSearchOptions, ctx: EmbedContext): Promise<EmbedSearchPage> {
+  const q = (opts.q ?? '').trim().slice(0, EMBED_SEARCH_MAX_QUERY);
+  const scope = opts.scope ?? 'all';
+  const sort = opts.sort ?? 'new';
+  const phases = phasesFor(kind, scope, sort);
+  const pageSize = Math.max(1, Math.min(EMBED_SEARCH_PAGE_SIZE, Math.trunc(opts.pageSize ?? EMBED_SEARCH_PAGE_SIZE)));
+  const source = pickerSource(kind, q, sort, ctx);
+
+  const { rows, next, truncated } = await paginateEmbedPhases(phases, opts.cursor ?? null, pageSize, source.fetch, {
+    paging: pagingForSort(sort),
+    keyOf: (r) => ({ at: r.sortAt, id: r.id }),
+  });
+  // 我的收藏 rows are saved by definition; every other page asks once.
+  const saved = scope === 'fav' ? new Set(rows.map((r) => r.id)) : await source.favoritedIds(rows.map((r) => r.id));
+  return {
+    items: rows.map((r) => ({ ...r.candidate, favorited: saved.has(r.id) })),
+    nextCursor: next ? encodeEmbedSearchCursor(next) : null,
+    truncated,
+  };
+}
+
 
 // ── library chapter preview (drawer) ─────────────────────────────────────────
 

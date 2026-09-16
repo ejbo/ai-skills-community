@@ -17,7 +17,8 @@ export function TopicUpvoteButton({
   topicId: string;
   initialCount: number;
   initialUpvoted: boolean;
-  size?: 'sm' | 'lg';
+  /** `inline` = a one-row pill for card footers (the 全部 stream's topic cards). */
+  size?: 'sm' | 'lg' | 'inline';
 }) {
   const t = useTranslations('discussion_ui');
   const router = useRouter();
@@ -57,7 +58,12 @@ export function TopicUpvoteButton({
     }
   }
 
-  const dims = size === 'lg' ? 'h-14 w-12 text-sm' : 'h-11 w-10 text-xs';
+  const dims =
+    size === 'lg'
+      ? 'h-14 w-12 flex-col text-sm'
+      : size === 'inline'
+        ? 'h-8 gap-1 px-2.5 text-xs'
+        : 'h-11 w-10 flex-col text-xs';
 
   return (
     <button
@@ -65,7 +71,7 @@ export function TopicUpvoteButton({
       disabled={busy}
       aria-pressed={upvoted}
       title={upvoted ? t('upvote_undo') : '+1'}
-      className={`flex shrink-0 flex-col items-center justify-center rounded-lg border transition ${dims} ${
+      className={`flex shrink-0 items-center justify-center rounded-lg border transition ${dims} ${
         upvoted
           ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900/[0.06] dark:bg-white/10 font-medium text-zinc-900 dark:text-zinc-50'
           : 'border-zinc-200 text-zinc-600 hover:border-zinc-400 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-300 dark:hover:text-zinc-50'

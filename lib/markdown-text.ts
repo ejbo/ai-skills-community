@@ -47,7 +47,7 @@
 //  • Truncation is by CODE POINT (a cut surrogate pair renders as '�').
 
 import { POLL_TOKEN_GLOBAL_RE } from '@/lib/polls-shared';
-import { RICH_SPAN_TAG_RE } from '@/lib/rich-marks';
+import { RICH_LINE_HEIGHT_TAG_RE, RICH_SPAN_TAG_RE } from '@/lib/rich-marks';
 
 // ── Code regions (fenced blocks + inline code spans) ─────────────────────────
 
@@ -191,8 +191,26 @@ function codeSpanText(raw: string): string {
 /** A real HTML tag: `<`, an ASCII-letter name, optional attributes, `>`. NOT `a < b > c`. */
 const TAG_SOURCE = String.raw`<\/?([A-Za-z][\w-]*)(?:\s[^<>]*)?\/?>`;
 
-/** RICH_SPAN_TAG_RE anchored to a whole tag (built once; the shared regex is global/stateful). */
-const RICH_TAG_EXACT = new RegExp(`^(?:${RICH_SPAN_TAG_RE.source})$`, RICH_SPAN_TAG_RE.flags.replace(/[gy]/g, ''));
+/**
+ * The editor's formatting openers anchored to a whole tag (built once; the
+ * shared regexes are global/stateful): the formatting spans — legacy names,
+ * `#rrggbb`, px sizes, every font key (RICH_SPAN_TAG_RE, exact values) — and
+ * the 行高 wrapper `<div data-lh="…">` (RICH_LINE_HEIGHT_TAG_RE). Closers are
+ * matched by the per-name stack below, not by this pattern.
+ */
+const RICH_TAG_EXACT = new RegExp(`^(?:${RICH_SPAN_TAG_RE.source}|${RICH_LINE_HEIGHT_TAG_RE.source})$`);
+
+/**
+ * The 行高 wrapper is a BLOCK the serializer writes on its own line with a blank
+ * line inside each edge (`<div data-lh="2">\n\n…\n\n</div>`,
+ * components/editor/line-height.ts). Those two line breaks are markup too: the
+ * unwrapped body had one `\n\n` between its blocks, the wrapped body has it
+ * PLUS the ones around each tag. A wrapper range therefore also takes up to two
+ * newlines after its opener and before its closer — so wrapping blocks never
+ * changes the visible length, and stripRichFormatting gives back the exact
+ * unwrapped markdown.
+ */
+const WRAPPER_NEWLINES = 2;
 
 const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
 
@@ -211,6 +229,27 @@ function richTagRanges(md: string): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
   const stacks = new Map<string, { ours: boolean; start: number; end: number }[]>();
   const unclosed: { ours: boolean; start: number; end: number }[] = [];
+  // Newline runs next to a wrapper tag (see WRAPPER_NEWLINES). A CRLF is ONE
+  // newline: an API-written body may use them, and counting only the `\n` left
+  // the `\r` as "visible text" (so wrapping changed the length) and left stray
+  // carriage returns behind in stripRichFormatting.
+  const after = (end: number) => {
+    let e = end;
+    for (let k = 0; k < WRAPPER_NEWLINES; k++) {
+      if (md.charCodeAt(e) === 10) e += 1;
+      else if (md.charCodeAt(e) === 13 && md.charCodeAt(e + 1) === 10) e += 2;
+      else break;
+    }
+    return e;
+  };
+  const before = (start: number) => {
+    let s = start;
+    for (let k = 0; k < WRAPPER_NEWLINES; k++) {
+      if (s > 0 && md.charCodeAt(s - 1) === 10) s -= s > 1 && md.charCodeAt(s - 2) === 13 ? 2 : 1;
+      else break;
+    }
+    return s;
+  };
   let r = 0;
   for (const m of md.matchAll(new RegExp(TAG_SOURCE, 'g'))) {
     const start = m.index ?? 0;
@@ -220,7 +259,10 @@ function richTagRanges(md: string): Array<[number, number]> {
     const name = m[1].toLowerCase();
     if (m[0].startsWith('</')) {
       const top = stacks.get(name)?.pop();
-      if (top?.ours) ranges.push([top.start, top.end], [start, end]);
+      if (top?.ours) {
+        if (name === 'div') ranges.push([top.start, after(top.end)], [before(start), end]);
+        else ranges.push([top.start, top.end], [start, end]);
+      }
       continue;
     }
     if (m[0].endsWith('/>') || VOID_TAGS.has(name)) continue;
@@ -233,12 +275,19 @@ function richTagRanges(md: string): Array<[number, number]> {
   // Openers of ours that no closer popped.
   const closedStarts = new Set(ranges.map(([s]) => s));
   for (const e of unclosed) if (!closedStarts.has(e.start)) ranges.push([e.start, e.end]);
-  return ranges.sort((a, b) => a[0] - b[0]);
+  ranges.sort((a, b) => a[0] - b[0]);
+  // A wrapper's newline margins may meet the previous range (an empty wrapper,
+  // two wrappers back to back): clamp so no character is discounted twice.
+  for (let i = 1; i < ranges.length; i++) {
+    if (ranges[i][0] < ranges[i - 1][1]) ranges[i] = [ranges[i - 1][1], Math.max(ranges[i][1], ranges[i - 1][1])];
+  }
+  return ranges;
 }
 
 /**
  * Characters of a body that are VISIBLE text as far as length caps go: the raw
- * length minus the formatting spans the editor adds. Colouring a phrase adds
+ * length minus the formatting spans and 行高 wrappers the editor adds (a
+ * wrapper with its newline margins — wrapping blocks never changes the count). Colouring a phrase adds
  * ~30 raw characters (`<span data-color="red">` + `</span>`); counting those
  * against a 2000-character comment cap would make a formatted comment fail
  * validation although its text is far shorter. Everything else still counts —
@@ -270,8 +319,9 @@ export function isRichTextTooLong(md: string, limit: number): boolean {
 }
 
 /**
- * Remove the editor's formatting spans, keeping their inner text and every
- * other piece of HTML/markdown byte-for-byte (code untouched). For surfaces
+ * Remove the editor's formatting spans and 行高 wrappers, keeping their inner
+ * text / markdown and every other piece of HTML/markdown byte-for-byte (code
+ * untouched; `<sup>`/`<sub>` kept — they carry meaning). For surfaces
  * where formatting is meaningless or harmful but markdown is not: the SKILL.md
  * fallback body installed into other people's agent folders, AI prompt context.
  */
@@ -287,10 +337,96 @@ export function stripRichFormatting(md: string): string {
   return out + md.slice(cursor);
 }
 
+// ── Nesting depth (the renderer's guard) ─────────────────────────────────────
+
+/**
+ * How deep a body may nest before components/MarkdownRenderer.tsx refuses to
+ * render it as a tree. EVERY stage of that pipeline recurses once per level —
+ * mdast-util-to-hast, rehype-raw's parse5 bridge, hast-util-sanitize,
+ * hast-util-to-jsx-runtime, React's renderer, and in an RSC page React Flight's
+ * JSON serialization, which gives out first (~700 levels). A 1.5 kB body of
+ * `>>>>…` therefore threw `RangeError: Maximum call stack size exceeded` while
+ * SSR-ing, and the whole PAGE fell to its error boundary for every viewer — one
+ * comment could take down the post it sits under.
+ *
+ * 300 sits between the two things that matter: a real document nests maybe 6,
+ * and the deepest body anyone has actually reported — 230 nested `<b>` inside a
+ * `<pre>` (the ED-1 body, tests/code-lines-budget.test.ts) — must still render;
+ * the overflow starts somewhere past 650. So the guard only fires on content
+ * built to break the renderer, and it fires with a margin.
+ */
+export const MARKDOWN_MAX_NESTING_DEPTH = 300;
+
+/** One line's list marker, measured AFTER its blockquote markers and indentation. */
+const LIST_ITEM_RE = /^(?:[-+*]|\d{1,9}[.)])[ \t]/;
+
+/** Tags an opener of the same name implicitly closes (a stream of `<p>`s is not 1000 levels deep). */
+const AUTO_CLOSING_TAGS = new Set(['p', 'li', 'td', 'th', 'tr', 'dt', 'dd', 'option']);
+
+const TAG_GLOBAL_RE = new RegExp(TAG_SOURCE, 'g');
+
+/**
+ * True when the body nests deeper than `max` — blockquote markers, list
+ * indentation and open HTML tags together. Deliberately an OVER-estimate that
+ * costs one linear scan: it decides whether to render a tree at all, so it must
+ * be cheap and must never miss (a miss is a 500 for every viewer of the page).
+ * Fenced code is skipped, like everywhere else in this module.
+ */
+export function exceedsNestingDepth(md: string, max: number = MARKDOWN_MAX_NESTING_DEPTH): boolean {
+  if (!md || md.length <= max) return false;
+  let fence: { char: string; len: number } | null = null;
+  const open: string[] = [];
+  for (const line of md.split('\n')) {
+    const mark = FENCE_LINE_RE.exec(line);
+    if (mark) {
+      if (!fence) {
+        if (!(mark[1][0] === '`' && mark[2].includes('`'))) fence = { char: mark[1][0], len: mark[1].length };
+      } else if (mark[1][0] === fence.char && mark[1].length >= fence.len && mark[2].trim() === '') {
+        fence = null;
+      }
+      continue;
+    }
+    if (fence) continue;
+    // Leading `>` markers, and the spaces between the last one and the content.
+    let i = 0;
+    let quotes = 0;
+    let indent = 0;
+    for (; i < line.length; i += 1) {
+      const c = line.charCodeAt(i);
+      if (c === 62) {
+        quotes += 1;
+        indent = 0;
+      } else if (c === 32) indent += 1;
+      else if (c === 9) indent += 4;
+      else break;
+    }
+    // Indentation counts as nesting only on a LIST ITEM line: anywhere else it
+    // is an indented code block or a continuation line, and pasted code must
+    // not be mistaken for 200 levels of list.
+    const list = LIST_ITEM_RE.test(line.slice(i)) ? (indent >> 1) + 1 : 0;
+    if (quotes + list + open.length > max) return true;
+    if (line.indexOf('<') === -1) continue;
+    for (const m of line.matchAll(TAG_GLOBAL_RE)) {
+      const tag = m[1].toLowerCase();
+      if (m[0].startsWith('</')) {
+        const at = open.lastIndexOf(tag);
+        if (at >= 0) open.length = at;
+        continue;
+      }
+      if (m[0].endsWith('/>') || VOID_TAGS.has(tag)) continue;
+      if (AUTO_CLOSING_TAGS.has(tag) && open[open.length - 1] === tag) open.pop();
+      open.push(tag);
+      if (quotes + list + open.length > max) return true;
+    }
+  }
+  return false;
+}
+
 /**
  * What a plain `<textarea>` would show as SOURCE if this body were put in one.
- * `formatting`: the editor's own formatting spans (removable with
- * stripRichFormatting). `other`: any other real HTML tag outside code — a
+ * `formatting`: the editor's own formatting spans and 行高 wrappers (removable
+ * with stripRichFormatting). `<sup>` / `<sub>` count as `other`: stripping them
+ * would change what the text says (`H<sub>2</sub>O`). `other`: any other real HTML tag outside code — a
  * resized `<img width>`, a `<br>` in a table cell, a raw-HTML table, the flow
  * serializer's `<strong>` fallback, a foreign `</span>`. Markdown syntax is not
  * counted: the simple comment box is markdown-native. The comment composer
@@ -300,16 +436,18 @@ export function stripRichFormatting(md: string): string {
 export function htmlMarkupIn(md: string): { formatting: boolean; other: boolean } {
   if (!md.includes('<')) return { formatting: false, other: false };
   const ours = richTagRanges(md);
-  const oursStarts = new Set(ours.map(([s]) => s));
   const regions = codeRegions(md);
   let other = false;
   let r = 0;
+  let o = 0;
   for (const m of md.matchAll(new RegExp(TAG_SOURCE, 'g'))) {
     const start = m.index ?? 0;
     const end = start + m[0].length;
     while (r < regions.length && regions[r].end <= start) r++;
     if (r < regions.length && regions[r].start < end) continue; // inside code: literal text
-    if (oursStarts.has(start)) continue;
+    // One of ours: the tag lies inside a range (a wrapper range also covers its newline margins).
+    while (o < ours.length && ours[o][1] <= start) o++;
+    if (o < ours.length && ours[o][0] <= start && end <= ours[o][1]) continue;
     other = true;
     break;
   }

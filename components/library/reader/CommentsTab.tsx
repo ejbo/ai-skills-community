@@ -7,7 +7,7 @@ import { DocComments } from '@/components/library/DocComments';
  * `/api/library/docs/[id]/comments` contract — never forked). The wrapper gives
  * loose text (the heading, counts) the reader's foreground; the board's cards
  * are SITE `.surface`s, so the RichTextEditor / MarkdownRenderer inside them —
- * formatting palette and 文字样式 popover included — follow the site theme
+ * formatting palettes and toolbar panels included — follow the site theme
  * (app/rich-text.css, lib/rich-text-ground.ts).
  */
 export function CommentsTab({

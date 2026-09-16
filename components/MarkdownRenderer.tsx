@@ -15,6 +15,8 @@ import { StickerImage } from '@/components/stickers/StickerImage';
 import { PollWidget } from '@/components/polls/PollWidget';
 import { CodeFrame } from '@/components/code/CodeFrame';
 import { CODE_LINES_MAX_NODES, rehypeCodeLines, remarkCodeMeta } from '@/lib/markdown-code-lines';
+import { exceedsNestingDepth } from '@/lib/markdown-text';
+import { rehypeRichStyle } from '@/lib/markdown-rich-style';
 
 // Shared code / table styling for both sizes.
 // The prose-code chip styles (bg/px) target EVERY <code>, including the one
@@ -58,10 +60,14 @@ type RehypePlugins = NonNullable<Parameters<typeof ReactMarkdown>[0]['rehypePlug
 
 // Order matters: parse raw HTML → highlight code → sanitize (so anything the
 // earlier plugins produced is still scrubbed against the schema) → split code
-// into numbered lines. rehypeCodeLines is the one plugin AFTER the trust
-// boundary, deliberately: it only emits attributes it builds itself from
-// validated values (lib/markdown-code-lines.ts), so the schema needs no entry
-// for them and stored raw HTML cannot fake a frame's filename.
+// into numbered lines → hex colours to custom properties. rehypeCodeLines and
+// rehypeRichStyle are the two plugins AFTER the trust boundary, deliberately:
+// each only emits attributes it builds itself from validated values
+// (lib/markdown-code-lines.ts, lib/markdown-rich-style.ts), so the schema needs
+// no entry for them — stored raw HTML cannot fake a frame's filename, and
+// `style` is never allowed. rehypeRichStyle runs LAST so a coloured span that
+// the line splitter cloned onto several code lines gets its property on every
+// clone.
 //
 // Line splitting has a node budget PER BODY (CODE_LINES_MAX_NODES — splitting
 // cost is lines × nesting depth, not input size; see the module). A body with
@@ -79,6 +85,7 @@ function rehypePluginsFor(trees: number): RehypePlugins {
       [rehypeHighlight, { ignoreMissing: true, detect: false }],
       [rehypeSanitize, sanitizeSchema],
       [rehypeCodeLines, { maxNodes: Math.floor(CODE_LINES_MAX_NODES / n) }],
+      rehypeRichStyle,
     ] as RehypePlugins;
     rehypePluginCache.set(n, plugins);
   }
@@ -159,7 +166,19 @@ const MD_COMPONENTS: Components = {
 };
 
 // One markdown chunk (poll tokens already split out by the caller).
+//
+// A body that nests deeper than MARKDOWN_MAX_NESTING_DEPTH is shown as its own
+// SOURCE instead of being parsed: every stage below recurses once per level
+// (remark → rehype-raw → sanitize → jsx-runtime → React, then RSC's Flight
+// serializer), so `'>'.repeat(1500)` — 1.5 kB, inside every body cap we have —
+// threw `Maximum call stack size exceeded` during SSR and dropped the WHOLE
+// page into its error boundary for every viewer. Nothing is hidden: the text is
+// all there, unformatted. See lib/markdown-text.ts for the (deliberately
+// over-estimating, linear) measurement.
 function Md({ content, trees }: { content: string; trees: number }) {
+  if (exceedsNestingDepth(content)) {
+    return <p className="whitespace-pre-wrap break-words">{content}</p>;
+  }
   return (
     <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={rehypePluginsFor(trees)} components={MD_COMPONENTS}>
       {content}

@@ -2,6 +2,7 @@
 // Import-free apart from the pure contract, so client components can import it.
 
 import type { BadgeIcon, CardConfig, ProfileLink, ProfilePin, ProfileSection } from '@/lib/profile/shared';
+import type { StoredClip } from '@/lib/media/clip-shared';
 
 /**
  * A badge as a member-facing surface renders it. Three sources, one shape:
@@ -26,8 +27,9 @@ export interface ProfileBadge {
 
 /**
  * The media a card renders. A video's uploaded ORIGINAL never appears here (nor
- * anywhere public): a card shows the poster and plays the generated ≤ 8 s muted
- * loop, and the serving route 404s every `video/` key. A video with neither a
+ * anywhere public): a card shows the poster and plays the muted clip (≤
+ * PROFILE_CLIP_MAX_SECONDS) the member cut on POST /api/me/profile/media/clip,
+ * and the serving route 404s every `video/` key. A video with neither a
  * loop nor a poster is no media at all (null), never an unplayable entry.
  */
 export interface ProfileCardMedia {
@@ -88,5 +90,17 @@ export interface OwnProfileSettings {
   card: CardConfig;
   media: ProfileCardMedia | null;
   mediaKeys: { kind: 'image' | 'video' | null; media: string | null; poster: string | null; loop: string | null };
+  /**
+   * video only: the segment the current loop was cut from (null for an image, a
+   * poster-only video, or media attached before clips existed) — the trimmer
+   * reopens at it.
+   */
+  clip: StoredClip | null;
+  /**
+   * video only: OWNER-ONLY URL of the uploaded original
+   * (`GET /api/me/profile/media/source?key=…`), so the member can re-trim a saved
+   * video. Root-relative — withBasePath at render. Never exposed to anyone else.
+   */
+  sourceUrl: string | null;
   bannerUrl: string | null;
 }

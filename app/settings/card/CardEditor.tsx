@@ -15,7 +15,11 @@
 //     保存 → PUT /api/me/profile {card, headline?}; the sanitized response
 //     becomes the new baseline (so e.g. a trimmed status never reads as dirty).
 //   · media → applied immediately by CardMediaField (see there for why, and for
-//     when the draft framing `mediaPos` is reset / restored).
+//     when the draft framing `mediaPos` is reset / restored). No router.refresh()
+//     follows it; ./applied-media keeps a Router Cache re-mount of this page from
+//     showing the media that was just replaced. A video goes
+//     through the trimmer dialog first (components/media/VideoTrimDialog): the
+//     member picks ≤ PROFILE_CLIP_MAX_SECONDS and the server cuts that clip.
 // Every successful save that changes the card (保存, media attach / remove)
 // drops this tab's cached hover card of the member (invalidateUserCard), so the
 // next hover anywhere in the app shows the new card.
@@ -34,6 +38,7 @@ import {
   CARD_STYLES,
   DEFAULT_CARD_CONFIG,
   HEADLINE_MAX,
+  PROFILE_CLIP_MAX_SECONDS,
   parseCardConfig,
   sliceCodePoints,
   type CardConfig,
@@ -55,7 +60,8 @@ import {
   SEGMENT_GROUP_CLS,
   segmentCls,
 } from '../_components/ui';
-import { CardMediaField } from './CardMediaField';
+import { appliedMediaFor, rememberAppliedMedia } from './applied-media';
+import { CardMediaField, type CardVideoSource } from './CardMediaField';
 import { PatternPicker } from './PatternPicker';
 import { PreviewStage, type StageMode } from './PreviewStage';
 import { StyleTiles } from './StyleTiles';
@@ -78,7 +84,18 @@ export function CardEditor({
   const [baseHeadline, setBaseHeadline] = useState(settings.headline);
   const [draft, setDraft] = useState<CardConfig>(baseCard);
   const [headline, setHeadline] = useState(baseHeadline);
-  const [media, setMedia] = useState<ProfileCardMedia | null>(settings.media);
+  // Media this tab applied over THIS settings object wins over it: a Router Cache
+  // re-mount (soft nav back, browser Back) hands the editor the pre-change payload.
+  const [appliedOverride] = useState(() => appliedMediaFor(settings));
+  const [media, setMedia] = useState<ProfileCardMedia | null>(appliedOverride ? appliedOverride.media : settings.media);
+  // The saved video's original (owner-only URL) + the clip it was cut at — what 剪辑片段 reopens.
+  const [initialVideoSource] = useState<CardVideoSource | null>(() =>
+    appliedOverride
+      ? appliedOverride.source
+      : settings.mediaKeys.kind === 'video' && settings.mediaKeys.media
+        ? { key: settings.mediaKeys.media, url: settings.sourceUrl, clip: settings.clip }
+        : null,
+  );
   const [localMedia, setLocalMedia] = useState<ProfileCardMedia | null>(null);
   const [mediaBusy, setMediaBusy] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -119,11 +136,12 @@ export function CardEditor({
 
   const handle = cardView.handle;
   const onMediaChange = useCallback(
-    (next: ProfileCardMedia | null) => {
+    (next: ProfileCardMedia | null, source: CardVideoSource | null) => {
       setMedia(next);
+      rememberAppliedMedia(settings, next, source);
       invalidateUserCard(handle);
     },
-    [handle],
+    [handle, settings],
   );
   const onMediaPosChange = useCallback((pos: string) => set('mediaPos', pos), [set]);
 
@@ -179,9 +197,10 @@ export function CardEditor({
       </aside>
 
       <div className="min-w-0 space-y-5 lg:order-1">
-        <SettingsSection index={1} title={t('ce_media_title')} description={t('ce_media_desc')}>
+        <SettingsSection index={1} title={t('ce_media_title')} description={t('ce_media_desc', { seconds: PROFILE_CLIP_MAX_SECONDS })}>
           <CardMediaField
             media={media}
+            initialSource={initialVideoSource}
             mediaPos={draft.mediaPos}
             onMediaChange={onMediaChange}
             onMediaPosChange={onMediaPosChange}

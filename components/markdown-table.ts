@@ -12,6 +12,7 @@ import TableRow from '@tiptap/extension-table-row';
 import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
 import { ensureParagraphAt, isBlockAtom, placeBlockNode, setCaret, tableDepthAt } from '@/components/editor/flow-insert';
+import { stripEditorHexStyle } from '@/components/editor/format-marks';
 
 // GFM tables. `resizable: false` — column widths would serialize as HTML,
 // and markdown is the storage format; the reader renders plain GFM tables.
@@ -252,7 +253,13 @@ const MarkdownTable = Table.extend({
             // Merged cells or a cell holding anything but one paragraph: markdown
             // cannot say it, so the table rides as raw HTML (what the library
             // does too — `html: true`).
-            state.write(htmlBlockSafe(getHTMLFromFragment(Fragment.from(node), node.type.schema)));
+            //
+            // getHTMLFromFragment renders the marks' renderHTML, which paints a
+            // hex colour through an editor-only custom property; the STORED
+            // bytes carry the data attribute alone (lib/rich-marks.ts), so that
+            // style is stripped back out here — the one place editor HTML
+            // becomes stored markdown.
+            state.write(htmlBlockSafe(stripEditorHexStyle(getHTMLFromFragment(Fragment.from(node), node.type.schema))));
             state.closeBlock(node);
             return;
           }

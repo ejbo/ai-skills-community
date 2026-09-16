@@ -7,9 +7,14 @@
 // original becoming servable, a key attachable by someone other than its
 // uploader, EXIF GPS published with a card photo (AVIF included — refused, since
 // its metadata cannot be stripped), an unread body pinning a file descriptor, a
-// write error that hung the upload forever, and abandoned uploads filling the
-// disk (the sweep must reclaim only the caller's own, stale, finished-or-tmp files).
+// write error that hung the upload forever, abandoned uploads filling the disk
+// (the sweep must reclaim only the caller's own, stale, finished-or-tmp files —
+// including the clip renderer's tmp names), the owner-only source route
+// serving an original to anyone but its uploader, a text concat list / playlist
+// accepted as a "video" upload, an audio tail inflating the reported duration,
+// and a sub-1 fps source failing the card clip.
 
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -35,6 +40,7 @@ import {
   isProfileMediaKeyOwnedBy,
   isProfileMediaKeyTaggedFor,
   isProfileUploadKind,
+  isStoredVideoContainer,
   listStaleOwnProfileMedia,
   newProfileMediaKey,
   openProfileMediaBody,
@@ -49,16 +55,23 @@ import {
   profileMediaServeTarget,
   profileMediaXAccelUri,
   profileUploadMaxBytes,
+  probeProfileVideo,
+  probeProfileVideoDurationSec,
+  renderProfileCardClip,
+  resolveOwnProfileSource,
   readTiffOrientation,
   saveProfileMediaStream,
   sniffImageFormat,
   stripImageMetadata,
 } from '@/lib/profile/card-media-storage';
+import { tmpOutputPath } from '@/lib/media/video-clip';
+import { runMediaJob } from '@/lib/uploads/job-queue';
 import {
   PROFILE_IMAGE_MAX_BYTES,
   PROFILE_POSTER_MAX_BYTES,
   PROFILE_VIDEO_MAX_BYTES,
   isValidProfileMediaKey,
+  profileMediaSourceUrl,
   profileMediaUrl,
 } from '@/lib/profile/shared';
 
@@ -618,6 +631,214 @@ describe('saveProfileMediaStream', { timeout: DISK_TEST_TIMEOUT_MS }, () => {
   });
 });
 
+// ─── Owner-only source (re-trimming) ─────────────────────────────────────────
+
+describe('profileMediaSourceUrl / resolveOwnProfileSource', { timeout: DISK_TEST_TIMEOUT_MS }, () => {
+  const me = 'user-source-me';
+  const mineKey = newProfileMediaKey('video', 'mov', ownerTagFor(me));
+
+  async function put(key: string, content: string | Buffer): Promise<void> {
+    const full = profileMediaAbsPath(key)!;
+    await fsp.mkdir(path.dirname(full), { recursive: true });
+    await fsp.writeFile(full, content);
+  }
+
+  it('builds a root-relative URL with the key encoded as ONE query value', () => {
+    expect(profileMediaSourceUrl('video/Ab3dE_9xYz-V1StGXR8_Z5jdHi6B-myT.mp4')).toBe(
+      '/api/me/profile/media/source?key=video%2FAb3dE_9xYz-V1StGXR8_Z5jdHi6B-myT.mp4',
+    );
+  });
+
+  it('serves my own original on disk — attached or not — and nothing else', async () => {
+    await put(mineKey, 'original bytes');
+    expect(await resolveOwnProfileSource(me, mineKey)).toEqual({ key: mineKey, size: 14 });
+    // Someone else asking for my key learns nothing (the route answers 404, as for a missing key).
+    expect(await resolveOwnProfileSource('user-source-other', mineKey)).toBeNull();
+
+    const theirs = newProfileMediaKey('video', 'mp4', ownerTagFor('user-source-other'));
+    await put(theirs, 'their original');
+    expect(await resolveOwnProfileSource(me, theirs)).toBeNull();
+  });
+
+  it('refuses missing and empty files, non-video kinds, legacy untagged keys and junk', async () => {
+    expect(await resolveOwnProfileSource(me, newProfileMediaKey('video', 'mp4', ownerTagFor(me)))).toBeNull();
+    const empty = newProfileMediaKey('video', 'webm', ownerTagFor(me));
+    await put(empty, '');
+    expect(await resolveOwnProfileSource(me, empty)).toBeNull();
+    for (const kind of ['loop', 'poster', 'image'] as const) {
+      const k = newProfileMediaKey(kind, kind === 'loop' ? 'mp4' : 'jpg', ownerTagFor(me));
+      await put(k, 'x');
+      expect(await resolveOwnProfileSource(me, k)).toBeNull();
+    }
+    const legacy = 'video/V1StGXR8_Z5jdHi6B-myT.mp4';
+    await put(legacy, 'legacy');
+    expect(await resolveOwnProfileSource(me, legacy)).toBeNull();
+    for (const junk of [null, undefined, '', 42, `../${mineKey}`, `${mineKey}?x`, 'video/../../etc/passwd']) {
+      expect(await resolveOwnProfileSource(me, junk)).toBeNull();
+    }
+  });
+
+  it('probes no duration for a key that is not a video original', async () => {
+    expect(await probeProfileVideoDurationSec(newProfileMediaKey('loop', 'mp4', ownerTagFor(me)))).toBeNull();
+    expect(await probeProfileVideoDurationSec('images/x.mp4')).toBeNull();
+  });
+});
+
+// ─── Upload-time container sniff ─────────────────────────────────────────────
+
+describe('isStoredVideoContainer', { timeout: DISK_TEST_TIMEOUT_MS }, () => {
+  const tag = profileMediaOwnerTag('user-sniff', 'test-secret-test-secret-0123456789');
+
+  async function stored(kind: 'video' | 'loop', ext: string, content: string | Buffer): Promise<string> {
+    const key = newProfileMediaKey(kind, ext, tag);
+    const full = profileMediaAbsPath(key)!;
+    await fsp.mkdir(path.dirname(full), { recursive: true });
+    await fsp.writeFile(full, content);
+    return key;
+  }
+
+  it('accepts an upload that opens like an MP4/QuickTime or Matroska/WebM container', async () => {
+    const mp4Head = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypmp42'), Buffer.alloc(64)]);
+    const qtHead = Buffer.concat([Buffer.from([0, 0, 0, 0x14]), Buffer.from('ftypqt  '), Buffer.alloc(64)]);
+    const webmHead = Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), Buffer.alloc(64)]);
+    expect(await isStoredVideoContainer(await stored('video', 'mp4', mp4Head))).toBe(true);
+    expect(await isStoredVideoContainer(await stored('video', 'mov', qtHead))).toBe(true);
+    expect(await isStoredVideoContainer(await stored('video', 'webm', webmHead))).toBe(true);
+  });
+
+  it('refuses the ffconcat trick from the review (86 bytes declared video/quicktime), playlists, junk and non-video keys', async () => {
+    const concat = `ffconcat version 1.0\nfile ${tag}-Z55mWppeachQQNs-SDaA5.mp4\ninpoint 30\nduration 15\n`;
+    expect(await isStoredVideoContainer(await stored('video', 'mov', concat))).toBe(false);
+    expect(await isStoredVideoContainer(await stored('video', 'mp4', '#EXTM3U\n#EXTINF:3,\nhttp://127.0.0.1/seg.mp4\n'))).toBe(false);
+    expect(await isStoredVideoContainer(await stored('video', 'webm', Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4])))).toBe(false);
+    expect(await isStoredVideoContainer(await stored('video', 'mp4', ''))).toBe(false);
+    expect(await isStoredVideoContainer(newProfileMediaKey('video', 'mp4', tag))).toBe(false); // not on disk
+    const loop = await stored('loop', 'mp4', Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypmp42')]));
+    expect(await isStoredVideoContainer(loop)).toBe(false); // only `video/` originals are uploads
+    expect(await isStoredVideoContainer('video/../../etc/passwd')).toBe(false);
+  });
+});
+
+// ─── Card clip render ────────────────────────────────────────────────────────
+
+describe('renderProfileCardClip', { timeout: 60_000 }, () => {
+  const tag = profileMediaOwnerTag('user-clip', 'test-secret-test-secret-0123456789');
+
+  it('reports busy — and writes nothing — when no media-queue slot frees up inside the wait budget', async () => {
+    const videoKey = newProfileMediaKey('video', 'mp4', tag);
+    let release: () => void = () => undefined;
+    const holder = runMediaJob(() => new Promise<void>((r) => (release = r)));
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const pending = renderProfileCardClip(videoKey, tag, { start: 0, end: 5, cover: 1 }, 30);
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(await pending).toEqual({ ok: false, reason: 'busy' });
+    } finally {
+      vi.useRealTimers();
+      release();
+      await holder;
+    }
+    for (const kind of ['loop', 'poster'] as const) {
+      const dir = path.join(TMP_STORAGE, 'uploads', PROFILE_MEDIA_DIR, kind);
+      const names = fs.existsSync(dir) ? fs.readdirSync(dir) : [];
+      expect(names.filter((n) => n.startsWith(tag))).toEqual([]);
+    }
+  });
+
+  it('refuses a non-video key without queueing anything', async () => {
+    expect(await renderProfileCardClip(newProfileMediaKey('loop', 'mp4', tag), tag, { start: 0, end: 1, cover: 0 }, null)).toEqual({
+      ok: false,
+      reason: 'failed',
+    });
+  });
+
+  const HAVE_TOOLS =
+    spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status === 0 &&
+    spawnSync('ffprobe', ['-version'], { stdio: 'ignore' }).status === 0;
+
+  it.runIf(HAVE_TOOLS)('cuts an owner-tagged muted loop + poster from a real upload and leaves the original alone', async () => {
+    const videoKey = newProfileMediaKey('video', 'mov', tag);
+    const src = profileMediaAbsPath(videoKey)!;
+    await fsp.mkdir(path.dirname(src), { recursive: true });
+    const made = spawnSync(
+      'ffmpeg',
+      [
+        '-hide_banner', '-loglevel', 'error', '-y',
+        '-f', 'lavfi', '-i', 'testsrc2=size=1080x1920:rate=60',
+        '-f', 'lavfi', '-i', 'sine=frequency=500',
+        '-t', '8', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac',
+        '-metadata', 'location=+37.7749-122.4194/',
+        '-f', 'mov', src,
+      ],
+      { stdio: 'ignore' },
+    );
+    expect(made.status).toBe(0);
+    const before = (await fsp.stat(src)).size;
+
+    const probe = await probeProfileVideo(videoKey);
+    expect(probe).toMatchObject({ width: 1080, height: 1920, fps: 60, hasVideo: true, hasAudio: true });
+    const r = await renderProfileCardClip(videoKey, tag, { start: 2, end: 5, cover: 3 }, probe!.fps);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(isProfileMediaKeyTaggedFor(r.loopKey, tag) && isValidProfileMediaKey(r.loopKey, 'loop')).toBe(true);
+    expect(isProfileMediaKeyTaggedFor(r.posterKey, tag) && isValidProfileMediaKey(r.posterKey, 'poster')).toBe(true);
+
+    expect(await probeProfileVideo(r.loopKey)).toBeNull(); // only `video/` originals are probed through this helper
+    const out = spawnSync('ffprobe', ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', profileMediaAbsPath(r.loopKey)!], {
+      encoding: 'utf8',
+    });
+    const info = JSON.parse(out.stdout) as { format: { duration: string; tags?: Record<string, string> }; streams: { codec_type: string; width?: number; height?: number; avg_frame_rate?: string }[] };
+    expect(info.streams.map((s) => s.codec_type)).toEqual(['video']);
+    expect(Math.abs(Number(info.format.duration) - 3)).toBeLessThan(0.1);
+    expect(info.streams[0]).toMatchObject({ width: 404, height: 720, avg_frame_rate: '30/1' });
+    expect(Object.keys(info.format.tags ?? {}).sort()).toEqual(['compatible_brands', 'major_brand', 'minor_version']);
+    expect((await fsp.stat(profileMediaAbsPath(r.posterKey)!)).size).toBeGreaterThan(0);
+    expect((await fsp.stat(src)).size).toBe(before);
+  });
+
+  it.runIf(HAVE_TOOLS)('cuts a card clip from a 0.5 fps slideshow (was: fps out of range → clip_failed)', async () => {
+    const videoKey = newProfileMediaKey('video', 'mp4', tag);
+    const src = profileMediaAbsPath(videoKey)!;
+    await fsp.mkdir(path.dirname(src), { recursive: true });
+    const made = spawnSync(
+      'ffmpeg',
+      ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=1/2', '-t', '20', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', src],
+      { stdio: 'ignore' },
+    );
+    expect(made.status).toBe(0);
+    const probe = await probeProfileVideo(videoKey);
+    expect(probe!.fps).toBe(0.5);
+    const r = await renderProfileCardClip(videoKey, tag, { start: 2, end: 12, cover: 4 }, probe!.fps);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const info = JSON.parse(
+      spawnSync('ffprobe', ['-v', 'error', '-print_format', 'json', '-show_streams', profileMediaAbsPath(r.loopKey)!], { encoding: 'utf8' }).stdout,
+    ) as { streams: { codec_type: string; avg_frame_rate?: string }[] };
+    expect(info.streams.map((s) => s.codec_type)).toEqual(['video']);
+    expect(info.streams[0].avg_frame_rate).toBe('1/1');
+  });
+
+  it.runIf(HAVE_TOOLS)("reports the PICTURE's length as the upload duration when an audio track outlasts it", async () => {
+    const videoKey = newProfileMediaKey('video', 'mp4', tag);
+    const src = profileMediaAbsPath(videoKey)!;
+    await fsp.mkdir(path.dirname(src), { recursive: true });
+    const made = spawnSync(
+      'ffmpeg',
+      [
+        '-hide_banner', '-loglevel', 'error', '-y',
+        '-t', '4', '-f', 'lavfi', '-i', 'testsrc2=size=160x90:rate=24',
+        '-t', '12', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=44100',
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', src,
+      ],
+      { stdio: 'ignore' },
+    );
+    expect(made.status).toBe(0);
+    expect(await isStoredVideoContainer(videoKey)).toBe(true);
+    expect((await probeProfileVideo(videoKey))!.durationSec).toBeGreaterThan(11.5); // the container
+    expect(await probeProfileVideoDurationSec(videoKey)).toBe(4); // what the trimmer and the clip route bound to
+  });
+});
+
 // ─── Abandoned-upload sweep ──────────────────────────────────────────────────
 
 describe('classifyOwnProfileMediaEntry', () => {
@@ -646,6 +867,12 @@ describe('classifyOwnProfileMediaEntry', () => {
       key: null,
     });
     expect(classifyOwnProfileMediaEntry('image', `${name(img)}.tmpx/../x`, tag)).toBeNull();
+    // Exactly the names lib/media/video-clip.ts renders to before the rename.
+    const poster = newProfileMediaKey('poster', 'jpg', tag);
+    for (const [kind, key] of [['loop', loop], ['poster', poster]] as const) {
+      const tmpName = path.basename(tmpOutputPath(`/x/${key}`));
+      expect(classifyOwnProfileMediaEntry(kind, tmpName, tag)).toEqual({ relPath: `${kind}/${tmpName}`, key: null });
+    }
   });
 
   it("never touches another member's file, a legacy untagged key, or a key in the wrong folder", () => {

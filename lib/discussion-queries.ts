@@ -142,8 +142,8 @@ export async function listPosts(opts: ListPostsOptions) {
   const page = rows.slice(0, limit);
   const all = [...pinned, ...page];
 
-  const annotated = await annotateReactions(
-    all,
+  const annotated = await attachCommentPreviews(
+    await annotateReactions(all, opts.viewerId),
     opts.viewerId,
   );
 
@@ -167,6 +167,161 @@ export async function getPostDetail(id: string, viewerId?: string | null) {
   if (!post) return null;
   const [annotated] = await annotateReactions([post], viewerId);
   return annotated;
+}
+
+// ─── 动态 + 讨论 merged stream ───────────────────────────────────────────────
+
+/**
+ * The 全部 tab: feed posts and forum topics in ONE reverse-chronological
+ * stream, so a visitor sees both without switching tabs.
+ *
+ * Both tables are paged by the same keyset `createdAt|id` (the posts cursor
+ * format). Each side reads `limit + 1` rows past the cursor and the two are
+ * merged; if the merge holds more than `limit`, at least one row is left, and
+ * if it does not, both sides are exhausted — so `hasMore` is exact without a
+ * count. Ids are cuids from two tables, never equal, so `(createdAt, id)` is a
+ * total order across the union and a tie can never skip or repeat a row.
+ *
+ * Pinned posts lead the first unfiltered page and are kept out of the stream
+ * below, exactly like `listPosts`. Topics stay chronological: pinning a topic
+ * is a forum-list concept, and the card still wears the pin badge.
+ */
+export async function listDiscussionStream(opts: {
+  cursor?: string | null;
+  limit?: number;
+  viewerId?: string | null;
+  q?: string;
+}) {
+  const rawLimit = Number(opts.limit ?? 10);
+  const limit = Number.isFinite(rawLimit) ? Math.min(20, Math.max(1, Math.trunc(rawLimit))) : 10;
+  const q = (opts.q ?? '').trim();
+  const cursor = decodePostCursor(opts.cursor);
+  const keyset = cursor
+    ? {
+        OR: [
+          { createdAt: { lt: cursor.createdAt } },
+          { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+        ],
+      }
+    : {};
+
+  const [pinned, postRows, topicRows] = await Promise.all([
+    cursor || q
+      ? Promise.resolve([])
+      : prisma.post.findMany({
+          where: { pinned: true },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: MAX_PINNED_POSTS,
+          select: POST_SELECT,
+        }),
+    prisma.post.findMany({
+      where: {
+        ...(q ? { bodyMd: { contains: q, mode: 'insensitive' } } : { pinned: false }),
+        ...keyset,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      select: POST_SELECT,
+    }),
+    prisma.discussionTopic.findMany({
+      where: {
+        ...(q
+          ? {
+              AND: [
+                {
+                  OR: [
+                    { title: { contains: q, mode: 'insensitive' } },
+                    { bodyMd: { contains: q, mode: 'insensitive' } },
+                  ],
+                },
+                keyset,
+              ],
+            }
+          : keyset),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      select: TOPIC_LIST_SELECT,
+    }),
+  ]);
+
+  type Merged =
+    | { kind: 'post'; createdAt: Date; id: string; row: (typeof postRows)[number] }
+    | { kind: 'topic'; createdAt: Date; id: string; row: (typeof topicRows)[number] };
+  const merged: Merged[] = [
+    ...postRows.map((row) => ({ kind: 'post' as const, createdAt: row.createdAt, id: row.id, row })),
+    ...topicRows.map((row) => ({ kind: 'topic' as const, createdAt: row.createdAt, id: row.id, row })),
+  ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+
+  const hasMore = merged.length > limit;
+  const page = merged.slice(0, limit);
+
+  const pagePosts = page.flatMap((m) => (m.kind === 'post' ? [m.row] : []));
+  const pageTopics = page.flatMap((m) => (m.kind === 'topic' ? [m.row] : []));
+  const [posts, topics] = await Promise.all([
+    annotateReactions([...pinned, ...pagePosts], opts.viewerId).then((rows) =>
+      attachCommentPreviews(rows, opts.viewerId),
+    ),
+    annotateTopicRows(pageTopics, opts.viewerId),
+  ]);
+  const postById = new Map(posts.map((p) => [p.id, p]));
+  const topicById = new Map(topics.map((t) => [t.id, t]));
+
+  type PostItem = (typeof posts)[number];
+  type TopicItem = (typeof topics)[number];
+  const items: ({ kind: 'post'; post: PostItem } | { kind: 'topic'; topic: TopicItem })[] = [
+    ...pinned.map((p) => ({ kind: 'post' as const, post: postById.get(p.id)! })),
+    ...page.map((m) =>
+      m.kind === 'post'
+        ? { kind: 'post' as const, post: postById.get(m.id)! }
+        : { kind: 'topic' as const, topic: topicById.get(m.id)! },
+    ),
+  ];
+
+  const last = page[page.length - 1];
+  return {
+    items,
+    hasMore,
+    nextCursor: hasMore && last ? encodePostCursor(last) : null,
+  };
+}
+
+/**
+ * The 热门讨论 rail: topics people are engaging with NOW. Ranked by upvotes,
+ * then replies, among topics active in the last 30 days; a quiet forum is
+ * back-filled from all time so the rail never renders half-empty. Pinned is
+ * deliberately NOT a rank key here — 置顶 is a moderator's notice, not heat.
+ */
+export async function listHotTopics(limit = 5) {
+  const select = {
+    id: true,
+    title: true,
+    upvoteCount: true,
+    replyCount: true,
+    viewCount: true,
+    lastActivityAt: true,
+    author: AUTHOR_SELECT,
+  } as const;
+  const orderBy: Prisma.DiscussionTopicOrderByWithRelationInput[] = [
+    { upvoteCount: 'desc' },
+    { replyCount: 'desc' },
+    { lastActivityAt: 'desc' },
+  ];
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const recent = await prisma.discussionTopic.findMany({
+    where: { lastActivityAt: { gte: since } },
+    orderBy,
+    take: limit,
+    select,
+  });
+  if (recent.length >= limit) return recent;
+  const backfill = await prisma.discussionTopic.findMany({
+    where: { id: { notIn: recent.map((t) => t.id) } },
+    orderBy,
+    take: limit - recent.length,
+    select,
+  });
+  return [...recent, ...backfill];
 }
 
 export interface ReactionCount {
@@ -326,6 +481,59 @@ async function viewerCommentLikeSet(viewerId: string | null | undefined, comment
     select: { commentId: true },
   });
   return new Set(rows.map((r) => r.commentId));
+}
+
+/** How many comments a feed card shows before 查看全部评论. */
+export const COMMENT_PREVIEW_COUNT = 2;
+
+/**
+ * Attach `previewComments` — the top visible root comments of each post, in
+ * the comment section's own 最相关 order — so a feed card can show the
+ * conversation without a request per card.
+ *
+ * ONE statement for the whole page, with the per-post budget enforced in SQL:
+ * the LATERAL runs the per-post `LIMIT` once per id (Index Scan on
+ * `PostComment_postId_likeCount_idx`), the same shape — and the same reasons —
+ * as `topicParticipants` below. Tombstoned roots are skipped: a preview of
+ * 「该评论已删除」 is noise. Posts with no comments never reach the query.
+ */
+async function attachCommentPreviews<T extends { id: string; commentCount: number }>(
+  posts: T[],
+  viewerId?: string | null,
+) {
+  type Preview = Prisma.PostCommentGetPayload<{ select: typeof COMMENT_SELECT }> & { likedByMe: boolean };
+  const ids = posts.filter((p) => p.commentCount > 0).map((p) => p.id);
+  if (ids.length === 0) return posts.map((p) => ({ ...p, previewComments: [] as Preview[] }));
+
+  const picks = await prisma.$queryRaw<{ postId: string; id: string }[]>`
+    SELECT c."postId", c."id"
+    FROM unnest(${ids}::text[]) AS p(id)
+    CROSS JOIN LATERAL (
+      SELECT "postId", "id"
+      FROM "PostComment"
+      WHERE "postId" = p.id AND "parentId" IS NULL AND "status" = 'visible'
+      ORDER BY "likeCount" DESC, "replyCount" DESC, "createdAt" DESC, "id" DESC
+      LIMIT ${Prisma.raw(String(COMMENT_PREVIEW_COUNT))}
+    ) c`;
+
+  const byPost = new Map<string, Preview[]>();
+  if (picks.length > 0) {
+    const rows = await prisma.postComment.findMany({
+      where: { id: { in: picks.map((p) => p.id) } },
+      orderBy: [{ likeCount: 'desc' }, { replyCount: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+      select: { ...COMMENT_SELECT, postId: true },
+    });
+    const liked = await viewerCommentLikeSet(
+      viewerId,
+      rows.map((r) => r.id),
+    );
+    for (const { postId, ...row } of rows) {
+      const list = byPost.get(postId) ?? [];
+      list.push({ ...row, likedByMe: liked.has(row.id) });
+      byPost.set(postId, list);
+    }
+  }
+  return posts.map((p) => ({ ...p, previewComments: byPost.get(p.id) ?? [] }));
 }
 
 // ─── Forum topics ───────────────────────────────────────────────────────────
@@ -560,30 +768,44 @@ export async function listTopics(filters: ListTopicsFilters) {
     orderBy,
     skip: (page - 1) * pageSize,
     take: pageSize,
-    select: {
-      id: true,
-      title: true,
-      bodyMd: true,
-      category: true,
-      categories: true,
-      pinned: true,
-      locked: true,
-      upvoteCount: true,
-      replyCount: true,
-      viewCount: true,
-      lastActivityAt: true,
-      createdAt: true,
-      author: AUTHOR_SELECT,
-    },
+    select: TOPIC_LIST_SELECT,
   });
 
+  const items = await annotateTopicRows(rows, filters.viewerId);
+
+  return { items, page, pageSize, total, hasMore: page * pageSize < total };
+}
+
+/** The columns a topic ROW needs (forum list, 全部 stream) — never the replies. */
+const TOPIC_LIST_SELECT = {
+  id: true,
+  title: true,
+  bodyMd: true,
+  category: true,
+  categories: true,
+  pinned: true,
+  locked: true,
+  upvoteCount: true,
+  replyCount: true,
+  viewCount: true,
+  lastActivityAt: true,
+  createdAt: true,
+  author: AUTHOR_SELECT,
+} satisfies Prisma.DiscussionTopicSelect;
+
+/** Tags, excerpt, the viewer's +1 and the participant stack — 3 queries for a whole page. */
+async function annotateTopicRows(
+  rows: Prisma.DiscussionTopicGetPayload<{ select: typeof TOPIC_LIST_SELECT }>[],
+  viewerId?: string | null,
+) {
+  if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
-  const [upvoted, participants] = await Promise.all([
-    viewerUpvoteSet(filters.viewerId, ids),
+  const [upvoted, participants, tagMap] = await Promise.all([
+    viewerUpvoteSet(viewerId, ids),
     topicParticipants(ids),
+    discussionTagMap(),
   ]);
-  const tagMap = await discussionTagMap();
-  const items = rows.map(({ bodyMd, ...r }) => ({
+  return rows.map(({ bodyMd, ...r }) => ({
     ...r,
     tags: tagViewsFrom(r.categories, tagMap),
     excerpt: excerptOf(bodyMd),
@@ -591,8 +813,6 @@ export async function listTopics(filters: ListTopicsFilters) {
     // Recent repliers (raw identities — consumers trim via toPublicAuthor).
     participants: participants.get(r.id) ?? [],
   }));
-
-  return { items, page, pageSize, total, hasMore: page * pageSize < total };
 }
 
 /**

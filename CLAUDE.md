@@ -269,7 +269,35 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   topic rows carry `excerptOf` (code-point-safe slice) + participants + `viewCount`
   (`DiscussionTopicView` day-dedupe; anonymous key = x-real-ip / LAST XFF hop — first hop is
   forgeable). `PostFeed` must stay keyed per stream (`key={q|sort}`) or soft navs mix cursors;
-  page searchParams may be `string[]` — always read via `firstParam`. **v3 (migration
+  page searchParams may be `string[]` — always read via `firstParam`.
+  **v5 布局 (2026-09-15, NO migration) — the section is now titled 动态 (route unchanged).** Owner:
+  「进入讨论区后还需要再点进来分别看，就会分散」「话题的筛选放在头部」「热门讨论表明作者，而不是分类」
+  「发布动态改成富文本」「评论不明显，先显示几条再展开」. Tabs are 全部 / 动态 / 讨论
+  (`discussionTabOf` in the PLAIN module `app/discussion/_components/tabs.ts` — the RSC calls it;
+  全部 = no `tab` param, `?tab=posts`, `?tab=forum`; NAV_MEGA lists the same three).
+  **全部** = `listDiscussionStream` (lib/discussion-queries.ts): posts + topics merged by ONE keyset
+  `createdAt|id` — each table reads `limit+1` past the cursor, merge, slice; `hasMore` is exact
+  without a count; pinned posts lead page 1 and stay out of the stream (listPosts rule), topics stay
+  chronological; `q` pages too. API `GET /api/discussion/stream`. `PostFeed mode="all"|"posts"`
+  holds `StreamItemView[]` (dedupe key `kind:id`) and renders `PostCard` / `TopicCard`.
+  全部 and 动态 share the `HotTopicsRail` (lg+, sticky): `listHotTopics` = upvotes → replies among
+  topics active in 30 days, back-filled from all time, pinned is NOT a rank key; rows show rank ·
+  title · author avatar+name · replies — no category chips (owner decision). **讨论** tab: the 分类
+  filter is a chip bar ABOVE the list (sideways scroll on phones, wraps from sm), no left rail;
+  发起讨论 is in the page header for every tab. **Comment previews**: `listPosts` and the stream
+  attach `previewComments` (`attachCommentPreviews` — ONE LATERAL statement, top
+  `COMMENT_PREVIEW_COUNT`=2 VISIBLE roots per post in 最相关 order, posts with 0 comments skipped);
+  `PostCommentPreview` shows them until 查看全部 / 回复 / 评论 swaps in the full `PostComments`
+  (`openReplyTo` opens the reply box under that comment, `autoFocusComposer` for 评论). Both use
+  `CommentLikeButton` now (the inline ThumbsUp handler in PostComments is gone). Every author in a
+  feed payload (post, previewed commenters, topic card + participants) is trimmed by
+  `lib/discussion-views.ts` (`publicPost` / `publicTopicCard` / `publicStreamItems`) — add new
+  author-bearing fields THERE, for the page and the API at once. The post composer and the post
+  edit box are `variant="full"`; @人 already worked everywhere (the toolbar's @ button + typing
+  `@`), the placeholders now say so. A client component on this board may only read
+  `discussion` / `discussion_ui` — `discussion_pages` is server-only (not in
+  CLIENT_MESSAGE_NAMESPACES), which is why `TopicCard` reads `discussion.views_compact`.
+  **v3 (migration
   `20260729150000_discussion_v3`)**: topics are MULTI-主题 (`categories DiscussionCategory[]`,
   legacy `category` kept = `categories[0]`; filters compose `AND` of OR-groups — never assign
   `where.OR` twice) and carry attachments (`TopicMedia`, same shape/serving as `PostMedia`).
@@ -488,6 +516,20 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
   phones with no navigation at all. 中文 fits 6 inline at 1440, en fits 6, fr fits 5, a phone fits
   0; nothing is clipped in any of them because the row measures instead of assuming.
   `PRIMARY_NAV` competes for the row; `STASHED_NAV` (投票 / 文档 / 意见反馈) is always in the menu.
+  **Display names (owner, 2026-09-15)**: the zh nav labels are 视频 / 文章 / 动态 / 技术 (were
+  Videos / 知识库 / 讨论区 / 技术专区; en Feed·Articles·Tech, fr Actualités·Articles·Tech). Only the
+  `nav.*` labels and the 动态 page title changed — routes, the `/library` H1 (it reads
+  `nav.library`), admin UI and the many 知识库/技术专区 strings inside features did NOT.
+- **悬停面板 `components/NavMegaPanel.tsx` (2026-09-15) never scales text.** The first cut morphed
+  between items with framer `layout` + Aceternity's `damping: 11.5` spring; `layout` animates the
+  box with a SCALE transform, so sliding 技术 → 动态 painted the two-link menu at the 研究所 grid's
+  scale — giant text spilling out of the panel, then shrinking (owner: 「直接变为大字然后再缩小」).
+  Now: the viewport animates real `width`/`height` motion values to the measured size of the
+  current pane (`overflow-hidden`, ring instead of border so measured size = box size), the shell
+  slides by `x`, and panes crossfade with a 20px drift in the pointer's direction — all
+  `TWEEN_PANE`, no spring. The first measurement `set()`s (opens in place), later ones `animate()`;
+  only the PRESENT pane (`useIsPresent`) may report a size, and the travel direction is decided
+  during render (an effect would lag one hand-off). Do not bring back `layout` on this panel.
 - **收纳菜单 `components/NavMoreMenu.tsx`** is the React Bits `<BubbleMenu />` *motion* on
   framer-motion — deliberately NOT the component: the original is a GSAP full-viewport takeover
   with 4rem rotated pills, which would have added a second animation library to animate three
@@ -619,10 +661,70 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
     colours (sanitize cannot restrict CSS per property; raw colours cannot follow the themes). parseHTML accepts only our
     span shape, so pasted Word/web colours come in as plain text; a guard plugin strips invalid values. `InlineCode`
     (replaces StarterKit's `code`) coexists with the four formats and links but still refuses bold/italic/strike (probed:
-    corrupts saved code next to CJK) and refuses code over a mention. UI = `TextStyleMenu` (one Baseline trigger after
-    行内代码; compact = colour/background/clear, full adds 字号/字体), portaled, moves off the selection it formats
-    (`avoid-selection.ts`), `tone="reader"` auto-detected inside `.reader-root`. Palette = `app/rich-text.css` RGB tokens
-    for light/dark AND the 知识库 reader themes (`lib/rich-text-ground.ts` decides which ground a surface paints on).
+    corrupts saved code next to CJK) and refuses code over a mention. UI = the v3 toolbar (below), portaled, moving off
+    the selection it formats (`avoid-selection.ts`), `tone="reader"` auto-detected inside `.reader-root`. Palette =
+    `app/rich-text.css` RGB tokens for light/dark AND the 知识库 reader themes (`lib/rich-text-ground.ts` decides which
+    ground a surface paints on).
+  - **v3 (2026-09-15, NO migration) — 全量工具栏 + 插入引用浏览器.** Owner: 「字体选择、字号、颜色和背景色作出四个分开的…全量的」
+    「行高」「格式刷」「插入和编辑链接」「上标和下标」「清除格式」「@ 提及别人」「引用不用非要加引号」「插入引用…按时间和热度排序,
+    优先显示自己发布的, 可以插入自己收藏的, 支持滚动加载, 主要显示标题而不是代号」. The v2 contracts above all still hold; v3 only
+    widens them.
+    - **Storage stays `lib/rich-marks.ts`, value sets WIDENED, legacy values valid forever**: `data-color`/`data-bg` take
+      the 9 named values + lowercase `#rrggbb`; `data-size` takes `sm|lg|xl` + a bare px NUMBER (`data-size="24"`, never
+      `24px`) from `RICH_FONT_SIZES_PX`; `data-font` takes `serif|kai|mono` + the CJK/Latin keys in
+      `RICH_FONT_FAMILY_STACKS` (system stacks only — the intranet loads no web fonts). 上标/下标 are plain
+      `<sup>`/`<sub>` at priority **1005**, outermost of every inline mark (so they nest outside colour spans, links,
+      bold and code), mutually exclusive, and a selection edge inside a mention widens to the whole mention.
+    - **行高 is a BLOCK attribute, not a mark**: `components/editor/line-height.ts` on top-level paragraph / heading /
+      list / blockquote, serialized by `flow-markdown.ts#serializeTopLevelBlocks` — each RUN of consecutive blocks with
+      the same value is wrapped in `<div data-lh="2">` + blank lines, which is what keeps the markdown inside it real
+      markdown (headings still reach the TOC, @mentions still extract). Runs break at every block that cannot carry it
+      (code, table, image, hr, poll/embed cards); the command is disabled in table cells; a value that lands below the
+      top level (paste into a list item) is stripped, and that strip IS in history so undo restores it.
+    - **Hex colours are never stored as `style=`**: `lib/markdown-rich-style.ts` is a rehype plugin that runs AFTER
+      rehype-sanitize (same trick as `lib/markdown-code-lines.ts`) and turns a re-validated hex `data-color`/`data-bg`
+      into `--rt-c` / `--rt-bg`; `app/rich-text.css` paints them, clamping OKLCH lightness from BOTH sides (a floor on
+      dark grounds, a ceiling on light and 护眼 grounds — a user-picked #ffff00 must stay legible either way) and giving a
+      hex background an automatic contrasting text colour. The editor's `renderHTML` emits the same property, so both
+      sides share one set of rules — but that editor-only `style` is stripped at the one door where editor HTML becomes
+      stored markdown (`stripEditorHexStyle`, the raw-HTML table fallback used to leak it into the body). Swatches in the
+      palette carry `.rte-swatch` + the same custom property, so a swatch can never show a colour the page will not paint.
+      引用 no longer gets Tailwind Typography's `open-quote`/`close-quote` in `.prose` or `.rte-content`.
+    - **@提及 survives formatting**: `lib/mentions.ts` matches `[**@名字**](/users/x)` (emphasis delimiters around the
+      label — B/I/S and the format painter produce it) and the `<a href="/users/x">@名字</a>` shape the editor writes
+      inside a raw-HTML table, merged in document order. Formatting a mention must never silently drop its notification.
+    - **Nesting guard**: `MARKDOWN_MAX_NESTING_DEPTH` / `exceedsNestingDepth` (`lib/markdown-text.ts`) — a ~1.5 KB body of
+      deeply nested quotes/lists/HTML used to overflow React's SSR stack and take the whole page down for every viewer.
+    - **The toolbar is `components/editor/toolbar/EditorToolbar.tsx`** (full + compact variants), NOT the deleted
+      `TextStyleMenu`: 字体 / 字号 / 文字颜色 / 背景色 are four separate controls, plus 行高, 格式刷, 插入/编辑链接,
+      上标/下标, 清除格式 and @提及. ONE popover mechanism (`toolbar/primitives.tsx#useToolbarPanel` = `useAnchoredPanel`
+      + `avoid-selection` + Esc back to the editor + the reader host); palette data and the per-browser recent colours in
+      `toolbar/palette.ts`; 插入/编辑链接 in `toolbar/link-edit.ts` + a caret bubble + ⌘K (a plugin LinkControls
+      registers on the live editor, since the dialog is React; it stops the event so the site's ⌘K palette stays shut) —
+      `normalizeLinkHref` accepts http(s), a bare host, `mailto:`, a `#锚点` and ONE-leading-slash site paths, never
+      `javascript:`, `//host`, `/\host` (mailto and #anchor because the editor MAKES those links itself: refusing them
+      meant the dialog could not edit its own); 格式刷 in `components/editor/format-painter.ts`, whose armed state is
+      PLUGIN state read through `formatPainterState` and which disarms on `focusout` (Esc never reaches it from the title
+      field) and waits out the double→triple click window before a one-shot paint. 撤销/重做 are in BOTH variants (a
+      touch device has no Mod-Z); below `sm` the full row REORDERS with `max-sm:order-*` so a phone opens on 加粗, not on
+      撤销; the 表格条 is an OVERLAY under the toolbar box (`s.inTable` only), never a reserved band. Every control
+      carries `data-rte-control` — **find them by that, never by translated text.**
+    - **The editor host does not re-render per transaction**: `useEditor({ shouldRerenderOnTransaction: false })`, and
+      the toolbar subscribes through `useEditorState` with TWO gates (EditorToolbar#useToolbarState) — the snapshot is
+      recomputed only when (doc, selection, storedMarks, painter, focus, editable) moved, and a recomputed snapshot with
+      the same VALUES keeps the previous object (`sameToolbarState`), so typing a word commits nothing. That is not a
+      micro-optimisation: react-dom saves and restores the selection around every commit by walking the whole focused
+      contenteditable (~3 ms a keystroke on a long post). Anything that must follow the caret subscribes for itself
+      while it is on screen (`useToolbarPanel`, the link bubble); nothing in the toolbar tree may read `editor.state`
+      at render and expect a re-render. Popovers keep the keyboard too: ↑/↓ after a mouse open move INTO the panel, and
+      Tab wraps in a dialog / closes a menu instead of walking out of the portal onto page chrome.
+    - **插入引用 is a paged browser** (`lib/zones/embeds.ts#searchEmbedCandidates`, cursor contract in
+      `lib/zones/embed-search-shared.ts`): per-kind 全部 / 我发布的 / 我的收藏 scopes + 最新 / 最热 sort, keyset paging
+      behind an IntersectionObserver in `EmbedPickerDialog`, rows showing the TITLE (no ids/codes) + 更新于. 全部 is
+      `mine` then `rest` phases that PARTITION one gated set, and every phase ANDs the kind's own gate first (the same
+      `canReadDoc` / `DISCOVERABLE_SKILL_WHERE` / zone-post rules as before — an embed picker may never widen what a
+      viewer can see). Never sort or date a row by Prisma's `@updatedAt` — a like or a view bumps it; each kind's
+      「更新于」 and 最新 order come from its own publish / 入库 / release time (the table at the top of that file).
   - **`lib/markdown.ts` closed the arbitrary-class hole**: `span`/`code`/`pre` className used to accept ANY value, so a
     body posted through the API could render `<span class="fixed inset-0 z-[100]">` as a full-page overlay link. span now
     keeps only highlight.js token classes + the four data attributes with enumerated values; code keeps
@@ -1544,14 +1646,38 @@ systemd (production): `deploy/ai-community.service` is preset for this box (`Wor
     serves a key only while an ACTIVE user's profile references it in the matching column, has an
     explicit HEAD that never opens the file (Next maps HEAD→GET and never drains the body — an fd
     leak), opens GET bodies lazily, and **404s every `video/` key: a video's original (full length,
-    audio, location atoms) is never public** — cards show the server poster and play the generated
-    ≤8 s muted loop (`-an -map_metadata -1`); no loop ⇒ poster only. Photos are metadata-stripped
+    audio, location atoms) is never public** — cards show the server poster and play a muted clip
+    (`-an -map_metadata -1`) the MEMBER cut; no clip ⇒ poster only. Photos are metadata-stripped
     twice: canvas re-encode in the browser (`app/settings/_components/strip-image.ts`, also avatar and
     banner) and a container-level strip on the server keeping only EXIF Orientation — which is why
     card uploads refuse AVIF (the server cannot strip it). The generic public `/api/uploads/[...key]`
     404s the `profile-card/` namespace (`isPublicUploadKey`) so it can never bypass the gate, and both
     routes share the lazy-body helper `openLazyFileBody`. Uploads that are never attached are swept
     best-effort (owner-tagged, > 24 h, unreferenced) from the upload/delete routes.
+  - **视频截取 (2026-09-15, migration `20260915000000_profile_card_clip`)** — owner ask 「截取 30 秒，不足
+    30 秒的自动循环播放；网站上加视频截取，最好可以复用」. A video upload now only stores + probes the
+    original (≤ 200 MB, `PROFILE_VIDEO_MAX_BYTES`); the member picks ≤ `PROFILE_CLIP_MAX_SECONDS` (30)
+    in the browser and `POST /api/me/profile/media/clip {videoKey,start,end,cover}` renders the clip +
+    poster in ONE media-queue slot, attaches both and stores `UserProfile.cardMediaClip`
+    `{start,end,cover,duration}` (cleared by any other attach / DELETE). A shorter source is used
+    whole and simply loops (`<video loop>`). `GET|HEAD /api/me/profile/media/source?key=` streams the
+    original to its OWNER only (owner tag + on disk; everyone else 404) so 剪辑片段 can re-cut; the
+    original stays on disk for that. No ffmpeg ⇒ 501 and the editor falls back to a client-captured
+    poster. **The reusable pieces — use them for any future trim/clip surface, never fork them:**
+    `lib/media/clip-shared.ts` (pure range math both sides MUST share: `normalizeClipRange`,
+    `normalizeCover`, `resizeClipRange`, `roundClipTime` …), `lib/media/ffmpeg.ts` (server runner +
+    `probeMediaFile`, no `@/lib/env`) and `lib/media/video-clip.ts` (pure `buildClipArgs` /
+    `buildFrameArgs` + tmp-then-rename `renderClip` / `renderFrame`, absolute paths in), and on the
+    client `components/media/VideoTrimmer.tsx` (controlled, no network) + `VideoTrimDialog.tsx` +
+    `filmstrip.ts`. ffmpeg picks a demuxer from file CONTENT, so every input we build carries a
+    format whitelist and uploads must look like ISO-BMFF / EBML — an `ffconcat` text file posing as
+    `.mov` otherwise renders someone else's private original into a public clip.
+    One clip render per member at a time (409 `clip_in_progress` + retry-after), encoder threads
+    capped, output fps clamped to [1, 30], and ranges clamp to the PICTURE length (a file whose audio
+    outlasts its video reports the longer track to the browser — the trimmer takes `maxDuration`).
+    The source route caches `private, max-age=600` + `Vary: Cookie` so the preview and filmstrip
+    share bytes. A new upload whose clip fails (501 / 500) degrades to a client-captured poster; a
+    re-trim never swaps a working clip for a still.
   - **Badges**: `ProfileBadge` = honorific role (`publicRoleBadge`, now with description) + visible
     `UserTag`s (`icon` from `BADGE_ICONS`, description, granted date). `BadgeChip` opens a portaled
     detail popover on hover/focus/tap; its Esc is captured so it closes only itself. Anonymous viewers

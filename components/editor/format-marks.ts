@@ -1,7 +1,17 @@
 // 富文本格式标记 — text colour, background, font size, font family, and an
 // inline-code mark that can carry them. The storage contract (attribute names,
-// closed value sets) is lib/rich-marks.ts; the palette is app/rich-text.css;
-// the reader's allowlist is lib/markdown.ts. This file is the editor half.
+// closed value sets, the strict hex shape) is lib/rich-marks.ts; the palette is
+// app/rich-text.css; the reader's allowlist is lib/markdown.ts. This file is
+// the editor half. Superscript / subscript live in script-marks.ts, 行高 in
+// line-height.ts.
+//
+// v3 (2026-09-15): colour and background accept any `#rrggbb` besides the legacy
+// names (input is normalised — `#ABC` → `#aabbcc` — and anything else refused),
+// 字号 is a px list besides the legacy sm/lg/xl, and 字体 has CJK + Latin keys.
+// A hex mark renders in the EDITOR DOM with the custom property the reader's
+// post-sanitize plugin sets (`style="--rt-c: #aabbcc"`, painted by
+// app/rich-text.css); the markdown serializer never writes that style — the
+// stored bytes are the data attribute only.
 //
 // React-free and import-light on purpose: the headless tests
 // (tests/rich-marks.test.ts) build a real Editor from these exact extensions.
@@ -54,31 +64,41 @@ import {
   RICH_MARK_ATTR,
   RICH_MARK_KINDS,
   RICH_MARK_NAME,
+  isHexColor,
   isRichMarkValue,
-  type RichBgColor,
-  type RichFontFamily,
-  type RichFontSize,
+  normalizeRichMarkValue,
   type RichMarkKind,
-  type RichTextColor,
 } from '@/lib/rich-marks';
 import { isMentionHref } from '@/lib/mentions';
+import { resetLineHeightInSelection } from '@/components/editor/line-height';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     richFormatting: {
-      /** Colour the selection (or the next typed text when the selection is empty). */
-      setTextColor: (value: RichTextColor) => ReturnType;
+      /**
+       * Colour the selection (or the next typed text when the selection is
+       * empty). `value`: a legacy name (`'red'`) or a hex colour in any case,
+       * `#rgb` or `#rrggbb` — stored as lowercase `#rrggbb`. Anything else
+       * (alpha, CSS names, rgb()) is refused: the command returns false.
+       */
+      setTextColor: (value: string) => ReturnType;
       unsetTextColor: () => ReturnType;
-      setTextBg: (value: RichBgColor) => ReturnType;
+      /** Background — same values as setTextColor. */
+      setTextBg: (value: string) => ReturnType;
       unsetTextBg: () => ReturnType;
-      setFontSize: (value: RichFontSize) => ReturnType;
+      /** 字号: a px value from RICH_FONT_SIZES_PX (number or string, `24` / `'24'`) or a legacy `sm|lg|xl`. */
+      setFontSize: (value: string | number) => ReturnType;
       unsetFontSize: () => ReturnType;
-      setFontFamily: (value: RichFontFamily) => ReturnType;
+      /** 字体: a key of RICH_FONT_FAMILY_STACKS (never a family name). */
+      setFontFamily: (value: string) => ReturnType;
       unsetFontFamily: () => ReturnType;
       /**
        * 清除格式: drops the four format marks plus bold / italic / strike /
-       * inline code. Links (and therefore @mentions) are content, not
-       * formatting, and are kept.
+       * inline code / superscript / subscript from the SELECTION, and resets
+       * the 行高 of the top-level blocks it covers. With an empty selection it
+       * only drops the marks the next typed character would carry (like
+       * unsetTextColor & co.) and leaves the paragraph alone. Links (and
+       * therefore @mentions) are content, not formatting, and are kept.
        */
       clearRichFormatting: () => ReturnType;
     };
@@ -97,7 +117,43 @@ export const RICH_MARK_PRIORITY: Record<RichMarkKind, number> = {
 export const INLINE_CODE_PRIORITY = 90;
 
 /** Mark names 清除格式 removes, besides the four format marks. */
-const CLEARED_BASIC_MARKS = ['bold', 'italic', 'strike', 'code'] as const;
+const CLEARED_BASIC_MARKS = ['bold', 'italic', 'strike', 'code', 'superscript', 'subscript'] as const;
+
+/** The custom property each hex mark paints through (app/rich-text.css reads them). */
+const HEX_STYLE_PROPERTY = { color: '--rt-c', bg: '--rt-bg' } as const;
+
+/**
+ * The editor-DOM style of a hex colour mark: the custom property the reader's
+ * post-sanitize plugin sets (lib/markdown-rich-style.ts), so app/rich-text.css
+ * paints writing and reading with ONE rule set. Only ever built from a value
+ * that passed isHexColor. Never serialized to markdown.
+ */
+export function hexStyleFor(kind: 'color' | 'bg', value: string): string | null {
+  return isHexColor(value) ? `${HEX_STYLE_PROPERTY[kind]}: ${value}` : null;
+}
+
+/** The style hexStyleFor renders, as it comes back out of a DOM serializer (spacing and `;` vary). */
+const EDITOR_HEX_STYLE_RE = new RegExp(
+  `(<span\\s+data-(?:color|bg)="#[0-9a-f]{6}")\\s+style="(?:${HEX_STYLE_PROPERTY.color}|${HEX_STYLE_PROPERTY.bg})\\s*:\\s*#[0-9a-f]{6}\\s*;?\\s*"`,
+  'g',
+);
+
+/**
+ * Removes the editor-only custom property from serialized editor HTML.
+ *
+ * ONE door needs this: a table markdown cannot express (merged cells, a cell
+ * holding two paragraphs / a list / a code block) is stored as raw HTML built
+ * by `getHTMLFromFragment` — which runs the marks' renderHTML, style and all
+ * (components/markdown-table.ts). The stored bytes are the contract
+ * (lib/rich-marks.ts: data attributes, never `style=`), and a stored `style`
+ * breaks more than tidiness: RICH_SPAN_TAG_RE matches the exact span shape, so
+ * lib/markdown-text.ts counted such a span as visible text, reported it as
+ * foreign HTML and left it in the SKILL.md / AI-context body that
+ * stripRichFormatting is supposed to clean.
+ */
+export function stripEditorHexStyle(html: string): string {
+  return html.includes('--rt-') ? html.replace(EDITOR_HEX_STYLE_RE, '$1') : html;
+}
 
 /** The single attribute each format mark carries. */
 const VALUE_ATTR = 'value';
@@ -136,7 +192,7 @@ function selectionTouchesMention(tr: Transaction): boolean {
  * whole or not at all. Ordinary links are left alone: two adjacent anchors to
  * the same URL read as one link.
  */
-function widenOverMentions(tr: Transaction): void {
+export function widenOverMentions(tr: Transaction): void {
   const { selection, doc } = tr;
   const link = doc.type.schema.marks.link;
   if (!link || selection.empty || !(selection instanceof TextSelection)) return;
@@ -200,7 +256,10 @@ function createFormatMark(kind: RichMarkKind) {
 
     renderHTML({ mark }) {
       const value = mark.attrs[VALUE_ATTR];
-      if (isRichMarkValue(kind, value)) return ['span', { [attr]: value }, 0];
+      if (isRichMarkValue(kind, value)) {
+        const style = kind === 'color' || kind === 'bg' ? hexStyleFor(kind, value as string) : null;
+        return ['span', style ? { [attr]: value, style } : { [attr]: value }, 0];
+      }
       // See openTag: only reachable by constructing a mark by hand before the
       // guard plugin runs. The editor still has to show the text somewhere.
       return ['span', 0];
@@ -411,12 +470,14 @@ const FormatCommands = Extension.create({
   addCommands() {
     const setter =
       (kind: RichMarkKind) =>
-      (value: string) =>
+      (value: string | number) =>
       ({ tr, commands }: { tr: Transaction; commands: Editor['commands'] }) => {
-        // A value outside the closed set is refused, never coerced.
-        if (!isRichMarkValue(kind, value)) return false;
+        // Input is normalised to the stored form (`#ABC` → `#aabbcc`, 24 → '24');
+        // a value outside the v3 sets is refused, never coerced into one.
+        const stored = normalizeRichMarkValue(kind, value);
+        if (stored == null) return false;
         widenOverMentions(tr);
-        return commands.setMark(RICH_MARK_NAME[kind], { [VALUE_ATTR]: value });
+        return commands.setMark(RICH_MARK_NAME[kind], { [VALUE_ATTR]: stored });
       };
     // Empty selection: removes the stored mark only, so the NEXT typed text is
     // unformatted — the run the caret sits in keeps its colour.
@@ -445,11 +506,20 @@ const FormatCommands = Extension.create({
             .filter((t): t is MarkType => Boolean(t));
           if (!dispatch) return true;
           const { selection } = tr;
+          // A CARET clears the marks the next character would be typed with and
+          // NOTHING else — exactly what unsetTextColor & co. do there. It must
+          // not reset the paragraph's 行高 either: the text under the caret
+          // keeps its bold / colour / 字号 (nothing is selected to clear), so
+          // re-spacing the paragraph would be the one visible effect of a
+          // button the author pressed to remove formatting they can see.
           if (selection.empty) {
-            const current = tr.storedMarks ?? selection.$from.marks();
-            tr.setStoredMarks(current.filter((m) => !types.includes(m.type)));
+            const caretMarks = tr.storedMarks ?? selection.$from.marks();
+            tr.setStoredMarks(caretMarks.filter((m) => !types.includes(m.type)));
             return true;
           }
+          // 行高 is paragraph formatting: Word's 清除格式 resets it for the
+          // paragraphs a selection covers.
+          resetLineHeightInSelection(tr);
           for (const range of selection.ranges) {
             for (const type of types) tr.removeMark(range.$from.pos, range.$to.pos, type);
           }
@@ -478,28 +548,41 @@ export const FORMAT_MARK_EXTENSIONS = [
 // ─── read helpers (toolbar) ──────────────────────────────────────────────────
 
 /**
- * The value of a format mark at the selection, or null. For a non-empty
- * selection this reads the mark at its start (tiptap's getAttributes rule), so
- * the menu shows the colour the user is most likely editing.
+ * The value of a format mark at the selection, or null when the selection is
+ * MIXED (text with different values, or some text without the mark) or has
+ * none. An empty selection reads the marks the next typed character would get
+ * (stored marks, else the caret's). Only text counts: an image, sticker or hard
+ * break inside the range does not make it mixed. The v3 toolbar's selects show
+ * this (a blank 字号 box over "12 and 24 px" text, like Word).
  */
-export function activeRichMarkValue(editor: Editor, kind: RichMarkKind): string | null {
-  const value = editor.getAttributes(RICH_MARK_NAME[kind])[VALUE_ATTR];
-  return isRichMarkValue(kind, value) ? (value as string) : null;
-}
-
-/** Apply (or, with null, remove) one format through the named commands above. */
-export function applyRichMark(editor: Editor, kind: RichMarkKind, value: string | null): boolean {
-  const chain = editor.chain().focus();
-  switch (kind) {
-    case 'color':
-      return (value == null ? chain.unsetTextColor() : chain.setTextColor(value as RichTextColor)).run();
-    case 'bg':
-      return (value == null ? chain.unsetTextBg() : chain.setTextBg(value as RichBgColor)).run();
-    case 'size':
-      return (value == null ? chain.unsetFontSize() : chain.setFontSize(value as RichFontSize)).run();
-    case 'font':
-      return (value == null ? chain.unsetFontFamily() : chain.setFontFamily(value as RichFontFamily)).run();
-    default:
+export function activeRichValue(editor: Editor, kind: RichMarkKind): string | null {
+  const { state } = editor;
+  const type = state.schema.marks[RICH_MARK_NAME[kind]];
+  if (!type) return null;
+  const read = (marks: readonly PMMark[]): string | null => {
+    const value = type.isInSet(marks)?.attrs[VALUE_ATTR];
+    return isRichMarkValue(kind, value) ? (value as string) : null;
+  };
+  const { selection } = state;
+  if (selection.empty) return read(state.storedMarks ?? selection.$from.marks());
+  // `seen` is false until the first text node; `value` null once mixed.
+  const acc: { seen: boolean; value: string | null } = { seen: false, value: null };
+  for (const range of selection.ranges) {
+    let mixed = false;
+    state.doc.nodesBetween(range.$from.pos, range.$to.pos, (node) => {
+      if (mixed) return false;
+      if (!node.isText) return true;
+      const v = read(node.marks);
+      if (!acc.seen) {
+        acc.seen = true;
+        acc.value = v;
+      } else if (v !== acc.value) {
+        acc.value = null;
+      }
+      if (acc.value === null) mixed = true;
       return false;
+    });
+    if (mixed) return null;
   }
+  return acc.value;
 }

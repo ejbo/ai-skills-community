@@ -7,12 +7,15 @@
 // The case that matters: Skill.descriptionMd is the uploaded README
 // (app/api/skills/upload-package/route.ts) and SkillForm edits it in this
 // editor. READMEs are full of badge images wrapped in links, task lists,
-// footnotes and `<details>` / `<sub>` / `<kbd>` — the reader renders every one
-// of them, and one edit-and-save dropped them all.
+// footnotes and `<details>` / `<kbd>` — the reader renders every one of them,
+// and one edit-and-save dropped them all. (`<sup>` / `<sub>` and the v3
+// formatting spans / 行高 wrapper are editor marks now and are kept.)
 //
 // Deliberately NOT reported: the documented, harmless normalizations (a
 // sticker's own paragraph on re-edit, table delimiter spacing), and bold around
 // inline code (refused by design — components/editor/format-marks.ts).
+
+import { RICH_LINE_HEIGHT_TAG_RE, RICH_SPAN_TAG_RE } from '@/lib/rich-marks';
 
 export type UnsupportedConstruct = 'linked_image' | 'image_in_list' | 'task_list' | 'footnote' | 'html';
 
@@ -34,21 +37,25 @@ export interface MarkdownParserLike {
  * survive, the element does not.
  */
 const KNOWN_TAGS = new Set([
-  'p', 'br', 'strong', 'b', 'em', 'i', 'del', 's', 'strike', 'code', 'pre', 'a', 'img',
+  'p', 'br', 'strong', 'b', 'em', 'i', 'del', 's', 'strike', 'code', 'pre', 'a', 'img', 'sup', 'sub',
   'table', 'thead', 'tbody', 'tr', 'th', 'td', 'ul', 'ol', 'li', 'blockquote',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr',
 ]);
 const TAG_RE = /<(\/?)([a-zA-Z][\w-]*)\b([^>]*)>/g;
-/** The four formatting spans (lib/rich-marks.ts) — a span with any other attributes is foreign. */
-const FORMAT_SPAN_ATTRS_RE = /^\s*data-(?:color|bg|size|font)="[a-z]+"\s*$/;
+/**
+ * The formatting spans and the 行高 wrapper (lib/rich-marks.ts, contract v3 —
+ * named or hex colours, px sizes, every font key) as whole opening tags. A span
+ * or div with any other attributes / values is foreign.
+ */
+const FORMAT_OPEN_TAG_RE = new RegExp(`^(?:${RICH_SPAN_TAG_RE.source}|${RICH_LINE_HEIGHT_TAG_RE.source})$`);
 
 function hasForeignHtml(html: string): boolean {
   if (html.includes('<!--')) return true; // a comment is dropped outright
   TAG_RE.lastIndex = 0;
   for (let m = TAG_RE.exec(html); m; m = TAG_RE.exec(html)) {
     const name = m[2].toLowerCase();
-    if (name === 'span') {
-      if (m[1] === '/' || FORMAT_SPAN_ATTRS_RE.test(m[3])) continue;
+    if (name === 'span' || name === 'div') {
+      if (m[1] === '/' || FORMAT_OPEN_TAG_RE.test(m[0])) continue;
       return true;
     }
     if (!KNOWN_TAGS.has(name)) return true;

@@ -2,14 +2,27 @@
 
 // The navbar's hover mega-menu.
 //
-// Motion is the Aceternity <NavbarMenu /> idea: one panel that MORPHS between
-// nav items instead of a separate dropdown per item — spring-scaled in, and
-// `layout` animating its box as the content behind it changes size. Their
-// spring is kept verbatim (`mass: 0.5, damping: 11.5, stiffness: 100`); their
-// chrome is not. The original is a light rounded pill with coloured product
-// cards, which is the wrong vocabulary here: per the 配色契约 the panel is ink
-// and hairlines, and colour is left to the material inside it (a 研究所's
-// artwork, a taxonomy chip).
+// Motion: ONE panel that MORPHS between nav items instead of a separate
+// dropdown per item (the Aceternity <NavbarMenu /> idea), built the way Stripe
+// and Radix build a navigation viewport — and deliberately NOT the way the first
+// cut did it. That version used framer `layout` plus Aceternity's under-damped
+// spring (`damping: 11.5`). `layout` animates a box with a SCALE transform, so
+// sliding from 技术专区 (a 540px 研究所 grid) to 讨论区 (two links) painted the
+// small menu blown up to the big box's scale and then shrinking — oversized
+// text, spilling past the panel's own edge — and the spring overshot on top of
+// it (owner, 2026-09-15: 「直接变为大字然后再缩小，已经超出了框的范围外」).
+//
+// Now three independent pieces, none of which ever scales text:
+//   • the VIEWPORT animates real `width`/`height` (motion values) to the
+//     measured natural size of the current pane, and clips (`overflow-hidden`);
+//   • the SHELL slides horizontally (`x`, a translate) to stay centred under
+//     the trigger;
+//   • the PANES crossfade, the old one drifting out and the new one in along
+//     the direction the pointer travelled. Both are absolutely placed at the
+//     top-left, so neither affects the other's measurement.
+// All three ride the house tweens (lib/motion.ts): no overshoot, ~0.28s.
+// Per the 配色契约 the panel is ink and hairlines; colour is left to the
+// material inside it (a 研究所's artwork, a taxonomy chip).
 //
 // Two structural constraints, both learned the hard way elsewhere in this app:
 //
@@ -26,20 +39,20 @@
 // row shows zero inline links on a phone anyway — everything is in 收纳.
 
 import Link from 'next/link';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import { createPortal } from 'react-dom';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, animate, motion, useIsPresent, useMotionValue, useReducedMotion } from 'framer-motion';
 import { useTranslations } from 'next-intl';
 import { identityColor } from '@/components/Avatar';
 import { withBasePath } from '@/lib/base-path';
-import { useFinePointer } from '@/lib/motion';
+import { TWEEN_FAST, TWEEN_PANE, useFinePointer } from '@/lib/motion';
 import { INSTITUTE_TILE_MAX } from '@/lib/org';
 import { NAV_MEGA, labHref, type MegaColumn, type MegaMenu } from '@/components/nav-mega-items';
 import type { ZoneLabCard } from '@/lib/zones/labs';
 
-/** Aceternity's spring, unchanged. */
-const SPRING = { type: 'spring', mass: 0.5, damping: 11.5, stiffness: 100 } as const;
+/** How far a pane drifts while it crossfades (px) — a hint of direction, not a slide. */
+const PANE_DRIFT = 20;
 const OPEN_DELAY = 120;
 const CLOSE_DELAY = 180;
 const EDGE_PX = 12;
@@ -191,105 +204,196 @@ function MegaPanel({
   onPointerLeave: () => void;
 }) {
   const reduce = useReducedMotion();
-  const label = useLabel();
   const menu = NAV_MEGA[href];
-  const ref = useRef<HTMLDivElement>(null);
-  const [left, setLeft] = useState<number | null>(null);
 
-  // Centre under the trigger, then clamp into the viewport. The width is only
-  // knowable after the content renders, so this is a measure-then-place pass.
-  const place = useCallback(() => {
-    const el = ref.current;
-    if (!el) return;
-    const w = el.offsetWidth;
-    const centred = rect.left + rect.width / 2 - w / 2;
-    const max = Math.max(EDGE_PX, window.innerWidth - EDGE_PX - w);
-    setLeft(Math.round(Math.min(Math.max(centred, EDGE_PX), max)));
-  }, [rect]);
+  // Real box size + horizontal offset, driven imperatively. The FIRST
+  // measurement jumps (`set`) so the panel opens already in place — animating
+  // it from a guess is exactly the sideways slide on open the old
+  // measure-then-place pass had to hide. Every later one tweens.
+  const width = useMotionValue(0);
+  const height = useMotionValue(0);
+  const x = useMotionValue(0);
+  const [placed, setPlaced] = useState(false);
+  const placedRef = useRef(false);
 
-  // BEFORE paint, not after: with a plain effect the panel painted one frame at
-  // the trigger's left edge and `layout` then animated the ~140px correction —
-  // every open slid sideways.
-  useLayoutEffect(() => {
-    place();
-  }, [place, href]);
+  // Which way the pointer travelled, so panes drift the same way (+1 = right).
+  // Decided DURING render, not in an effect: the incoming pane reads its
+  // `enter` variant on mount, and a direction set a commit later would make
+  // every hand-off drift the way the previous one did. Idempotent under a
+  // double render — the second pass sees the same href and keeps the value.
+  const travel = useRef({ href, left: rect.left, dir: 0 });
+  if (travel.current.href !== href) {
+    travel.current = { href, left: rect.left, dir: rect.left >= travel.current.left ? 1 : -1 };
+  }
+  const dir = travel.current.dir;
 
-  // The panel changes size after mount whenever its own content does — the 研究所
-  // grid replaces three skeletons with however many labs exist. Without this the
-  // panel keeps the `left` computed for the placeholder and hangs off-centre.
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(() => place());
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [place]);
+  const rectRef = useRef(rect);
+  rectRef.current = rect;
+  const reduceRef = useRef(reduce);
+  reduceRef.current = reduce;
+
+  const onSize = useCallback(
+    (w: number, h: number) => {
+      const r = rectRef.current;
+      // Centre under the trigger, then clamp into the viewport.
+      const centred = r.left + r.width / 2 - w / 2;
+      const max = Math.max(EDGE_PX, window.innerWidth - EDGE_PX - w);
+      const left = Math.round(Math.min(Math.max(centred, EDGE_PX), max));
+      if (!placedRef.current || reduceRef.current) {
+        width.set(w);
+        height.set(h);
+        x.set(left);
+        if (!placedRef.current) {
+          placedRef.current = true;
+          setPlaced(true);
+        }
+        return;
+      }
+      void animate(width, w, TWEEN_PANE);
+      void animate(height, h, TWEEN_PANE);
+      void animate(x, left, TWEEN_PANE);
+    },
+    [width, height, x],
+  );
 
   if (!menu) return null;
 
-  const hasHeading = menu.columns.some((c) => c.t);
-
   return (
     <motion.div
-      ref={ref}
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
-      // `layout` morphs the box when you slide from one nav item to the next —
-      // the panel resizes and travels instead of closing and reopening. It stays
-      // OFF until the first placement lands, so the initial measure-then-place
-      // correction is not animated as a slide-in.
-      layout={!reduce && left !== null}
-      initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.94, y: -6 }}
-      animate={reduce ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
-      // Exit is a short TWEEN, not the spring: a spring with no duration keeps
-      // settling for ~1.2s, and the panel goes on swallowing clicks under it
-      // long after it has visually faded. The spring is the entrance.
-      exit={
-        reduce
-          ? { opacity: 0, transition: { duration: 0.1 } }
-          : { opacity: 0, scale: 0.97, y: -4, transition: { duration: 0.14, ease: 'easeIn' } }
-      }
-      transition={reduce ? { duration: 0.12 } : SPRING}
+      initial={reduce ? { opacity: 0 } : { opacity: 0, y: -6 }}
+      animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
+      // Short and eased-in on the way out: the panel must stop swallowing
+      // clicks as soon as it has visually gone.
+      exit={reduce ? { opacity: 0, transition: { duration: 0.1 } } : { opacity: 0, y: -4, transition: { duration: 0.14, ease: 'easeIn' } }}
+      transition={reduce ? { duration: 0.12 } : TWEEN_FAST}
       style={{
+        x,
         top: Math.round(rect.bottom + GAP_PX),
-        left: left ?? Math.round(rect.left),
-        // Invisible until measured, so it never paints once off-centre.
-        visibility: left === null ? 'hidden' : 'visible',
+        left: 0,
+        // Invisible until the first pane has measured itself (a layout effect,
+        // so this flips before the first paint).
+        visibility: placed ? 'visible' : 'hidden',
       }}
-      className="fixed z-[65] rounded-2xl border border-zinc-200/80 bg-white/95 p-4 shadow-xl shadow-black/10 backdrop-blur-xl dark:border-zinc-800/80 dark:bg-zinc-950/95 dark:shadow-black/50"
+      className="fixed z-[65]"
     >
       {/* Bridges the gap between the bar and the panel so the pointer never
           crosses dead space and triggers the close timer. */}
       <span aria-hidden className="absolute inset-x-0 -top-3 h-3" />
-      {menu.kind === 'labs' ? (
-        // The 研究所 grid is two rows of three, so a link COLUMN beside it would
-        // leave a half-panel of dead space under three short links. They sit
-        // under the grid instead, as a hairline-separated footer row.
-        <motion.div layout={!reduce} className="min-w-0">
-          <LabGrid />
-          <div className="mt-3 flex flex-wrap items-center gap-1 border-t border-zinc-200/70 pt-2 dark:border-zinc-800/80">
-            {menu.columns.flatMap((c) => c.links).map((l) => (
-              <Link
-                key={`${l.href}|${l.t}`}
-                href={l.href}
-                className="rounded-lg px-2.5 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-zinc-900 hover:text-white dark:text-zinc-300 dark:hover:bg-zinc-100 dark:hover:text-zinc-900"
-              >
-                {label(l.t)}
-              </Link>
-            ))}
-          </div>
-        </motion.div>
-      ) : (
-        <motion.div layout={!reduce} className="flex items-start gap-7">
-          {menu.columns.map((col, i) => (
-            // A column with no heading still reserves the heading row, so its
-            // first link lines up with its neighbours' first links instead of
-            // riding up into their headings.
-            <Column key={i} col={col} reserveHeading={hasHeading} />
-          ))}
-        </motion.div>
-      )}
+      {/* A ring, not a border: box-shadow sits outside the animated box, so the
+          measured content size IS the box size. */}
+      <motion.div
+        style={{ width, height }}
+        className="relative overflow-hidden rounded-2xl bg-white/95 shadow-xl shadow-black/10 ring-1 ring-zinc-200/80 backdrop-blur-xl dark:bg-zinc-950/95 dark:shadow-black/50 dark:ring-zinc-800/80"
+      >
+        <AnimatePresence initial={false} custom={dir}>
+          <Pane key={href} dir={dir} reduce={Boolean(reduce)} onSize={onSize}>
+            <MenuContent menu={menu} />
+          </Pane>
+        </AnimatePresence>
+      </motion.div>
     </motion.div>
+  );
+}
+
+/**
+ * One menu's content, absolutely placed at the viewport's top-left and sized to
+ * its own content (`w-max`), so it can be measured while another pane is still
+ * fading out on top of it. Only the PRESENT pane reports its size: an exiting
+ * one whose grid finishes loading must not drag the box back to the old menu.
+ */
+function Pane({
+  dir,
+  reduce,
+  onSize,
+  children,
+}: {
+  dir: number;
+  reduce: boolean;
+  onSize: (w: number, h: number) => void;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const isPresent = useIsPresent();
+  const presentRef = useRef(isPresent);
+  presentRef.current = isPresent;
+  const onSizeRef = useRef(onSize);
+  onSizeRef.current = onSize;
+
+  // Before paint: the first report is what places the panel.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const report = () => {
+      if (presentRef.current) onSizeRef.current(el.offsetWidth, el.offsetHeight);
+    };
+    report();
+    // The 研究所 grid swaps its skeletons for however many labs exist.
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <motion.div
+      ref={ref}
+      custom={dir}
+      variants={{
+        enter: (d: number) => ({ opacity: 0, x: reduce ? 0 : d * PANE_DRIFT }),
+        center: { opacity: 1, x: 0 },
+        exit: (d: number) => ({ opacity: 0, x: reduce ? 0 : d * -PANE_DRIFT }),
+      }}
+      initial="enter"
+      animate="center"
+      exit="exit"
+      transition={reduce ? { duration: 0.1 } : TWEEN_PANE}
+      // An exiting pane is still under the pointer for a few frames — it must
+      // not take the click meant for the menu that replaced it.
+      style={{ pointerEvents: isPresent ? undefined : 'none' }}
+      className="absolute left-0 top-0 w-max p-4"
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+function MenuContent({ menu }: { menu: MegaMenu }) {
+  const label = useLabel();
+  const hasHeading = menu.columns.some((c) => c.t);
+
+  if (menu.kind === 'labs') {
+    // The 研究所 grid is two rows of three, so a link COLUMN beside it would
+    // leave a half-panel of dead space under three short links. They sit
+    // under the grid instead, as a hairline-separated footer row.
+    return (
+      <div className="min-w-0">
+        <LabGrid />
+        <div className="mt-3 flex flex-wrap items-center gap-1 border-t border-zinc-200/70 pt-2 dark:border-zinc-800/80">
+          {menu.columns.flatMap((c) => c.links).map((l) => (
+            <Link
+              key={`${l.href}|${l.t}`}
+              href={l.href}
+              className="rounded-lg px-2.5 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-zinc-900 hover:text-white dark:text-zinc-300 dark:hover:bg-zinc-100 dark:hover:text-zinc-900"
+            >
+              {label(l.t)}
+            </Link>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-start gap-7">
+      {menu.columns.map((col, i) => (
+        // A column with no heading still reserves the heading row, so its
+        // first link lines up with its neighbours' first links instead of
+        // riding up into their headings.
+        <Column key={i} col={col} reserveHeading={hasHeading} />
+      ))}
+    </div>
   );
 }
 

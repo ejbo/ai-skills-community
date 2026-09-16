@@ -1,5 +1,5 @@
 // Key parity across messages/{zh-CN,en,fr}.json. A key missing from one locale
-// renders its raw key path (`ui.rte_text_style`) in production, and until this
+// renders its raw key path (`ui.rte_line_height`) in production, and until this
 // test the only guard was the manual `node scripts/zones-i18n-merge.mjs --check`
 // — so a merged fragment with a missing locale could ship with CI green.
 import { readFileSync } from 'node:fs';

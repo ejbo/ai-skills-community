@@ -34,8 +34,16 @@ export function useListboxNav(count: number, onPick: (i: number) => void): Listb
     if (active > Math.max(0, count - 1)) setActive(Math.max(0, count - 1));
   }, [count, active]);
 
+  const lastScroll = useRef({ active: -1, count: 0 });
   useEffect(() => {
+    const prev = lastScroll.current;
+    lastScroll.current = { active, count };
     if (count === 0) return;
+    // A page APPENDED below (the 插入引用 infinite scroll: the list grew, the
+    // highlight did not move) must not pull the list back to the highlighted
+    // row. On touch nothing moves the highlight while scrolling, so it is still
+    // row 0 — scrolling it into view jumped the list to the top on every page.
+    if (active === prev.active && prev.count > 0 && count > prev.count) return;
     const row = listRef.current?.querySelector<HTMLElement>(`[data-index="${active}"]`);
     row?.scrollIntoView({ block: 'nearest' });
   }, [active, count]);

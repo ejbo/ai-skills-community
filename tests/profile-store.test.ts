@@ -1,37 +1,57 @@
 // 个人主页与名片 — the pure write planners (lib/profile/profile-store.ts), the
-// card view decisions (lib/profile/card-view.ts) and badge assembly
+// card view decisions (lib/profile/card-view.ts), the clip route's input/range
+// planning and its refusals that come before any query, and badge assembly
 // (lib/profile/badges.ts).
 //
 // The DB is mocked away: everything pinned here is a decision that must hold
-// before a query ever runs — what a PUT body may become, which avatar/banner
+// before a query ever runs (the clip route's render wiring is pinned against
+// FAKE ffmpeg/ffprobe scripts that log their argv and fail the encode, so the
+// request ends at 500 before the attach transaction would need a database) — what a PUT body may become, which avatar/banner
 // URLs are accepted, which sections a viewer's card figures may count, what a
 // card plays, and that a staff role can never become a badge.
 
-import { describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
+const TMP_STORAGE = vi.hoisted(() => {
+  // Before any import: image-storage resolves the uploads root from this at load,
+  // so the clip-route test below writes its fixture outside the dev box's storage.
+  process.env.LOCAL_STORAGE_DIR = `/tmp/aic-profile-store-test-${process.pid}`;
+  return `/tmp/aic-profile-store-test-${process.pid}`;
+});
 vi.mock('@/lib/db', () => ({ prisma: {} }));
 vi.mock('@/lib/env', () => ({ env: { AUTH_SECRET: 'test-secret-test-secret-0123456789' } }));
 
 import {
+  CLIP_IN_PROGRESS_RETRY_AFTER_SEC,
+  clipOwnCardVideo,
   decideImageUrl,
   droppedMediaKeys,
   isSafeExternalImageUrl,
   isUploadedImageUrl,
   normalizeHostname,
+  parseCardClipInput,
   parseCardMediaInput,
+  planCardClip,
   planOrphanSweep,
   planProfileWrite,
   selfHostnames,
   urlPathHasApiSegment,
 } from '@/lib/profile/profile-store';
-import { profileMediaOwnerTag } from '@/lib/profile/card-media-storage';
-import { decideCardMedia, pickCardStats, profileSectionAllowed } from '@/lib/profile/card-view';
+import { newProfileMediaKey, ownerTagFor, profileMediaAbsPath, profileMediaOwnerTag } from '@/lib/profile/card-media-storage';
+import { decideCardMedia, ownCardClip, pickCardStats, profileSectionAllowed } from '@/lib/profile/card-view';
+import { setMediaToolBinaries } from '@/lib/media/ffmpeg';
+import { parseStoredClip } from '@/lib/media/clip-shared';
 import { assembleBadges, roleBadge, roleBadgeKey } from '@/lib/profile/badges';
 import { toPublicUserTag } from '@/lib/user-tags';
 import { publicRoleBadge } from '@/lib/permissions';
 import {
   ABOUT_MAX,
   DEFAULT_CARD_CONFIG,
+  PROFILE_CLIP_MAX_SECONDS,
   HEADLINE_MAX,
   PROFILE_SECTIONS,
   defaultProfileLayout,
@@ -353,6 +373,266 @@ describe('parseCardMediaInput', () => {
     expect(parseCardMediaInput({ kind: 'image', mediaKey: 'image/V1StGXR8_Z5jdHi6B-myT.webp' }, mine)).toEqual(bad);
     // The same bytes are accepted for their actual uploader.
     expect(parseCardMediaInput({ kind: 'image', mediaKey: swap(I) }, theirs)).toMatchObject({ ok: true });
+  });
+});
+
+describe('parseCardClipInput', () => {
+  const SECRET = 'test-secret-test-secret-0123456789';
+  const mine = profileMediaOwnerTag('user-me', SECRET);
+  const theirs = profileMediaOwnerTag('user-other', SECRET);
+  const V = `video/${mine}-V1StGXR8_Z5jdHi6B-myT.mov`;
+  const bad = { ok: false, error: 'invalid_input' };
+
+  it('accepts my video key with numeric times; cover is optional (null ⇒ default)', () => {
+    expect(parseCardClipInput({ videoKey: V, start: 10, end: 35, cover: 20 }, mine)).toEqual({
+      ok: true,
+      input: { videoKey: V, start: 10, end: 35, cover: 20 },
+    });
+    expect(parseCardClipInput({ videoKey: V, start: 0, end: 12 }, mine)).toEqual({
+      ok: true,
+      input: { videoKey: V, start: 0, end: 12, cover: undefined },
+    });
+    expect(parseCardClipInput({ videoKey: V, start: 0, end: 12, cover: null }, mine)).toMatchObject({
+      ok: true,
+      input: { cover: undefined },
+    });
+  });
+
+  it("refuses another member's key, a legacy untagged key and any non-video key", () => {
+    expect(parseCardClipInput({ videoKey: V.replace(mine, theirs), start: 0, end: 5 }, mine)).toEqual(bad);
+    expect(parseCardClipInput({ videoKey: 'video/V1StGXR8_Z5jdHi6B-myT.mp4', start: 0, end: 5 }, mine)).toEqual(bad);
+    for (const kind of ['loop', 'poster', 'image']) {
+      const ext = kind === 'loop' ? 'mp4' : 'jpg';
+      expect(parseCardClipInput({ videoKey: `${kind}/${mine}-V1StGXR8_Z5jdHi6B-myT.${ext}`, start: 0, end: 5 }, mine)).toEqual(bad);
+    }
+  });
+
+  it('refuses a wrong SHAPE (strings, NaN, missing fields, non-objects)', () => {
+    for (const body of [
+      null,
+      [],
+      'x',
+      { videoKey: V, start: '0', end: 5 },
+      { videoKey: V, start: 0 },
+      { videoKey: V, start: 0, end: Number.NaN },
+      { videoKey: V, start: 0, end: 5, cover: '3' },
+      { videoKey: V, start: 0, end: Number.POSITIVE_INFINITY },
+    ]) {
+      expect(parseCardClipInput(body, mine)).toEqual(bad);
+    }
+  });
+});
+
+describe('planCardClip (clamped against the PROBED duration)', () => {
+  it('keeps an in-bounds range and its cover', () => {
+    expect(planCardClip({ start: 10, end: 35, cover: 20 }, 45)).toEqual({ start: 10, end: 35, cover: 20, duration: 45 });
+  });
+
+  it(`never cuts more than ${PROFILE_CLIP_MAX_SECONDS} s, nor past the end of the source`, () => {
+    expect(planCardClip({ start: 5, end: 44, cover: undefined }, 45)).toEqual({ start: 5, end: 35, cover: 5.5, duration: 45 });
+    expect(planCardClip({ start: 44.9, end: 999, cover: -5 }, 45)).toEqual({ start: 44, end: 45, cover: 44, duration: 45 });
+    // The client's idea of the duration is irrelevant: a range past a 12 s file is cut back to it.
+    expect(planCardClip({ start: 0, end: 30, cover: 99 }, 12.04)).toEqual({ start: 0, end: 12, cover: 11.9, duration: 12 });
+  });
+
+  it('uses a short source whole', () => {
+    expect(planCardClip({ start: 0, end: 12, cover: undefined }, 12)).toEqual({ start: 0, end: 12, cover: 0.5, duration: 12 });
+    expect(planCardClip({ start: 3, end: 3, cover: undefined }, 0.6)).toEqual({ start: 0, end: 0.6, cover: 0.3, duration: 0.6 });
+  });
+
+  it('is null without a real duration', () => {
+    expect(planCardClip({ start: 0, end: 5, cover: undefined }, 0)).toBeNull();
+    expect(planCardClip({ start: 0, end: 5, cover: undefined }, Number.NaN)).toBeNull();
+  });
+
+  it('stores exactly what parseStoredClip reads back (the trimmer reopens on the range that was cut)', () => {
+    for (const [input, dur] of [
+      [{ start: 10, end: 35, cover: 20 }, 45],
+      [{ start: 1.23, end: 17.89, cover: 3.33 }, 61.37],
+      [{ start: 0, end: 30, cover: undefined }, 12.96],
+    ] as const) {
+      const plan = planCardClip(input, dur);
+      expect(plan).not.toBeNull();
+      expect(parseStoredClip(JSON.parse(JSON.stringify(plan)))).toEqual(plan);
+    }
+  });
+});
+
+describe('ownCardClip', () => {
+  const stored = { start: 1, end: 9, cover: 2, duration: 20 };
+  const L = 'loop/V1StGXR8_Z5jdHi6B-myT.mp4';
+
+  it('is the stored range only for a video card that has a clip', () => {
+    expect(ownCardClip('video', L, stored)).toEqual(stored);
+    expect(ownCardClip('video', null, stored)).toBeNull(); // poster-only video
+    expect(ownCardClip('image', L, stored)).toBeNull();
+    expect(ownCardClip(null, null, stored)).toBeNull();
+    expect(ownCardClip('video', L, null)).toBeNull(); // media attached before clips existed
+    expect(ownCardClip('video', L, { start: 'x' })).toBeNull();
+  });
+});
+
+describe('clipOwnCardVideo — refusals before any render or query', () => {
+  const userId = 'user-clip-route';
+  const key = newProfileMediaKey('video', 'mp4', ownerTagFor(userId));
+
+  afterAll(async () => {
+    setMediaToolBinaries(null);
+    await fsp.rm(TMP_STORAGE, { recursive: true, force: true });
+  });
+
+  it("400s someone else's key and a non-video key without touching the disk", async () => {
+    const theirs = newProfileMediaKey('video', 'mp4', ownerTagFor('someone-else'));
+    expect(await clipOwnCardVideo(userId, { videoKey: theirs, start: 0, end: 5 })).toEqual({
+      ok: false,
+      status: 400,
+      error: 'invalid_input',
+    });
+    expect(await clipOwnCardVideo(userId, { videoKey: key.replace('video/', 'loop/'), start: 0, end: 5 })).toMatchObject({
+      status: 400,
+    });
+  });
+
+  it('404s my key when the original is not on disk', async () => {
+    expect(await clipOwnCardVideo(userId, { videoKey: key, start: 0, end: 5 })).toEqual({
+      ok: false,
+      status: 404,
+      error: 'media_missing',
+    });
+  });
+
+  it('501s ffmpeg_unavailable on a box without ffmpeg (the editor then falls back to a poster-only card)', async () => {
+    const full = profileMediaAbsPath(key)!;
+    expect(full.startsWith(TMP_STORAGE)).toBe(true);
+    await fsp.mkdir(path.dirname(full), { recursive: true });
+    await fsp.writeFile(full, 'an uploaded original');
+    setMediaToolBinaries({ ffmpeg: 'aic-no-such-ffmpeg-binary' });
+    expect(await clipOwnCardVideo(userId, { videoKey: key, start: 0, end: 5 })).toEqual({
+      ok: false,
+      status: 501,
+      error: 'ffmpeg_unavailable',
+    });
+    // ffprobe alone missing is the same answer: the real duration comes from it.
+    setMediaToolBinaries({ ffprobe: 'aic-no-such-ffprobe-binary' });
+    expect(await clipOwnCardVideo(userId, { videoKey: key, start: 0, end: 5 })).toMatchObject({ status: 501 });
+  });
+});
+
+describe('clipOwnCardVideo — render wiring against fake tools (no database reached)', { timeout: 30_000 }, () => {
+  const userId = 'user-clip-wiring';
+  const toolDir = path.join(os.tmpdir(), `aic-fake-media-tools-${process.pid}`);
+  const probeJson = path.join(toolDir, 'probe.json');
+  const probeLog = path.join(toolDir, 'ffprobe.args');
+  const ffmpegLog = path.join(toolDir, 'ffmpeg.args');
+  const probeSleep = path.join(toolDir, 'probe.sleep');
+
+  // `-version` succeeds (tools "installed"); a probe logs its argv, optionally
+  // sleeps, then prints the fixture; ffmpeg logs its argv and FAILS, so every
+  // request ends at 500 clip_failed before the attach transaction.
+  const FFPROBE = `#!/bin/sh
+[ "$1" = "-version" ] && exit 0
+printf '%s\n' "$*" >> '${probeLog}'
+[ -f '${probeSleep}' ] && sleep "$(cat '${probeSleep}')"
+cat '${probeJson}'
+`;
+  const FFMPEG = `#!/bin/sh
+[ "$1" = "-version" ] && exit 0
+printf '%s\n' "$*" >> '${ffmpegLog}'
+exit 1
+`;
+
+  async function upload(): Promise<string> {
+    const key = newProfileMediaKey('video', 'mp4', ownerTagFor(userId));
+    const full = profileMediaAbsPath(key)!;
+    expect(full.startsWith(TMP_STORAGE)).toBe(true);
+    await fsp.mkdir(path.dirname(full), { recursive: true });
+    await fsp.writeFile(full, 'an uploaded original');
+    return key;
+  }
+
+  function probeFixture(fixture: unknown) {
+    fs.writeFileSync(probeJson, JSON.stringify(fixture));
+    fs.rmSync(probeLog, { force: true });
+    fs.rmSync(ffmpegLog, { force: true });
+  }
+
+  beforeAll(async () => {
+    await fsp.mkdir(toolDir, { recursive: true });
+    await fsp.writeFile(path.join(toolDir, 'ffprobe'), FFPROBE, { mode: 0o755 });
+    await fsp.writeFile(path.join(toolDir, 'ffmpeg'), FFMPEG, { mode: 0o755 });
+    setMediaToolBinaries({ ffmpeg: path.join(toolDir, 'ffmpeg'), ffprobe: path.join(toolDir, 'ffprobe') });
+  });
+
+  afterAll(async () => {
+    setMediaToolBinaries(null);
+    await fsp.rm(toolDir, { recursive: true, force: true });
+  });
+
+  it('clamps the range to the VIDEO stream (not an audio tail) and encodes a sub-1 fps source at 1 fps, all under the input guard', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const key = await upload();
+      probeFixture({
+        streams: [
+          { codec_type: 'video', width: 640, height: 360, avg_frame_rate: '1/2', r_frame_rate: '1/2', duration: '8.000000' },
+          { codec_type: 'audio', duration: '40.000000' },
+        ],
+        format: { duration: '40.000000' },
+      });
+      // The browser trimmer measured 40 s (the longest track) and offered the silent tail.
+      expect(await clipOwnCardVideo(userId, { videoKey: key, start: 20, end: 40, cover: 30 })).toEqual({
+        ok: false,
+        status: 500,
+        error: 'clip_failed',
+      });
+      const probeArgs = fs.readFileSync(probeLog, 'utf8');
+      expect(probeArgs).toContain('-format_whitelist mov,mp4,m4a,3gp,3g2,mj2,matroska,webm -protocol_whitelist file');
+      const clipCall = fs.readFileSync(ffmpegLog, 'utf8').trim().split('\n')[0];
+      // 20–40 against 8 s of picture ⇒ the last second (7–8), never a frameless 20–40.
+      expect(clipCall).toContain('-ss 7.000 -i ');
+      expect(clipCall).toContain(' -t 1.000 ');
+      expect(clipCall).toContain(' -r 1 ');
+      expect(clipCall).toContain('-format_whitelist mov,mp4,m4a,3gp,3g2,mj2,matroska,webm -protocol_whitelist file -threads 2 -ss');
+      expect(clipCall).toContain('-filter_threads 2');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('lets one member hold only ONE clip request at a time (409 clip_in_progress + retry-after), and frees it afterwards', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const key = await upload();
+      probeFixture({ streams: [{ codec_type: 'video', avg_frame_rate: '30/1', duration: '45' }], format: { duration: '45' } });
+      fs.writeFileSync(probeSleep, '1');
+      const first = clipOwnCardVideo(userId, { videoKey: key, start: 0, end: 10 });
+      // Wait until the first request is inside the probe — past the single-flight claim.
+      for (let i = 0; i < 200 && !fs.existsSync(probeLog); i++) await new Promise((r) => setTimeout(r, 10));
+      expect(fs.existsSync(probeLog)).toBe(true);
+
+      expect(await clipOwnCardVideo(userId, { videoKey: key, start: 5, end: 15 })).toEqual({
+        ok: false,
+        status: 409,
+        error: 'clip_in_progress',
+        retryAfter: CLIP_IN_PROGRESS_RETRY_AFTER_SEC,
+      });
+      // Another member is not held up by it (reaches its own render → the fake encoder's 500).
+      const other = 'user-clip-wiring-other';
+      const otherKey = newProfileMediaKey('video', 'mp4', ownerTagFor(other));
+      await fsp.writeFile(profileMediaAbsPath(otherKey)!, 'their original');
+      const otherResult = clipOwnCardVideo(other, { videoKey: otherKey, start: 0, end: 5 });
+      // Shape refusals never claim the slot either.
+      expect(await clipOwnCardVideo(userId, { videoKey: key, start: 'x', end: 5 })).toMatchObject({ status: 400 });
+
+      expect(await first).toMatchObject({ status: 500, error: 'clip_failed' });
+      expect(await otherResult).toMatchObject({ status: 500, error: 'clip_failed' });
+      fs.rmSync(probeSleep, { force: true });
+      // Released in `finally`: the next request goes through to its own render again.
+      expect(await clipOwnCardVideo(userId, { videoKey: key, start: 5, end: 15 })).toMatchObject({ status: 500, error: 'clip_failed' });
+    } finally {
+      fs.rmSync(probeSleep, { force: true });
+      warn.mockRestore();
+    }
   });
 });
 

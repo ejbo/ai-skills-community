@@ -45,10 +45,17 @@
 // 2. a run's start is taken after the pending block break is flushed;
 // 3. runs are paired with their closing by mark type and settled when their
 //    textblock is done (every run is closed by then), innermost first.
+//
+// It also owns the ONE top-level loop: the document's children are rendered
+// through serializeTopLevelBlocks (components/editor/line-height.ts), which
+// wraps each run of blocks sharing a 行高 in `<div data-lh="v">` … `</div>`.
+// Block serializers themselves are untouched; only the loop over the
+// document's children groups them.
 
 import { Extension } from '@tiptap/core';
 import type { Node as PMNode, Mark as PMMark } from '@tiptap/pm/model';
 import { MarkdownSerializerState } from '@tiptap/pm/markdown';
+import { serializeTopLevelBlocks } from './line-height';
 
 /** Characters a delimiter must never be moved across — they belong to link, code, HTML, image or escape syntax. */
 const STRUCTURAL = new Set(['[', ']', '(', ')', '`', '<', '>', '\\', '!']);
@@ -204,6 +211,7 @@ interface SerializerStateLike {
   out: string;
   marks: Record<string, { open?: unknown; close?: unknown; expelEnclosingWhitespace?: boolean } | undefined>;
   write(content?: string): void;
+  closeBlock(node: PMNode): void;
   render(node: PMNode, parent: PMNode, index: number): void;
   renderInline(parent: PMNode, fromBlockStart?: boolean): void;
   renderContent(parent: PMNode): void;
@@ -306,7 +314,9 @@ export const FlowMarkdownSerializer = Extension.create({
     const serializer = Object.create(base) as AnyRecord;
     serializer.serialize = (content: PMNode) => {
       const state = new FlowMarkdownSerializerState(serializer.nodes, serializer.marks, { hardBreakNodeName: 'hardBreak' }, scan);
-      state.renderContent(content);
+      // `content` is the document (getMarkdown) or a top-level slice's
+      // fragment — its children are the top level either way.
+      serializeTopLevelBlocks(state, content);
       return state.out;
     };
     storage.serializer = serializer;

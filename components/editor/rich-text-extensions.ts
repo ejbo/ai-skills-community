@@ -18,7 +18,12 @@
 //     REVERSE registration order, so the @人 popup sees Enter / arrows before a
 //     table cell's line-break and arrow-out keys (tests/mention-editor.test.ts).
 //   • Marks: array position does not matter, PRIORITY decides the schema rank
-//     and therefore the nesting of the stored markdown (format-marks.ts header).
+//     and therefore the nesting of the stored markdown (format-marks.ts and
+//     script-marks.ts headers): sup/sub > size > font > bg > color > link >
+//     bold > italic > strike > code.
+//   • LineHeight (line-height.ts) is a global attribute + guard + commands; its
+//     position does not matter either, but its wrapper is only WRITTEN by the
+//     flow serializer's top-level loop, so it needs FlowExtension.
 //   • Markdown, then FlowExtension LAST: the flow serializer swaps
 //     tiptap-markdown's serializer state after tiptap-markdown has created it.
 //     FlowMarkdownParse (flow-parse.ts) only contributes a markdown-it setup and
@@ -37,6 +42,9 @@ import { FlowExtension } from '@/components/editor/flow-extension';
 import { FlowMarkdownParse } from '@/components/editor/flow-parse';
 import { BasePathImage, StickerImageNode } from '@/components/editor/flow-image';
 import { FORMAT_MARK_EXTENSIONS } from '@/components/editor/format-marks';
+import { FormatPainter } from '@/components/editor/format-painter';
+import { LineHeight } from '@/components/editor/line-height';
+import { SCRIPT_MARK_EXTENSIONS } from '@/components/editor/script-marks';
 import { TABLE_EXTENSIONS } from '@/components/markdown-table';
 import { MentionSuggestion, type MentionSuggestionOptions } from '@/components/mention/mention-suggestion';
 import { PollEmbedBase, type PollEmbedOptions } from '@/components/polls/poll-embed-extension';
@@ -92,6 +100,11 @@ export function buildRichTextExtensions(options: RichTextExtensionOptions = {}):
     StickerImageNode,
     (views.codeBlock ?? CodeBlockBase).configure({ highlight: options.codeHighlight ?? true }),
     ...FORMAT_MARK_EXTENSIONS,
+    ...SCRIPT_MARK_EXTENSIONS,
+    LineHeight,
+    // 格式刷 (format-painter.ts): plugin state + commands only — no schema, no
+    // markdown; position irrelevant.
+    FormatPainter,
     (views.pollEmbed ?? PollEmbedBase).configure(options.poll ?? {}),
   ];
   if (options.embed) extensions.push((views.contentEmbed ?? ContentEmbedBase).configure(options.embed));
