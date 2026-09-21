@@ -4,7 +4,11 @@ import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { logAdmin } from '@/lib/audit';
+import { Prisma } from '@prisma/client';
 import { deleteVideoFile } from '@/lib/video/storage';
+import { generateVideoSubtitles } from '@/lib/video/subtitles';
+import { parseCoverAspect, parseCoverPos } from '@/lib/media/cover-pos';
+import { parseStoredClip } from '@/lib/media/clip-shared';
 
 const updateSchema = z.object({
   title: z.string().min(1).max(300).optional(),
@@ -15,9 +19,14 @@ const updateSchema = z.object({
   videoUrl: z.string().max(2000).optional(),
   videoKey: z.string().optional(),
   posterUrl: z.string().max(2000).nullable().optional(),
-  posterKey: z.string().optional(),
+  posterKey: z.string().nullable().optional(),
   previewUrl: z.string().max(2000).nullable().optional(),
   previewKey: z.string().nullable().optional(),
+  // 封面版式 + 裁切 — validated by lib/media/cover-pos.ts (the one closed value set).
+  posterAspect: z.string().max(20).optional(),
+  posterPos: z.string().max(20).optional(),
+  // {start,end,cover,duration} of the segment the preview clip was cut from.
+  previewClip: z.unknown().optional(),
   durationSec: z.number().int().min(0).optional(),
   width: z.number().int().min(0).optional(),
   height: z.number().int().min(0).optional(),
@@ -80,6 +89,29 @@ export async function PATCH(req: Request, { params }: { params: { slug: string }
     if (d[key] !== undefined) data[key] = d[key];
   }
 
+  if (d.posterAspect !== undefined) {
+    const aspect = parseCoverAspect(d.posterAspect);
+    if (aspect === null) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
+    data.posterAspect = aspect;
+  }
+  if (d.posterPos !== undefined) {
+    const pos = parseCoverPos(d.posterPos);
+    if (pos === null) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
+    data.posterPos = pos;
+  }
+  // A removed poster takes its crop with it; a removed / replaced preview clip
+  // no longer matches the stored range unless the request names the new one.
+  if (d.posterUrl === null) {
+    data.posterKey = null;
+    data.posterAspect = 'landscape';
+    data.posterPos = '';
+  }
+  if (d.previewKey !== undefined || d.previewUrl === null) {
+    const clip = d.previewKey ? parseStoredClip(d.previewClip) : null;
+    data.previewClip = clip ? { ...clip } : Prisma.DbNull;
+    if (d.previewUrl === null) data.previewKey = null;
+  }
+
   if (d.categorySlug !== undefined) {
     const category = d.categorySlug
       ? await prisma.videoCategory.findUnique({ where: { slug: d.categorySlug }, select: { id: true } })
@@ -120,7 +152,45 @@ export async function PATCH(req: Request, { params }: { params: { slug: string }
     data.tags = { create: connections };
   }
 
-  await prisma.video.update({ where: { id: video.id }, data });
+  const updated = await prisma.video.update({
+    where: { id: video.id },
+    data,
+    select: { id: true, status: true, videoKey: true, posterKey: true, previewKey: true, subtitleStatus: true, subtitleManual: true },
+  });
+
+  // Files this save just orphaned (a re-cut preview, a new poster, a replaced
+  // source). Best-effort, AFTER the row points at the new ones, and only when no
+  // OTHER row names the key — there is no ownership ledger for these keys.
+  for (const [before, after] of [
+    [video.videoKey, updated.videoKey],
+    [video.posterKey, updated.posterKey],
+    [video.previewKey, updated.previewKey],
+  ] as const) {
+    if (!before || before === after) continue;
+    const stillUsed = await prisma.video.count({
+      where: { OR: [{ videoKey: before }, { posterKey: before }, { previewKey: before }] },
+    });
+    if (stillUsed === 0) await deleteVideoFile(before);
+  }
+
+  // 字幕: start the pipeline when the video BECOMES published without tracks, or
+  // when a published video's source was replaced (its tracks describe the old
+  // file). Detached and self-claiming — a second trigger is a no-op.
+  // Tracks a person uploaded or corrected (`subtitleManual`) are NEVER regenerated
+  // over here: a re-encode of the same talk is a common reason to replace a source,
+  // and redoing someone's proofreading silently is worse than leaving it. The edit
+  // page's 重新生成 button stays the explicit way.
+  const becamePublished = updated.status === 'published' && video.status !== 'published';
+  const sourceReplaced = Boolean(updated.videoKey) && updated.videoKey !== video.videoKey;
+  if (
+    updated.status === 'published' &&
+    updated.videoKey &&
+    ((becamePublished && (updated.subtitleStatus === 'none' || updated.subtitleStatus === 'failed')) ||
+      (sourceReplaced && !updated.subtitleManual))
+  ) {
+    void generateVideoSubtitles(updated.id);
+  }
+
   return NextResponse.json({ ok: true });
 }
 
@@ -140,6 +210,9 @@ export async function DELETE(req: Request, { params }: { params: { slug: string 
   await deleteVideoFile(video.videoKey);
   await deleteVideoFile(video.posterKey);
   await deleteVideoFile(video.previewKey);
+  // 字幕 tracks have no other referent than this row.
+  await deleteVideoFile(video.subtitleZhKey);
+  await deleteVideoFile(video.subtitleEnKey);
 
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
   await logAdmin({

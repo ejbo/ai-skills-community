@@ -5,14 +5,15 @@ import { can } from '@/lib/permissions';
 import { relativeTime } from '@/lib/i18n-date';
 import { getFeedbackDetail } from '@/lib/feedback-queries';
 import { toPublicAuthor } from '@/lib/user-identity';
-import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { BackButton } from '@/components/BackButton';
+import { TranslatableScope, TranslateControl, TranslateNote, TranslatedText } from '@/components/translate/TranslatableScope';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { UpvoteButton } from '../_components/UpvoteButton';
 import { StatusBadge, CategoryChip } from '../_components/badges';
 import { FeedbackActions } from '../_components/FeedbackActions';
 import { FeedbackComments, type ThreadView } from '../_components/FeedbackComments';
+import { FeedbackBody } from '../_components/FeedbackBody';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,6 +63,10 @@ export default async function FeedbackDetailPage({
         <BackButton fallbackHref="/feedback" />
       </div>
 
+      {/* 站内翻译 (kind `feedback`): ONE scope for the title + body — a single 翻译 / 显示原文
+          flips both. The page is an RSC, so only the leaves (title text, note, control,
+          FeedbackBody) are client; comments carry their own per-comment affordance. */}
+      <TranslatableScope kind="feedback" id={feedback.id} fields={{ title: feedback.title, body: feedback.bodyMd }}>
       <section className="space-y-5">
         <div className="flex items-start gap-4">
           <UpvoteButton
@@ -76,7 +81,7 @@ export default async function FeedbackDetailPage({
               <StatusBadge status={feedback.status} />
             </div>
             <h1 className="break-words text-2xl font-semibold tracking-tight md:text-3xl">
-              {feedback.title}
+              <TranslatedText field="title" fallback={feedback.title} />
             </h1>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
               <Avatar name={author.displayName} src={author.avatarUrl} size="xs" handle={author.handle} />
@@ -84,7 +89,11 @@ export default async function FeedbackDetailPage({
               <DeptTag department={author.department} lab={author.lab} />
               <span>·</span>
               <span>{relativeTime(feedback.createdAt, locale)}</span>
+              {/* 翻译 / 翻译中… / 显示译文 — in the byline so it exists for a title-only feedback too. */}
+              <TranslateControl />
             </div>
+            {/* 「译自… · 显示原文」 sits between the title and the body it explains. */}
+            <TranslateNote />
           </div>
           <FeedbackActions
             feedbackId={feedback.id}
@@ -96,7 +105,7 @@ export default async function FeedbackDetailPage({
 
         {feedback.bodyMd && (
           <div className="surface rounded-2xl p-5">
-            <MarkdownRenderer content={feedback.bodyMd} />
+            <FeedbackBody bodyMd={feedback.bodyMd} />
           </div>
         )}
 
@@ -109,6 +118,7 @@ export default async function FeedbackDetailPage({
           />
         </div>
       </section>
+      </TranslatableScope>
     </div>
   );
 }

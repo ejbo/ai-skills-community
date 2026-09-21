@@ -7,6 +7,11 @@
 // scroll + flash. A 主版主 / 版主 comment gets ONLY the RolePill — no border or
 // background: staff choose when to speak as staff (a per-comment flag is a
 // later column).
+//
+// 站内翻译 (kind `zone_comment`): the READ view's text comes from <Translatable/> —
+// attribution above the body, 翻译 / 显示译文 in the action row beside 回复. Off for a
+// tombstone and while the comment is in its edit box (the editor always works on
+// the ORIGINAL), which is also exactly when the loader would refuse it.
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -17,6 +22,7 @@ import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { pushToast } from '@/components/Toaster';
+import { Translatable } from '@/components/translate/Translatable';
 import type { ZoneCommentView, ZoneCurrentUser } from '@/lib/zones/types';
 import { leadRoleOf, type LeadRoles } from '@/lib/zones/lead-roles';
 import { currentLoginHref } from '@/lib/auth/callback-path';
@@ -162,6 +168,9 @@ export function CommentBlock({
             {comment.editedAt && !isTombstone && <span className="text-muted">{t('comment_edited')}</span>}
           </div>
 
+          <Translatable kind="zone_comment" id={comment.id} fields={{ body: comment.bodyMd }} disabled={isTombstone || editing || !comment.id}>
+            {(tr) => (
+              <>
           {isTombstone ? (
             <p className="mt-1 text-sm italic text-muted">{t('comment_deleted')}</p>
           ) : editing && currentUser ? (
@@ -180,8 +189,9 @@ export function CommentBlock({
               />
             </div>
           ) : (
-            <div className="mt-1">
-              <MarkdownRenderer content={comment.bodyMd} compact />
+            <div ref={tr.ref} className="mt-1">
+              {tr.note}
+              <MarkdownRenderer content={tr.body} compact />
             </div>
           )}
 
@@ -213,8 +223,12 @@ export function CommentBlock({
                   {tc('delete')}
                 </button>
               )}
+              {tr.control}
             </div>
           )}
+              </>
+            )}
+          </Translatable>
         </div>
       </div>
     </div>

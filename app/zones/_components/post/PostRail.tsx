@@ -21,18 +21,20 @@
 // Rails use CONSTANT offsets (`top-24`): the navbar is held visible while a
 // file is docked, so nothing here ever moves on scroll reversal.
 
-import { useId, useRef, useState, type FocusEvent, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject } from 'react';
+import { useId, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { BarChart2, Bookmark, Clock, Eye, Heart, List, Paperclip, Users } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
+import { useTranslated } from '@/components/translate/TranslatableScope';
 import type { PageBand } from '@/components/zones/preview/PreviewProvider';
 import { relativeTime } from '@/lib/i18n-date';
 import { TWEEN_FAST } from '@/lib/motion';
 import { leadRoleOf, type LeadRoles } from '@/lib/zones/lead-roles';
 import type { PublicAuthor } from '@/lib/user-identity';
+import { extractHeadings } from '@/lib/zones/shared';
 import type { ZonePostDetailView } from '@/lib/zones/types';
 import { RolePill } from '../RolePill';
 import { BTN_ICON } from '../ui';
@@ -69,6 +71,15 @@ export function PostRail({
   const pointerDownAt = useRef<number>(Number.NEGATIVE_INFINITY);
   const sectionRefs = useRef<Partial<Record<RailSection, HTMLElement | null>>>({});
 
+  // 站内翻译: while the article shows its translation, the TOC must be derived from the
+  // TRANSLATED markdown — ZoneMarkdown re-assigns heading ids from the rendered text, so the
+  // server's `post.headings` (ids slugged from the ORIGINAL headings) would point at elements
+  // that no longer exist and every entry would be a dead click. Same `extractHeadings` the
+  // server ran, so ids and dedupe agree. Memoised: PostToc re-binds its observer on identity.
+  const tr = useTranslated();
+  const translatedBody = tr?.translated ? tr.body : null;
+  const headings = useMemo(() => (translatedBody ? extractHeadings(translatedBody) : post.headings), [translatedBody, post.headings]);
+
   const sections = (
     <>
       <div
@@ -76,7 +87,7 @@ export function PostRail({
           sectionRefs.current.toc = el;
         }}
       >
-        <PostToc headings={post.headings} articleRef={articleRef} />
+        <PostToc headings={headings} articleRef={articleRef} />
       </div>
       <AuthorsSection authors={authors} leadRoles={leadRoles} sectionRef={(el) => (sectionRefs.current.authors = el)} />
       <div
@@ -96,7 +107,7 @@ export function PostRail({
 
   // ── narrow: strip + overlay ──────────────────────────────────────────────
   const glyphs: { key: RailSection; label: string; icon: ReactNode; count?: number; show: boolean }[] = [
-    { key: 'toc', label: t('rail_strip_toc'), icon: <List className="h-4 w-4" />, show: post.headings.length > 0 },
+    { key: 'toc', label: t('rail_strip_toc'), icon: <List className="h-4 w-4" />, show: headings.length > 0 },
     { key: 'authors', label: t('rail_strip_authors'), icon: <Users className="h-4 w-4" />, show: true },
     {
       key: 'attachments',

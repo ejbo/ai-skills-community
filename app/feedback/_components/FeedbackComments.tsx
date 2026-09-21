@@ -13,6 +13,7 @@ import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { CommentLikeButton } from '@/components/CommentLikeButton';
+import { Translatable } from '@/components/translate/Translatable';
 import { currentLoginHref } from '@/lib/auth/callback-path';
 import { loginHref } from '@/lib/auth/callback-path';
 
@@ -295,15 +296,21 @@ function CommentBlock({
             <DeptTag department={comment.author.department} lab={comment.author.lab} />
             <span>{relativeTime(created, locale)}</span>
           </div>
+          {/* 站内翻译 (kind `feedback_comment`): attribution above the body, 翻译 in the action row.
+              Off for a tombstone — the loader refuses it too. */}
+          <Translatable kind="feedback_comment" id={comment.id} fields={{ body: comment.bodyMd }} disabled={isTombstone || !comment.id}>
+            {(tr) => (
+              <>
           {isTombstone ? (
             <p className="mt-1 text-sm italic text-muted">{t('comment_deleted')}</p>
           ) : (
-            <div className="mt-1 text-sm">
-              <MarkdownRenderer content={comment.bodyMd} compact />
+            <div ref={tr.ref} className="mt-1 text-sm">
+              {tr.note}
+              <MarkdownRenderer content={tr.body} compact />
             </div>
           )}
           {!isTombstone && (
-            <div className="mt-1.5 flex items-center gap-3 text-xs text-muted">
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
               <CommentLikeButton
                 endpoint={`/api/feedback/${encodeURIComponent(feedbackId)}/comments/${encodeURIComponent(comment.id)}/like`}
                 initialLiked={comment.likedByMe}
@@ -340,8 +347,12 @@ function CommentBlock({
                   {g('common.delete')}
                 </button>
               )}
+              {tr.control}
             </div>
           )}
+              </>
+            )}
+          </Translatable>
         </div>
       </div>
     </div>

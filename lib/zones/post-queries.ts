@@ -41,6 +41,8 @@ import {
   zonePostAccessContext,
   type ZonePostAccessDecision,
 } from './post-access';
+import { initialCoverFraming, nextCoverFraming, parseCoverFramingInput, zonePostCoverFraming } from './post-cover';
+import { coverAspectSchema, coverPosSchema } from './post-cover-schema';
 import { autoPostSummary, nextPostSummary } from './post-summary';
 import { readableZoneWhere, zoneOrgTree } from './queries';
 import { displayExtOf, keyExtOf } from '@/lib/files/file-types';
@@ -116,6 +118,8 @@ export const ZONE_POST_CARD_SELECT = {
   title: true,
   summary: true,
   coverUrl: true,
+  coverAspect: true,
+  coverPos: true,
   linkUrl: true,
   tags: true,
   status: true,
@@ -311,6 +315,8 @@ export function toZonePostCardView(row: ZonePostCardRow, ctx: PostCardContext): 
     // body when the author wrote none, and a `link` post IS its URL.
     summary: accessLocked ? '' : row.summary,
     coverUrl: accessLocked ? null : row.coverUrl,
+    // 封面版式/裁切 — reset with the cover on a locked stub (lib/zones/post-cover.ts).
+    ...zonePostCoverFraming(row, accessLocked),
     linkUrl: accessLocked ? null : row.linkUrl,
     tags: row.tags,
     column: row.column
@@ -872,6 +878,15 @@ export interface ZonePostInput {
   summary: string;
   bodyMd: string;
   coverKey: string | null;
+  /**
+   * 封面版式 / 裁切 — the shared cover contract (lib/media/cover-pos.ts):
+   * 'landscape' | 'portrait' and '' | 'contain' | 'x% y%'. OPTIONAL on purpose:
+   * omitted on create ⇒ the defaults, omitted on update ⇒ left alone (see
+   * lib/zones/post-cover.ts for the full rule, incl. "a new image never inherits
+   * the old image's crop"). Presentation only — never stamps editedAt.
+   */
+  coverAspect?: string;
+  coverPos?: string;
   linkUrl: string | null;
   tags: string[];
   coauthorIds: string[];
@@ -895,6 +910,8 @@ export const zonePostInputSchema = z.object({
   // RichTextEditor field: VISIBLE length, the composer counter's measure (lib/rich-text-limit.ts).
   bodyMd: withRichTextLimit(z.string(), ZONE_LIMITS.postBodyMax).default(''),
   coverKey: z.string().trim().max(200).nullable().default(null),
+  coverAspect: coverAspectSchema.optional(),
+  coverPos: coverPosSchema.optional(),
   linkUrl: z.string().trim().max(2048).nullable().default(null),
   tags: z.array(z.string().max(64)).max(MAX_ZONE_POST_TAGS * 2).default([]),
   coauthorIds: z.array(z.string().min(1).max(64)).max(ZONE_LIMITS.maxCoauthors).default([]),
@@ -1305,6 +1322,10 @@ export async function createZonePost(
     resolvePostColumn(zone, input, { userId: authorId, canModerate: opts.canModerate }),
   ]);
   const linkUrl = resolveLinkUrl(input.linkUrl);
+  // Lib-level backstop for non-route callers (the route's zod schema 400s first).
+  const sentFraming = parseCoverFramingInput(input);
+  if (!sentFraming) throw new ZoneError('invalid_input', 400);
+  const framing = initialCoverFraming(cover.coverKey, sentFraming);
   const publish = input.status === 'published';
   const now = new Date();
   // 指定成员可见: the grants and the share code are born with the post.
@@ -1323,6 +1344,8 @@ export async function createZonePost(
         bodyMd,
         coverKey: cover.coverKey,
         coverUrl: cover.coverUrl,
+        coverAspect: framing.coverAspect,
+        coverPos: framing.coverPos,
         linkUrl,
         tags: normalizeTags(input.tags),
         columnId: columnId ?? null,
@@ -1462,7 +1485,18 @@ export async function updateZonePost(
   // A URL is optional whatever the (hidden) type says, so only a patch that
   // carries `linkUrl` re-validates it; otherwise the stored one stays.
   const linkUrl = patch.linkUrl !== undefined ? resolveLinkUrl(patch.linkUrl) : undefined;
+  // 封面版式 / 裁切: removed cover ⇒ defaults; a different image never inherits
+  // the old crop; otherwise only what was sent (lib/zones/post-cover.ts).
+  const sentFraming = parseCoverFramingInput(patch);
+  if (!sentFraming) throw new ZoneError('invalid_input', 400);
+  const framing = nextCoverFraming({
+    existingCoverKey: existing.coverKey,
+    nextCoverKey: cover ? cover.coverKey : undefined,
+    sent: sentFraming,
+  });
 
+  // Framing is presentation: it is deliberately NOT part of `contentChanged`,
+  // so re-cropping a published post's cover never stamps 「最后由 X 编辑于」.
   const contentChanged = title !== existing.title || bodyMd !== existing.bodyMd;
   const now = new Date();
   const nextStatus = patch.status ?? existing.status;
@@ -1499,6 +1533,7 @@ export async function updateZonePost(
     ...(patch.tags !== undefined ? { tags: normalizeTags(patch.tags) } : {}),
     ...(linkUrl !== undefined ? { linkUrl } : {}),
     ...(cover ? { coverKey: cover.coverKey, coverUrl: cover.coverUrl } : {}),
+    ...framing,
     ...(nextColumnId !== undefined ? { column: nextColumnId ? { connect: { id: nextColumnId } } : { disconnect: true } } : {}),
     ...(patch.visibility !== undefined ? { visibility: nextVisibility } : {}),
     ...(codeChanged ? { accessCode } : {}),

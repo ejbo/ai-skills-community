@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { prisma } from '@/lib/db';
+import { canViewVideo, videoActorFrom } from '@/lib/video/access';
 import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
@@ -21,8 +22,15 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
-  const video = await prisma.video.findUnique({ where: { slug: params.slug }, select: { id: true, deletedAt: true } });
-  if (!video || video.deletedAt) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  // The gate MIRRORS the detail page (canViewVideo): "logged in + the slug exists" used
+  // to hand out the whole thread of a draft or private video to anyone who knew the slug.
+  const video = await prisma.video.findUnique({
+    where: { slug: params.slug },
+    select: { id: true, deletedAt: true, status: true, visibility: true, uploaderId: true, isShort: true },
+  });
+  if (!video || video.deletedAt || !canViewVideo(video, videoActorFrom(session.user))) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
 
   const url = new URL(req.url);
   const parentId = url.searchParams.get('parentId');
@@ -30,6 +38,10 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
   const canSeeIdentity = can(session.user, 'identity');
 
   if (parentId) {
+    // The thread root must belong to THIS video — a parentId from another (private)
+    // video must not be readable through a slug the caller happens to have access to.
+    const root = await prisma.videoComment.findUnique({ where: { id: parentId }, select: { videoId: true } });
+    if (!root || root.videoId !== video.id) return NextResponse.json({ comments: [], nextCursor: null });
     const comments = await listReplies(parentId, actorId);
     return NextResponse.json({ comments: trimComments(comments, canSeeIdentity), nextCursor: null });
   }

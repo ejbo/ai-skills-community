@@ -317,7 +317,7 @@ function asJsonObject(raw: string): Record<string, unknown> | null {
  * leading ```json, while a global strip silently deleted ``` sequences INSIDE
  * generated Markdown (a skill's descriptionMd) and persisted the damage.
  */
-function stripReasoning(text: string): string | null {
+export function stripReasoning(text: string): string | null {
   let s = text;
   // gpt-oss / harmony transcripts put the answer in the final channel.
   const chan = s.lastIndexOf('<|channel|>final');

@@ -9,6 +9,7 @@ import { Avatar } from '@/components/Avatar';
 import { CommentLikeButton } from '@/components/CommentLikeButton';
 import { DeptTag } from '@/components/DeptTag';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { Translatable } from '@/components/translate/Translatable';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { isRichTextTooLong } from '@/lib/markdown-text';
 import { pushToast } from '@/components/Toaster';
@@ -492,36 +493,44 @@ function CommentBlock({
           {isTombstone ? (
             <p className="mt-1 text-sm italic text-muted">{t('comment_deleted')}</p>
           ) : (
-            <div className="mt-1">
-              <MarkdownRenderer content={comment.bodyMd} compact />
-            </div>
-          )}
-          {!isTombstone && (
-            <div className="mt-1.5 flex items-center gap-3 text-xs text-muted">
-              <CommentLikeButton
-                endpoint={`/api/discussion/comments/${comment.id}/like`}
-                initialLiked={comment.likedByMe}
-                initialCount={comment.likeCount}
-                signedIn={Boolean(currentUser)}
-              />
-              {currentUser && (
-                <button onClick={onReply} className="transition hover:text-zinc-700 dark:hover:text-zinc-200">
-                  {t('reply')}
-                </button>
+            // 站内翻译: a tombstone has no content and is never wrapped. The 翻译 link
+            // lives in the action row (flex-wrap: it must wrap, never overflow, at 375 px).
+            <Translatable kind="post_comment" id={comment.id} fields={{ body: comment.bodyMd }}>
+              {(tr) => (
+                <>
+                  <div className="mt-1" ref={tr.ref}>
+                    {tr.note}
+                    <MarkdownRenderer content={tr.body} compact />
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                    <CommentLikeButton
+                      endpoint={`/api/discussion/comments/${comment.id}/like`}
+                      initialLiked={comment.likedByMe}
+                      initialCount={comment.likeCount}
+                      signedIn={Boolean(currentUser)}
+                    />
+                    {currentUser && (
+                      <button onClick={onReply} className="transition hover:text-zinc-700 dark:hover:text-zinc-200">
+                        {t('reply')}
+                      </button>
+                    )}
+                    {isRoot && comment.replyCount > 0 && (
+                      <span>{t('reply_count', { count: comment.replyCount })}</span>
+                    )}
+                    {canDelete && (
+                      <button
+                        onClick={remove}
+                        disabled={busy}
+                        className="transition hover:text-danger"
+                      >
+                        {tc('delete')}
+                      </button>
+                    )}
+                    {tr.control}
+                  </div>
+                </>
               )}
-              {isRoot && comment.replyCount > 0 && (
-                <span>{t('reply_count', { count: comment.replyCount })}</span>
-              )}
-              {canDelete && (
-                <button
-                  onClick={remove}
-                  disabled={busy}
-                  className="transition hover:text-danger"
-                >
-                  {tc('delete')}
-                </button>
-              )}
-            </div>
+            </Translatable>
           )}
         </div>
       </div>

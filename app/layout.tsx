@@ -29,6 +29,8 @@ import { ThemeProvider } from '@/components/ThemeProvider';
 import { AuthProvider } from '@/components/AuthProvider';
 import { NavBar } from '@/components/NavBar';
 import { Toaster } from '@/components/Toaster';
+import { TranslatePrefsProvider } from '@/components/translate/TranslatePrefs';
+import { loadTranslatePrefs } from '@/lib/translate/prefs-server';
 import { VisitTracker } from '@/components/VisitTracker';
 import { auth } from '@/lib/auth';
 import './globals.css';
@@ -77,6 +79,11 @@ export default async function RootLayout({
   // tests/i18n-client-namespaces.test.ts — never edit it by hand.
   const clientMessages = pickClientMessages(messages);
 
+  // 站内翻译: is there an engine, what language does this viewer read, did they opt into
+  // 自动翻译. Seeded here so no <Translatable/> ever fetches to decide whether to render
+  // its link — and an unconfigured box renders none. Never throws (see the loader).
+  const translatePrefs = await loadTranslatePrefs(session?.user?.id, locale);
+
   return (
     <html
       lang={locale}
@@ -87,8 +94,10 @@ export default async function RootLayout({
         <ThemeProvider>
           <AuthProvider session={session}>
             <NextIntlClientProvider locale={locale} messages={clientMessages}>
-              <NavBar session={session} />
-              <main className="min-h-[calc(100vh-64px)]">{children}</main>
+              <TranslatePrefsProvider initial={translatePrefs}>
+                <NavBar session={session} />
+                <main className="min-h-[calc(100vh-64px)]">{children}</main>
+              </TranslatePrefsProvider>
               <Toaster />
               <VisitTracker enabled={Boolean(session?.user)} />
             </NextIntlClientProvider>

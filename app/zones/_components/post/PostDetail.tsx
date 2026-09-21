@@ -16,11 +16,22 @@
 // own `canEditZonePostContent`) and is the ONLY edit gate on this page: the
 // draft banner, the header's 编辑 and the action bar's 编辑 pill all read it,
 // so a co-author the zone gate would refuse never sees an entry that 403s.
+//
+// 站内翻译: the whole article sits in ONE <TranslatableScope kind="zone_post">, so a
+// single 翻译 / 显示原文 flips the title, the summary (PostHeader), the body
+// (PostBody) and the TOC (PostRail re-derives its headings from the translated
+// markdown — ZoneMarkdown re-assigns the heading ids from the rendered text, so
+// the rail and the anchors keep agreeing). The 翻译 link and the attribution share
+// ONE slot, directly above the body: a reader decides before reading, and the
+// measured phone action bar has no room for another control. Never offered on a
+// locked stub (returned above the scope — the loader would 404 it) nor on a draft
+// (every autosave would mint cache rows for text nobody else will ever read).
 
 import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { FileEdit, MessageCircle } from 'lucide-react';
+import { TranslatableScope, TranslateControl, TranslateNote, useTranslated } from '@/components/translate/TranslatableScope';
 import { usePageBand } from '@/components/zones/preview/PreviewProvider';
 import { ZoneMarkdown } from '@/components/zones/ZoneMarkdown';
 import type { LeadRoles } from '@/lib/zones/lead-roles';
@@ -36,6 +47,16 @@ import { RelatedPosts } from './RelatedPosts';
 import { useLikeBookmark } from './useLikeBookmark';
 
 const HEADING_SCROLL_MARGIN = '[&_h1]:scroll-mt-28 [&_h2]:scroll-mt-28 [&_h3]:scroll-mt-28 [&_h4]:scroll-mt-28';
+
+/**
+ * The body as the scope currently shows it — the translation while it is showing,
+ * else the original. Own-line `[embed:…]` tokens are byte-identical in a
+ * translation, so the SERVER-resolved `post.embeds` map keeps matching.
+ */
+function PostBody({ post }: { post: ZonePostDetailView }) {
+  const tr = useTranslated();
+  return <ZoneMarkdown content={tr?.body || post.bodyMd} embeds={post.embeds} size="article" />;
+}
 
 export function PostDetail({
   post,
@@ -82,6 +103,12 @@ export function PostDetail({
       : 'grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_40px]';
 
   return (
+    <TranslatableScope
+      kind="zone_post"
+      id={post.id}
+      fields={{ title: post.title, summary: post.summary, body: post.bodyMd }}
+      disabled={post.status === 'draft'}
+    >
     <div className={grid} data-post-band={band}>
       <article ref={articleRef} className={`min-w-0 ${ARTICLE_MEASURE_CLASS}`}>
         {post.status === 'draft' && (
@@ -106,8 +133,11 @@ export function PostDetail({
         <PostHeader post={post} zone={zone} leadRoles={leadRoles} titleRef={titleRef} canEdit={canEdit} />
 
         <div className={`mt-8 ${HEADING_SCROLL_MARGIN}`}>
+          {/* One slot: 「译自… · 显示原文」 while translated, else 翻译 / 翻译中… / 显示译文. */}
+          <TranslateNote />
+          <TranslateControl className="mb-3" />
           {post.bodyMd.trim() ? (
-            <ZoneMarkdown content={post.bodyMd} embeds={post.embeds} size="article" />
+            <PostBody post={post} />
           ) : (
             <p className="text-sm text-muted">{t('post_body_empty')}</p>
           )}
@@ -154,5 +184,6 @@ export function PostDetail({
         <PostRail band={band} post={post} authors={authors} leadRoles={leadRoles} articleRef={articleRef} />
       </aside>
     </div>
+    </TranslatableScope>
   );
 }

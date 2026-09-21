@@ -1,6 +1,9 @@
-// 投票活动 shared helpers — IMPORT-FREE by contract (like lib/video/shorts-shared.ts):
+// 投票活动 shared helpers — CLIENT-SAFE by contract (like lib/video/shorts-shared.ts):
 // client components import this directly, so nothing here may reach zod / node
 // builtins / next-intl. Callers pass translated text in; this file only computes.
+// The one import below is itself dependency-free (the shared cover contract).
+
+import { parseCoverPos, type CoverAspect } from '@/lib/media/cover-pos';
 
 // ─── 文件名解析规则 ─────────────────────────────────────────────────────────
 // The organizer bulk-uploads works whose filenames encode metadata, e.g.
@@ -376,23 +379,16 @@ export function resolveCustomAnswers(
 // posterPos 三态：'' = 居中裁切（object-cover center，默认）；'contain' =
 // 完整显示（模糊铺底 + contain）；'50% 30%' = object-cover + object-position
 // 选区（PosterCropEditor 拖出来的取景框位置）。
+//
+// 这套三态后来被长视频封面和技术专区帖子封面沿用，规则本体搬到了
+// lib/media/cover-pos.ts（同样零依赖、客户端安全 —— 本文件"不碰 zod / node /
+// next-intl"的约定不受影响）。这里保留原名导出，投票侧的调用点一处不用改。
 
-export type VotePosterAspect = 'landscape' | 'portrait';
+export type VotePosterAspect = CoverAspect;
 export const VOTE_POSTER_ASPECTS: VotePosterAspect[] = ['landscape', 'portrait'];
 
 /** Normalize an untrusted posterPos. Null = malformed (caller 400s). */
-export function parsePosterPos(raw: unknown): string | null {
-  if (raw === undefined || raw === null) return '';
-  if (typeof raw !== 'string') return null;
-  const s = raw.trim();
-  if (s === '' || s === 'contain') return s;
-  const m = /^(\d{1,3})% (\d{1,3})%$/.exec(s);
-  if (!m) return null;
-  const x = Number(m[1]);
-  const y = Number(m[2]);
-  if (x > 100 || y > 100) return null;
-  return `${x}% ${y}%`;
-}
+export const parsePosterPos: (raw: unknown) => string | null = parseCoverPos;
 
 // ─── 校验边界（create/edit 表单与 API 共用） ─────────────────────────────────
 export const VOTE_TITLE_MAX = 80;

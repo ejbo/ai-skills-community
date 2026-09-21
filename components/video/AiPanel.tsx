@@ -6,19 +6,28 @@ import { Maximize2, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { AiSummary } from './AiSummary';
 import { AiChat } from './AiChat';
+import { AiTranscript } from './AiTranscript';
 
-type Tab = 'summary' | 'chat';
+type Tab = 'summary' | 'chat' | 'transcript';
+
+/** The subtitle tracks of this video; the 文稿 tab exists only when there is at least one. */
+export interface AiPanelTracks {
+  zhUrl: string | null;
+  enUrl: string | null;
+}
 
 // Tabs + the two panes. Rendered both inline and inside the focus modal; each
 // instance owns its own tab state (the summary is cached, so a second fetch is
 // cheap, and the modal gives a fresh focused chat).
-function AiPanelBody({ slug, action }: { slug: string; action: React.ReactNode }) {
+function AiPanelBody({ slug, tracks, action }: { slug: string; tracks: AiPanelTracks; action: React.ReactNode }) {
   const t = useTranslations('video');
   const [tab, setTab] = useState<Tab>('summary');
+  const hasTranscript = Boolean(tracks.zhUrl || tracks.enUrl);
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'summary', label: t('ai.summary_title') },
     { key: 'chat', label: t('ai.chat_title') },
+    ...(hasTranscript ? [{ key: 'transcript' as const, label: t('ai.transcript_title') }] : []),
   ];
 
   return (
@@ -54,6 +63,11 @@ function AiPanelBody({ slug, action }: { slug: string; action: React.ReactNode }
       <div className={tab === 'chat' ? 'min-h-0 flex-1' : 'hidden'}>
         <AiChat slug={slug} />
       </div>
+      {hasTranscript && (
+        <div className={tab === 'transcript' ? 'min-h-0 flex-1' : 'hidden'}>
+          <AiTranscript zhUrl={tracks.zhUrl} enUrl={tracks.enUrl} active={tab === 'transcript'} />
+        </div>
+      )}
     </div>
   );
 }
@@ -80,7 +94,7 @@ function IconButton({
   );
 }
 
-export function AiPanel({ slug }: { slug: string }) {
+export function AiPanel({ slug, tracks }: { slug: string; tracks: AiPanelTracks }) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -104,6 +118,7 @@ export function AiPanel({ slug }: { slug: string }) {
       <div className="surface flex h-[560px] flex-col overflow-hidden rounded-2xl lg:h-[700px]">
         <AiPanelBody
           slug={slug}
+          tracks={tracks}
           action={
             <IconButton onClick={() => setOpen(true)} label="Expand">
               <Maximize2 className="h-4 w-4" />
@@ -127,6 +142,7 @@ export function AiPanel({ slug }: { slug: string }) {
             <div className="surface relative z-10 flex h-[85vh] w-full max-w-3xl animate-slide-up flex-col overflow-hidden rounded-2xl shadow-2xl">
               <AiPanelBody
                 slug={slug}
+                tracks={tracks}
                 action={
                   <IconButton onClick={() => setOpen(false)} label="Close">
                     <X className="h-4 w-4" />

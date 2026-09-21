@@ -10,6 +10,7 @@ import {
   saveVideoStream,
   videoPublicUrl,
 } from '@/lib/video/storage';
+import { probeVideoSource } from '@/lib/video/preview-clip';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -53,7 +54,16 @@ export async function POST(req: Request) {
     if (kind !== 'poster') {
       await faststartRemux(key, size);
     }
-    return NextResponse.json({ key, url: videoPublicUrl(key), size });
+    // The REAL picture length and display size (rotation applied) when ffprobe is
+    // on the box — the browser's own reading is the fallback, and it is wrong for
+    // files whose audio outlasts the video or that carry a rotation flag.
+    const probe = kind === 'source' ? await probeVideoSource(key) : null;
+    return NextResponse.json({
+      key,
+      url: videoPublicUrl(key),
+      size,
+      ...(probe ? { durationSec: Math.round(probe.durationSec), width: probe.width, height: probe.height } : {}),
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'upload_failed';
     if (msg === 'file_too_large') return NextResponse.json({ error: 'file_too_large' }, { status: 413 });

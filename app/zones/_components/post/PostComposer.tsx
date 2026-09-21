@@ -45,6 +45,7 @@ import {
   type ZonePostVisibilityValue,
 } from '@/lib/zones/shared';
 import { isRichTextTooLong } from '@/lib/markdown-text';
+import { coverAspectOf, coverPosOf, defaultCoverFor, type CoverAspect } from '@/lib/media/cover-pos';
 import { ARTICLE_MEASURE_CLASS } from '@/lib/zones/prose';
 import type { ZoneAccess, ZoneColumnView, ZoneCurrentUser, ZonePostDetailView } from '@/lib/zones/types';
 import { currentLoginHref } from '@/lib/auth/callback-path';
@@ -64,6 +65,7 @@ import { attachmentPreviewRef } from '@/components/zones/attachments/AttachmentC
 import { ComposerTopBar } from './ComposerTopBar';
 import { ComposerSettingsSheet } from './ComposerSettingsSheet';
 import { composerBodyStats } from './composer-stats';
+import { measureImageFile } from './measure-image';
 import type { CoauthorPick } from './CoauthorPicker';
 import { ColumnPicker, type ColumnPick } from './ColumnPicker';
 import type { DesignatedPick } from './PostAccessPanel';
@@ -82,6 +84,9 @@ interface DraftState {
   columnName: string | null;
   visibility: ZonePostVisibilityValue;
   designated: DesignatedPick[];
+  // 封面版式 + 裁切 (2026-09-18, lib/media/cover-pos.ts) — appended, see below.
+  coverAspect: CoverAspect;
+  coverPos: string;
 }
 
 /**
@@ -89,6 +94,12 @@ interface DraftState {
  * instead of dropping them. v3 (2026-09): `type` is gone from the draft.
  * Append-only rule: new fields go at the END of `initialDraft`'s literals AND
  * of the migration spread, or the JSON "unchanged" comparison breaks.
+ *
+ * `coverAspect` / `coverPos` joined v3 WITHOUT a bump, on purpose: they are
+ * appended and default-filled on read, so a v3 draft written before them loads
+ * unchanged — and a build from before them can still read a draft written after
+ * (a bump would make that older build silently DROP the author's draft on a
+ * rollback, since it only accepts versions it knows).
  */
 const DRAFT_VERSION = 3;
 const READABLE_VERSIONS: ReadonlySet<unknown> = new Set([1, 2, 3]);
@@ -126,9 +137,12 @@ function initialDraft(post: ZonePostDetailView | undefined, coauthors: CoauthorP
       columnName: null,
       visibility: 'zone',
       designated: [],
+      coverAspect: 'landscape',
+      coverPos: '',
     };
   }
   const coverKey = zoneMediaKeyFromPublicUrl(post.coverUrl);
+  const hasCover = !!(coverKey && post.coverUrl);
   return {
     title: post.title,
     summary: post.summary,
@@ -142,6 +156,9 @@ function initialDraft(post: ZonePostDetailView | undefined, coauthors: CoauthorP
     columnName: null,
     visibility: post.visibility,
     designated,
+    // Framing only means something next to a cover this composer can keep.
+    coverAspect: hasCover ? coverAspectOf(post.coverAspect) : 'landscape',
+    coverPos: hasCover ? coverPosOf(post.coverPos) : '',
   };
 }
 
@@ -168,6 +185,11 @@ function readStored(key: string): StoredDraft | null {
         columnName: typeof rest.columnName === 'string' ? rest.columnName : null,
         visibility: isZonePostVisibility(rest.visibility) ? rest.visibility : 'zone',
         designated: Array.isArray(rest.designated) ? rest.designated : [],
+        // Drafts stored before 封面版式 lack both; a stored value is re-read through
+        // the contract so hand-edited junk can never reach a style attribute. No
+        // cover ⇒ the defaults, exactly what `initialDraft` builds.
+        coverAspect: rest.cover ? coverAspectOf(rest.coverAspect) : 'landscape',
+        coverPos: rest.cover ? coverPosOf(rest.coverPos) : '',
       },
     };
   } catch {
@@ -342,8 +364,16 @@ export function PostComposer({
     }
     setCoverBusy(true);
     try {
-      const r = await uploadRaw(file, uploadEndpoint(zone.slug), { 'x-upload-kind': 'image' });
-      patch({ cover: { key: r.key, url: r.url } });
+      // Measured while the bytes upload. A NEW image never inherits the previous
+      // image's crop: it starts from `defaultCoverFor` — a tall 海报 as 竖版 +
+      // 完整显示 (nothing cut off; the author opts INTO a crop), anything else as
+      // the historical 横版 + 居中裁切. Unmeasurable ⇒ that same default.
+      const [r, size] = await Promise.all([
+        uploadRaw(file, uploadEndpoint(zone.slug), { 'x-upload-kind': 'image' }),
+        measureImageFile(file),
+      ]);
+      const start = defaultCoverFor(size?.width ?? 0, size?.height ?? 0);
+      patch({ cover: { key: r.key, url: r.url }, coverAspect: start.aspect, coverPos: start.pos });
     } catch (e) {
       pushToast('error', t('attach_upload_error', { name: file.name, error: t(uploadErrorKey(e)) }));
     } finally {
@@ -373,6 +403,9 @@ export function PostComposer({
       summary: draft.summary.trim(),
       bodyMd: draft.bodyMd,
       coverKey: draft.cover?.key ?? null,
+      // Always sent with the key; the server resets both when there is no cover.
+      coverAspect: draft.coverAspect,
+      coverPos: draft.coverPos,
       linkUrl: link,
       tags: draft.tags,
       coauthorIds: draft.coauthors.map((c) => c.userId),
@@ -673,9 +706,12 @@ export function PostComposer({
           selfHandle={currentUser.handle}
           selfUserId={currentUser.id}
           cover={draft.cover}
+          coverAspect={draft.coverAspect}
+          coverPos={draft.coverPos}
+          onCoverFramingChange={patch}
           coverBusy={coverBusy}
           onPickCover={(f) => void uploadCover(f)}
-          onRemoveCover={() => patch({ cover: null })}
+          onRemoveCover={() => patch({ cover: null, coverAspect: 'landscape', coverPos: '' })}
           linkUrl={draft.linkUrl}
           onLinkChange={(linkUrl) => patch({ linkUrl })}
           tags={draft.tags}

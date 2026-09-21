@@ -12,6 +12,7 @@ import { DeptTag } from '@/components/DeptTag';
 import { pushToast } from '@/components/Toaster';
 import { relativeTime } from '@/lib/i18n-date';
 import { CommentLikeButton } from '@/components/CommentLikeButton';
+import { Translatable } from '@/components/translate/Translatable';
 import { VOTE_COMMENT_MAX } from '@/lib/votes/shared';
 import type { PublicAuthor } from '@/lib/user-identity';
 
@@ -124,34 +125,42 @@ export function EntryComments({
           comments.map((c) => (
             <div key={c.id} className="group flex items-start gap-2.5">
               <Avatar name={c.author.displayName} src={c.author.avatarUrl} size="xs" handle={c.author.handle} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 text-[11px] text-white/60">
-                  <span className="truncate font-medium text-white/85">{c.author.displayName}</span>
-                  <DeptTag department={c.author.department} lab={c.author.lab} />
-                  <span className="shrink-0">{relativeTime(new Date(c.createdAt), locale)}</span>
-                  {c.canDelete && (
-                    <button
-                      type="button"
-                      title={t('comment_delete')}
-                      onClick={() => void remove(c)}
-                      className="ml-auto hidden shrink-0 text-white/40 transition hover:text-red-400 group-hover:block"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-                <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-white/90">{c.body}</p>
-                <div className="mt-1 text-[11px]">
-                  <CommentLikeButton
-                    endpoint={`/api/votes/${encodeURIComponent(activityId)}/comments/${encodeURIComponent(c.id)}/like`}
-                    initialLiked={c.likedByMe}
-                    initialCount={c.likeCount}
-                    signedIn
-                    size="xs"
-                    tone="onDark"
-                  />
-                </div>
-              </div>
+              {/* 站内翻译: PLAIN text (never markdown-processed) on an always-dark ground ⇒ tone="onDark".
+                  A sent comment enters the list with its real id from the POST response, so every row is translatable. */}
+              <Translatable kind="vote_comment" id={c.id} fields={{ body: c.body }} tone="onDark">
+                {(tr) => (
+                  <div className="min-w-0 flex-1" ref={tr.ref}>
+                    <div className="flex items-center gap-1.5 text-[11px] text-white/60">
+                      <span className="truncate font-medium text-white/85">{c.author.displayName}</span>
+                      <DeptTag department={c.author.department} lab={c.author.lab} />
+                      <span className="shrink-0">{relativeTime(new Date(c.createdAt), locale)}</span>
+                      {c.canDelete && (
+                        <button
+                          type="button"
+                          title={t('comment_delete')}
+                          onClick={() => void remove(c)}
+                          className="ml-auto hidden shrink-0 text-white/40 transition hover:text-red-400 group-hover:block"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    {tr.note && <div className="mt-1">{tr.note}</div>}
+                    <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-white/90">{tr.body}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+                      <CommentLikeButton
+                        endpoint={`/api/votes/${encodeURIComponent(activityId)}/comments/${encodeURIComponent(c.id)}/like`}
+                        initialLiked={c.likedByMe}
+                        initialCount={c.likeCount}
+                        signedIn
+                        size="xs"
+                        tone="onDark"
+                      />
+                      {tr.control}
+                    </div>
+                  </div>
+                )}
+              </Translatable>
             </div>
           ))
         )}

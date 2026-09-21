@@ -100,6 +100,42 @@ const schema = z.object({
    */
   SUBTITLE_CONCURRENCY: num(1, 1),
   /**
+   * Threads ONE whisper job may use (whisper.cpp `-t`, OMP/MKL for the Python
+   * flavour). 2 is deliberately small for the shared intranet box; since long
+   * videos get subtitles too, a dedicated machine can raise it — an hour of
+   * speech on 2 threads of large-v3-turbo is roughly an hour of work.
+   */
+  WHISPER_THREADS: num(2, 1),
+  /**
+   * Character budget of the context handed to the video AI (summary + chat):
+   * title, description, speaker AND the transcript, which is the part that gets
+   * cut to fit. ~120 K chars suits a 128 K-token model; lower it when the
+   * intranet model has a small context window, or the request 400s.
+   */
+  VIDEO_AI_CONTEXT_CHARS: num(120 * 1024, 8 * 1024),
+  /**
+   * 站内翻译 (lib/translate, docs/contracts/translate.md). Kill switch first: false hides
+   * the 翻译 link site-wide (no dead buttons) and the routes answer 503.
+   */
+  TRANSLATE_ENABLED: bool('true'),
+  /**
+   * A DEDICATED translation model (recommended: a non-reasoning MT model such as
+   * Hy-MT2-7B on its own vLLM port — see docs/translation-design.md §1). Unset ⇒ the
+   * house 知识库 model is used, which is only acceptable with 关闭思考 on: a reasoning
+   * model turns a 0.5 s translation into 10–30 s and shares the 知识库 queue.
+   */
+  TRANSLATE_LLM_BASE_URL: optStr(),
+  TRANSLATE_LLM_MODEL: optStr(),
+  TRANSLATE_LLM_API_KEY: optStr(),
+  /** 'mt' = plain-text prompt, one unit per call (MT models); 'general' = index-keyed JSON batches. */
+  TRANSLATE_LLM_KIND: optStr(),
+  /** Shown in 「译自中文 · <label>」. Defaults to the served model id. */
+  TRANSLATE_ENGINE_LABEL: optStr(),
+  /** Concurrent model calls translation may hold. The library fallback is capped at 2 whatever this says (same GPU as 知识库 chat). */
+  TRANSLATE_MAX_CONCURRENT: num(8, 1),
+  /** Per model call, ms. Never the inherited 300 s LLM timeout — a reader is waiting on a link. */
+  TRANSLATE_RUN_TIMEOUT_MS: num(45_000, 1000),
+  /**
    * Refuse new uploads when the storage volume has less than this much free
    * space (MB). PostgreSQL lives on the same disk, so ENOSPC takes the database
    * down with the app — this keeps a reserve. 0 disables the check.

@@ -11,6 +11,7 @@ import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
 import { relativeTime } from '@/lib/i18n-date';
 import { CommentLikeButton } from '@/components/CommentLikeButton';
+import { Translatable } from '@/components/translate/Translatable';
 import { currentLoginHref } from '@/lib/auth/callback-path';
 import { LoginLink } from '@/components/LoginLink';
 
@@ -198,13 +199,24 @@ export function DocComments({
             </span>
           )}
         </div>
-        <div className="mt-1.5 pl-8">
-          {deleted ? (
-            <p className="text-xs italic text-muted">{t('comment_deleted')}</p>
-          ) : (
-            <MarkdownRenderer content={c.bodyMd} compact />
+        {/* 站内翻译 (kind `library_comment`). The 翻译 link sits UNDER the body (X's placement), not in
+            the header's like/reply cluster: that row does not wrap and is already full in the
+            reader's narrow 评论 tab. Rows live on a site `.surface` in both places ⇒ default tone. */}
+        <Translatable kind="library_comment" id={c.id} fields={{ body: c.bodyMd }} disabled={deleted || !c.id}>
+          {(tr) => (
+            <div ref={tr.ref} className="mt-1.5 pl-8">
+              {deleted ? (
+                <p className="text-xs italic text-muted">{t('comment_deleted')}</p>
+              ) : (
+                <>
+                  {tr.note}
+                  <MarkdownRenderer content={tr.body} compact />
+                  {tr.control && <div className="mt-1">{tr.control}</div>}
+                </>
+              )}
+            </div>
           )}
-        </div>
+        </Translatable>
         {c.replies && c.replies.length > 0 && (
           <div className="ml-8 mt-1 divide-y divide-zinc-100 border-l-2 border-zinc-100 pl-4 dark:divide-zinc-800/60 dark:border-zinc-800">
             {c.replies.map((r) => renderComment(r, c.id))}

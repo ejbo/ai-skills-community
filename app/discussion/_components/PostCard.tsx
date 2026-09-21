@@ -20,6 +20,7 @@ import { DeptTag } from '@/components/DeptTag';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
+import { Translatable } from '@/components/translate/Translatable';
 import { withBasePath } from '@/lib/base-path';
 import { copyText } from '@/lib/clipboard';
 import { relativeTime } from '@/lib/i18n-date';
@@ -403,23 +404,38 @@ export function PostCard({
         </div>
       ) : (
         bodyMd && (
-          <div className="mt-3">
-            <div
-              ref={bodyRef}
-              className="overflow-hidden"
-              style={expanded ? undefined : { maxHeight: clampMax }}
-            >
-              <MarkdownRenderer content={bodyMd} compact />
-            </div>
-            {!expanded && overflowing && (
-              <button
-                onClick={() => setExpanded(true)}
-                className="mt-1 text-sm font-medium text-muted transition hover:text-zinc-700 dark:hover:text-zinc-200"
-              >
-                {t('expand')}
-              </button>
+          // 站内翻译: only the READ view is wrapped (the editor above always edits the
+          // original), and `bodyMd` is the local state, so a saved edit resets the
+          // translation. The note sits OUTSIDE the clamped box: the clamp's
+          // ResizeObserver watches that box's first child (the renderer's stable root),
+          // which is what re-measures 展开 when the text swaps to a longer translation.
+          <Translatable kind="post" id={post.id} fields={{ body: bodyMd }}>
+            {(tr) => (
+              <div className="mt-3" ref={tr.ref}>
+                {tr.note}
+                <div
+                  ref={bodyRef}
+                  className="overflow-hidden"
+                  style={expanded ? undefined : { maxHeight: clampMax }}
+                >
+                  <MarkdownRenderer content={tr.body} compact />
+                </div>
+                {((!expanded && overflowing) || tr.control) && (
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    {!expanded && overflowing && (
+                      <button
+                        onClick={() => setExpanded(true)}
+                        className="text-sm font-medium text-muted transition hover:text-zinc-700 dark:hover:text-zinc-200"
+                      >
+                        {t('expand')}
+                      </button>
+                    )}
+                    {tr.control}
+                  </div>
+                )}
+              </div>
             )}
-          </div>
+          </Translatable>
         )
       )}
 

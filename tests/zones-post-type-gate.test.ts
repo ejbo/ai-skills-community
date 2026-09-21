@@ -111,3 +111,43 @@ describe('PATCH /api/zones/[slug]/posts/[postId] — type changes are moderator-
     expect(r.body.reason).toBe('reason:zone_announcement_forbidden');
   });
 });
+
+// 封面版式 / 裁切 ride the same PATCH (2026-09-18). They are validated against the
+// shared cover contract's CLOSED value sets at the route — `coverPos` ends up in
+// a style attribute — and are ordinary content-gate fields (author / co-author /
+// moderator). The storing rules live in lib/zones/post-cover.ts
+// (tests/zones-cover.test.ts).
+describe('PATCH /api/zones/[slug]/posts/[postId] — cover framing', () => {
+  it('forwards a valid framing to the lib, alone or next to the cover key', async () => {
+    expect((await patch({ coverAspect: 'portrait', coverPos: 'contain' })).body).toEqual({ ok: true });
+    expect(lib.updateZonePost).toHaveBeenLastCalledWith(
+      'p1',
+      { coverAspect: 'portrait', coverPos: 'contain' },
+      { canModerate: false, actorId: 'author' },
+    );
+    const key = 'image/NXTWcaU4d6EKJryOHdOSq.png';
+    expect((await patch({ coverKey: key, coverPos: '30% 70%' })).status).toBe(200);
+    expect(lib.updateZonePost).toHaveBeenLastCalledWith('p1', { coverKey: key, coverPos: '30% 70%' }, expect.anything());
+  });
+
+  it('400s anything outside the closed sets before the lib is reached', async () => {
+    for (const body of [
+      { coverPos: 'center' },
+      { coverPos: '50% 101%' },
+      { coverPos: '50% 50%;background:url(//evil)' },
+      { coverAspect: 'square' },
+      { coverAspect: 1 },
+    ]) {
+      const r = await patch(body);
+      expect(r.status, JSON.stringify(body)).toBe(400);
+      expect(r.body.error).toBe('invalid_input');
+    }
+    expect(lib.updateZonePost).not.toHaveBeenCalled();
+  });
+
+  it('is a content field: a reader who may not edit the post cannot re-frame its cover', async () => {
+    state.userId = 'stranger';
+    expect((await patch({ coverPos: 'contain' })).status).toBe(403);
+    expect(lib.updateZonePost).not.toHaveBeenCalled();
+  });
+});

@@ -63,7 +63,14 @@ export default async function VideoDetailPage({ params, searchParams }: PageProp
     ? { id: actor.id, canModerate: actor.canManageVideos, handle: session.user.handle }
     : null;
 
-  const aiPanel = <AiPanel slug={video.slug} />;
+  // 字幕 tracks ride the same gate as the video itself (canPlayVideo): the files
+  // are served by the login-walled file route, and the URLs are only handed to a
+  // viewer who may play.
+  const tracks = {
+    zhUrl: playable ? video.subtitleZhUrl : null,
+    enUrl: playable ? video.subtitleEnUrl : null,
+  };
+  const aiPanel = <AiPanel slug={video.slug} tracks={tracks} />;
   const relatedRail = related.length > 0 ? <RelatedVideos videos={related} /> : null;
 
   return (
@@ -76,8 +83,12 @@ export default async function VideoDetailPage({ params, searchParams }: PageProp
           <VideoPlayer
             src={playable ? video.videoUrl : null}
             poster={video.posterUrl}
+            posterAspect={video.posterAspect}
+            posterPos={video.posterPos}
             slug={video.slug}
+            title={video.title}
             durationSec={video.durationSec}
+            subtitles={{ status: video.subtitleStatus, ...tracks }}
           />
 
           <VideoMeta

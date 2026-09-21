@@ -12,6 +12,8 @@ interface UploadResult {
   width?: number;
   height?: number;
   durationSec?: number;
+  /** The picked file, so the form can hand a blob: url to the trimmer without re-downloading the upload. */
+  file: File;
 }
 
 /**
@@ -47,11 +49,11 @@ function probeVideoMetadata(
  * Direct self-hosted upload: POST the raw file to our own route, streamed to
  * disk server-side. XHR (not fetch) so we get upload progress.
  */
-function uploadToServer(
+export function uploadVideoAsset(
   file: File,
   kind: 'source' | 'poster' | 'preview',
   onProgress: (pct: number) => void,
-): Promise<{ key: string; url: string; size: number }> {
+): Promise<{ key: string; url: string; size: number; durationSec?: number; width?: number | null; height?: number | null }> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', withBasePath('/api/videos/upload'));
@@ -109,13 +111,16 @@ export function VideoUploadField({
     setFileName(file.name);
     try {
       const meta = kind === 'source' ? await probeVideoMetadata(file) : {};
-      const res = await uploadToServer(file, kind, (p) => setProgress(p));
+      const res = await uploadVideoAsset(file, kind, (p) => setProgress(p));
       onUploaded({
         url: res.url,
         pathname: res.key,
-        width: meta.width,
-        height: meta.height,
-        durationSec: meta.durationSec,
+        // The server's ffprobe reading wins when the box has one (rotation applied,
+        // picture length rather than the longest track); the browser's is the fallback.
+        width: res.width ?? meta.width,
+        height: res.height ?? meta.height,
+        durationSec: res.durationSec ?? meta.durationSec,
+        file,
       });
       pushToast('success', label);
     } catch (err) {

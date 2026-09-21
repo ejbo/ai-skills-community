@@ -55,6 +55,7 @@ export const CLIENT_MESSAGE_NAMESPACES = [
   'skills_misc',
   'source',
   'stickers',
+  'translate',
   'ui',
   'upload',
   'video',

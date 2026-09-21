@@ -4,6 +4,7 @@
 // dates as ISO strings) so client components never see raw Prisma rows.
 
 import type { ZoneSidebarLayout } from './sidebar';
+import type { CoverAspect } from '@/lib/media/cover-pos';
 import type { PublicAuthor } from '@/lib/user-identity';
 import type { ZoneAccess, ZonePermissionKey } from './permissions';
 import type {
@@ -141,6 +142,13 @@ export interface ZonePostCardView {
   title: string;
   summary: string;
   coverUrl: string | null;
+  /**
+   * 封面版式 + 裁切 — the shared cover contract (lib/media/cover-pos.ts), rendered
+   * through components/media/CoverImage. Always the defaults ('landscape', '')
+   * when there is no cover or the viewer only gets a locked stub.
+   */
+  coverAspect: CoverAspect;
+  coverPos: string;
   linkUrl: string | null;
   tags: string[];
   /** 栏目 (null ⇒ 未归栏). */

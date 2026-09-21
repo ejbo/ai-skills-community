@@ -4,20 +4,34 @@ import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { LLMConfigError } from '@/lib/llm';
+import { canViewVideo, getVideoActor } from '@/lib/video/access';
 import { generateVideoSummary } from '@/lib/video/summary';
 
 // GET /api/videos/[slug]/summary (login) — returns the CACHED summary only.
-// Generation happens once at upload (see POST /api/videos) or via admin POST
-// below; it is never triggered by a viewer.
+// Generation happens at upload (see POST /api/videos), again once the subtitle
+// pipeline has produced a transcript, or via admin POST below; it is never
+// triggered by a viewer. Gated like the detail page (canViewVideo): the summary
+// of a draft / private video is that video's content.
 export async function GET(_req: Request, { params }: { params: { slug: string } }) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+  const actor = await getVideoActor();
+  if (!actor) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
   const video = await prisma.video.findUnique({
     where: { slug: params.slug },
-    select: { deletedAt: true, aiSummaryMd: true, aiSummaryModel: true, aiSummaryAt: true },
+    select: {
+      status: true,
+      visibility: true,
+      uploaderId: true,
+      deletedAt: true,
+      isShort: true,
+      aiSummaryMd: true,
+      aiSummaryModel: true,
+      aiSummaryAt: true,
+    },
   });
-  if (!video || video.deletedAt) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  if (!video || video.deletedAt || !canViewVideo(video, actor)) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
 
   return NextResponse.json({
     summaryMd: video.aiSummaryMd ?? '',

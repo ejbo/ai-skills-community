@@ -1,12 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Loader2 } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 import { VideoUploadField } from '@/components/video/VideoUploadField';
+import { VideoCoverClipField } from '@/components/video/VideoCoverClipField';
+import { SubtitleManager, type SubtitleState } from '@/components/video/SubtitleManager';
 import { RichTextEditor } from '@/components/RichTextEditor';
+import { parseStoredClip, type StoredClip } from '@/lib/media/clip-shared';
+import { coverAspectOf, coverPosOf, type CoverAspect } from '@/lib/media/cover-pos';
 
 type Status = 'draft' | 'published';
 type Visibility = 'public' | 'unlisted' | 'private';
@@ -34,9 +38,17 @@ export interface VideoFormVideo {
   posterKey: string | null;
   previewUrl: string | null;
   previewKey: string | null;
+  /** 封面版式 + 裁切 (lib/media/cover-pos.ts). */
+  posterAspect: string;
+  posterPos: string;
+  /** {start,end,cover,duration} the preview clip was cut from; null for a hand-uploaded clip. */
+  previewClip: unknown;
   durationSec: number | null;
   width: number | null;
   height: number | null;
+  subtitles: SubtitleState;
+  /** Transcript derived from the subtitle track — shown read-only; the AI uses it when the manual one is empty. */
+  subtitleTranscript: string | null;
 }
 
 interface Media {
@@ -97,6 +109,18 @@ export function VideoForm({
   const [previewClip, setPreviewClip] = useState<Media | null>(
     video?.previewUrl ? { url: video.previewUrl, key: video.previewKey ?? undefined } : null,
   );
+  const [clip, setClip] = useState<StoredClip | null>(() => parseStoredClip(video?.previewClip));
+  const [posterAspect, setPosterAspect] = useState<CoverAspect>(coverAspectOf(video?.posterAspect));
+  const [posterPos, setPosterPos] = useState(coverPosOf(video?.posterPos));
+  const [autoSubtitles, setAutoSubtitles] = useState(true);
+  // blob: url of the source picked in THIS tab — the trimmer plays it without re-downloading the upload.
+  const [localSrc, setLocalSrc] = useState<string | null>(null);
+  useEffect(
+    () => () => {
+      if (localSrc) URL.revokeObjectURL(localSrc);
+    },
+    [localSrc],
+  );
 
   const [submitting, setSubmitting] = useState<Status | null>(null);
 
@@ -126,10 +150,15 @@ export function VideoForm({
       categorySlug: categorySlug || undefined,
       videoUrl: source.url,
       videoKey: source.key,
-      posterUrl: poster?.url,
-      posterKey: poster?.key,
-      previewUrl: previewClip?.url,
-      previewKey: previewClip?.key,
+      // Edit mode sends an explicit null so a removed poster / preview is really removed.
+      posterUrl: poster?.url ?? (mode === 'edit' ? null : undefined),
+      posterKey: poster?.key ?? (mode === 'edit' ? null : undefined),
+      previewUrl: previewClip?.url ?? (mode === 'edit' ? null : undefined),
+      previewKey: previewClip?.key ?? (mode === 'edit' ? null : undefined),
+      posterAspect,
+      posterPos,
+      previewClip: previewClip && clip ? clip : undefined,
+      ...(mode === 'create' ? { autoSubtitles } : {}),
       durationSec: source.durationSec,
       width: source.width,
       height: source.height,
@@ -249,8 +278,20 @@ export function VideoForm({
             className={textareaClass}
             rows={8}
             value={transcriptText}
+            placeholder={t('manage.transcript_placeholder')}
             onChange={(e) => setTranscriptText(e.target.value)}
           />
+          <p className="text-[11px] leading-relaxed text-muted">{t('manage.transcript_hint')}</p>
+          {video?.subtitleTranscript && (
+            <details className="rounded-lg border border-zinc-200 text-xs dark:border-zinc-800">
+              <summary className="cursor-pointer select-none px-3 py-2 font-medium text-zinc-700 dark:text-zinc-300">
+                {t('manage.transcript_auto_title', { chars: video.subtitleTranscript.length })}
+              </summary>
+              <pre className="max-h-64 overflow-auto whitespace-pre-wrap border-t border-zinc-200 px-3 py-2 font-sans leading-relaxed text-muted dark:border-zinc-800">
+                {video.subtitleTranscript}
+              </pre>
+            </details>
+          )}
         </section>
       </div>
 
@@ -261,29 +302,62 @@ export function VideoForm({
             kind="source"
             label={t('manage.upload_video')}
             value={source}
-            onUploaded={(r) =>
+            onUploaded={(r) => {
               setSource({
                 url: r.url,
                 key: r.pathname,
                 durationSec: r.durationSec,
                 width: r.width,
                 height: r.height,
-              })
-            }
+              });
+              setLocalSrc(URL.createObjectURL(r.file));
+              // A preview cut from the PREVIOUS source no longer belongs to this video.
+              if (clip) {
+                setPreviewClip(null);
+                setClip(null);
+              }
+            }}
           />
-          <VideoUploadField
-            kind="poster"
-            label={t('manage.upload_poster')}
-            value={poster}
-            onUploaded={(r) => setPoster({ url: r.url, key: r.pathname })}
-          />
-          <VideoUploadField
-            kind="preview"
-            label={t('manage.upload_preview')}
-            value={previewClip}
-            onUploaded={(r) => setPreviewClip({ url: r.url, key: r.pathname })}
+          <VideoCoverClipField
+            source={source}
+            localSrc={localSrc}
+            poster={poster}
+            posterAspect={posterAspect}
+            posterPos={posterPos}
+            preview={previewClip}
+            clip={clip}
+            onPoster={(next, framing) => {
+              setPoster(next);
+              setPosterAspect(framing?.aspect ?? 'landscape');
+              setPosterPos(framing?.pos ?? '');
+            }}
+            onFraming={(f) => {
+              setPosterAspect(f.aspect);
+              setPosterPos(f.pos);
+            }}
+            onPreview={(next, nextClip) => {
+              setPreviewClip(next);
+              setClip(nextClip);
+            }}
           />
         </section>
+
+        {mode === 'edit' && video ? (
+          <SubtitleManager slug={video.slug} initial={video.subtitles} hasSource={Boolean(source?.key)} />
+        ) : (
+          <section className="surface space-y-2 rounded-xl p-4">
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={autoSubtitles}
+                onChange={(e) => setAutoSubtitles(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-zinc-900 dark:accent-zinc-100"
+              />
+              {t('manage.sub_auto')}
+            </label>
+            <p className="text-[11px] leading-relaxed text-muted">{t('manage.sub_auto_hint')}</p>
+          </section>
+        )}
 
         <section className="surface space-y-4 rounded-xl p-4">
           <Field label={t('manage.f_category')}>

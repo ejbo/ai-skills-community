@@ -11,6 +11,7 @@ import { FolderOpen, Pin } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { GlareHover } from '@/components/motion';
 import { withBasePath } from '@/lib/base-path';
+import { coverObjectPosition } from '@/lib/media/cover-pos';
 import { leadRoleOf, type LeadRoles } from '@/lib/zones/lead-roles';
 import { zoneHref, zonePostHref } from '@/lib/zones/shared';
 import type { ZonePostCardView } from '@/lib/zones/types';
@@ -41,8 +42,17 @@ export function PinnedBand({ items, leadRoles }: { items: ZonePostCardView[]; le
             >
               {post.coverUrl ? (
                 <GlareHover className="h-14 w-14 shrink-0 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                  {/* A 56px square cannot usefully letterbox, so 完整显示 ('contain') just
+                      centre-crops here; an author's crop keeps its focal point
+                      (coverObjectPosition answers the centre for '' and 'contain'). */}
                   {/* eslint-disable-next-line @next/next/no-img-element -- stored root-relative media URL */}
-                  <img src={withBasePath(post.coverUrl)} alt="" loading="lazy" className="h-14 w-14 rounded-lg object-cover" />
+                  <img
+                    src={withBasePath(post.coverUrl)}
+                    alt=""
+                    loading="lazy"
+                    className="h-14 w-14 rounded-lg object-cover"
+                    style={{ objectPosition: coverObjectPosition(post.coverPos) }}
+                  />
                 </GlareHover>
               ) : (
                 // No cover: stand in with the ZONE's own colour rather than a

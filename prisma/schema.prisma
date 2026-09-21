@@ -39,6 +39,11 @@ model User {
   lab                 String?
   // 隐私账号：开启后对普通用户只显示昵称与头像（隐藏部门/研究所/@handle）；管理员始终可见全部。
   isPrivate           Boolean    @default(false)
+  // 站内翻译 (lib/translate): 自动翻译 is OPT-IN — other-language posts and comments are
+  // translated as they scroll into view, 显示原文 always one click away. `translateSkipLangs`
+  // = 「不翻译此语言」, ≤ 3 of 'zh' | 'en' | 'fr' (sanitizeSkipLangs).
+  autoTranslate       Boolean    @default(false)
+  translateSkipLangs  String[]   @default([])
   // 知识库阅读动态：关闭后不出现在文档的「正在阅读」名单里（计数不受影响）。
   showLibraryActivity Boolean    @default(true)
   // 个人主页板块可见性 —— LEGACY（2026-09-14 起由 UserProfile.layout 取代）。
@@ -911,18 +916,28 @@ model Video {
   descriptionMd String @default("")
 
   // Media (self-hosted, object storage; browser direct upload)
-  videoKey    String?
-  videoUrl    String?
-  posterKey   String?
-  posterUrl   String?
-  previewKey  String? // optional dedicated hover-preview clip; falls back to first seconds of source
-  previewUrl  String?
-  mimeType    String  @default("video/mp4")
-  sizeBytes   Int     @default(0)
-  width       Int?
-  height      Int?
-  durationSec Int     @default(0)
-  externalUrl String? // external_embed only (phase-2)
+  videoKey     String?
+  videoUrl     String?
+  posterKey    String?
+  posterUrl    String?
+  // 封面版式 + 裁切 — the shared cover contract (lib/media/cover-pos.ts, same
+  // vocabulary as VoteEntry.posterAspect/posterPos). TEXT, not an enum: the closed
+  // value set lives in code (parseCoverAspect / parseCoverPos), so adding a
+  // surface never needs an ALTER TYPE. aspect 'landscape' | 'portrait';
+  // pos '' = 居中裁切, 'contain' = 完整显示（模糊铺底）, 'x% y%' = 取景位置.
+  posterAspect String  @default("landscape")
+  posterPos    String  @default("")
+  previewKey   String? // hover-preview clip: cut server-side from the source (POST /api/videos/clip) or uploaded by hand
+  previewUrl   String?
+  /// {start,end,cover,duration} — the source segment the preview clip was cut from
+  /// (lib/media/clip-shared.ts StoredClip), so the editor reopens the trimmer there.
+  previewClip  Json?
+  mimeType     String  @default("video/mp4")
+  sizeBytes    Int     @default(0)
+  width        Int?
+  height       Int?
+  durationSec  Int     @default(0)
+  externalUrl  String? // external_embed only (phase-2)
 
   // Status / classification
   status       VideoStatus     @default(draft)
@@ -964,17 +979,26 @@ model Video {
   aiSummaryAt         DateTime?
   aiSummarySourceHash String?
 
-  // 字幕 (随刷短视频): local whisper ASR + LLM translation, stored as VTT files
-  // in the videos storage under subtitle/. Best-effort — absent tooling leaves
-  // status at none/failed and playback simply has no subtitle tracks.
-  subtitleStatus  VideoSubtitleStatus @default(none)
-  subtitleSrcLang String? // detected: 'zh' | 'en'
-  subtitleZhKey   String?
-  subtitleZhUrl   String?
-  subtitleEnKey   String?
-  subtitleEnUrl   String?
-  subtitleError   String?
-  subtitleAt      DateTime?
+  // 字幕 (短视频 AND 长视频): local whisper ASR + LLM translation — or tracks an
+  // admin uploaded as VTT/SRT — stored as VTT files in the videos storage under
+  // subtitle/. Best-effort — absent tooling leaves status at none/failed and
+  // playback simply has no subtitle tracks.
+  subtitleStatus     VideoSubtitleStatus @default(none)
+  subtitleSrcLang    String? // detected: 'zh' | 'en'
+  subtitleZhKey      String?
+  subtitleZhUrl      String?
+  subtitleEnKey      String?
+  subtitleEnUrl      String?
+  subtitleError      String?
+  subtitleAt         DateTime?
+  // true once a person uploaded / replaced a track by hand. The pipeline only
+  // regenerates over the tracks on its OWN initiative (a replaced source file)
+  // while this is false — corrected subtitles are work, never silently redone.
+  subtitleManual     Boolean             @default(false)
+  // Timestamped plain-text transcript DERIVED from the source-language track
+  // (lib/video/transcript.ts). Never hand-edited: the AI context reads the
+  // manual `transcriptText` when the uploader wrote one, else this.
+  subtitleTranscript String?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1628,6 +1652,26 @@ model LibraryTranslation {
 
   @@unique([docId, targetLang, sourceHash])
   @@index([docId, targetLang])
+}
+
+/// 站内翻译 — the global, block-level cache (docs/translation-design.md §3.4). One passage
+/// is paid for ONCE for the whole community, whoever asked first and wherever it appears.
+/// Keyed by the hash of the RAW unit text (whitespace-normalised, placeholders NOT
+/// substituted) + target language, so an edit simply misses and the placeholder style can
+/// change without invalidating anything. No item in the key: a row cannot be enumerated
+/// per item, and the read gate lives in the registry loader (lib/translate/sources.ts).
+model ContentTranslation {
+  id         String   @id @default(cuid())
+  targetLang String // 'zh' | 'en' | 'fr'
+  sourceHash String // sha256(normalizeSource(raw unit))
+  sourceText String // ≤ 1500 chars, kept so the cache can be audited / rebuilt
+  text       String // translated unit, placeholders already restored
+  model      String // served model id — attribution + purge-by-model
+  createdAt  DateTime @default(now())
+
+  @@unique([targetLang, sourceHash])
+  @@index([model])
+  @@index([createdAt])
 }
 
 /// 知识库分类. `official` ones are curated in 管理后台 and lead the picker;
@@ -2548,6 +2592,11 @@ model ZonePost {
   bodyMd        String             @default("")
   coverUrl      String?
   coverKey      String?
+  // 封面版式 + 裁切 — the shared cover contract (lib/media/cover-pos.ts; same
+  // columns as Video.posterAspect/posterPos). aspect 'landscape' | 'portrait';
+  // pos '' = 居中裁切, 'contain' = 完整显示, 'x% y%' = 取景位置.
+  coverAspect   String             @default("landscape")
+  coverPos      String             @default("")
   // type=link: the shared URL.
   linkUrl       String?
   tags          String[]           @default([])

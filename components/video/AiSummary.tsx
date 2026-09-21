@@ -4,9 +4,13 @@ import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { linkifyStamps } from '@/lib/video/timestamps';
+import { SeekLinks } from './player/SeekLinks';
 
 // Content-only: the surrounding fixed-height container + title live in AiPanel.
-// The summary is pre-generated on upload, so this only fetches the cached value.
+// The summary is pre-generated (on upload, and again once subtitles produced a
+// transcript), so this only fetches the cached value. `[12:34]` entries of its
+// 时间线 become seek links.
 export function AiSummary({ slug }: { slug: string }) {
   const t = useTranslations('video');
   const tc = useTranslations('common');
@@ -41,7 +45,9 @@ export function AiSummary({ slug }: { slug: string }) {
           {tc('loading')}
         </div>
       ) : summary ? (
-        <MarkdownRenderer content={summary} compact />
+        <SeekLinks>
+          <MarkdownRenderer content={linkifyStamps(summary)} compact />
+        </SeekLinks>
       ) : (
         <p className="text-sm text-muted">{t('ai.summary_empty')}</p>
       )}

@@ -26,6 +26,9 @@ export const VIDEO_CARD_SELECT = {
   featured: true,
   intervieweeName: true,
   intervieweeTitle: true,
+  // 封面版式 + 裁切 (lib/media/cover-pos.ts) — every card renders through CoverImage.
+  posterAspect: true,
+  posterPos: true,
   uploader: { select: { handle: true, displayName: true, avatarUrl: true } },
   category: { select: { slug: true, name: true } },
 } satisfies Prisma.VideoSelect;
@@ -39,7 +42,25 @@ export const VIDEO_DETAIL_INCLUDE = {
   tags: { include: { tag: { select: { slug: true, name: true } } } },
 } satisfies Prisma.VideoInclude;
 
-export type VideoDetail = Prisma.VideoGetPayload<{ include: typeof VIDEO_DETAIL_INCLUDE }>;
+// The two transcripts are the only unbounded columns on the row (an hour of
+// speech is ~50–100 KB) and ONLY the AI routes read them (VIDEO_AI_SELECT in
+// lib/video/summary.ts) — the detail page must not drag them through every view.
+const DETAIL_HEAVY_FIELDS = ['transcriptText', 'subtitleTranscript'] as const;
+
+export type VideoDetail = Omit<
+  Prisma.VideoGetPayload<{ include: typeof VIDEO_DETAIL_INCLUDE }>,
+  (typeof DETAIL_HEAVY_FIELDS)[number]
+>;
+
+/** Every scalar column EXCEPT the heavy ones, plus the detail relations. Built from Prisma's own field list, so a new column is picked up automatically. */
+const VIDEO_DETAIL_SELECT = {
+  ...Object.fromEntries(
+    Object.values(Prisma.VideoScalarFieldEnum)
+      .filter((f) => !(DETAIL_HEAVY_FIELDS as readonly string[]).includes(f))
+      .map((f) => [f, true]),
+  ),
+  ...VIDEO_DETAIL_INCLUDE,
+} as Prisma.VideoSelect;
 
 // isShort: false — 随刷短视频 live in the same table but have their own feed
 // (/videos/shorts); they must never leak into the long-video rails/browse.
@@ -219,7 +240,9 @@ export async function getHomeFeed(actorId: string | null): Promise<HomeFeed> {
 
 // ── Detail ───────────────────────────────────────────────────────────────────
 export function getVideoBySlug(slug: string): Promise<VideoDetail | null> {
-  return prisma.video.findUnique({ where: { slug }, include: VIDEO_DETAIL_INCLUDE });
+  // The select is assembled at runtime (see VIDEO_DETAIL_SELECT), so the payload
+  // type is asserted rather than inferred — VideoDetail is the same Omit.
+  return prisma.video.findUnique({ where: { slug }, select: VIDEO_DETAIL_SELECT }) as unknown as Promise<VideoDetail | null>;
 }
 
 // ── Comments ─────────────────────────────────────────────────────────────────

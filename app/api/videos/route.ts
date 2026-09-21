@@ -7,6 +7,9 @@ import { browseVideos } from '@/lib/video/queries';
 import { parseVideoSort } from '@/lib/video/types';
 import { uniqueVideoSlug } from '@/lib/video/slug';
 import { generateVideoSummary } from '@/lib/video/summary';
+import { generateVideoSubtitles } from '@/lib/video/subtitles';
+import { parseCoverAspect, parseCoverPos } from '@/lib/media/cover-pos';
+import { parseStoredClip } from '@/lib/media/clip-shared';
 import { cookies } from 'next/headers';
 
 // GET /api/videos?q=&category=&sort=&page= (login) -> { videos, hasMore, page }
@@ -36,6 +39,12 @@ const createSchema = z.object({
   posterKey: z.string().optional(),
   previewUrl: z.string().max(2000).optional(),
   previewKey: z.string().optional(),
+  // 封面版式 + 裁切 — validated by the shared contract below, not by zod: the
+  // closed value set lives in ONE place (lib/media/cover-pos.ts).
+  posterAspect: z.string().max(20).optional(),
+  posterPos: z.string().max(20).optional(),
+  // {start,end,cover,duration} of the segment the preview clip was cut from.
+  previewClip: z.unknown().optional(),
   durationSec: z.number().int().min(0).optional(),
   width: z.number().int().min(0).optional(),
   height: z.number().int().min(0).optional(),
@@ -51,6 +60,8 @@ const createSchema = z.object({
   status: z.enum(['draft', 'published']).optional(),
   visibility: z.enum(['public', 'unlisted', 'private']).optional(),
   featured: z.boolean().optional(),
+  /** false ⇒ do not start the subtitle pipeline on publish (default: start it). */
+  autoSubtitles: z.boolean().optional(),
 });
 
 // POST /api/videos (admin) -> { ok, slug }
@@ -63,6 +74,13 @@ export async function POST(req: Request) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
   const d = parsed.data;
+
+  const posterAspect = parseCoverAspect(d.posterAspect);
+  const posterPos = parseCoverPos(d.posterPos);
+  if (posterAspect === null || posterPos === null) {
+    return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
+  }
+  const previewClip = d.previewKey ? parseStoredClip(d.previewClip) : null;
 
   const slug = await uniqueVideoSlug(d.title, d.slug);
   const status = d.status ?? 'draft';
@@ -86,6 +104,9 @@ export async function POST(req: Request) {
       posterKey: d.posterKey,
       previewUrl: d.previewUrl,
       previewKey: d.previewKey,
+      posterAspect,
+      posterPos,
+      ...(previewClip ? { previewClip: { ...previewClip } } : {}),
       durationSec: d.durationSec ?? 0,
       width: d.width,
       height: d.height,
@@ -127,8 +148,19 @@ export async function POST(req: Request) {
     select: { id: true, slug: true },
   });
 
-  // Generate the AI summary ONCE, now (best-effort — upload must not fail if the
-  // LLM is unconfigured or errors). Viewers only ever read the cached value.
+  // 字幕: a published video with a stored source starts the ASR + translation
+  // pipeline now — detached, queued behind its own FIFO, never failing the
+  // publish. Drafts wait for publish (or the 生成字幕 button on the edit page):
+  // an ASR run is real CPU time and a draft's source is often replaced.
+  // When it finishes it writes the transcript and refreshes the summary below
+  // with what was actually said.
+  if (status === 'published' && d.videoKey && d.autoSubtitles !== false) {
+    void generateVideoSubtitles(video.id);
+  }
+
+  // Generate the AI summary now from what the uploader wrote (best-effort —
+  // upload must not fail if the LLM is unconfigured or errors). Viewers only
+  // ever read the cached value.
   try {
     const locale = cookies().get('locale')?.value;
     await generateVideoSummary(video.id, locale);

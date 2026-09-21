@@ -29,8 +29,9 @@ import { Clock, ExternalLink, Eye, FolderOpen, Lock, Megaphone, Pencil, PencilLi
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { GlareHover } from '@/components/motion';
+import { CoverImage } from '@/components/media/CoverImage';
 import { ImageLightbox } from '@/app/events/_components/ImageLightbox';
-import { withBasePath } from '@/lib/base-path';
+import { TranslatedText } from '@/components/translate/TranslatableScope';
 import { relativeTime } from '@/lib/i18n-date';
 import { leadRoleOf, type LeadRoles } from '@/lib/zones/lead-roles';
 import { hostnameOf, zoneHref, zonePostHref } from '@/lib/zones/shared';
@@ -125,11 +126,17 @@ export function PostHeader({
       </div>
 
       {/* Never animated (owner decision): the title is the first thing a reader needs. */}
+      {/* 站内翻译: title + summary follow the page's one <TranslatableScope> (PostDetail);
+          outside a scope the leaf renders its fallback, i.e. exactly what was here before. */}
       <h1 ref={titleRef} className="break-words text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
-        {post.title}
+        <TranslatedText field="title" fallback={post.title} />
       </h1>
 
-      {post.summary && <p className="text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">{post.summary}</p>}
+      {post.summary && (
+        <p className="text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
+          <TranslatedText field="summary" fallback={post.summary} />
+        </p>
+      )}
 
       {post.linkUrl && (
         <a
@@ -213,10 +220,26 @@ export function PostHeader({
       </div>
 
       {post.coverUrl && (
+        // 封面版式 (lib/media/cover-pos.ts). 横版 keeps the 2:1 banner. 竖版 gets a
+        // slightly taller WALL (16:10) and stays slot="landscape", so CoverImage
+        // stands the poster up as a centred portrait frame on a blurred copy of
+        // itself — a full-width 3:4 box would push the article a screen down, and
+        // a 2:1 centre crop is what cut the titles off 海报 in the first place.
+        // The lightbox still opens the untouched original.
         <ImageLightbox src={post.coverUrl} alt={post.title} className="block w-full">
-          <GlareHover className="aspect-[2/1] w-full rounded-2xl bg-zinc-100 dark:bg-zinc-900">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={withBasePath(post.coverUrl)} alt={post.title} className="h-full w-full object-cover" />
+          <GlareHover
+            className={`w-full rounded-2xl bg-zinc-100 dark:bg-zinc-900 ${
+              post.coverAspect === 'portrait' ? 'aspect-[16/10]' : 'aspect-[2/1]'
+            }`}
+          >
+            <CoverImage
+              src={post.coverUrl}
+              alt={post.title}
+              aspect={post.coverAspect}
+              pos={post.coverPos}
+              slot="landscape"
+              loading="eager"
+            />
           </GlareHover>
         </ImageLightbox>
       )}

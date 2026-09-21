@@ -14,6 +14,7 @@ import { isRichTextTooLong } from '@/lib/markdown-text';
 import { pushToast } from '@/components/Toaster';
 import { relativeTime } from '@/lib/i18n-date';
 import { CommentLikeButton } from '@/components/CommentLikeButton';
+import { Translatable } from '@/components/translate/Translatable';
 import { currentLoginHref } from '@/lib/auth/callback-path';
 import { LoginLink } from '@/components/LoginLink';
 
@@ -298,29 +299,37 @@ function ReplyBlock({
           {isTombstone ? (
             <p className="mt-1 text-sm italic text-muted">{t('reply_deleted')}</p>
           ) : (
-            <div className="mt-1">
-              <ZoneMarkdown content={reply.bodyMd} compact headingIds={false} />
-            </div>
-          )}
-          {!isTombstone && (
-            <div className="mt-1.5 flex items-center gap-3 text-xs text-muted">
-              <CommentLikeButton
-                endpoint={`/api/discussion/topics/${encodeURIComponent(topicId)}/replies/${encodeURIComponent(reply.id)}/like`}
-                initialLiked={reply.likedByMe}
-                initialCount={reply.likeCount}
-                signedIn={!!currentUser}
-              />
-              {canReply && (
-                <button onClick={onReply} className="transition hover:text-zinc-700 dark:hover:text-zinc-200">
-                  {t('reply')}
-                </button>
+            // 站内翻译: tombstones are never wrapped. Reply embeds self-fetch by token, and own-line
+            // `[embed:…]` tokens come back byte-identical from a translation, so the cards keep mounting.
+            <Translatable kind="topic_reply" id={reply.id} fields={{ body: reply.bodyMd }}>
+              {(tr) => (
+                <>
+                  <div className="mt-1" ref={tr.ref}>
+                    {tr.note}
+                    <ZoneMarkdown content={tr.body} compact headingIds={false} />
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                    <CommentLikeButton
+                      endpoint={`/api/discussion/topics/${encodeURIComponent(topicId)}/replies/${encodeURIComponent(reply.id)}/like`}
+                      initialLiked={reply.likedByMe}
+                      initialCount={reply.likeCount}
+                      signedIn={!!currentUser}
+                    />
+                    {canReply && (
+                      <button onClick={onReply} className="transition hover:text-zinc-700 dark:hover:text-zinc-200">
+                        {t('reply')}
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button onClick={remove} disabled={busy} className="transition hover:text-danger">
+                        {tc('delete')}
+                      </button>
+                    )}
+                    {tr.control}
+                  </div>
+                </>
               )}
-              {canDelete && (
-                <button onClick={remove} disabled={busy} className="transition hover:text-danger">
-                  {tc('delete')}
-                </button>
-              )}
-            </div>
+            </Translatable>
           )}
         </div>
       </div>

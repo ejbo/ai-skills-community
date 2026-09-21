@@ -8,6 +8,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import type { VideoCard as VideoCardType } from '@/lib/video/queries';
 import { formatCount, formatDuration, withBasePath } from '@/lib/video/types';
 import { relativeTime } from '@/lib/i18n-date';
+import { CoverImage } from '@/components/media/CoverImage';
 
 const PREVIEW_DELAY_MS = 400;
 // Without a dedicated preview clip, loop only the first seconds of the source.
@@ -94,14 +95,15 @@ export function VideoCard({ video }: { video: VideoCardType }) {
           }`}
         >
           {video.posterUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={withBasePath(video.posterUrl)}
+            // The shared cover contract: the grid slot stays 16:9 for every card, and a
+            // 竖版 cover stands inside it as a framed poster instead of being centre-cropped
+            // into a sliver.
+            <CoverImage
+              src={video.posterUrl}
               alt={video.title}
-              loading="lazy"
-              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
-                previewing ? 'opacity-0' : 'opacity-100'
-              }`}
+              aspect={video.posterAspect}
+              pos={video.posterPos}
+              className={`transition-opacity duration-300 ${previewing ? 'opacity-0' : 'opacity-100'}`}
             />
           ) : (
             <div className="absolute inset-0 grid place-items-center bg-gradient-to-br from-zinc-200 to-zinc-300 text-2xl font-semibold text-zinc-500 dark:from-zinc-800 dark:to-zinc-700 dark:text-zinc-400">
@@ -124,9 +126,10 @@ export function VideoCard({ video }: { video: VideoCardType }) {
                 const el = e.currentTarget;
                 if (isFallbackPreview && el.currentTime >= FALLBACK_PREVIEW_SEC) el.currentTime = 0;
               }}
-              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
-                previewing ? 'opacity-100' : 'opacity-0'
-              }`}
+              // A portrait VIDEO is letterboxed in the 16:9 slot, never cropped to a band.
+              className={`absolute inset-0 h-full w-full bg-black transition-opacity duration-300 ${
+                video.width && video.height && video.height > video.width ? 'object-contain' : 'object-cover'
+              } ${previewing ? 'opacity-100' : 'opacity-0'}`}
             />
           )}
 

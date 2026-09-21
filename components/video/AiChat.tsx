@@ -5,6 +5,8 @@ import { Loader2, Send } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useTranslations } from 'next-intl';
 import { streamChat } from '@/app/skills/[slug]/streamChat';
+import { linkifyStamps } from '@/lib/video/timestamps';
+import { SeekLinks } from './player/SeekLinks';
 
 interface Msg {
   role: 'user' | 'assistant';
@@ -86,9 +88,10 @@ export function AiChat({ slug }: { slug: string }) {
               >
                 {msg.role === 'assistant' ? (
                   msg.content ? (
-                    <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-headings:my-1.5 prose-headings:text-[13px] prose-headings:font-semibold">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
-                    </div>
+                    <SeekLinks className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-headings:my-1.5 prose-headings:text-[13px] prose-headings:font-semibold">
+                      {/* `[12:34]` citations become seek links (the model is asked to cite the transcript's stamps). */}
+                      <ReactMarkdown>{linkifyStamps(msg.content)}</ReactMarkdown>
+                    </SeekLinks>
                   ) : (
                     <span className="flex items-center gap-1.5 text-muted">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('ai.thinking')}

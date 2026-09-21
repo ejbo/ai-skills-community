@@ -18,6 +18,7 @@ import {
   updateZonePost,
   type ZonePostInput,
 } from '@/lib/zones/post-queries';
+import { coverAspectSchema, coverPosSchema } from '@/lib/zones/post-cover-schema';
 import {
   MAX_ATTACHMENT_ROWS_PER_POST,
   MAX_ZONE_COLUMNS,
@@ -93,6 +94,10 @@ const patchSchema = z
     // RichTextEditor field: VISIBLE length, the composer counter's measure (lib/rich-text-limit.ts).
     bodyMd: withRichTextLimit(z.string(), ZONE_LIMITS.postBodyMax).optional(),
     coverKey: z.string().regex(ZONE_MEDIA_KEY_RE).regex(COVER_KEY_RE).nullable().optional(),
+    // 封面版式 / 裁切 — the shared cover contract's closed value sets (anything
+    // else is a 400). Presentation only: the lib keeps them out of `editedAt`.
+    coverAspect: coverAspectSchema.optional(),
+    coverPos: coverPosSchema.optional(),
     linkUrl: z.string().max(2048).nullable().optional(),
     tags: z.array(z.string().max(64)).max(64).optional(),
     coauthorIds: z.array(z.string().min(1).max(64)).max(ZONE_LIMITS.maxCoauthors).optional(),
@@ -233,6 +238,8 @@ export async function PATCH(req: Request, { params }: { params: { slug: string; 
   if (content.summary !== undefined) patch.summary = content.summary;
   if (content.bodyMd !== undefined) patch.bodyMd = content.bodyMd;
   if (content.coverKey !== undefined) patch.coverKey = content.coverKey;
+  if (content.coverAspect !== undefined) patch.coverAspect = content.coverAspect;
+  if (content.coverPos !== undefined) patch.coverPos = content.coverPos;
   if (content.linkUrl !== undefined) {
     if (content.linkUrl === null || content.linkUrl.trim() === '') {
       patch.linkUrl = null;

@@ -380,3 +380,58 @@
 [data-theme='dark'] .hljs-deletion {
   color: #ffa198;
 }
+
+/* ── 长视频播放器 (components/video/VideoPlayer.tsx) ──────────────────────────
+   Range inputs inside the player sit on video, so they are white-on-dark
+   whatever the site theme is. `--fill` (0–100) paints the part left of the
+   thumb; the player writes it inline. Lives here, not in tailwind.config:
+   utilities added there are not hot-reloaded and keyframes get silently dropped. */
+.player-range {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  height: 16px;
+}
+.player-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: linear-gradient(to right, #fff var(--fill, 0%), rgba(255, 255, 255, 0.28) var(--fill, 0%));
+}
+.player-range::-moz-range-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+.player-range::-moz-range-progress {
+  height: 4px;
+  border-radius: 9999px;
+  background: #fff;
+}
+.player-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border-radius: 9999px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.player-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 9999px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.player-range:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.8);
+  outline-offset: 4px;
+  border-radius: 9999px;
+}
+.player-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}

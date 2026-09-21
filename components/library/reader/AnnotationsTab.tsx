@@ -32,6 +32,7 @@ import { UserHoverCard } from '@/components/user/UserHoverCard';
 import { DeptTag } from '@/components/DeptTag';
 import { pushToast } from '@/components/Toaster';
 import { CommentLikeButton } from '@/components/CommentLikeButton';
+import { Translatable } from '@/components/translate/Translatable';
 import { relativeTime } from '@/lib/i18n-date';
 import type { TocEntry } from './TocPanel';
 import {
@@ -434,9 +435,20 @@ function AnnotationCard({
         <span className="r-muted line-clamp-3">{note.quote}</span>
       </button>
 
-      {note.noteText && <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{note.noteText}</p>}
+      {/* 站内翻译 (kind `library_note`, PLAIN text): only the annotator's own words are swapped — the
+          quoted passage above anchors to the ORIGINAL text and is never touched. tone="reader":
+          this list follows the reader's 浅色/护眼/深色 theme, not the site's. */}
+      <Translatable kind="library_note" id={note.id} fields={{ body: note.noteText }} tone="reader" disabled={!note.noteText}>
+        {(tr) => (
+          <>
+      {note.noteText && (
+        <div ref={tr.ref} className="mt-2">
+          {tr.note}
+          <p className="whitespace-pre-wrap text-sm leading-relaxed">{tr.body}</p>
+        </div>
+      )}
 
-      <div className="mt-2 flex items-center gap-3 text-[11px]">
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
         <button
           type="button"
           onClick={() => void toggleLike()}
@@ -457,7 +469,11 @@ function AnnotationCard({
           <MessageCircle className="h-3.5 w-3.5" />
           {totalReplies > 0 ? t('replies_expand', { count: totalReplies }) : t('reply_expand')}
         </button>
+        {tr.control}
       </div>
+          </>
+        )}
+      </Translatable>
 
       {threadOpen && (
         <div className="mt-2 space-y-2 border-l-2 border-[var(--reader-border)] pl-2.5">
@@ -544,8 +560,15 @@ function ReplyRow({
         {reply.authorRole && <RoleBadge name={reply.authorRole.name} />}
         <time className="r-muted ml-auto">{relativeTime(reply.createdAt, locale)}</time>
       </div>
-      <p className="mt-0.5 whitespace-pre-wrap pl-6 text-xs leading-relaxed">{reply.bodyMd}</p>
-      <div className="ml-6 mt-0.5 flex items-center gap-3 text-[11px]">
+      {/* 站内翻译 (kind `library_note_reply`, PLAIN text — rendered raw despite the column name). */}
+      <Translatable kind="library_note_reply" id={reply.id} fields={{ body: reply.bodyMd }} tone="reader">
+        {(tr) => (
+          <>
+      <div ref={tr.ref} className="mt-0.5 pl-6">
+        {tr.note}
+        <p className="whitespace-pre-wrap text-xs leading-relaxed">{tr.body}</p>
+      </div>
+      <div className="ml-6 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
         <CommentLikeButton
           endpoint={`/api/library/notes/${encodeURIComponent(highlightId)}/replies/${encodeURIComponent(reply.id)}/like`}
           initialLiked={reply.likedByMe}
@@ -561,7 +584,11 @@ function ReplyRow({
         >
           {t('reply')}
         </button>
+        {tr.control}
       </div>
+          </>
+        )}
+      </Translatable>
       {reply.children && reply.children.length > 0 && (
         <div className="mt-1.5 space-y-1.5">
           {reply.children.map((c) => (

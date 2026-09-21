@@ -10,6 +10,7 @@ import { relativeTime } from '@/lib/i18n-date';
 import { pushToast } from '@/components/Toaster';
 import { DeptTag } from '@/components/DeptTag';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { Translatable } from '@/components/translate/Translatable';
 import { withBasePath } from '@/lib/base-path';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { isRichTextTooLong } from '@/lib/markdown-text';
@@ -237,52 +238,62 @@ export function CommentItem({ slug, comment, currentUser, onChanged, onAddSiblin
             </div>
           </div>
         ) : (
-          <div className="mt-1 break-words text-zinc-800 dark:text-zinc-100">
-            <MarkdownRenderer content={bodyMd} compact />
-          </div>
-        )}
+          // 站内翻译: only the READ view is wrapped — a tombstone has no content, and the edit box
+          // above always edits the original. `bodyMd` is local state, so a saved edit resets the
+          // translation. Shared by the long-video page and the shorts comment sheet / side panel,
+          // which all follow the SITE theme (no forced-dark ground), hence the default tone.
+          <Translatable kind="video_comment" id={comment.id} fields={{ body: bodyMd }}>
+            {(tr) => (
+              <>
+                <div className="mt-1 break-words text-zinc-800 dark:text-zinc-100" ref={tr.ref}>
+                  {tr.note}
+                  <MarkdownRenderer content={tr.body} compact />
+                </div>
 
-        {!isTombstone && !editing && (
-          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted">
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={toggleLike}
-              className={`flex items-center gap-1 transition hover:text-zinc-700 dark:hover:text-zinc-200 ${
-                liked ? 'text-danger' : ''
-              }`}
-            >
-              <Heart className="h-3.5 w-3.5" fill={liked ? 'currentColor' : 'none'} />
-              {likeCount > 0 && <span className="font-mono tabular-nums">{formatCount(likeCount)}</span>}
-            </motion.button>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    onClick={toggleLike}
+                    className={`flex items-center gap-1 transition hover:text-zinc-700 dark:hover:text-zinc-200 ${
+                      liked ? 'text-danger' : ''
+                    }`}
+                  >
+                    <Heart className="h-3.5 w-3.5" fill={liked ? 'currentColor' : 'none'} />
+                    {likeCount > 0 && <span className="font-mono tabular-nums">{formatCount(likeCount)}</span>}
+                  </motion.button>
 
-            <button
-              onClick={() => setReplying((v) => !v)}
-              className="flex items-center gap-1 transition hover:text-zinc-700 dark:hover:text-zinc-200"
-            >
-              <MessageSquare className="h-3.5 w-3.5" />
-              {t('comments.reply')}
-            </button>
+                  <button
+                    onClick={() => setReplying((v) => !v)}
+                    className="flex items-center gap-1 transition hover:text-zinc-700 dark:hover:text-zinc-200"
+                  >
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    {t('comments.reply')}
+                  </button>
 
-            {isOwn && (
-              <button
-                onClick={() => {
-                  setEditDraft(bodyMd);
-                  setEditing(true);
-                }}
-                className="flex items-center gap-1 transition hover:text-zinc-700 dark:hover:text-zinc-200"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-                {t('comments.edit')}
-              </button>
+                  {isOwn && (
+                    <button
+                      onClick={() => {
+                        setEditDraft(bodyMd);
+                        setEditing(true);
+                      }}
+                      className="flex items-center gap-1 transition hover:text-zinc-700 dark:hover:text-zinc-200"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      {t('comments.edit')}
+                    </button>
+                  )}
+
+                  {canDelete && (
+                    <button onClick={remove} className="flex items-center gap-1 transition hover:text-danger">
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {t('comments.delete')}
+                    </button>
+                  )}
+                  {tr.control}
+                </div>
+              </>
             )}
-
-            {canDelete && (
-              <button onClick={remove} className="flex items-center gap-1 transition hover:text-danger">
-                <Trash2 className="h-3.5 w-3.5" />
-                {t('comments.delete')}
-              </button>
-            )}
-          </div>
+          </Translatable>
         )}
 
         {replying && (

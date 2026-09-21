@@ -12,6 +12,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { Translatable } from '@/components/translate/Translatable';
 import { Check, Loader2, StickyNote, Trash2 } from 'lucide-react';
 
 export const HIGHLIGHT_COLORS = ['yellow', 'green', 'blue', 'pink'] as const;
@@ -224,6 +225,7 @@ export function MarkPopover({
 export function CommunityNotePopover({
   top,
   left,
+  noteId,
   authorName,
   quote,
   noteText,
@@ -233,6 +235,8 @@ export function CommunityNotePopover({
 }: {
   top: number;
   left: number;
+  /** The shared annotation's id — 站内翻译 addresses the note by `{kind:'library_note', id}`. */
+  noteId: string;
   authorName: string;
   quote: string;
   noteText: string | null;
@@ -246,6 +250,9 @@ export function CommunityNotePopover({
   useEffect(() => {
     const onDown = (e: MouseEvent | TouchEvent) => {
       if (ref.current && e.target instanceof Node && ref.current.contains(e.target)) return;
+      // The translation gear's menu is PORTALED to <body> (so it is "outside" by DOM), but it
+      // belongs to this popover: dismissing here would unmount it before its click lands.
+      if (e.target instanceof Element && e.target.closest('[role="menu"]')) return;
       onClose();
     };
     document.addEventListener('mousedown', onDown);
@@ -274,14 +281,32 @@ export function CommunityNotePopover({
       <p className="r-muted mt-1.5 line-clamp-3 border-l-2 border-[color:var(--reader-border)] pl-2 text-xs leading-relaxed">
         {quote}
       </p>
-      {noteText && <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed">{noteText}</p>}
-      <button
-        type="button"
-        onClick={onOpenInPanel}
-        className="r-muted mt-2 text-[11px] transition hover:text-[var(--reader-accent)]"
-      >
-        {replyCount > 0 ? t('replies_expand', { count: replyCount }) : t('reply_expand')}
-      </button>
+      {/* 站内翻译: ANOTHER reader's shared note — same kind/id as its card in the 批注 tab, so a
+          translation made in either place is shared (page-level result cache). The quote above
+          anchors to the original text and stays as written. The viewer's OWN mark (MarkPopover)
+          is editable and is deliberately not wrapped. */}
+      <Translatable kind="library_note" id={noteId} fields={{ body: noteText }} tone="reader" disabled={!noteText}>
+        {(tr) => (
+          <>
+            {noteText && (
+              <div className="mt-2">
+                {tr.note}
+                <p className="whitespace-pre-wrap text-xs leading-relaxed">{tr.body}</p>
+              </div>
+            )}
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <button
+                type="button"
+                onClick={onOpenInPanel}
+                className="r-muted text-[11px] transition hover:text-[var(--reader-accent)]"
+              >
+                {replyCount > 0 ? t('replies_expand', { count: replyCount }) : t('reply_expand')}
+              </button>
+              {tr.control}
+            </div>
+          </>
+        )}
+      </Translatable>
     </div>
   );
 }

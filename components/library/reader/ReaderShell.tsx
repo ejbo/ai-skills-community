@@ -1616,6 +1616,7 @@ export function ReaderShell({
             <CommunityNotePopover
               top={communityPopover.top}
               left={communityPopover.left}
+              noteId={note.id}
               authorName={note.author.displayName}
               quote={note.quote}
               noteText={note.noteText}

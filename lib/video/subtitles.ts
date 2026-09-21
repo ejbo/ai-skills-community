@@ -1,5 +1,5 @@
-// 随刷短视频字幕 pipeline — SERVER-ONLY, best-effort by contract (a box without
-// the tooling must never break uploads):
+// 字幕 pipeline (短视频 AND 长视频) — SERVER-ONLY, best-effort by contract (a box
+// without the tooling must never break uploads):
 //   1. ffmpeg extracts mono 16 kHz audio from the stored source.
 //   2. A LOCAL whisper binary transcribes it to VTT (auto language detection).
 //      Two flavors are supported, whichever is installed:
@@ -10,15 +10,26 @@
 //   3. The house LLM (getLibraryProvider — admin-repointable) translates the
 //      cues to the OTHER language (中 ↔ EN), preserving timestamps. Translation
 //      failure still ships the original track.
+//   4. The source-language track becomes a timestamped transcript
+//      (Video.subtitleTranscript, lib/video/transcript.ts) — the AI summary and
+//      chat read it as background — and a LONG video's summary is refreshed,
+//      since it can now be about what was actually said.
 // Files land in the videos storage as `subtitle/<nanoid>.vtt`, served by the
 // existing auth+Range file route (contentTypeForKey knows .vtt).
+//
+// Tracks can also be UPLOADED (VTT / SRT) per language by whoever manages the
+// video — for a box with no whisper, or to replace a mis-heard ASR track with a
+// corrected one (saveUploadedSubtitleTrack / removeSubtitleTrack below).
 //
 // ADMISSION CONTROL: one ASR run is minutes-to-hours of 100%-CPU, multi-GB-RSS
 // work on a box that also carries PostgreSQL and two neighbour apps, and the
 // publish route fires this `void`-style — five uploads in the same minute used
 // to mean five whisper processes. Jobs therefore queue on an in-process FIFO
 // (env.SUBTITLE_CONCURRENCY, default 1), and whisper's own thread pool is capped
-// so the one job that does run cannot take the whole machine either.
+// so the one job that does run cannot take the whole machine either. Shorts are
+// picked ahead of long videos that are still WAITING (a 90-minute talk must not
+// make every short published after it wait hours); a job already running is
+// never pre-empted.
 
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -29,8 +40,11 @@ import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/db';
 import { env } from '@/lib/env';
 import { getLibraryProvider } from '@/lib/library/llm';
-import { videoFileAbsPath, videoPublicUrl } from './storage';
-import { buildVtt, detectSubtitleLang, parseVtt, type VttCue } from './subtitles-shared';
+import { deleteVideoFile, videoFileAbsPath, videoPublicUrl } from './storage';
+import { buildVtt, detectSubtitleLang, parseVtt, toTimedCues, type SubtitleLang, type VttCue } from './subtitles-shared';
+import { translateCuesWith } from './subtitle-translate';
+import { refreshVideoSummaryIfStale } from './summary';
+import { cuesToTranscript } from './transcript';
 
 // ── Tool probing ─────────────────────────────────────────────────────────────
 
@@ -177,62 +191,53 @@ async function saveSubtitleVtt(content: string): Promise<{ key: string; url: str
 }
 
 // ── LLM cue translation ──────────────────────────────────────────────────────
-
-const TRANSLATE_CHUNK = 30;
+// The retry / split / fallback machinery is pure and lives in
+// ./subtitle-translate.ts (unit-tested with a fake model); this is only the
+// binding to the house LLM.
 
 /**
- * Translate cue texts to the target language, preserving count/order. Returns
- * null when the LLM is unconfigured or any chunk fails (caller keeps only the
- * original track).
+ * Translate cue texts to the target language with the admin-repointable library
+ * provider. null ⇒ the LLM is unconfigured, unreachable, or too unreliable to
+ * ship a track (the caller keeps only the original language).
  */
-async function translateCues(cues: VttCue[], target: 'zh' | 'en'): Promise<VttCue[] | null> {
-  let provider;
+async function translateCues(cues: VttCue[], target: SubtitleLang): Promise<VttCue[] | null> {
+  let provider: Awaited<ReturnType<typeof getLibraryProvider>>['provider'];
   try {
     provider = (await getLibraryProvider()).provider;
   } catch {
     return null; // LLM unconfigured — original-language track only
   }
-  const targetName = target === 'zh' ? '简体中文' : 'English';
-  const out: VttCue[] = [];
-  for (let i = 0; i < cues.length; i += TRANSLATE_CHUNK) {
-    const chunk = cues.slice(i, i + TRANSLATE_CHUNK);
-    const numbered = chunk.map((c, j) => `${j + 1}. ${c.text.replace(/\n/g, ' ')}`).join('\n');
-    try {
-      const res = await provider.complete({
-        system:
-          `你是精准的字幕翻译引擎。把编号列表中的每一行字幕翻译成${targetName}。` +
-          '保持行数与编号完全一致，每行格式为 "编号. 译文"。' +
-          '保留专有名词、代码与数字的原文形态。不要输出任何解释。',
-        messages: [{ role: 'user', content: numbered }],
-        // No maxTokens: the provider omits the field so a reasoning model's
-        // <think> block can't truncate the answer (house rule).
-      });
-      const lines = new Map<number, string>();
-      for (const raw of res.text.split('\n')) {
-        const m = /^\s*(\d+)[.、．]\s*(.+)$/.exec(raw.trim());
-        if (m) lines.set(Number(m[1]), m[2].trim());
-      }
-      for (let j = 0; j < chunk.length; j++) {
-        const translated = lines.get(j + 1);
-        if (!translated) return null; // count mismatch — don't ship a broken track
-        out.push({ start: chunk[j].start, end: chunk[j].end, text: translated });
-      }
-    } catch {
-      return null;
-    }
-  }
-  return out;
+  return translateCuesWith(cues, target, async (system, user) => {
+    const res = await provider.complete({
+      system,
+      messages: [{ role: 'user', content: user }],
+      // No maxTokens: the provider omits the field so a reasoning model's
+      // <think> block can't truncate the answer (house rule).
+    });
+    return res.text;
+  });
 }
 
 // ── The pipeline ─────────────────────────────────────────────────────────────
 
 // Uploads have NO duration cap, so give long videos generous processing room.
-const AUDIO_TIMEOUT_MS = 10 * 60 * 1000;
-const WHISPER_TIMEOUT_MS = 90 * 60 * 1000;
+const AUDIO_TIMEOUT_MS = 20 * 60 * 1000;
+// The floor suits any short; a LONG video scales with its own length — on the
+// capped thread pool whisper runs near real time, so a fixed 90 min killed every
+// talk longer than about an hour. 4× real time is slack for a slow box, 12 h is
+// the point past which the child is stuck rather than slow.
+const WHISPER_TIMEOUT_FLOOR_MS = 90 * 60 * 1000;
+const WHISPER_TIMEOUT_CEIL_MS = 12 * 60 * 60 * 1000;
+const WHISPER_REALTIME_FACTOR = 4;
+
+export function whisperTimeoutMs(durationSec: number | null | undefined): number {
+  const scaled = (durationSec && durationSec > 0 ? durationSec : 0) * 1000 * WHISPER_REALTIME_FACTOR;
+  return Math.min(WHISPER_TIMEOUT_CEIL_MS, Math.max(WHISPER_TIMEOUT_FLOOR_MS, scaled));
+}
 
 // Both whisper flavors default to "every core", which starves PostgreSQL and the
 // two neighbour apps sharing this box for as long as a job runs.
-const WHISPER_THREADS = 2;
+const WHISPER_THREADS = Math.max(1, env.WHISPER_THREADS);
 // OpenMP/torch honour this without a CLI flag — safe for every flavor and every
 // release, whereas an unknown ARGUMENT makes the CLI exit non-zero and would
 // turn every job into 转写失败.
@@ -247,7 +252,7 @@ function transcribeError(outcome: RunOutcome): string {
   return outcome === 'timeout' ? 'whisper 转写超时' : 'whisper 转写失败';
 }
 
-async function transcribeToVtt(audioPath: string, workDir: string): Promise<Transcription> {
+async function transcribeToVtt(audioPath: string, workDir: string, timeoutMs: number): Promise<Transcription> {
   const w = await detectWhisper();
   if (!w) return { error: 'whisper 不可用' };
   const outBase = path.join(workDir, 'out');
@@ -259,7 +264,7 @@ async function transcribeToVtt(audioPath: string, workDir: string): Promise<Tran
     const outcome = await run(
       w.bin,
       ['-m', model, '-t', String(WHISPER_THREADS), '-f', audioPath, '-l', 'auto', '-ovtt', '-of', outBase],
-      WHISPER_TIMEOUT_MS,
+      timeoutMs,
       THREAD_ENV,
     );
     if (outcome !== 'ok') return { error: transcribeError(outcome) };
@@ -280,7 +285,7 @@ async function transcribeToVtt(audioPath: string, workDir: string): Promise<Tran
       '--fp16', 'False',
       '--verbose', 'False',
     ],
-    WHISPER_TIMEOUT_MS,
+    timeoutMs,
     THREAD_ENV,
   );
   if (outcome !== 'ok') return { error: transcribeError(outcome) };
@@ -296,15 +301,21 @@ async function transcribeToVtt(audioPath: string, workDir: string): Promise<Tran
 
 const CONCURRENCY = Math.max(1, env.SUBTITLE_CONCURRENCY);
 
-type Job = { videoId: string; done: () => void };
+type Job = { videoId: string; isShort: boolean; done: () => void };
 
 const queue: Job[] = [];
 const queued = new Set<string>();
 let running = 0;
 
+/** FIFO within a kind, shorts ahead of long videos that are still waiting (see the header). */
+function takeNextJob(): Job | undefined {
+  const i = queue.findIndex((j) => j.isShort);
+  return i > 0 ? queue.splice(i, 1)[0] : queue.shift();
+}
+
 function pump(): void {
   while (running < CONCURRENCY) {
-    const job = queue.shift();
+    const job = takeNextJob();
     if (!job) return;
     running++;
     // runSubtitleJob never rejects, but the .catch keeps a rejecting job from
@@ -421,7 +432,6 @@ async function runStaleSweep(): Promise<number> {
   // have none, so fall back to the row's own updatedAt — which can only be
   // NEWER than the claim, i.e. the fallback errs toward leaving a job alone.
   const stale = {
-    isShort: true,
     subtitleStatus: 'processing' as const,
     OR: [{ subtitleAt: { lt: cutoff } }, { subtitleAt: null, updatedAt: { lt: cutoff } }],
   };
@@ -455,26 +465,30 @@ async function runStaleSweep(): Promise<number> {
 }
 
 /**
- * Generate 中/EN subtitle tracks for a short. Fire-and-forget from the publish
- * route; also triggered on demand. Claims the row atomically (status →
- * processing) so concurrent triggers never double-run, then queues the actual
- * ASR behind the FIFO. The returned promise settles when the job reaches a
- * terminal state (immediately when there was nothing to claim). NEVER throws.
+ * Generate 中/EN subtitle tracks for a video — a short OR a long video. Fire-and-
+ * forget from the publish routes; also triggered on demand. Claims the row
+ * atomically (status → processing) so concurrent triggers never double-run, then
+ * queues the actual ASR behind the FIFO. The returned promise settles when the
+ * job reaches a terminal state (immediately when there was nothing to claim).
+ * NEVER throws.
  */
-export async function generateShortSubtitles(videoId: string): Promise<void> {
+export async function generateVideoSubtitles(videoId: string): Promise<void> {
   if (!videoId) return;
   // Detached: a publish must never wait on the sweep.
   void sweepStaleSubtitles();
   if (queued.has(videoId)) return; // already waiting/running in this process
+  let isShort = false;
   try {
     const claimed = await prisma.video.updateMany({
-      where: { id: videoId, isShort: true, deletedAt: null, subtitleStatus: { not: 'processing' } },
+      where: { id: videoId, deletedAt: null, subtitleStatus: { not: 'processing' } },
       // subtitleAt doubles as the lease: it is the only column recording when
       // 'processing' started, and renewLeases keeps it current for as long as
       // we hold the row. An expired one is what the stale sweep acts on.
       data: { subtitleStatus: 'processing', subtitleError: null, subtitleAt: new Date() },
     });
     if (claimed.count === 0) return; // another trigger (or another process) owns it
+    const row = await prisma.video.findUnique({ where: { id: videoId }, select: { isShort: true } });
+    isShort = row?.isShort ?? false;
   } catch {
     return; // DB unreachable — best-effort by contract
   }
@@ -485,9 +499,48 @@ export async function generateShortSubtitles(videoId: string): Promise<void> {
   // lease must not expire while it queues.
   ensureLeaseTimer();
   await new Promise<void>((resolve) => {
-    queue.push({ videoId, done: () => resolve() });
+    queue.push({ videoId, isShort, done: () => resolve() });
     pump();
   });
+}
+
+/** The name the shorts routes have always called; same function. */
+export const generateShortSubtitles = generateVideoSubtitles;
+
+// ── transcript + track bookkeeping ───────────────────────────────────────────
+
+/** Timestamped transcript of a cue list, or null when it has no usable cues. */
+function transcriptOf(cues: VttCue[]): string | null {
+  const text = cuesToTranscript(toTimedCues(cues));
+  return text || null;
+}
+
+async function readTrackCues(key: string | null | undefined): Promise<VttCue[] | null> {
+  if (!key) return null;
+  const full = videoFileAbsPath(key);
+  if (!full) return null;
+  const vtt = await fsp.readFile(full, 'utf8').catch(() => null);
+  if (vtt === null) return null;
+  const cues = parseVtt(vtt);
+  return cues.length > 0 ? cues : null;
+}
+
+/**
+ * Subtitle files have exactly one referent (the row that names them), so a
+ * replaced or removed track's file is deleted — unlike a short's MEDIA, which
+ * soft-delete keeps. Only ever called with keys read from the row, and only for
+ * the `subtitle/` namespace.
+ */
+async function unlinkSubtitleFiles(keys: (string | null | undefined)[]): Promise<void> {
+  for (const key of keys) {
+    if (key && key.startsWith('subtitle/')) await deleteVideoFile(key);
+  }
+}
+
+/** A long video's summary can now be about what was said — refresh it, detached, never throwing. */
+function refreshSummaryDetached(videoId: string, isShort: boolean): void {
+  if (isShort) return; // AI 摘要 is a long-video concept
+  void refreshVideoSummaryIfStale(videoId);
 }
 
 /** The queued half: the real work for an already-claimed row. Never throws. */
@@ -504,10 +557,10 @@ async function runSubtitleJob(videoId: string): Promise<void> {
   try {
     const video = await prisma.video.findUnique({
       where: { id: videoId },
-      select: { videoKey: true },
+      select: { videoKey: true, isShort: true, durationSec: true, subtitleZhKey: true, subtitleEnKey: true },
     });
     const src = video?.videoKey ? videoFileAbsPath(video.videoKey) : null;
-    if (!src || !fs.existsSync(src)) {
+    if (!video || !src || !fs.existsSync(src)) {
       await fail('源文件不存在');
       return;
     }
@@ -516,7 +569,7 @@ async function runSubtitleJob(videoId: string): Promise<void> {
       return;
     }
 
-    const workDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'shorts-sub-'));
+    const workDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'video-sub-'));
     try {
       const wav = path.join(workDir, 'audio.wav');
       const audio = await run(
@@ -525,11 +578,11 @@ async function runSubtitleJob(videoId: string): Promise<void> {
         AUDIO_TIMEOUT_MS,
       );
       if (audio !== 'ok' || !fs.existsSync(wav)) {
-        await fail(audio === 'timeout' ? '音频提取超时' : '音频提取失败（需要 ffmpeg）');
+        await fail(audio === 'timeout' ? '音频提取超时' : '音频提取失败（需要 ffmpeg，或视频没有音轨）');
         return;
       }
 
-      const transcription = await transcribeToVtt(wav, workDir);
+      const transcription = await transcribeToVtt(wav, workDir, whisperTimeoutMs(video.durationSec));
       if ('error' in transcription) {
         await fail(transcription.error);
         return;
@@ -548,13 +601,13 @@ async function runSubtitleJob(videoId: string): Promise<void> {
       }
 
       // Translate to the other language — optional, original still ships alone.
-      const targetLang: 'zh' | 'en' = srcLang === 'zh' ? 'en' : 'zh';
+      const targetLang: SubtitleLang = srcLang === 'zh' ? 'en' : 'zh';
       const translatedCues = await translateCues(cues, targetLang);
       const translated = translatedCues ? await saveSubtitleVtt(buildVtt(translatedCues)) : null;
 
       const zh = srcLang === 'zh' ? original : translated;
       const en = srcLang === 'en' ? original : translated;
-      await prisma.video.updateMany({
+      const stored = await prisma.video.updateMany({
         where: { id: videoId, subtitleStatus: 'processing' },
         data: {
           subtitleStatus: 'ready',
@@ -563,10 +616,22 @@ async function runSubtitleJob(videoId: string): Promise<void> {
           subtitleZhUrl: zh?.url ?? null,
           subtitleEnKey: en?.key ?? null,
           subtitleEnUrl: en?.url ?? null,
+          // The transcript is always the VERBATIM track — a translation of a
+          // mis-hearing compounds the error instead of letting the model fix it.
+          subtitleTranscript: transcriptOf(cues),
+          subtitleManual: false, // every track on the row is machine-made again
           subtitleError: translated ? null : 'LLM 翻译不可用，仅生成原文字幕',
           subtitleAt: new Date(),
         },
       });
+      if (stored.count === 0) {
+        // The row left 'processing' under us (swept, or deleted): nothing names
+        // the files we just wrote.
+        await unlinkSubtitleFiles([original.key, translated?.key]);
+        return;
+      }
+      await unlinkSubtitleFiles([video.subtitleZhKey, video.subtitleEnKey]);
+      refreshSummaryDetached(videoId, video.isShort);
     } finally {
       await fsp.rm(workDir, { recursive: true, force: true }).catch(() => undefined);
     }
@@ -581,4 +646,138 @@ async function runSubtitleJob(videoId: string): Promise<void> {
       })
       .catch(() => undefined);
   }
+}
+
+// ── uploaded / removed tracks ────────────────────────────────────────────────
+
+export type TrackWriteResult =
+  | { ok: true; status: 'ready' | 'none' }
+  | { ok: false; error: 'not_found' | 'busy' | 'write_failed' };
+
+/**
+ * Store an UPLOADED track (already parsed + canonicalised by parseSubtitleFile)
+ * as this video's `lang` subtitles, replacing whatever was there. Refused while
+ * an ASR job owns the row ('busy') — the job would overwrite the upload when it
+ * finishes. The transcript is rebuilt from the source-language track (the
+ * upload itself when it IS that language, or when no other track exists).
+ *
+ * `translate: true` additionally asks the house LLM for the OTHER language,
+ * detached: the upload answers at once and the second track appears when done.
+ */
+export async function saveUploadedSubtitleTrack(
+  videoId: string,
+  lang: SubtitleLang,
+  cues: VttCue[],
+  opts: { translate?: boolean } = {},
+): Promise<TrackWriteResult> {
+  const video = await prisma.video.findFirst({
+    where: { id: videoId, deletedAt: null },
+    select: { isShort: true, subtitleStatus: true, subtitleSrcLang: true, subtitleZhKey: true, subtitleEnKey: true },
+  });
+  if (!video) return { ok: false, error: 'not_found' };
+  if (video.subtitleStatus === 'processing') return { ok: false, error: 'busy' };
+
+  const saved = await saveSubtitleVtt(buildVtt(cues));
+  if (!saved) return { ok: false, error: 'write_failed' };
+
+  const otherKey = lang === 'zh' ? video.subtitleEnKey : video.subtitleZhKey;
+  // The upload becomes the source language unless the OTHER track already is it.
+  const other: SubtitleLang = lang === 'zh' ? 'en' : 'zh';
+  const srcLang: SubtitleLang = otherKey && video.subtitleSrcLang === other ? other : lang;
+  const transcriptCues = srcLang === lang ? cues : ((await readTrackCues(otherKey)) ?? cues);
+
+  const done = await prisma.video.updateMany({
+    // Guarded like every other write here: an ASR job that claimed the row
+    // between the read and now wins, and the file we wrote is dropped.
+    where: { id: videoId, subtitleStatus: { not: 'processing' } },
+    data: {
+      subtitleStatus: 'ready',
+      subtitleSrcLang: srcLang,
+      ...(lang === 'zh'
+        ? { subtitleZhKey: saved.key, subtitleZhUrl: saved.url }
+        : { subtitleEnKey: saved.key, subtitleEnUrl: saved.url }),
+      subtitleTranscript: transcriptOf(transcriptCues),
+      subtitleManual: true, // a person's work — never regenerated over on the pipeline's own initiative
+      subtitleError: null,
+      subtitleAt: new Date(),
+    },
+  });
+  if (done.count === 0) {
+    await unlinkSubtitleFiles([saved.key]);
+    return { ok: false, error: 'busy' };
+  }
+  await unlinkSubtitleFiles([lang === 'zh' ? video.subtitleZhKey : video.subtitleEnKey]);
+  refreshSummaryDetached(videoId, video.isShort);
+  if (opts.translate) void translateUploadedTrack(videoId, lang, cues);
+  return { ok: true, status: 'ready' };
+}
+
+/** Detached second half of an upload with `translate`: fill the OTHER language from the uploaded cues. Never throws. */
+async function translateUploadedTrack(videoId: string, from: SubtitleLang, cues: VttCue[]): Promise<void> {
+  try {
+    const target: SubtitleLang = from === 'zh' ? 'en' : 'zh';
+    const translated = await translateCues(cues, target);
+    if (!translated) {
+      await prisma.video
+        .updateMany({
+          where: { id: videoId, subtitleStatus: 'ready' },
+          data: { subtitleError: 'LLM 翻译不可用，未生成另一语言字幕' },
+        })
+        .catch(() => undefined);
+      return;
+    }
+    const saved = await saveSubtitleVtt(buildVtt(translated));
+    if (!saved) return;
+    const before = await prisma.video.findUnique({
+      where: { id: videoId },
+      select: { subtitleZhKey: true, subtitleEnKey: true },
+    });
+    const done = await prisma.video.updateMany({
+      where: { id: videoId, subtitleStatus: 'ready' },
+      data:
+        target === 'zh'
+          ? { subtitleZhKey: saved.key, subtitleZhUrl: saved.url, subtitleError: null }
+          : { subtitleEnKey: saved.key, subtitleEnUrl: saved.url, subtitleError: null },
+    });
+    if (done.count === 0) {
+      await unlinkSubtitleFiles([saved.key]);
+      return;
+    }
+    await unlinkSubtitleFiles([target === 'zh' ? before?.subtitleZhKey : before?.subtitleEnKey]);
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** Remove one language's track (file included). The last track gone ⇒ status 'none', transcript cleared. */
+export async function removeSubtitleTrack(videoId: string, lang: SubtitleLang): Promise<TrackWriteResult> {
+  const video = await prisma.video.findFirst({
+    where: { id: videoId, deletedAt: null },
+    select: { isShort: true, subtitleStatus: true, subtitleSrcLang: true, subtitleZhKey: true, subtitleEnKey: true },
+  });
+  if (!video) return { ok: false, error: 'not_found' };
+  if (video.subtitleStatus === 'processing') return { ok: false, error: 'busy' };
+
+  const removedKey = lang === 'zh' ? video.subtitleZhKey : video.subtitleEnKey;
+  const keptKey = lang === 'zh' ? video.subtitleEnKey : video.subtitleZhKey;
+  const kept: SubtitleLang = lang === 'zh' ? 'en' : 'zh';
+  const keptCues = await readTrackCues(keptKey);
+  const status = keptKey ? 'ready' : 'none';
+
+  const done = await prisma.video.updateMany({
+    where: { id: videoId, subtitleStatus: { not: 'processing' } },
+    data: {
+      subtitleStatus: status,
+      subtitleSrcLang: keptKey ? kept : null,
+      ...(lang === 'zh' ? { subtitleZhKey: null, subtitleZhUrl: null } : { subtitleEnKey: null, subtitleEnUrl: null }),
+      subtitleTranscript: keptCues ? transcriptOf(keptCues) : null,
+      ...(keptKey ? {} : { subtitleManual: false }),
+      subtitleError: null,
+      subtitleAt: new Date(),
+    },
+  });
+  if (done.count === 0) return { ok: false, error: 'busy' };
+  await unlinkSubtitleFiles([removedKey]);
+  refreshSummaryDetached(videoId, video.isShort);
+  return { ok: true, status };
 }

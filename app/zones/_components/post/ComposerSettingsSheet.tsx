@@ -13,17 +13,19 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
-import { ImagePlus, Loader2, RotateCcw, X } from 'lucide-react';
+import { Crop, ImagePlus, Loader2, RefreshCw, RotateCcw, X } from 'lucide-react';
 import { useRef } from 'react';
+import { CoverImage } from '@/components/media/CoverImage';
 import { DrawerShell } from '@/components/motion';
 import { StatefulButton } from '@/components/motion/StatefulButton';
-import { withBasePath } from '@/lib/base-path';
+import { isContainPos, postCoverRatio, type CoverAspect } from '@/lib/media/cover-pos';
 import { ZONE_IMAGE_TYPES, type ZonePostVisibilityValue } from '@/lib/zones/shared';
 import { INPUT_CLS } from '@/app/zones/_components/ui';
 import { TagInput } from './TagInput';
 import { CoauthorPicker, type CoauthorPick } from './CoauthorPicker';
 import { VisibilityPicker } from './VisibilityPicker';
 import { PostAccessPanel, type DesignatedPick } from './PostAccessPanel';
+import { CoverAdjustDialog } from './CoverAdjustDialog';
 
 const XL_QUERY = '(min-width: 1280px)';
 
@@ -35,6 +37,10 @@ export interface ComposerSettingsSheetProps {
   selfHandle: string;
   selfUserId: string;
   cover: { key: string; url: string } | null;
+  /** 封面版式 + 裁切 — the shared cover contract (lib/media/cover-pos.ts); live in the composer's draft. */
+  coverAspect: CoverAspect;
+  coverPos: string;
+  onCoverFramingChange: (framing: { coverAspect?: CoverAspect; coverPos?: string }) => void;
   coverBusy: boolean;
   onPickCover: (file: File) => void;
   onRemoveCover: () => void;
@@ -74,26 +80,73 @@ function Section({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+const COVER_ACTION_CLS =
+  'inline-flex h-7 items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 text-[11px] font-medium text-zinc-700 transition hover:border-zinc-400 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-800 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100 dark:focus-visible:ring-zinc-100/30';
+
 function SheetBody(p: ComposerSettingsSheetProps) {
   const t = useTranslations('zones');
   const coverInput = useRef<HTMLInputElement>(null);
+  const [adjusting, setAdjusting] = useState(false);
+  const portrait = p.coverAspect === 'portrait';
   return (
     <div className="space-y-6">
       <Section label={t('composer_cover_label')}>
         {p.cover ? (
-          <div className="relative overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={withBasePath(p.cover.url)} alt="" className="aspect-[2/1] w-full object-cover" />
-            <button
-              type="button"
-              onClick={p.onRemoveCover}
-              disabled={p.disabled}
-              aria-label={t('composer_cover_remove')}
-              className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
+          <>
+            {/* What the post will show: the frame follows the 版式 (2:1 横版 / 3:4 竖版 —
+                postCoverRatio, the same function the crop editor frames with), the image
+                sits in it per coverPos. A portrait frame is width-capped, or a 3:4 box as
+                wide as the sheet would push every other setting off the screen. */}
+            <div
+              className={`relative overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 ${
+                portrait ? 'mx-auto w-40' : 'w-full'
+              }`}
+              style={{ aspectRatio: String(postCoverRatio(p.coverAspect)) }}
             >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
+              <CoverImage src={p.cover.url} aspect={p.coverAspect} pos={p.coverPos} slot="adaptive" loading="eager" />
+              <button
+                type="button"
+                onClick={p.onRemoveCover}
+                disabled={p.disabled}
+                aria-label={t('composer_cover_remove')}
+                className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => setAdjusting(true)} disabled={p.disabled} className={COVER_ACTION_CLS}>
+                <Crop className="h-3.5 w-3.5" aria-hidden />
+                {t('cover_adjust')}
+              </button>
+              <button
+                type="button"
+                onClick={() => coverInput.current?.click()}
+                disabled={p.disabled || p.coverBusy}
+                className={COVER_ACTION_CLS}
+              >
+                {p.coverBusy ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                )}
+                {t('cover_replace')}
+              </button>
+              <span className="ml-auto text-[11px] text-muted">
+                {portrait ? t('cover_aspect_portrait') : t('cover_aspect_landscape')} ·{' '}
+                {isContainPos(p.coverPos) ? t('cover_mode_full') : t('cover_mode_crop')}
+              </span>
+            </div>
+            <CoverAdjustDialog
+              open={adjusting}
+              imageUrl={p.cover.url}
+              aspect={p.coverAspect}
+              pos={p.coverPos}
+              onAspectChange={(coverAspect) => p.onCoverFramingChange({ coverAspect })}
+              onPosChange={(coverPos) => p.onCoverFramingChange({ coverPos })}
+              onClose={() => setAdjusting(false)}
+            />
+          </>
         ) : (
           <button
             type="button"
@@ -102,7 +155,7 @@ function SheetBody(p: ComposerSettingsSheetProps) {
             className="flex aspect-[2/1] w-full flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-zinc-300 text-xs text-muted transition hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-700 dark:hover:border-zinc-500 dark:hover:text-zinc-100"
           >
             {p.coverBusy ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImagePlus className="h-5 w-5" />}
-            {t('composer_cover_add')}
+            {t('cover_add')}
           </button>
         )}
         <input

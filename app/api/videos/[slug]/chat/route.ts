@@ -1,11 +1,12 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { auth } from '@/lib/auth';
+import { prisma } from '@/lib/db';
 import { rateLimit } from '@/lib/rate-limit';
 import { getProvider, LLMConfigError, toSseResponseStream } from '@/lib/llm';
-import { getVideoBySlug } from '@/lib/video/queries';
+import { canViewVideo, getVideoActor } from '@/lib/video/access';
 import { buildVideoChatSystem, buildVideoContext } from '@/lib/video/ai';
+import { VIDEO_AI_SELECT, toVideoAiInput, videoAiContextChars } from '@/lib/video/summary';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,17 +26,27 @@ const schema = z.object({
 const HOUR_MS = 60 * 60 * 1000;
 
 // POST /api/videos/[slug]/chat (login, SSE) — grounded "ask about this video" chat.
+//
+// The gate MIRRORS the detail page (canViewVideo): the context handed to the
+// model is the description AND the transcript of everything said in the video,
+// so "logged in + the slug exists" would have let anyone read a draft or a
+// private video back out of the assistant.
 export async function POST(req: Request, { params }: { params: { slug: string } }) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+  const actor = await getVideoActor();
+  if (!actor) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
-  const gate = rateLimit(`video-chat:user:${session.user.id}`, 60, HOUR_MS);
+  const gate = rateLimit(`video-chat:user:${actor.id}`, 60, HOUR_MS);
   if (!gate.allowed) {
     return NextResponse.json({ error: 'rate_limited', resetAt: gate.resetAt }, { status: 429 });
   }
 
-  const video = await getVideoBySlug(params.slug);
-  if (!video || video.deletedAt) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  const video = await prisma.video.findUnique({
+    where: { slug: params.slug },
+    select: { ...VIDEO_AI_SELECT, status: true, visibility: true, uploaderId: true, deletedAt: true, isShort: true },
+  });
+  if (!video || video.deletedAt || !canViewVideo(video, actor)) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
 
   const body = await req.json().catch(() => null);
   const parsed = schema.safeParse(body);
@@ -52,12 +63,7 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
   }
 
   const locale = cookies().get('locale')?.value;
-  const context = buildVideoContext({
-    title: video.title,
-    descriptionMd: video.descriptionMd,
-    transcriptText: video.transcriptText,
-    tags: video.tags.map((t) => t.tag.name),
-  });
+  const context = buildVideoContext(toVideoAiInput(video), videoAiContextChars());
   const system = buildVideoChatSystem(context, video.aiSummaryMd, locale);
 
   const deltas = provider.streamDeltas({

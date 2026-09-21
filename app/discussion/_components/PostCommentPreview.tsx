@@ -7,6 +7,7 @@ import { Avatar } from '@/components/Avatar';
 import { CommentLikeButton } from '@/components/CommentLikeButton';
 import { DeptTag } from '@/components/DeptTag';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { Translatable } from '@/components/translate/Translatable';
 import { relativeTime } from '@/lib/i18n-date';
 import type { PostCommentView } from './types';
 
@@ -95,71 +96,80 @@ function PreviewRow({
           handle={comment.author.handle}
         />
       </Link>
-      <div className="min-w-0 flex-1">
-        <div className="rounded-2xl rounded-tl-md bg-zinc-100/70 px-3 py-2 dark:bg-zinc-800/60">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
-            <Link
-              href={`/users/${comment.author.handle}`}
-              className="font-medium text-zinc-900 hover:underline dark:text-zinc-50"
-            >
-              {comment.author.displayName}
-            </Link>
-            <DeptTag department={comment.author.department} lab={comment.author.lab} />
-            {/* Server-rendered now, so the string can tick over before hydration
-                ("11 秒前" → "13 秒前"); text-only span, so the attribute covers it. */}
-            <span className="text-muted" suppressHydrationWarning>
-              {relativeTime(comment.createdAt, locale)}
-            </span>
+      {/* 站内翻译: previews are always VISIBLE roots (no tombstones here). Same `kind:id` as the
+          full thread, so a translation made on the preview is already cached when the thread opens. */}
+      <Translatable kind="post_comment" id={comment.id} fields={{ body: comment.bodyMd }}>
+        {(tr) => (
+          <div className="min-w-0 flex-1" ref={tr.ref}>
+            <div className="rounded-2xl rounded-tl-md bg-zinc-100/70 px-3 py-2 dark:bg-zinc-800/60">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                <Link
+                  href={`/users/${comment.author.handle}`}
+                  className="font-medium text-zinc-900 hover:underline dark:text-zinc-50"
+                >
+                  {comment.author.displayName}
+                </Link>
+                <DeptTag department={comment.author.department} lab={comment.author.lab} />
+                {/* Server-rendered now, so the string can tick over before hydration
+                    ("11 秒前" → "13 秒前"); text-only span, so the attribute covers it. */}
+                <span className="text-muted" suppressHydrationWarning>
+                  {relativeTime(comment.createdAt, locale)}
+                </span>
+              </div>
+              {/* Outside the clamped box: its first child must stay the renderer's root (the clamp's ResizeObserver watches it). */}
+              {tr.note && <div className="mt-1">{tr.note}</div>}
+              <div
+                ref={bodyRef}
+                className="relative mt-0.5 max-h-[4.75rem] overflow-hidden"
+                style={
+                  clamped
+                    ? { WebkitMaskImage: 'linear-gradient(to bottom, #000 60%, transparent)', maskImage: 'linear-gradient(to bottom, #000 60%, transparent)' }
+                    : undefined
+                }
+              >
+                <MarkdownRenderer content={tr.body} compact />
+              </div>
+              {clamped && (
+                <button
+                  type="button"
+                  onClick={() => onOpen()}
+                  className="text-xs font-medium text-muted transition hover:text-zinc-900 dark:hover:text-zinc-50"
+                >
+                  {t('comment_read_more')}
+                </button>
+              )}
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted">
+              <CommentLikeButton
+                endpoint={`/api/discussion/comments/${comment.id}/like`}
+                initialLiked={comment.likedByMe}
+                initialCount={comment.likeCount}
+                signedIn={signedIn}
+                size="xs"
+              />
+              {signedIn && (
+                <button
+                  type="button"
+                  onClick={() => onOpen({ replyTo: comment.id })}
+                  className="transition hover:text-zinc-700 dark:hover:text-zinc-200"
+                >
+                  {t('reply')}
+                </button>
+              )}
+              {comment.replyCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onOpen()}
+                  className="transition hover:text-zinc-700 dark:hover:text-zinc-200"
+                >
+                  {t('reply_count', { count: comment.replyCount })}
+                </button>
+              )}
+              {tr.control}
+            </div>
           </div>
-          <div
-            ref={bodyRef}
-            className="relative mt-0.5 max-h-[4.75rem] overflow-hidden"
-            style={
-              clamped
-                ? { WebkitMaskImage: 'linear-gradient(to bottom, #000 60%, transparent)', maskImage: 'linear-gradient(to bottom, #000 60%, transparent)' }
-                : undefined
-            }
-          >
-            <MarkdownRenderer content={comment.bodyMd} compact />
-          </div>
-          {clamped && (
-            <button
-              type="button"
-              onClick={() => onOpen()}
-              className="text-xs font-medium text-muted transition hover:text-zinc-900 dark:hover:text-zinc-50"
-            >
-              {t('comment_read_more')}
-            </button>
-          )}
-        </div>
-        <div className="mt-1 flex items-center gap-3 px-1 text-xs text-muted">
-          <CommentLikeButton
-            endpoint={`/api/discussion/comments/${comment.id}/like`}
-            initialLiked={comment.likedByMe}
-            initialCount={comment.likeCount}
-            signedIn={signedIn}
-            size="xs"
-          />
-          {signedIn && (
-            <button
-              type="button"
-              onClick={() => onOpen({ replyTo: comment.id })}
-              className="transition hover:text-zinc-700 dark:hover:text-zinc-200"
-            >
-              {t('reply')}
-            </button>
-          )}
-          {comment.replyCount > 0 && (
-            <button
-              type="button"
-              onClick={() => onOpen()}
-              className="transition hover:text-zinc-700 dark:hover:text-zinc-200"
-            >
-              {t('reply_count', { count: comment.replyCount })}
-            </button>
-          )}
-        </div>
-      </div>
+        )}
+      </Translatable>
     </div>
   );
 }

@@ -36,6 +36,7 @@ import { Clock, Eye, FileText, FolderOpen, Heart, Image as ImageIcon, Lock, Mess
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { GlareHover } from '@/components/motion';
+import { CoverImage } from '@/components/media/CoverImage';
 import { withBasePath } from '@/lib/base-path';
 import { leadRoleOf, type LeadRoles } from '@/lib/zones/lead-roles';
 import { zoneHref, zonePostHref } from '@/lib/zones/shared';
@@ -107,7 +108,11 @@ export function PostRow({
   const shownAuthors = authors.slice(0, compact ? 1 : 3);
   const moreAuthors = authors.length - shownAuthors.length;
   const when = post.publishedAt ?? post.updatedAt;
-  const thumb = compact ? 'h-11 w-16' : 'h-16 w-24';
+  // 封面版式 (lib/media/cover-pos.ts): a portrait cover gets a PORTRAIT thumb (3:4)
+  // of the SAME height as the landscape one, so a 海报 is not reduced to the
+  // sliver a 3:2 centre crop leaves of it — and rows never get taller.
+  const thumb =
+    post.coverAspect === 'portrait' ? (compact ? 'h-11 w-[33px]' : 'h-16 w-12') : compact ? 'h-11 w-16' : 'h-16 w-24';
   const kindGlyphs = [...new Set(post.attachmentKinds)].slice(0, MAX_KIND_GLYPHS);
 
   return (
@@ -266,12 +271,15 @@ export function PostRow({
 
       {post.coverUrl && (
         <GlareHover className={`${thumb} shrink-0 self-start rounded-lg border border-zinc-200 dark:border-zinc-800`}>
-          {/* eslint-disable-next-line @next/next/no-img-element -- stored root-relative media URL */}
-          <img
-            src={withBasePath(post.coverUrl)}
-            alt=""
-            loading="lazy"
-            className={`${thumb} rounded-lg object-cover transition-transform duration-500 group-hover:scale-[1.03]`}
+          {/* The thumb is already shaped to the cover's 版式 ⇒ slot="adaptive"; the
+              image then sits per coverPos ('' 居中裁切 / 'x% y%' 取景 / 'contain' 完整显示). */}
+          <CoverImage
+            src={post.coverUrl}
+            aspect={post.coverAspect}
+            pos={post.coverPos}
+            slot="adaptive"
+            className="rounded-lg"
+            imgClassName="transition-transform duration-500 group-hover:scale-[1.03]"
           />
         </GlareHover>
       )}

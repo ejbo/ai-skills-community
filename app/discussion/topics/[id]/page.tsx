@@ -6,7 +6,7 @@ import { Eye, MessageSquare } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { getTopicDetail, recordTopicView } from '@/lib/discussion-queries';
-import { ZoneMarkdown } from '@/components/zones/ZoneMarkdown';
+import { TranslatableScope, TranslateControl, TranslateNote, TranslatedText } from '@/components/translate/TranslatableScope';
 import { zoneSiteViewer } from '@/lib/zones/access';
 import { resolveEmbeds } from '@/lib/zones/embeds';
 import { collectEmbedRefs } from '@/lib/zones/shared';
@@ -20,6 +20,7 @@ import { TopicUpvoteButton } from '../../_components/TopicUpvoteButton';
 import { TopicActions } from '../../_components/TopicActions';
 import { CategoryChip, LockedBadge, PinnedBadge } from '../../_components/badges';
 import { TopicReplies, type ReplyThreadView } from '../../_components/TopicReplies';
+import { TopicBody } from './_components/TopicBody';
 
 export const dynamic = 'force-dynamic';
 
@@ -100,59 +101,69 @@ export default async function TopicDetailPage({
       </div>
 
       <section className="space-y-5">
-        <div className="flex items-start gap-4">
-          <TopicUpvoteButton
-            topicId={topic.id}
-            initialCount={topic.upvoteCount}
-            initialUpvoted={topic.upvotedByMe}
-            size="lg"
-          />
-          <div className="min-w-0 flex-1 space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              {topic.tags.map((tag) => (
-                <CategoryChip key={tag.slug} tag={tag} />
-              ))}
-              {topic.pinned && <PinnedBadge />}
-              {topic.locked && <LockedBadge />}
+        {/* 站内翻译: ONE scope for the topic (title + body flip together — X translates the post,
+            not its parts). The scope renders no DOM of its own, so `space-y-5` is untouched;
+            replies below are separate items with their own 翻译 link. */}
+        <TranslatableScope kind="topic" id={topic.id} fields={{ title: topic.title, body: topic.bodyMd }}>
+          <div className="flex items-start gap-4">
+            <TopicUpvoteButton
+              topicId={topic.id}
+              initialCount={topic.upvoteCount}
+              initialUpvoted={topic.upvotedByMe}
+              size="lg"
+            />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {topic.tags.map((tag) => (
+                  <CategoryChip key={tag.slug} tag={tag} />
+                ))}
+                {topic.pinned && <PinnedBadge />}
+                {topic.locked && <LockedBadge />}
+              </div>
+              <h1 className="break-words text-2xl font-semibold tracking-tight md:text-3xl">
+                <TranslatedText field="title" fallback={topic.title} />
+              </h1>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                <Avatar name={author.displayName} src={author.avatarUrl} size="xs" handle={author.handle} />
+                <Link href={`/users/${author.handle}`} className="hover:underline">
+                  {author.displayName}
+                </Link>
+                <DeptTag department={author.department} lab={author.lab} />
+                <span>·</span>
+                <span>{relativeTime(topic.createdAt, locale)}</span>
+                <span className="flex items-center gap-1">
+                  <MessageSquare className="h-3 w-3" />
+                  {tp('n_replies', { count: topic.replyCount })}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Eye className="h-3 w-3" />
+                  {/* Fetched before this visit's (possibly day-deduped) increment. */}
+                  {t('views_times', { count: topic.viewCount })}
+                </span>
+                {/* 翻译 / 翻译中… / 显示译文 — in the meta row (it already wraps). */}
+                <TranslateControl />
+              </div>
+              {/* A title-only topic has no body card to carry the attribution line. */}
+              {!topic.bodyMd && topic.media.length === 0 && <TranslateNote />}
             </div>
-            <h1 className="break-words text-2xl font-semibold tracking-tight md:text-3xl">
-              {topic.title}
-            </h1>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-              <Avatar name={author.displayName} src={author.avatarUrl} size="xs" handle={author.handle} />
-              <Link href={`/users/${author.handle}`} className="hover:underline">
-                {author.displayName}
-              </Link>
-              <DeptTag department={author.department} lab={author.lab} />
-              <span>·</span>
-              <span>{relativeTime(topic.createdAt, locale)}</span>
-              <span className="flex items-center gap-1">
-                <MessageSquare className="h-3 w-3" />
-                {tp('n_replies', { count: topic.replyCount })}
-              </span>
-              <span className="flex items-center gap-1">
-                <Eye className="h-3 w-3" />
-                {/* Fetched before this visit's (possibly day-deduped) increment. */}
-                {t('views_times', { count: topic.viewCount })}
-              </span>
-            </div>
+            <TopicActions
+              topicId={topic.id}
+              pinned={topic.pinned}
+              locked={topic.locked}
+              canModerate={Boolean(viewer?.canModerate)}
+              isAuthor={isAuthor}
+            />
           </div>
-          <TopicActions
-            topicId={topic.id}
-            pinned={topic.pinned}
-            locked={topic.locked}
-            canModerate={Boolean(viewer?.canModerate)}
-            isAuthor={isAuthor}
-          />
-        </div>
 
-        {(topic.bodyMd || topic.media.length > 0) && (
-          <div className="surface rounded-2xl p-5">
-            {topic.bodyMd && <ZoneMarkdown content={topic.bodyMd} embeds={embeds} headingIds={false} />}
-            {/* 附件：上传视频内嵌播放、外链视频卡片、PDF 预览 / PPT·Word 下载 */}
-            <PostMediaGallery media={topic.media} />
-          </div>
-        )}
+          {(topic.bodyMd || topic.media.length > 0) && (
+            <div className="surface rounded-2xl p-5">
+              <TranslateNote />
+              {topic.bodyMd && <TopicBody bodyMd={topic.bodyMd} embeds={embeds} />}
+              {/* 附件：上传视频内嵌播放、外链视频卡片、PDF 预览 / PPT·Word 下载 */}
+              <PostMediaGallery media={topic.media} />
+            </div>
+          )}
+        </TranslatableScope>
 
         <div className="border-t border-zinc-100 pt-5 dark:border-zinc-800/60">
           <TopicReplies
