@@ -40,6 +40,7 @@ vi.mock('@/lib/db', () => {
         'libraryNoteReply',
         'libraryProgress',
         'voteComment',
+        'contentAudience',
       ].map((m) => [m, model(m)]),
     ),
   };
@@ -432,13 +433,34 @@ describe('知识库', () => {
   });
 });
 
-describe('vote_comment (the comments LIST gate + the detail payload’s draft gate)', () => {
+describe('vote_comment (the comments LIST gate + the detail payload’s draft + 可见范围 gate)', () => {
   const row = (activity: Record<string, unknown> = {}, entry: Record<string, unknown> = {}, over: Record<string, unknown> = {}) => ({
     body: '这张拍得真好',
     activityId: 'a1',
     ...over,
-    activity: { deletedAt: null, status: 'published', creatorId: 'u-creator', ...activity },
+    activity: { id: 'a1', deletedAt: null, status: 'published', visibility: 'public', creatorId: 'u-creator', ...activity },
     entry: { activityId: 'a1', hidden: false, status: 'approved', ...entry },
+  });
+
+  beforeEach(() => {
+    h.rows.contentAudience = null;
+  });
+
+  it('隐藏 (private): creator and `votes` managers only — a listed member is still out', async () => {
+    h.rows.voteComment = row({ visibility: 'private' });
+    h.rows.contentAudience = { userId: member.id };
+    expect(await TRANSLATE_SOURCES.vote_comment('v1', member)).toBeNull();
+    expect(await TRANSLATE_SOURCES.vote_comment('v1', staff('votes'))).toEqual({ body: '这张拍得真好' });
+    expect(await TRANSLATE_SOURCES.vote_comment('v1', { ...member, id: 'u-creator' })).toEqual({ body: '这张拍得真好' });
+  });
+
+  it('指定成员可见 (audience): readable exactly when the ContentAudience row exists', async () => {
+    h.rows.voteComment = row({ visibility: 'audience' });
+    expect(await TRANSLATE_SOURCES.vote_comment('v1', member)).toBeNull();
+    h.rows.contentAudience = { userId: member.id };
+    expect(await TRANSLATE_SOURCES.vote_comment('v1', member)).toEqual({ body: '这张拍得真好' });
+    const lookup = h.calls.filter((c) => c.model === 'contentAudience').pop();
+    expect(lookup?.args.where).toEqual({ kind_itemId_userId: { kind: 'vote', itemId: 'a1', userId: member.id } });
   });
 
   it('readable on a published activity’s approved, visible entry', async () => {

@@ -85,6 +85,16 @@ describe('zone slugs', () => {
     expect(isValidWikiSlug('edit')).toBe(false);
     expect(isValidWikiSlug('-x')).toBe(false);
   });
+
+  it('wiki slugs are title slugs — CJK is a valid page address, the delete rename is not', () => {
+    expect(isValidWikiSlug('部署指南')).toBe(true);
+    expect(isValidWikiSlug('api-规范')).toBe(true);
+    expect(isValidWikiSlug('API')).toBe(false);
+    expect(isValidWikiSlug('a b')).toBe(false);
+    expect(isValidWikiSlug('rules~del-12345678')).toBe(false);
+    expect(isValidWikiSlug('长'.repeat(60))).toBe(true);
+    expect(isValidWikiSlug('长'.repeat(61))).toBe(false);
+  });
 });
 
 describe('parseZoneLinks / normalizeHttpUrl', () => {

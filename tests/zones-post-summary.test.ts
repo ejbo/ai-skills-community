@@ -22,7 +22,9 @@ const db = vi.hoisted(() => {
   return {
     state,
     prisma: {
-      zonePost: { findUnique: vi.fn(async () => state.post) },
+      // findMany + slugAlias: the title-slug pick (lib/title-slugs.ts) — no namesakes here.
+      zonePost: { findUnique: vi.fn(async () => state.post), findMany: vi.fn(async () => []) },
+      slugAlias: { findMany: vi.fn(async () => []) },
       zonePostAttachment: { findMany: vi.fn(async () => []) },
       $transaction: vi.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx)),
     },

@@ -4,7 +4,7 @@ import {
   parseTranslatedPassages,
   translatePassagesPrompt,
 } from '@/lib/library/ai-prompts';
-import { normalizeSource, sourceHash, targetLangFor } from '@/lib/library/translation';
+import { chunkPassages, normalizeSource, selectionTargetFor, sourceHash, targetLangsFor } from '@/lib/library/translation';
 
 const HTML = sanitizeChapterHtml(
   '<h2>Title</h2>' +
@@ -67,10 +67,25 @@ describe('translation cache keys', () => {
     expect(sourceHash(fromHtml)).toBe(sourceHash(fromDom));
   });
 
-  it('translates INTO the other language', () => {
-    expect(targetLangFor('zh')).toBe('en');
-    expect(targetLangFor('en')).toBe('zh');
-    expect(targetLangFor(null)).toBe('zh');
+  it('translates into every content language except the doc\'s own', () => {
+    expect(targetLangsFor('zh')).toEqual(['en']);
+    expect(targetLangsFor('en')).toEqual(['zh']);
+    expect(targetLangsFor(null)).toEqual(['zh', 'en']);
+  });
+
+  it('selection translation targets the reader, flipping when the doc is already in it', () => {
+    expect(selectionTargetFor('en', 'zh')).toBe('zh');
+    expect(selectionTargetFor('zh', 'zh')).toBe('en');
+    expect(selectionTargetFor('en', 'en')).toBe('zh');
+    expect(selectionTargetFor(null, 'en')).toBe('en');
+  });
+
+  it('chunks by passage count AND by characters, never leaving a chunk empty', () => {
+    const small = Array.from({ length: 30 }, (_, i) => `p${i}`);
+    expect(chunkPassages(small).map((c) => c.length)).toEqual([12, 12, 6]);
+    const big = ['a'.repeat(3000), 'b'.repeat(3000), 'c'.repeat(9000), 'd'];
+    expect(chunkPassages(big).map((c) => c.length)).toEqual([1, 1, 1, 1]);
+    expect(chunkPassages([])).toEqual([]);
   });
 });
 

@@ -6,6 +6,8 @@ import { gateApi } from '@/lib/admin';
 import { logAdmin } from '@/lib/audit';
 import { fanoutAnnouncement } from '@/lib/notifications';
 import { plainSummary } from '@/lib/announcement';
+import { isSlugConflict, retireSlug } from '@/lib/slug-server';
+import { pickAnnouncementSlug } from '@/lib/title-slugs';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,14 +36,30 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   const nextPublishedAt =
     publish === undefined ? existing.publishedAt : publish ? existing.publishedAt ?? new Date() : null;
 
-  const updated = await prisma.announcement.update({
-    where: { id: params.id },
-    data: {
-      ...(title !== undefined ? { title } : {}),
-      ...(bodyMd !== undefined ? { bodyMd } : {}),
-      publishedAt: nextPublishedAt,
-    },
+  // Title slug (docs/contracts/slugs.md): a draft's slug follows its title; once
+  // published it is frozen. A legacy row without one gets it here. A replaced
+  // slug is retired (SlugAlias) so any link already handed out still resolves.
+  const retitledDraft = !wasPublished && title !== undefined && title !== existing.title;
+  const needsSlug = !existing.slug || retitledDraft;
+  const write = async () => {
+    const slug = needsSlug ? await pickAnnouncementSlug(title ?? existing.title, prisma, existing.id) : existing.slug;
+    return prisma.announcement.update({
+      where: { id: params.id },
+      data: {
+        ...(title !== undefined ? { title } : {}),
+        ...(bodyMd !== undefined ? { bodyMd } : {}),
+        ...(slug !== existing.slug ? { slug } : {}),
+        publishedAt: nextPublishedAt,
+      },
+    });
+  };
+  const updated = await write().catch((e) => {
+    if (needsSlug && isSlugConflict(e)) return write();
+    throw e;
   });
+  if (existing.slug && updated.slug !== existing.slug) {
+    await retireSlug('announcement', existing.slug, existing.id).catch(() => {});
+  }
 
   // Fan out only on the unpublished → published transition (never re-blast).
   let fanout = { inApp: 0, email: 0 };
@@ -49,6 +67,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   if (newlyPublished) {
     fanout = await fanoutAnnouncement({
       announcementId: updated.id,
+      announcementSlug: updated.slug,
       actorId: session.user.id,
       title: updated.title,
       summary: plainSummary(updated.bodyMd),

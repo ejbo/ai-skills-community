@@ -17,7 +17,7 @@ import { extractEpub } from './extract-epub';
 import { extractDocx, extractPptx } from './extract-office';
 import { extractPdf } from './extract-pdf';
 import { FetchUrlError, fetchBinary, fetchPage } from './fetch-url';
-import { uniqueDocSlug } from './slug';
+import { reslugFromTitle, uniqueDocSlug } from './slug';
 import {
   MAX_COVER_BYTES,
   deleteLibraryFile,
@@ -124,18 +124,19 @@ const FALLBACK_TYPE_BY_FORMAT: Record<LibraryUploadFormat, LibraryDocTypeValue> 
 
 /**
  * Kick the one-time AI reading without blocking or creating an import cycle,
- * then the 译文 pass. The translation runs AFTER indexing (they share one
- * model) and only auto-translates documents under
- * AUTO_TRANSLATE_MAX_CHARS — a web article is ready before anyone opens it,
- * while a book waits for a reader to click 翻译全文. Either way the result is
- * cached and shared, so nobody pays for the same passage twice.
+ * then the 译文 passes (one per target language). The translation runs AFTER
+ * indexing (they share one model) and only auto-translates the body of
+ * documents under AUTO_TRANSLATE_MAX_CHARS — a web article is ready in every
+ * language before anyone opens it, while a book's body is translated when its
+ * first reader opens it in another language (the title is translated either
+ * way). The result is cached and shared, so nobody pays for a passage twice.
  */
 function triggerIndexing(docId: string): void {
   void import('./indexer')
     .then((m) => m.runDocIndexing(docId))
     .catch((e) => console.error('[library] failed to start indexing', e))
     .then(() => import('./translate-doc'))
-    .then((m) => m.runDocTranslation(docId))
+    .then((m) => m.runDocTranslations(docId))
     .catch((e) => console.error('[library] failed to start translation', e));
 }
 
@@ -409,10 +410,14 @@ export async function createDocFromUrl(opts: {
   });
 
   let status = 'ready';
+  let slugOut = doc.slug;
   try {
     const extracted = extractArticle(page.html, page.finalUrl);
     await rehostArticleImages(extracted.chapters);
     await persistExtraction(doc.id, extracted);
+    // The provisional title was the URL path — name the link after the real one
+    // before the uploader is ever handed it.
+    slugOut = (await reslugFromTitle(doc.id).catch(() => null)) ?? doc.slug;
     if (extracted.coverRemoteUrl) await downloadCover(doc.id, extracted.coverRemoteUrl);
     triggerIndexing(doc.id);
   } catch (e) {
@@ -420,7 +425,7 @@ export async function createDocFromUrl(opts: {
     status = 'failed';
   }
 
-  return { id: doc.id, slug: doc.slug, status, existing: false };
+  return { id: doc.id, slug: slugOut, status, existing: false };
 }
 
 export async function createDocFromFile(opts: {
@@ -490,10 +495,13 @@ export async function createDocFromFile(opts: {
   });
 
   let status = 'ready';
+  let slugOut = doc.slug;
   try {
     const extracted = await extractUploaded(opts.format, buf);
     if (!extracted.title) extracted.title = provisionalTitle;
     await persistExtraction(doc.id, extracted);
+    // The provisional title was the filename — name the link after the real one.
+    slugOut = (await reslugFromTitle(doc.id).catch(() => null)) ?? doc.slug;
     if (extracted.coverBuffer) {
       await saveCoverBuffer(doc.id, extracted.coverBuffer.data, extracted.coverBuffer.ext);
     }
@@ -503,7 +511,7 @@ export async function createDocFromFile(opts: {
     status = 'failed';
   }
 
-  return { id: doc.id, slug: doc.slug, status, existing: false };
+  return { id: doc.id, slug: slugOut, status, existing: false };
 }
 
 /**
@@ -550,6 +558,10 @@ export async function updateChapterContent(
         // in the 中文 目录 — describing content that was just edited away.
         data: { html, charCount: text.length, aiSummary: null, aiSummaryEn: null, aiKeywords: [] },
       });
+      // Its 译文 describes the text that was just edited away. Dropping it shows
+      // the original until the next pass, which the reader starts by itself and
+      // which re-pays only for the passages that actually changed (cache).
+      await tx.libraryChapterTranslation.deleteMany({ where: { chapterId: chapter.id } });
       // Recompute doc-level stats and mark the AI index stale.
       const texts = await tx.libraryChunk.findMany({
         where: { docId },

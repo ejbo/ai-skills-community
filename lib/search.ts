@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { markdownToPlainText } from '@/lib/markdown-text';
+import { zonePostHref } from '@/lib/zones/shared';
 
 // Site-wide search core, shared by the ⌘K palette API (app/api/search, small
 // perType) and the full results page (app/search, larger perType). Only
@@ -24,11 +25,12 @@ export interface SiteSearchResults {
   tags: { slug: string; name: string; usageCount: number }[];
   videos: { slug: string; title: string; author: string; date: Date }[];
   library: { slug: string; title: string; author: string; date: Date }[];
-  discussions: { kind: 'topic' | 'post'; id: string; title: string; author: string; date: Date }[];
+  /** `slug` = the topic's title slug (null for 动态 and legacy topics — topicHref falls back to the id). */
+  discussions: { kind: 'topic' | 'post'; id: string; slug: string | null; title: string; author: string; date: Date }[];
   packs: { slug: string; name: string; date: Date }[];
-  feedback: { id: string; title: string; author: string; date: Date }[];
-  events: { id: string; title: string; author: string; date: Date }[];
-  votes: { id: string; title: string; author: string; date: Date }[];
+  feedback: { id: string; slug: string | null; title: string; author: string; date: Date }[];
+  events: { id: string; slug: string | null; title: string; author: string; date: Date }[];
+  votes: { id: string; slug: string | null; title: string; author: string; date: Date }[];
   /** 技术专区: public zones (kind zone) + published, publicly-visible posts of public zones (kind post), merged newest first. */
   zones: { kind: 'zone' | 'post'; id: string; slug: string; title: string; author: string; date: Date; href: string }[];
 }
@@ -152,6 +154,7 @@ export async function searchSite(
         where: { OR: [{ title: contains }, { bodyMd: contains }] },
         select: {
           id: true,
+          slug: true,
           title: true,
           lastActivityAt: true,
           author: { select: { displayName: true } },
@@ -180,6 +183,7 @@ export async function searchSite(
         where: { OR: [{ title: contains }, { bodyMd: contains }] },
         select: {
           id: true,
+          slug: true,
           title: true,
           createdAt: true,
           author: { select: { displayName: true } },
@@ -195,6 +199,7 @@ export async function searchSite(
         },
         select: {
           id: true,
+          slug: true,
           title: true,
           startAt: true,
           author: { select: { displayName: true } },
@@ -202,15 +207,19 @@ export async function searchSite(
         orderBy: { startAt: 'desc' },
         take: perType,
       }),
-      // 投票活动 — drafts stay out (creator-only surface).
+      // 投票活动 — drafts stay out (creator-only surface), and so does anything not
+      // 公开: site search has no viewer identity, so 隐藏 / 指定成员可见 activities
+      // (docs/contracts/audience.md) are never listable here — same rule as zone posts.
       prisma.voteActivity.findMany({
         where: {
           deletedAt: null,
           status: 'published',
+          visibility: 'public',
           OR: [{ title: contains }, { descriptionMd: contains }],
         },
         select: {
           id: true,
+          slug: true,
           title: true,
           createdAt: true,
           creator: { select: { displayName: true } },
@@ -251,6 +260,7 @@ export async function searchSite(
         },
         select: {
           id: true,
+          slug: true,
           title: true,
           publishedAt: true,
           createdAt: true,
@@ -290,6 +300,7 @@ export async function searchSite(
       ...topics.map((t) => ({
         kind: 'topic' as const,
         id: t.id,
+        slug: t.slug,
         title: t.title,
         author: t.author.displayName,
         date: t.lastActivityAt,
@@ -297,6 +308,7 @@ export async function searchSite(
       ...posts.map((p) => ({
         kind: 'post' as const,
         id: p.id,
+        slug: null,
         // May be '' for media-only posts — consumers localize the fallback
         // label at render time (nav.search_post_media); no locale here.
         title: mdExcerpt(p.bodyMd),
@@ -307,18 +319,21 @@ export async function searchSite(
     packs: packs.map((p) => ({ slug: p.slug, name: p.name, date: p.updatedAt })),
     feedback: feedback.map((f) => ({
       id: f.id,
+      slug: f.slug,
       title: f.title,
       author: f.author.displayName,
       date: f.createdAt,
     })),
     events: events.map((e) => ({
       id: e.id,
+      slug: e.slug,
       title: e.title,
       author: e.author.displayName,
       date: e.startAt,
     })),
     votes: votes.map((v) => ({
       id: v.id,
+      slug: v.slug,
       title: v.title,
       author: v.creator.displayName,
       date: v.createdAt,
@@ -341,7 +356,7 @@ export async function searchSite(
         title: p.title,
         author: p.author.displayName,
         date: p.publishedAt ?? p.createdAt,
-        href: `/zones/${p.zone.slug}/posts/${p.id}`,
+        href: zonePostHref(p.zone.slug, p),
       })),
     ]
       .sort((a, b) => b.date.getTime() - a.date.getTime())

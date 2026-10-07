@@ -161,6 +161,9 @@ model User {
   voteComments          VoteComment[]     @relation("VoteComments")
   voteCommentLikes      VoteCommentLike[]
 
+  // ── 指定成员可见 (generic audience, lib/audience.ts) ──
+  audienceGrants ContentAudience[] @relation("AudienceMember")
+
   // ── 技术专区 back-relations (virtual; no SQL columns on User) ──
   ownedZones            Zone[]                @relation("OwnedZones")
   zoneMemberships       ZoneMember[]          @relation("ZoneMemberships")
@@ -636,6 +639,8 @@ model Feedback {
   id           String           @id @default(cuid())
   authorId     String
   title        String
+  // Title slug for the URL (docs/contracts/slugs.md) — frozen at creation. Null = legacy.
+  slug         String?          @unique
   bodyMd       String           @default("")
   category     FeedbackCategory @default(other)
   status       FeedbackStatus   @default(open)
@@ -1110,6 +1115,7 @@ enum NotificationType {
   zone_request // 技术专区：有人申请加入你管理的版块
   mention // 有人在帖子、评论或回复里 @ 了你
   coauthor // 有人把你加为某篇内容的合著者（发布时才通知）
+  audience // 有人把你加入了某项内容的「指定成员可见」名单（内容对你可见时才通知）
 }
 
 // One row per recipient. title/body/link are rendered at creation time so the
@@ -1138,6 +1144,9 @@ model Notification {
 model Announcement {
   id          String    @id @default(cuid())
   title       String
+  // Title slug for the URL (docs/contracts/slugs.md): follows the title while a draft,
+  // frozen once published. Null = legacy row; /announcements/<id> still works.
+  slug        String?   @unique
   bodyMd      String    @default("")
   publishedAt DateTime?
   createdById String
@@ -1306,6 +1315,8 @@ model DiscussionTopic {
   id             String   @id @default(cuid())
   authorId       String
   title          String
+  // Title slug for the URL (docs/contracts/slugs.md) — frozen at creation. Null = legacy.
+  slug           String?  @unique
   bodyMd         String   @default("")
   // Primary主题 — always categories[0], i.e. the first OFFICIAL (侧栏) tag.
   // Kept as its own column so [category, lastActivityAt] stays a usable index.
@@ -1564,14 +1575,15 @@ model LibraryDoc {
   // Bilingual by contract (lib/library/i18n-content.ts): `aiOverview` is the
   // 中文 version, `aiOverviewEn` the English one. The viewer's `locale` cookie
   // picks which is rendered; en/fr fall back to English, then to 中文.
-  // 译文 — direction is fixed: a doc is translated INTO the other language
-  // (中文 doc → English, anything else → 中文). `translationState` covers the
-  // whole-document pass; per-passage translations live in LibraryTranslation
-  // and are filled by BOTH that pass and on-demand selection translation.
-  translationLang  String? // 'zh' | 'en' — what chapters were translated INTO
-  translationState String    @default("none") // none | running | ready | partial | failed
-  translationError String?
-  translatedAt     DateTime?
+  // 译文 — a doc is readable in 原文 plus every OTHER content language
+  // (lib/library/translation-shared.ts#targetLangsFor: 中文 doc → English,
+  // English doc → 中文, anything else → both). Pass state per language lives in
+  // LibraryDocTranslation, chapter HTML in LibraryChapterTranslation, and every
+  // passage in the shared LibraryTranslation cache.
+  // Translated TITLE: { source: <the title it was translated from>, zh?: string, en?: string }.
+  // Self-invalidating — a title edit makes `source` mismatch and the original shows
+  // until the next pass (pickDocTitle). Written atomically (jsonb ||) by the pass.
+  titleTranslations Json?
 
   aiOverview     Json? // { summary: string, outline: string[], keyPoints: string[], questions: string[] }
   aiOverviewEn   Json? // same shape, English — produced by the indexer's translate pass
@@ -1597,6 +1609,7 @@ model LibraryDoc {
   views          LibraryView[]
   chatMessages   LibraryChatMessage[]
   translations   LibraryTranslation[]
+  docTranslations LibraryDocTranslation[]
   comments       LibraryComment[]
   ratings        LibraryRating[]
   accessRequests LibraryAccessRequest[]
@@ -1622,16 +1635,49 @@ model LibraryChapter {
   // and TOC jumps between pages and chapters through these. Null for non-PDF.
   pageStart      Int?
   pageEnd        Int?
-  // Whole-chapter 译文: the same sanitized structure with each block's TEXT
-  // replaced by its translation (built from the LibraryTranslation cache).
-  translatedHtml String?
   aiSummary      String? // <=120 chars retrieval index entry; null = not yet summarized (checkpoint)
   aiSummaryEn    String? // English rendering of aiSummary (TOC display only — retrieval always uses aiSummary)
   aiKeywords     String[] @default([])
 
-  doc LibraryDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
+  doc          LibraryDoc                  @relation(fields: [docId], references: [id], onDelete: Cascade)
+  translations LibraryChapterTranslation[]
 
   @@unique([docId, chapterIndex])
+}
+
+/// Whole-document 译文 pass, one row per (doc, target language) — a doc can be read in
+/// more than one translation. The row is the pass's LOCK as much as its status: a pass
+/// claims it with a guarded write, beats `heartbeatAt` after every chapter, and a
+/// `running` row whose heartbeat is older than the stale window may be re-claimed (a
+/// server restart mid-book resumes from the per-passage cache, not from zero).
+model LibraryDocTranslation {
+  docId       String
+  targetLang  String // 'zh' | 'en'
+  state       String    @default("running") // running | ready | partial | failed
+  error       String?
+  heartbeatAt DateTime  @default(now())
+  finishedAt  DateTime?
+
+  doc LibraryDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  @@id([docId, targetLang])
+}
+
+/// Whole-chapter 译文 for one language: the chapter's sanitized structure with each leaf
+/// block's TEXT replaced (applyBlockTranslations — model output is never parsed as markup).
+/// `sourceHash` = sha256 of the chapter HTML it was built from, so an edited chapter reads
+/// as untranslated (original shown) until the next pass rebuilds it — never a stale page.
+model LibraryChapterTranslation {
+  chapterId  String
+  targetLang String // 'zh' | 'en'
+  html       String
+  title      String? // translated chapter title (null = untitled chapter or not translated)
+  sourceHash String
+  updatedAt  DateTime @updatedAt
+
+  chapter LibraryChapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@id([chapterId, targetLang])
 }
 
 /// Shared translation cache — the reason a passage is only ever paid for once.
@@ -1984,6 +2030,9 @@ model Event {
   id            String    @id @default(cuid())
   authorId      String
   title         String
+  // Title slug for the URL (docs/contracts/slugs.md) — assigned on create, frozen
+  // (events are visible the moment they exist). Null = legacy row; /events/<id> still works.
+  slug          String?   @unique
   summary       String    @default("") // 一句话简介 shown on cards
   descriptionMd String    @default("")
   kind          EventKind
@@ -2200,8 +2249,40 @@ enum VoteEntryOrder {
   votes // 按票数（仅当结果可见时生效）
 }
 
+/// 内容可见范围 — generic on purpose (docs/contracts/audience.md): any surface reuses
+/// this enum on its OWN row so list queries can filter in SQL. `private` = 仅作者/所有者
+/// 与该界面的管理员（「隐藏」）；`audience` = 再加上 ContentAudience 里点名的成员。
+enum ContentVisibility {
+  public
+  private
+  audience
+}
+
+/// 指定成员可见名单 — ONE polymorphic table for every surface. `kind` names the
+/// surface (lib/audience.ts#AUDIENCE_KINDS: 'vote' today), `itemId` that surface's
+/// row id (no FK — the surface soft-deletes, and its own gate checks the row first).
+/// The owner and the surface's managers are IMPLICIT and never stored here. Rows of
+/// an item whose visibility is not `audience` are inert (kept so switching back
+/// restores the list).
+model ContentAudience {
+  kind      String
+  itemId    String
+  userId    String
+  addedById String?
+  createdAt DateTime @default(now())
+
+  user User @relation("AudienceMember", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([kind, itemId, userId])
+  @@index([userId, kind])
+}
+
 model VoteActivity {
   id                    String              @id @default(cuid())
+  // 标题链接（lib/slug.ts，docs/contracts/slugs.md）：创建时按标题分配；草稿期间跟着
+  // 标题改，发布后冻结。null = 老数据待回填（lib/votes/slug.ts#backfillVoteSlugs）。
+  // /votes/[id] 同时接受 slug 和 id，id 访问会 308 到 slug 链接。
+  slug                  String?             @unique
   creatorId             String
   title                 String
   descriptionMd         String              @default("")
@@ -2249,6 +2330,10 @@ model VoteActivity {
   allowComments         Boolean             @default(true)
   featured              Boolean             @default(false) // admin 精选（hub 顶部推荐位）
   featuredAt            DateTime?
+  // 可见范围（docs/contracts/audience.md）：public 公开 / private 隐藏（仅发起人与
+  // votes 管理员）/ audience 指定成员可见（+ ContentAudience kind='vote' 名单）。
+  // 闸门只有一处：lib/vote-queries.ts#canSeeVoteActivity / visibleActivityWhere。
+  visibility            ContentVisibility   @default(public)
   entryCount            Int                 @default(0) // 非隐藏作品数（entry 增删/隐藏时重算）
   voteCount             Int                 @default(0) // 总票数（vote tx 内重算）
   voterCount            Int                 @default(0) // 参与人数 distinct voters（vote tx 内重算）
@@ -2587,6 +2672,9 @@ model ZonePost {
   authorId      String
   type          ZonePostType       @default(article)
   title         String
+  // Title slug, unique per 版块 (docs/contracts/slugs.md): follows the title while
+  // draft, frozen on publish. Null = legacy row; /zones/<zone>/posts/<id> still works.
+  slug          String?
   // Plain-text summary shown on cards (author-written; falls back to excerpt).
   summary       String             @default("")
   bodyMd        String             @default("")
@@ -2636,6 +2724,7 @@ model ZonePost {
   comments    ZonePostComment[]
   views       ZonePostView[]
 
+  @@unique([zoneId, slug])
   @@index([zoneId, status, deletedAt, pinned, publishedAt])
   @@index([zoneId, status, deletedAt, publishedAt])
   @@index([zoneId, type])
@@ -2921,4 +3010,21 @@ model ZoneSiteSetting {
   showHotRail  Boolean  @default(true)
   showFeatured Boolean  @default(true)
   updatedAt    DateTime @updatedAt
+}
+
+/// Retired URL slugs (docs/contracts/slugs.md). A slug is frozen once an item is visible,
+/// so a row lands here only when a slug is deliberately replaced — chiefly the one-time
+/// move from the old `doc-<nanoid>` / `v-<nanoid>` hash slugs to title slugs. The route
+/// looks the param up here when the live slug misses and redirects to the current one,
+/// so a link someone already shared never breaks. `scope` is '' for site-wide slugs and
+/// the parent id where a slug is only unique inside a parent (wiki pages per zone).
+model SlugAlias {
+  kind      String // 'library_doc' | 'video' | 'wiki_page' | 'vote' | …
+  scope     String   @default("")
+  slug      String
+  itemId    String
+  createdAt DateTime @default(now())
+
+  @@id([kind, scope, slug])
+  @@index([kind, itemId])
 }

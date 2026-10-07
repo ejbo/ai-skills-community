@@ -9,6 +9,7 @@ import type { VideoCard as VideoCardType } from '@/lib/video/queries';
 import { formatCount, formatDuration, withBasePath } from '@/lib/video/types';
 import { relativeTime } from '@/lib/i18n-date';
 import { CoverImage } from '@/components/media/CoverImage';
+import { videoHref } from '@/lib/slug-href';
 
 const PREVIEW_DELAY_MS = 400;
 // Without a dedicated preview clip, loop only the first seconds of the source.
@@ -86,7 +87,7 @@ export function VideoCard({ video }: { video: VideoCardType }) {
       style={{ transformOrigin: 'center', zIndex: hovered ? 30 : 0 }}
     >
       <Link
-        href={`/videos/${video.slug}`}
+        href={videoHref(video.slug)}
         className="flex flex-col gap-2.5 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 dark:focus-visible:ring-zinc-100"
       >
         <div

@@ -6,6 +6,7 @@ import { env } from '@/lib/env';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
+import { canSeeVoteActivity, VOTE_GATE_SELECT, voteViewerFromSession } from '@/lib/vote-queries';
 import {
   MAX_BALLOT_CHANGES,
   MAX_PER_ENTRY_MAX,
@@ -83,10 +84,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const activity = await prisma.voteActivity.findUnique({
     where: { id: params.id },
     select: {
-      id: true,
-      status: true,
-      deletedAt: true,
-      creatorId: true,
+      ...VOTE_GATE_SELECT,
       startAt: true,
       endAt: true,
       closedAt: true,
@@ -97,7 +95,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       resultsMode: true,
     },
   });
-  if (!activity || activity.deletedAt) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  // 可见范围: an activity the voter cannot see does not exist for them (same 404 as the page).
+  if (!activity || !(await canSeeVoteActivity(activity, voteViewerFromSession(session)))) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
   if (!votingOpen(activity.status, activity)) {
     return NextResponse.json({ error: 'vote_closed' }, { status: 400 });
   }

@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { relativeTime } from '@/lib/i18n-date';
@@ -21,6 +21,9 @@ import { TopicActions } from '../../_components/TopicActions';
 import { CategoryChip, LockedBadge, PinnedBadge } from '../../_components/badges';
 import { TopicReplies, type ReplyThreadView } from '../../_components/TopicReplies';
 import { TopicBody } from './_components/TopicBody';
+import { selfHref } from '@/lib/auth/callback-path';
+import { needsCanonicalRedirect, topicHref } from '@/lib/slug-href';
+import { resolveTopicParam } from '@/lib/title-slugs';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,8 +35,13 @@ export default async function TopicDetailPage({
   searchParams: { focus?: string };
 }) {
   const session = await auth();
-  const topic = await getTopicDetail(params.id, session?.user?.id ?? null);
+  // The param is a title slug, a row id (old links) or a retired slug.
+  const resolved = await resolveTopicParam(params.id);
+  if (!resolved) notFound();
+  const topic = await getTopicDetail(resolved.id, session?.user?.id ?? null);
   if (!topic) notFound();
+  // Canonical (title) URL, keeping ?focus= deep links.
+  if (needsCanonicalRedirect(resolved)) permanentRedirect(selfHref(topicHref({ id: topic.id, slug: resolved.slug }), searchParams));
   const t = await getTranslations('discussion_pages');
   const tp = await getTranslations('profile');
   const locale = await getLocale();
@@ -148,6 +156,7 @@ export default async function TopicDetailPage({
             </div>
             <TopicActions
               topicId={topic.id}
+              topicSlug={topic.slug}
               pinned={topic.pinned}
               locked={topic.locked}
               canModerate={Boolean(viewer?.canModerate)}

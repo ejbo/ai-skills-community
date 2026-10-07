@@ -161,7 +161,7 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
     const created = await createZonePost(ctx.zone, session.user.id, input, {
       canModerate: ctx.access.canModerate,
     });
-    return NextResponse.json({ id: created.id }, { status: 201 });
+    return NextResponse.json({ id: created.id, slug: created.slug }, { status: 201 });
   } catch (e) {
     const res = await zoneErrorResponse(e);
     if (res) return res;

@@ -25,6 +25,7 @@ import { SECTION_ICONS } from '../section-meta';
 import type { SectionProps } from './GridSections';
 import { isHiddenButVisible } from '@/lib/profile/queries';
 import { pinKey, type PinKind, type ProfileSection } from '@/lib/profile/shared';
+import { eventHref, feedbackHref, topicHref } from '@/lib/slug-href';
 
 function pinFor(props: SectionProps, kind: PinKind, id: string) {
   return { kind, id, pinned: props.pinnedKeys.includes(pinKey({ kind, id })) };
@@ -129,11 +130,11 @@ export async function TopicsSection(props: SectionProps) {
               <OwnerItem
                 enabled={viewer.isOwner}
                 pin={pinFor(props, 'topic', topic.id)}
-                editHref={`/discussion/topics/${topic.id}/edit`}
+                editHref={`${topicHref(topic)}/edit`}
                 placement="side"
                 className={viewer.isOwner ? 'pr-3' : ''}
               >
-                <Link href={`/discussion/topics/${topic.id}`} className={ROW_LINK}>
+                <Link href={topicHref(topic)} className={ROW_LINK}>
                   <div className="flex flex-wrap items-center gap-1.5">
                     {topic.pinned && <PinnedBadge />}
                     {topic.locked && <LockedBadge />}
@@ -208,7 +209,7 @@ export async function EventsSection(props: SectionProps) {
               key={e.id}
               enabled={viewer.isOwner}
               pin={pinFor(props, 'event', e.id)}
-              editHref={e.isAuthor ? `/events/${e.id}/edit` : null}
+              editHref={e.isAuthor ? `${eventHref(e)}/edit` : null}
               className="h-full [&>article]:h-full"
             >
               <EventCard event={e} showDate />
@@ -234,7 +235,7 @@ export async function FeedbackSection(props: SectionProps) {
         <ul className={ROW_LIST}>
           {res.items.map((f) => (
             <li key={f.id}>
-              <Link href={`/feedback/${f.id}`} className={`${ROW_LINK} flex items-center gap-4`}>
+              <Link href={feedbackHref(f)} className={`${ROW_LINK} flex items-center gap-4`}>
                 <span className="flex w-12 shrink-0 flex-col items-center rounded-lg border border-zinc-200 py-1.5 dark:border-zinc-800">
                   <ThumbsUp className="h-3.5 w-3.5 text-muted" aria-hidden />
                   <span className="mt-0.5 font-mono text-sm font-semibold tabular-nums">{f.upvoteCount}</span>

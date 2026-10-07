@@ -8,6 +8,7 @@ import type { FeedbackCategory } from '@prisma/client';
 import { pushToast } from '@/components/Toaster';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { currentLoginHref } from '@/lib/auth/callback-path';
+import { feedbackHref } from '@/lib/slug-href';
 import { CATEGORY_META } from './badges';
 
 const CATEGORIES = Object.entries(CATEGORY_META) as [
@@ -59,7 +60,7 @@ export function FeedbackComposer({ loggedIn }: { loggedIn: boolean }) {
         return;
       }
       pushToast('success', t('submitted_thanks'));
-      router.push(`/feedback/${data.feedback.id}`);
+      router.push(feedbackHref(data.feedback));
     } finally {
       setBusy(false);
     }

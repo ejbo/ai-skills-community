@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { ExternalLink, Lock, LockOpen, Pin, PinOff, Trash2 } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 import { withBasePath } from '@/lib/base-path';
+import { topicHref } from '@/lib/slug-href';
 
 interface PostRow {
   id: string;
@@ -20,6 +21,7 @@ interface PostRow {
 
 interface TopicRow {
   id: string;
+  slug: string | null;
   title: string;
   categoryNames: string[];
   pinned: boolean;
@@ -208,7 +210,7 @@ export function DiscussionManager({ posts, topics }: { posts: PostRow[]; topics:
                   <td className="px-3 py-2.5">
                     <div className="flex items-center justify-end gap-1">
                       <a
-                        href={withBasePath(`/discussion/topics/${row.id}`)}
+                        href={withBasePath(topicHref(row))}
                         target="_blank"
                         rel="noopener noreferrer"
                         title={t('mng_view')}

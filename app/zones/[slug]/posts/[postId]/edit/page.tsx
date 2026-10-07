@@ -10,7 +10,9 @@ import { listZoneColumns } from '@/lib/zones/columns';
 import { canViewerEditZonePost } from '@/lib/zones/post-edit';
 import { getZonePostDetail } from '@/lib/zones/post-queries';
 import { isAutoPostSummary } from '@/lib/zones/post-summary';
-import { zonePostHref } from '@/lib/zones/shared';
+import { zonePostEditHref, zonePostHref } from '@/lib/zones/shared';
+import { resolveZonePostParam } from '@/lib/title-slugs';
+import { decodeSlugParam } from '@/lib/slug';
 import type { ZoneCurrentUser } from '@/lib/zones/types';
 import { PostComposer } from '@/app/zones/_components/post/PostComposer';
 import type { CoauthorPick } from '@/app/zones/_components/post/CoauthorPicker';
@@ -27,20 +29,24 @@ export async function generateMetadata(): Promise<Metadata> {
 // top bar carries the back link, the zone name and the actions (no page h1).
 export default async function EditZonePostPage({ params }: { params: { slug: string; postId: string } }) {
   const session = await auth();
-  if (!session?.user) redirect(loginHref(`${zonePostHref(params.slug, params.postId)}/edit`));
+  if (!session?.user) redirect(loginHref(zonePostEditHref(params.slug, decodeSlugParam(params.postId))));
   const viewer = zoneSiteViewer(session.user);
   const zone = await loadZoneBySlug(params.slug, viewer);
   if (!zone) notFound();
   const access = await resolveZoneAccess(zone, viewer);
   const locale = await getLocale();
-  const post = await getZonePostDetail(params.postId, zone, access, viewer, { session, locale });
+  // Edit URLs are id-based (zonePostEditHref), but a slug or an old link still
+  // opens the composer — no canonical redirect here on purpose.
+  const resolved = await resolveZonePostParam(zone.id, params.postId);
+  if (!resolved) notFound();
+  const post = await getZonePostDetail(resolved.id, zone, access, viewer, { session, locale });
   if (!post) notFound();
   // Content edits go through the SAME policy the PATCH route enforces
   // (`canEditZonePostContent`): the 主作者, a co-author who can still read the
   // zone, or a moderator. Deciding with `isAuthor || canModerate` here used to
   // hand a co-author outside a 仅成员可见 版块 a composer whose save then 403s.
   if (!(await canViewerEditZonePost({ postId: post.id, isAuthor: post.isAuthor, access }))) {
-    redirect(zonePostHref(zone.slug, post.id));
+    redirect(zonePostHref(zone.slug, post));
   }
   // The composer needs co-author and 指定成员 USER IDS (the API contract), which
   // the public views deliberately do not carry — read the join rows here. The

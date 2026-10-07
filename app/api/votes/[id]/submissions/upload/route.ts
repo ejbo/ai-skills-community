@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { rateLimit } from '@/lib/rate-limit';
 import { MAX_UPLOAD_SAFETY_BYTES, hasFreeSpace } from '@/lib/uploads/disk-space';
+import { canSeeVoteActivity, VOTE_GATE_SELECT, voteViewerFromSession } from '@/lib/vote-queries';
 import { voteOver } from '@/lib/votes/shared';
 import {
   MAX_VOTE_IMAGE_BYTES,
@@ -42,9 +43,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const activity = await prisma.voteActivity.findUnique({
     where: { id: params.id },
     select: {
-      id: true,
-      deletedAt: true,
-      status: true,
+      ...VOTE_GATE_SELECT,
       startAt: true,
       endAt: true,
       closedAt: true,
@@ -54,7 +53,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       maxSubmissionsPerUser: true,
     },
   });
-  if (!activity || activity.deletedAt) {
+  if (!activity || !(await canSeeVoteActivity(activity, voteViewerFromSession(session)))) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
   // 投稿窗口：已发布且未结束（startAt 只挡投票，不挡投稿 ⇒ 征集期可先行）。

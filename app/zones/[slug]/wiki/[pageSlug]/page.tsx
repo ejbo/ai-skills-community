@@ -1,12 +1,12 @@
 import { cache } from 'react';
 import type { Metadata } from 'next';
-import { notFound, redirect } from 'next/navigation';
+import { notFound, permanentRedirect, redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { zoneSiteViewer } from '@/lib/zones/access';
 import { getZoneDetail } from '@/lib/zones/queries';
-import { getWikiPage, getWikiTree } from '@/lib/zones/wiki-queries';
-import { zoneHref } from '@/lib/zones/shared';
+import { getWikiPage, getWikiTree, resolveWikiSlugParam } from '@/lib/zones/wiki-queries';
+import { zoneHref, zoneWikiHref } from '@/lib/zones/shared';
 import type { WikiTreeNode, ZoneCurrentUser } from '@/lib/zones/types';
 import { ZoneMarkdown } from '@/components/zones/ZoneMarkdown';
 import { ZoneHeader } from '@/app/zones/_components/ZoneHeader';
@@ -19,10 +19,12 @@ const load = cache(async (slug: string, pageSlug: string) => {
   const session = await auth();
   const viewer = zoneSiteViewer(session?.user);
   const zone = await getZoneDetail(slug, viewer);
-  if (!zone || !zone.access.canRead) return { session, viewer, zone, page: null };
+  if (!zone || !zone.access.canRead) return { session, viewer, zone, page: null, aliased: false };
   const locale = await getLocale();
-  const page = await getWikiPage(zone.id, pageSlug, { viewer, session, locale });
-  return { session, viewer, zone, page };
+  // Page params arrive percent-encoded; a renamed page's old address resolves too.
+  const { slug: liveSlug, aliased } = await resolveWikiSlugParam(zone.id, pageSlug);
+  const page = await getWikiPage(zone.id, liveSlug, { viewer, session, locale });
+  return { session, viewer, zone, page, aliased };
 });
 
 /** Root → parent crumbs for `id`, or null when the id is not in the tree. */
@@ -60,10 +62,12 @@ export async function generateMetadata({
 }
 
 export default async function ZoneWikiPage({ params }: { params: { slug: string; pageSlug: string } }) {
-  const { session, zone, page } = await load(params.slug, params.pageSlug);
+  const { session, zone, page, aliased } = await load(params.slug, params.pageSlug);
   if (!zone) notFound();
   if (!zone.access.canRead) redirect(zoneHref(zone.slug));
   if (!page) notFound();
+  // Old address → the current one, only after the zone gate.
+  if (aliased) permanentRedirect(zoneWikiHref(zone.slug, page.slug));
 
   const tree = await getWikiTree(zone.id);
   const ancestors = findPath(tree, page.id) ?? [];

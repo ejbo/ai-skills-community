@@ -45,6 +45,8 @@ import { initialCoverFraming, nextCoverFraming, parseCoverFramingInput, zonePost
 import { coverAspectSchema, coverPosSchema } from './post-cover-schema';
 import { autoPostSummary, nextPostSummary } from './post-summary';
 import { readableZoneWhere, zoneOrgTree } from './queries';
+import { createWithSlug, isSlugConflict } from '@/lib/slug-server';
+import { pickZonePostSlug } from '@/lib/title-slugs';
 import { displayExtOf, keyExtOf } from '@/lib/files/file-types';
 import {
   ACCESS_CODE_ALPHABET,
@@ -116,6 +118,7 @@ export const ZONE_POST_CARD_SELECT = {
   zoneId: true,
   type: true,
   title: true,
+  slug: true,
   summary: true,
   coverUrl: true,
   coverAspect: true,
@@ -308,6 +311,7 @@ export function toZonePostCardView(row: ZonePostCardRow, ctx: PostCardContext): 
   const accessLocked = ctx.lockedIds?.has(row.id) ?? false;
   return {
     id: row.id,
+    slug: row.slug,
     zone: { id: row.zone.id, slug: row.zone.slug, name: row.zone.name, iconUrl: row.zone.iconUrl ?? null, themeColor: normalizeThemeColor(row.zone.themeColor) },
     type: row.type,
     title: row.title,
@@ -1223,6 +1227,8 @@ const MENTION_WHAT = '帖子';
 
 interface PostNotifyInput {
   postId: string;
+  /** Title slug for the deep link (docs/contracts/slugs.md); null ⇒ the id. */
+  postSlug: string | null;
   zone: { id: string; slug: string; ownerId: string; visibility: ZoneVisibilityValue };
   post: { authorId: string; coauthorIds: string[]; visibility: ZonePostVisibilityValue };
   actorId: string;
@@ -1259,7 +1265,7 @@ async function notifyPostPeople(o: PostNotifyInput): Promise<void> {
       import('@/lib/mention-notify'),
     ]);
 
-    const link = zonePostHref(o.zone.slug, o.postId);
+    const link = zonePostHref(o.zone.slug, { id: o.postId, slug: o.postSlug });
     const actor = await prisma.user.findUnique({
       where: { id: o.actorId },
       select: { displayName: true, handle: true },
@@ -1310,7 +1316,7 @@ export async function createZonePost(
   authorId: string,
   input: ZonePostInput,
   opts: { canModerate?: boolean } = {},
-): Promise<{ id: string }> {
+): Promise<{ id: string; slug: string | null }> {
   const title = input.title.trim();
   if (title.length < ZONE_LIMITS.postTitleMin) throw new ZoneError('title_required', 400);
   const bodyMd = input.bodyMd ?? '';
@@ -1333,13 +1339,17 @@ export async function createZonePost(
     visibility === 'restricted' ? await validateDesignatedViewers(zone, input.designatedUserIds ?? []) : [];
   const accessCode = visibility === 'restricted' ? generateAccessCode() : null;
 
-  const created = await prisma.$transaction(async (tx) => {
+  // Title slug for the link (docs/contracts/slugs.md): unique per zone, follows
+  // the title while a draft, frozen once published. A slug race re-picks once.
+  const storedTitle = title.slice(0, ZONE_LIMITS.postTitleMax);
+  const created = await createWithSlug(() => pickZonePostSlug(zone.id, storedTitle), (slug) => prisma.$transaction(async (tx) => {
     const post = await tx.zonePost.create({
       data: {
         zoneId: zone.id,
         authorId,
         type: input.type,
-        title: title.slice(0, ZONE_LIMITS.postTitleMax),
+        title: storedTitle,
+        slug,
         summary: summaryOf(input.summary ?? '', bodyMd),
         bodyMd,
         coverKey: cover.coverKey,
@@ -1370,7 +1380,7 @@ export async function createZonePost(
           })),
         },
       },
-      select: { id: true, attachments: { select: { id: true, previewStatus: true } } },
+      select: { id: true, slug: true, attachments: { select: { id: true, previewStatus: true } } },
     });
     if (designated.length > 0) {
       await tx.zonePostViewer.createMany({
@@ -1384,7 +1394,7 @@ export async function createZonePost(
       await recountZoneColumns(zone.id, tx, [columnId]);
     }
     return post;
-  });
+  }));
 
   for (const a of created.attachments) if (a.previewStatus === 'pending') scheduleOfficePreview(a.id);
   // Published straight away ⇒ every co-author and everyone @-ed in the body
@@ -1392,6 +1402,7 @@ export async function createZonePost(
   if (publish) {
     await notifyPostPeople({
       postId: created.id,
+      postSlug: created.slug,
       zone: { id: zone.id, slug: zone.slug, ownerId: zone.ownerId, visibility: zone.visibility },
       post: { authorId, coauthorIds, visibility },
       actorId: authorId,
@@ -1400,7 +1411,7 @@ export async function createZonePost(
       newCoauthorIds: coauthorIds,
     });
   }
-  return { id: created.id };
+  return { id: created.id, slug: created.slug };
 }
 
 export async function updateZonePost(
@@ -1416,6 +1427,7 @@ export async function updateZonePost(
       authorId: true,
       type: true,
       title: true,
+      slug: true,
       summary: true,
       bodyMd: true,
       coverKey: true,
@@ -1544,7 +1556,22 @@ export async function updateZonePost(
       : {}),
   };
 
-  await prisma.$transaction(async (tx) => {
+  // Title slug (docs/contracts/slugs.md): a never-published draft's slug follows
+  // its title; once a post has been visible (publishedAt is kept on unpublish)
+  // the slug is frozen. A legacy row without one gets it on its next save.
+  // A draft's superseded slugs are NOT retired into SlugAlias: autosave would
+  // otherwise park every half-typed title there, and nobody but the author has
+  // seen a draft link (its id link keeps working regardless).
+  const storedTitle = title.slice(0, ZONE_LIMITS.postTitleMax);
+  const reslug = !existing.slug || (existing.publishedAt === null && storedTitle !== existing.title);
+  const pickSlug = () => pickZonePostSlug(existing.zoneId, storedTitle, prisma, existing.id);
+  let nextSlug = existing.slug;
+  if (reslug) {
+    nextSlug = await pickSlug();
+    if (nextSlug !== existing.slug) data.slug = nextSlug;
+  }
+
+  const runTx = () => prisma.$transaction(async (tx) => {
     await tx.zonePost.update({ where: { id: existing.id }, data });
 
     // 指定成员可见 bookkeeping. Leaving `restricted` clears every grant; rotating
@@ -1646,6 +1673,16 @@ export async function updateZonePost(
       await recountZoneColumns(existing.zoneId, tx, [existing.columnId, nextColumnId ?? existing.columnId]);
     }
   });
+  try {
+    await runTx();
+  } catch (e) {
+    // Only the slug write can lose this race (it is the first statement, so
+    // nothing else ran): pick again and redo the transaction once.
+    if (!(reslug && data.slug !== undefined && isSlugConflict(e))) throw e;
+    nextSlug = await pickSlug();
+    data.slug = nextSlug;
+    await runTx();
+  }
 
   // Files no row references any more: removed attachments (+ their PDF
   // previews and posters) and a replaced cover. Refcounted — a key kept as the
@@ -1672,6 +1709,7 @@ export async function updateZonePost(
     const finalCoauthorIds = coauthorIds ?? [...before];
     await notifyPostPeople({
       postId: existing.id,
+      postSlug: nextSlug,
       zone: {
         id: existing.zone.id,
         slug: existing.zone.slug,

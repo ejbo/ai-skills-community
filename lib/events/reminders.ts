@@ -45,6 +45,7 @@ export async function sweepEventReminders(): Promise<number> {
     },
     select: {
       id: true,
+      slug: true,
       title: true,
       startAt: true,
       timezone: true,
@@ -78,6 +79,7 @@ export async function sweepEventReminders(): Promise<number> {
         recipientId: a.userId,
         recipientEmail: a.user.email,
         eventId: ev.id,
+        eventSlug: ev.slug,
         eventTitle: ev.title,
         minutesLeft,
         timeLabel,

@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 import { Megaphone } from 'lucide-react';
 import { format } from 'date-fns';
 import { getTranslations } from 'next-intl/server';
@@ -7,18 +7,25 @@ import { prisma } from '@/lib/db';
 import { can } from '@/lib/permissions';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { BackButton } from '@/components/BackButton';
+import { announcementHref, needsCanonicalRedirect } from '@/lib/slug-href';
+import { resolveAnnouncementParam } from '@/lib/title-slugs';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AnnouncementPage({ params }: { params: { id: string } }) {
   const t = await getTranslations('announcements');
   const session = await auth();
+  // The param is a title slug, a row id (old links) or a retired slug.
+  const resolved = await resolveAnnouncementParam(params.id);
+  if (!resolved) notFound();
   const a = await prisma.announcement.findUnique({
-    where: { id: params.id },
+    where: { id: resolved.id },
     include: { createdBy: { select: { displayName: true } } },
   });
   // Drafts are visible to 公告 managers (`announcements` permission) only; everyone else (and missing ids) 404.
   if (!a || (a.publishedAt === null && !can(session?.user, 'announcements'))) notFound();
+  // Canonical (title) URL — only after the draft gate above.
+  if (needsCanonicalRedirect(resolved)) permanentRedirect(announcementHref(a));
 
   return (
     <div className="container max-w-3xl py-8">

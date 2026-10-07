@@ -24,6 +24,8 @@ import { rateLimit } from '@/lib/rate-limit';
 import { PAGE_SEARCHES_PER_MINUTE, SEARCH_WINDOW_MS, searchRateKey } from '@/lib/search-guard';
 import { searchSite, type SiteSearchResults } from '@/lib/search';
 import { SearchBar } from '@/components/SearchBar';
+import { voteHref } from '@/lib/votes/shared';
+import { eventHref, feedbackHref, topicHref, videoHref } from '@/lib/slug-href';
 
 export const dynamic = 'force-dynamic';
 
@@ -115,7 +117,7 @@ export default async function SearchPage({
             icon: MessagesSquare,
             rows: results.discussions.map((d) => ({
               key: `${d.kind}:${d.id}`,
-              href: d.kind === 'topic' ? `/discussion/topics/${d.id}` : `/discussion/posts/${d.id}`,
+              href: d.kind === 'topic' ? topicHref(d) : `/discussion/posts/${d.id}`,
               label: d.title || t('search_post_media'),
               meta: `${d.author} · ${reldate(d.date)}`,
             })),
@@ -137,7 +139,7 @@ export default async function SearchPage({
             icon: VideoIcon,
             rows: results.videos.map((v) => ({
               key: v.slug,
-              href: `/videos/${v.slug}`,
+              href: videoHref(v.slug),
               label: v.title,
               meta: `${v.author} · ${reldate(v.date)}`,
             })),
@@ -148,7 +150,7 @@ export default async function SearchPage({
             icon: CalendarDays,
             rows: results.events.map((e) => ({
               key: e.id,
-              href: `/events/${e.id}`,
+              href: eventHref(e),
               label: e.title,
               meta: `${e.author} · ${reldate(e.date)}`,
             })),
@@ -159,7 +161,7 @@ export default async function SearchPage({
             icon: VoteIcon,
             rows: results.votes.map((v) => ({
               key: v.id,
-              href: `/votes/${v.id}`,
+              href: voteHref(v),
               label: v.title,
               meta: `${v.author} · ${reldate(v.date)}`,
             })),
@@ -181,7 +183,7 @@ export default async function SearchPage({
             icon: Lightbulb,
             rows: results.feedback.map((f) => ({
               key: f.id,
-              href: `/feedback/${f.id}`,
+              href: feedbackHref(f),
               label: f.title,
               meta: `${f.author} · ${reldate(f.date)}`,
             })),

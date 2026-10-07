@@ -47,8 +47,10 @@ import type { ShortView } from '@/app/videos/shorts/_components/types';
 import type { ZoneSiteViewer } from '@/lib/zones/access';
 import { countZoneFeed, listZoneFeed } from '@/lib/zones/post-queries';
 import { zonePostHref } from '@/lib/zones/shared';
+import { eventHref, feedbackHref, topicHref, videoHref } from '@/lib/slug-href';
 import type { ZonePostCardView } from '@/lib/zones/types';
 import { countEventsByAuthor, listEventsByAuthor, type AuthoredEventItem } from '@/lib/event-queries';
+import { voteHref } from '@/lib/votes/shared';
 import {
   countVoteActivitiesByCreator,
   listVoteActivitiesByCreator,
@@ -357,7 +359,7 @@ async function countSection(v: ProfileViewer, s: ProfileSection): Promise<number
     case 'events':
       return countEventsByAuthor(uid);
     case 'votes':
-      return countVoteActivitiesByCreator(uid);
+      return countVoteActivitiesByCreator(uid, domainViewerFor(v));
     case 'feedback':
       return prisma.feedback.count({ where: { authorId: uid } });
     case 'comments': {
@@ -580,6 +582,7 @@ export async function loadPostsSection(v: ProfileViewer, page: number): Promise<
 
 export interface ProfileTopicItem {
   id: string;
+  slug: string | null;
   title: string;
   excerpt: string;
   tags: DiscussionTagOption[];
@@ -602,6 +605,7 @@ export async function loadTopicsSection(v: ProfileViewer, page: number): Promise
       where,
       select: {
         id: true,
+        slug: true,
         title: true,
         bodyMd: true,
         categories: true,
@@ -625,6 +629,7 @@ export async function loadTopicsSection(v: ProfileViewer, page: number): Promise
     pageCount: w.pageCount,
     items: rows.map((r) => ({
       id: r.id,
+      slug: r.slug,
       title: r.title,
       excerpt: excerptOf(r.bodyMd, 160),
       tags: tagViewsFrom(r.categories, tagMap),
@@ -712,6 +717,7 @@ export async function loadVotesSection(v: ProfileViewer, page: number): Promise<
 
 export interface ProfileFeedbackItem {
   id: string;
+  slug: string | null;
   title: string;
   category: 'feature' | 'bug' | 'other';
   status: 'open' | 'planned' | 'in_progress' | 'done' | 'declined';
@@ -727,7 +733,7 @@ export async function loadFeedbackSection(v: ProfileViewer, page: number): Promi
   const w = pageWindow(total, page, PROFILE_LIST_PAGE_SIZE);
   const rows = await prisma.feedback.findMany({
     where,
-    select: { id: true, title: true, category: true, status: true, upvoteCount: true, commentCount: true, createdAt: true },
+    select: { id: true, slug: true, title: true, category: true, status: true, upvoteCount: true, commentCount: true, createdAt: true },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     skip: w.skip,
     take: PROFILE_LIST_PAGE_SIZE,
@@ -753,13 +759,13 @@ async function commentSources(
       where: { authorId: uid, status: 'visible', ...commentAfterWhere(cursor, 'topic_reply') },
       orderBy: order,
       take,
-      select: { id: true, bodyMd: true, createdAt: true, topic: { select: { id: true, title: true } } },
+      select: { id: true, bodyMd: true, createdAt: true, topic: { select: { id: true, slug: true, title: true } } },
     }),
     prisma.feedbackComment.findMany({
       where: { authorId: uid, status: 'visible', ...commentAfterWhere(cursor, 'feedback_comment') },
       orderBy: order,
       take,
-      select: { id: true, bodyMd: true, createdAt: true, feedback: { select: { id: true, title: true } } },
+      select: { id: true, bodyMd: true, createdAt: true, feedback: { select: { id: true, slug: true, title: true } } },
     }),
     v.loggedIn
       ? prisma.libraryComment.findMany({
@@ -786,7 +792,7 @@ async function commentSources(
       id: c.id,
       excerpt: excerptOf(c.bodyMd, 160),
       contextTitle: c.topic.title,
-      href: `/discussion/topics/${c.topic.id}?focus=${c.id}`,
+      href: `${topicHref(c.topic)}?focus=${c.id}`,
       createdAt: iso(c.createdAt),
     })),
     feedbackComments.map((c) => ({
@@ -795,7 +801,7 @@ async function commentSources(
       id: c.id,
       excerpt: excerptOf(c.bodyMd, 160),
       contextTitle: c.feedback.title,
-      href: `/feedback/${c.feedback.id}?focus=${c.id}`,
+      href: `${feedbackHref(c.feedback)}?focus=${c.id}`,
       createdAt: iso(c.createdAt),
     })),
     docComments.map((c) => ({
@@ -885,11 +891,11 @@ async function activityFor(v: ProfileViewer, s: ProfileSection, take: number): P
     case 'topics': {
       const rows = await prisma.discussionTopic.findMany({
         where: { authorId: uid },
-        select: { id: true, title: true, createdAt: true },
+        select: { id: true, slug: true, title: true, createdAt: true },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take,
       });
-      return rows.map((r) => ({ key: `topic:${r.id}`, kind: 'topic', title: r.title, context: null, href: `/discussion/topics/${r.id}`, at: iso(r.createdAt) }));
+      return rows.map((r) => ({ key: `topic:${r.id}`, kind: 'topic', title: r.title, context: null, href: topicHref(r), at: iso(r.createdAt) }));
     }
     case 'videos': {
       if (!v.loggedIn) return [];
@@ -916,7 +922,7 @@ async function activityFor(v: ProfileViewer, s: ProfileSection, take: number): P
           kind: 'video' as const,
           title: r.title,
           context: null,
-          href: `/videos/${r.slug}`,
+          href: videoHref(r.slug),
           at: iso(r.publishedAt ?? r.createdAt),
         })),
       ];
@@ -929,27 +935,27 @@ async function activityFor(v: ProfileViewer, s: ProfileSection, take: number): P
         kind: 'zonePost',
         title: p.title,
         context: p.zone.name,
-        href: zonePostHref(p.zone.slug, p.id),
+        href: zonePostHref(p.zone.slug, p),
         at: p.publishedAt ?? p.createdAt ?? new Date(0).toISOString(),
       }));
     }
     case 'events': {
       const res = await listEventsByAuthor(uid, domainViewerFor(v), { pageSize: take, order: 'created' });
-      return res.items.map((e) => ({ key: `event:${e.id}`, kind: 'event', title: e.title, context: e.city, href: `/events/${e.id}`, at: e.createdAt }));
+      return res.items.map((e) => ({ key: `event:${e.id}`, kind: 'event', title: e.title, context: e.city, href: eventHref(e), at: e.createdAt }));
     }
     case 'votes': {
       if (!v.loggedIn) return [];
       const res = await listVoteActivitiesByCreator(uid, domainViewerFor(v), { pageSize: take });
-      return res.items.map((a) => ({ key: `vote:${a.id}`, kind: 'vote', title: a.title, context: null, href: `/votes/${a.id}`, at: a.publishedAt ?? a.createdAt }));
+      return res.items.map((a) => ({ key: `vote:${a.id}`, kind: 'vote', title: a.title, context: null, href: voteHref(a), at: a.publishedAt ?? a.createdAt }));
     }
     case 'feedback': {
       const rows = await prisma.feedback.findMany({
         where: { authorId: uid },
-        select: { id: true, title: true, createdAt: true },
+        select: { id: true, slug: true, title: true, createdAt: true },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take,
       });
-      return rows.map((r) => ({ key: `feedback:${r.id}`, kind: 'feedback', title: r.title, context: null, href: `/feedback/${r.id}`, at: iso(r.createdAt) }));
+      return rows.map((r) => ({ key: `feedback:${r.id}`, kind: 'feedback', title: r.title, context: null, href: feedbackHref(r), at: iso(r.createdAt) }));
     }
     case 'comments': {
       const lists = await commentSources(v, null, take);

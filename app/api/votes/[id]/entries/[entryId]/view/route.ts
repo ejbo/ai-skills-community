@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { rateLimit } from '@/lib/rate-limit';
-import { recordVoteEntryView } from '@/lib/vote-queries';
+import {
+  canSeeVoteActivity,
+  recordVoteEntryView,
+  VOTE_GATE_SELECT,
+  voteViewerFromSession,
+} from '@/lib/vote-queries';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,9 +38,15 @@ export async function POST(
 
   const activity = await prisma.voteActivity.findUnique({
     where: { id: params.id },
-    select: { id: true, deletedAt: true, status: true, creatorId: true },
+    select: VOTE_GATE_SELECT,
   });
-  if (!activity || activity.deletedAt || activity.status === 'draft') {
+  // Drafts never count (not even the creator's own review passes), and the 可见范围
+  // gate is the detail page's — a ping can only come from someone who can open it.
+  if (
+    !activity ||
+    activity.status === 'draft' ||
+    !(await canSeeVoteActivity(activity, voteViewerFromSession(session)))
+  ) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
   // 发起人自己翻看作品不计数 —— 浏览数是给发起人读的运营数字，把他自己审稿、

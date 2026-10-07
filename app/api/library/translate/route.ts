@@ -9,8 +9,8 @@ import { getLibraryProvider } from '@/lib/library/llm';
 import {
   MAX_PASSAGE_CHARS,
   normalizeSource,
+  selectionTargetFor,
   sourceHash,
-  targetLangFor,
   translateWithCache,
 } from '@/lib/library/translation';
 
@@ -22,14 +22,16 @@ const HOUR_MS = 60 * 60 * 1000;
 const schema = z.object({
   docId: z.string().min(1),
   text: z.string().trim().min(1).max(MAX_PASSAGE_CHARS),
+  /** The language the reader is reading in; the server still refuses the doc's own language. */
+  target: z.enum(['zh', 'en']).optional(),
 });
 
 // POST /api/library/translate (login) — selection translation for the reader.
 //
 // Cache-FIRST: a passage any reader already translated comes straight out of
 // LibraryTranslation, so the second person to look at it waits for nothing.
-// Direction is fixed per document (中文 doc → English, otherwise → 中文), which
-// is also what the whole-document pass writes, so both share the same rows.
+// Target = the reader's language unless the doc is already in it (then the
+// other one) — the same (doc, lang) rows the whole-document passes write.
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
@@ -46,7 +48,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  const targetLang = targetLangFor(doc.language);
+  const targetLang = selectionTargetFor(doc.language, parsed.data.target ?? 'zh');
   const source = normalizeSource(parsed.data.text);
   if (!source) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
 

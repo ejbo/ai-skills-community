@@ -12,6 +12,8 @@ export interface TocEntry {
   /** PDF page span (0-based inclusive); null for non-PDF docs. */
   pageStart: number | null;
   pageEnd: number | null;
+  /** Translated chapter titles (the reader swaps `title` for the reading language). */
+  titles?: Partial<Record<'zh' | 'en', string>>;
 }
 
 /** Left inline panel: chapter list with AI summaries; click jumps in place. */

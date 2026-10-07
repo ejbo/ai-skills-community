@@ -1,8 +1,9 @@
-import { notFound, redirect } from 'next/navigation';
+import { notFound, permanentRedirect, redirect } from 'next/navigation';
 import { loginHref } from '@/lib/auth/callback-path';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { getDocBySlug, libraryViewerFromSession } from '@/lib/library-queries';
+import { docPath, resolveDocSlugParam } from '@/lib/library/slug';
 import { BackButton } from '@/components/BackButton';
 import { DocEditor } from './DocEditor';
 // The chapter editor renders the chapter with the READER's typography
@@ -17,9 +18,11 @@ export default async function DocEditPage({ params }: { params: { slug: string }
   const viewer = libraryViewerFromSession(session);
   if (!viewer) redirect(loginHref(`/library/${params.slug}/edit`));
 
-  const doc = await getDocBySlug(params.slug, viewer);
+  const { slug, aliased } = await resolveDocSlugParam(params.slug);
+  const doc = await getDocBySlug(slug, viewer);
   if (!doc) notFound();
   if (doc.uploaderId !== viewer.id && !viewer.canManage) notFound();
+  if (aliased) permanentRedirect(docPath(doc.slug, '/edit'));
 
   return (
     <div className="container max-w-4xl py-8">

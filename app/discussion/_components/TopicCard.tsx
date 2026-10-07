@@ -9,6 +9,7 @@ import { relativeTime } from '@/lib/i18n-date';
 import { TopicUpvoteButton } from './TopicUpvoteButton';
 import { CategoryChip, LockedBadge, PinnedBadge } from './badges';
 import type { TopicCardView } from './types';
+import { topicHref } from '@/lib/slug-href';
 
 /**
  * A forum topic as it appears in the 全部 stream, between feed posts.
@@ -23,7 +24,7 @@ import type { TopicCardView } from './types';
 export function TopicCard({ topic }: { topic: TopicCardView }) {
   const t = useTranslations('discussion');
   const locale = useLocale();
-  const href = `/discussion/topics/${topic.id}`;
+  const href = topicHref(topic);
   const views = topic.viewCount < 1000 ? String(topic.viewCount) : `${(topic.viewCount / 1000).toFixed(1)}k`;
 
   return (

@@ -25,11 +25,12 @@
 // translatable text and the gate columns is ever needed here.
 
 import { prisma } from '@/lib/db';
-import { can } from '@/lib/permissions';
+import { can, domainViewer } from '@/lib/permissions';
 import { canReadDoc, libraryViewerFromSession } from '@/lib/library-queries';
 import { canViewVideo, videoActorFrom } from '@/lib/video/access';
 import { ZONE_ACCESS_SELECT, resolveZoneAccess, zoneSiteViewer } from '@/lib/zones/access';
 import { ZONE_POST_ACCESS_SELECT, canSeeZonePost } from '@/lib/zones/post-queries';
+import { VOTE_GATE_SELECT, canSeeVoteActivity } from '@/lib/votes/visibility';
 import { TRANSLATE_KINDS, type FieldName, type TranslateKind } from './shared';
 import type { SourceFields, TranslateLoader, TranslateViewer } from './source-types';
 
@@ -246,25 +247,25 @@ export const TRANSLATE_SOURCES: Record<TranslateKind, TranslateLoader> = {
     return { body: row.bodyMd };
   }),
 
-  // 作品评论 — app/api/votes/[id]/entries/[entryId]/comments GET: activity not deleted,
-  // comment ∈ entry ∈ activity, and the comments of a hidden / unapproved entry are
-  // manager-only (`votes` permission or the creator). Plus the DETAIL payload's draft gate
-  // (lib/vote-queries.ts: `status === 'draft' && !isOwner` ⇒ null) — the lightbox these
-  // comments live in does not exist for anyone else. NOT `allowComments`: turning comments off
-  // hides the composer, existing comments stay readable (VoteGallery `commentsAvailable`).
+  // 作品评论 — app/api/votes/[id]/entries/[entryId]/comments GET: the activity passes the
+  // detail page's own gate (`canSeeVoteActivity`: not deleted, draft ⇒ owner only, 可见范围 —
+  // 隐藏 ⇒ owner only, 指定成员可见 ⇒ owner + the list), comment ∈ entry ∈ activity, and the
+  // comments of a hidden / unapproved entry are manager-only (`votes` permission or the
+  // creator). NOT `allowComments`: turning comments off hides the composer, existing comments
+  // stay readable (VoteGallery `commentsAvailable`).
   vote_comment: register('vote_comment', async (id, viewer) => {
     const row = await prisma.voteComment.findUnique({
       where: { id },
       select: {
         body: true,
         activityId: true,
-        activity: { select: { deletedAt: true, status: true, creatorId: true } },
+        activity: { select: VOTE_GATE_SELECT },
         entry: { select: { activityId: true, hidden: true, status: true } },
       },
     });
-    if (!row || row.activity.deletedAt || row.entry.activityId !== row.activityId) return null;
+    if (!row || row.entry.activityId !== row.activityId) return null;
+    if (!(await canSeeVoteActivity(row.activity, domainViewer(viewer, 'votes')))) return null;
     const isManager = can(viewer, 'votes') || row.activity.creatorId === viewer.id;
-    if (row.activity.status !== 'published' && !isManager) return null;
     if ((row.entry.hidden || row.entry.status !== 'approved') && !isManager) return null;
     return { body: row.body };
   }),

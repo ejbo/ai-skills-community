@@ -26,7 +26,7 @@ export function RelatedPosts({ posts, className = '' }: { posts: ZonePostCardVie
         {posts.map((p) => (
           <li key={p.id}>
             <SpotlightCard className="h-full">
-              <Link href={zonePostHref(p.zone.slug, p.id)} className="flex h-full flex-col gap-2 p-4 outline-none focus-visible:ring-2 focus-visible:ring-zinc-400">
+              <Link href={zonePostHref(p.zone.slug, p)} className="flex h-full flex-col gap-2 p-4 outline-none focus-visible:ring-2 focus-visible:ring-zinc-400">
                 {p.column && (
                   <span className={`${p.column.official ? PILL_COLUMN : PILL_COLUMN_MEMBER} self-start`}>
                     <FolderOpen className="h-3 w-3 shrink-0" aria-hidden />

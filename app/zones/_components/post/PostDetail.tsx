@@ -45,6 +45,7 @@ import { PostRail } from './PostRail';
 import { PostUnlock } from './PostUnlock';
 import { RelatedPosts } from './RelatedPosts';
 import { useLikeBookmark } from './useLikeBookmark';
+import { zonePostEditHref } from '@/lib/zones/shared';
 
 const HEADING_SCROLL_MARGIN = '[&_h1]:scroll-mt-28 [&_h2]:scroll-mt-28 [&_h3]:scroll-mt-28 [&_h4]:scroll-mt-28';
 
@@ -119,7 +120,7 @@ export function PostDetail({
             </span>
             {canEdit && (
               <Link
-                href={`/zones/${zone.slug}/posts/${post.id}/edit`}
+                href={zonePostEditHref(zone.slug, post.id)}
                 className="h-8 rounded-lg bg-zinc-900 px-3 text-xs font-medium leading-8 text-white transition hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
               >
                 {t('post_continue_editing')}

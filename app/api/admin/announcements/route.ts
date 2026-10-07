@@ -6,6 +6,8 @@ import { gateApi } from '@/lib/admin';
 import { logAdmin } from '@/lib/audit';
 import { fanoutAnnouncement } from '@/lib/notifications';
 import { plainSummary } from '@/lib/announcement';
+import { createWithSlug } from '@/lib/slug-server';
+import { pickAnnouncementSlug } from '@/lib/title-slugs';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,14 +28,20 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
 
   const { title, bodyMd, publish } = parsed.data;
-  const created = await prisma.announcement.create({
-    data: { title, bodyMd, createdById: session.user.id, publishedAt: publish ? new Date() : null },
-  });
+  // Title slug for the link (docs/contracts/slugs.md); follows the title while a draft.
+  const created = await createWithSlug(
+    () => pickAnnouncementSlug(title),
+    (slug) =>
+      prisma.announcement.create({
+        data: { title, slug, bodyMd, createdById: session.user.id, publishedAt: publish ? new Date() : null },
+      }),
+  );
 
   let fanout = { inApp: 0, email: 0 };
   if (publish) {
     fanout = await fanoutAnnouncement({
       announcementId: created.id,
+      announcementSlug: created.slug,
       actorId: session.user.id,
       title: created.title,
       summary: plainSummary(created.bodyMd),

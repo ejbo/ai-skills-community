@@ -295,6 +295,7 @@ export async function listDiscussionStream(opts: {
 export async function listHotTopics(limit = 5) {
   const select = {
     id: true,
+    slug: true,
     title: true,
     upvoteCount: true,
     replyCount: true,
@@ -779,6 +780,7 @@ export async function listTopics(filters: ListTopicsFilters) {
 /** The columns a topic ROW needs (forum list, 全部 stream) — never the replies. */
 const TOPIC_LIST_SELECT = {
   id: true,
+  slug: true,
   title: true,
   bodyMd: true,
   category: true,

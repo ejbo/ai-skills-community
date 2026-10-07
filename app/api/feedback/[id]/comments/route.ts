@@ -36,7 +36,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const feedback = await prisma.feedback.findUnique({
     where: { id: params.id },
-    select: { id: true, title: true, author: { select: { id: true, email: true } } },
+    select: { id: true, slug: true, title: true, author: { select: { id: true, email: true } } },
   });
   if (!feedback) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
@@ -110,6 +110,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         actorId: session.user.id,
         actorName: session.user.displayName,
         feedbackId: feedback.id,
+        feedbackSlug: feedback.slug,
         feedbackTitle: feedback.title,
         focusId: comment.id,
         bodyMd,
@@ -123,6 +124,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       actorId: session.user.id,
       actorName: session.user.displayName,
       feedbackId: feedback.id,
+      feedbackSlug: feedback.slug,
       feedbackTitle: feedback.title,
       focusId: comment.id,
       bodyMd,

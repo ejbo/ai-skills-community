@@ -3,7 +3,7 @@
 // 地点/参与 card with the member-only meeting link, owner/admin actions).
 
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 import { CalendarDays, CalendarPlus, ExternalLink, Link2, MapPin, Users, Video } from 'lucide-react';
@@ -24,15 +24,17 @@ import { EventActions } from '../_components/EventActions';
 import { EventTimeDetail } from '../_components/EventTime';
 import { CancelledBadge, KindBadge, ModeBadge, TopicChip } from '../_components/badges';
 import { loginHref } from '@/lib/auth/callback-path';
+import { eventHref, needsCanonicalRedirect } from '@/lib/slug-href';
+import { resolveEventParam } from '@/lib/title-slugs';
 
 export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
   const t = await getTranslations('event_form');
-  const row = await prisma.event.findFirst({
-    where: { id: params.id, deletedAt: null },
-    select: { title: true },
-  });
+  const resolved = await resolveEventParam(params.id);
+  const row = resolved
+    ? await prisma.event.findFirst({ where: { id: resolved.id, deletedAt: null }, select: { title: true } })
+    : null;
   return { title: row ? t('meta_detail', { title: row.title }) : t('meta_detail_fallback') };
 }
 
@@ -41,8 +43,13 @@ export default async function EventDetailPage({ params }: { params: { id: string
   const tl = await getTranslations('labels');
   const session = await auth();
   const viewer = eventViewerFromSession(session);
-  const event = await getEventDetail(params.id, viewer);
+  // The param is a title slug, a row id (old links) or a retired slug.
+  const resolved = await resolveEventParam(params.id);
+  if (!resolved) notFound();
+  const event = await getEventDetail(resolved.id, viewer);
   if (!event) notFound();
+  // Canonical (title) URL — only after the detail gate found the event.
+  if (needsCanonicalRedirect(resolved)) permanentRedirect(eventHref(event));
   const related = await listRelatedEvents(
     { id: event.id, kind: event.kind, topics: event.topics },
     viewer,
@@ -211,7 +218,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
                 ) : (
                   <div>
                     <Link
-                      href={loginHref(`/events/${event.id}`)}
+                      href={loginHref(eventHref(event))}
                       className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-sm font-medium text-white dark:text-zinc-900 transition hover:bg-zinc-700 dark:hover:bg-zinc-300"
                     >
                       <CalendarPlus className="h-4 w-4" />
@@ -294,7 +301,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
                     {t.rich('login_to_see_meeting', {
                       link: (chunks) => (
                         <Link
-                          href={loginHref(`/events/${event.id}`)}
+                          href={loginHref(eventHref(event))}
                           className="text-zinc-900 dark:text-zinc-50 underline-offset-2 hover:underline"
                         >
                           {chunks}
@@ -325,6 +332,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
                 </h3>
                 <EventActions
                   id={event.id}
+                  slug={event.slug}
                   pinned={event.pinned}
                   cancelled={event.cancelled}
                   isAuthor={event.isAuthor}
@@ -344,7 +352,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
                     return (
                       <li key={ev.id}>
                         <Link
-                          href={`/events/${ev.id}`}
+                          href={eventHref(ev)}
                           className="group -mx-1.5 flex items-start gap-2.5 rounded-lg p-1.5 transition hover:bg-zinc-50 dark:hover:bg-zinc-900"
                         >
                           <span className="flex h-9 w-9 shrink-0 flex-col items-center justify-center overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700">

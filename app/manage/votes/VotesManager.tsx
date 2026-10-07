@@ -5,13 +5,17 @@
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ExternalLink, Star, Trash2 } from 'lucide-react';
+import { ExternalLink, Eye, EyeOff, Star, Trash2 } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
+import { voteHref } from '@/lib/votes/shared';
 
 export interface VoteAdminRow {
   id: string;
+  slug: string | null;
   title: string;
   status: 'draft' | 'published';
+  // 可见范围：public 公开 / private 隐藏 / audience 指定成员可见（docs/contracts/audience.md）
+  visibility: 'public' | 'private' | 'audience';
   over: boolean;
   endAt: string | null;
   featured: boolean;
@@ -48,12 +52,13 @@ export function VotesManager({ items }: { items: VoteAdminRow[] }) {
 
   return (
     <div className="surface overflow-x-auto rounded-2xl">
-      <table className="w-full min-w-[860px] text-sm">
+      <table className="w-full min-w-[960px] text-sm">
         <thead>
           <tr className="border-b border-zinc-200 text-left text-xs text-muted dark:border-zinc-800">
             <th className="px-3 py-2.5 font-medium">活动</th>
             <th className="px-3 py-2.5 font-medium">发起人</th>
             <th className="px-3 py-2.5 font-medium">状态</th>
+            <th className="px-3 py-2.5 font-medium">可见范围</th>
             <th className="px-3 py-2.5 text-right font-medium">作品</th>
             <th className="px-3 py-2.5 text-right font-medium">参与</th>
             <th className="px-3 py-2.5 text-right font-medium">票数</th>
@@ -89,6 +94,15 @@ export function VotesManager({ items }: { items: VoteAdminRow[] }) {
                   </span>
                 )}
               </td>
+              <td className="px-3 py-2.5 text-xs">
+                {row.visibility === 'public' ? (
+                  <span className="text-muted">公开</span>
+                ) : row.visibility === 'private' ? (
+                  <span className="rounded-full border border-zinc-300 px-2 py-0.5 dark:border-zinc-700">已隐藏</span>
+                ) : (
+                  <span className="rounded-full border border-zinc-300 px-2 py-0.5 dark:border-zinc-700">指定成员可见</span>
+                )}
+              </td>
               <td className="px-3 py-2.5 text-right tabular-nums">{row.entryCount}</td>
               <td className="px-3 py-2.5 text-right tabular-nums">{row.voterCount}</td>
               <td className="px-3 py-2.5 text-right tabular-nums">{row.voteCount}</td>
@@ -96,7 +110,7 @@ export function VotesManager({ items }: { items: VoteAdminRow[] }) {
               <td className="px-3 py-2.5">
                 <div className="flex items-center justify-end gap-1">
                   <Link
-                    href={`/votes/${row.id}`}
+                    href={voteHref(row)}
                     title="查看"
                     className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
                   >
@@ -122,6 +136,28 @@ export function VotesManager({ items }: { items: VoteAdminRow[] }) {
                   >
                     <Star className={`h-4 w-4 ${row.featured ? 'fill-amber-400 text-amber-400' : ''}`} />
                   </button>
+                  {/* 隐藏 / 取消隐藏 — 管理员的快捷开关（指定成员名单只在发起人的编辑页维护；
+                      取消隐藏一律回到公开）。服务端对非本人的修改记 logAdmin。 */}
+                  <button
+                    type="button"
+                    disabled={pending && busyId === row.id}
+                    title={row.visibility === 'private' ? '取消隐藏（设为公开）' : '隐藏（仅发起人与管理员可见）'}
+                    onClick={() =>
+                      mutate(
+                        row.id,
+                        `/api/votes/${row.id}`,
+                        {
+                          method: 'PATCH',
+                          headers: { 'content-type': 'application/json' },
+                          body: JSON.stringify({ visibility: row.visibility === 'private' ? 'public' : 'private' }),
+                        },
+                        row.visibility === 'private' ? '已取消隐藏' : '已隐藏',
+                      )
+                    }
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 disabled:opacity-50 dark:hover:bg-zinc-800"
+                  >
+                    {row.visibility === 'private' ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                  </button>
                   <button
                     type="button"
                     disabled={pending && busyId === row.id}
@@ -141,7 +177,7 @@ export function VotesManager({ items }: { items: VoteAdminRow[] }) {
           ))}
           {items.length === 0 && (
             <tr>
-              <td colSpan={8} className="px-3 py-10 text-center text-sm text-muted">
+              <td colSpan={9} className="px-3 py-10 text-center text-sm text-muted">
                 暂无投票活动
               </td>
             </tr>

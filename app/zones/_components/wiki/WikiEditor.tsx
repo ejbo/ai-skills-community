@@ -1,8 +1,9 @@
 'use client';
 
-// 技术专区 Wiki — create / edit form. Title, slug (auto via slugifyAscii until
-// the author touches it; validated by isValidWikiSlug; blank on create lets the
-// server mint `page-<nanoid>`), parent select from the tree (self + descendants
+// 技术专区 Wiki — create / edit form. Title, slug (auto = the title slug,
+// lib/slug.ts#titleSlug — CJK kept, docs/contracts/slugs.md — until the author
+// touches it; validated by isValidWikiSlug; blank on create lets the server
+// derive it from the title), parent select from the tree (self + descendants
 // excluded when editing), RichTextEditor with the zone embed picker, 修订说明.
 // POST /wiki (201 { id, slug }) or PATCH /wiki/[pageId] ({ ok }) → router.push.
 
@@ -14,7 +15,8 @@ import { Loader2, Save } from 'lucide-react';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
 import { Magnetic } from '@/components/motion';
-import { ZONE_LIMITS, isValidWikiSlug, slugifyAscii, zoneWikiHref } from '@/lib/zones/shared';
+import { ZONE_LIMITS, isValidWikiSlug, zoneWikiHref } from '@/lib/zones/shared';
+import { titleSlug } from '@/lib/slug';
 import { isRichTextTooLong } from '@/lib/markdown-text';
 import type { WikiTreeNode } from '@/lib/zones/types';
 import { currentLoginHref } from '@/lib/auth/callback-path';
@@ -101,7 +103,7 @@ export function WikiEditor({ zoneSlug, tree, page = null, initialParentId = null
 
   function onTitleChange(v: string) {
     setTitle(v);
-    if (!slugTouched) setSlug(slugifyAscii(v, WIKI_SLUG_MAX));
+    if (!slugTouched) setSlug(titleSlug(v, WIKI_SLUG_MAX));
   }
 
   const slugTrimmed = slug.trim().toLowerCase();

@@ -1,10 +1,12 @@
-import { notFound, redirect } from 'next/navigation';
+import { notFound, permanentRedirect, redirect } from 'next/navigation';
 import { getLocale } from 'next-intl/server';
 import { requireUser } from '@/lib/admin';
 import { loginHref, selfHref } from '@/lib/auth/callback-path';
 import { getDocReaderData, libraryViewerFromSession } from '@/lib/library-queries';
 import { can } from '@/lib/permissions';
 import { ReaderShell } from '@/components/library/reader/ReaderShell';
+import { docPath, resolveDocSlugParam } from '@/lib/library/slug';
+import { decodeSlugParam } from '@/lib/slug';
 import './reader.css';
 
 export const dynamic = 'force-dynamic';
@@ -37,8 +39,9 @@ export default async function LibraryReaderPage({
   const requested = chRaw ? Number(chRaw) : Number.NaN;
   const view =
     searchParams.view === 'flow' ? 'flow' : searchParams.view === 'paged' ? 'paged' : undefined;
+  const { slug, aliased } = await resolveDocSlugParam(params.slug);
   const data = await getDocReaderData(
-    params.slug,
+    slug,
     viewer,
     Number.isFinite(requested) ? Math.trunc(requested) : -1,
     view,
@@ -46,8 +49,16 @@ export default async function LibraryReaderPage({
   );
   // Restricted/private doc without an approved grant → the detail page hosts
   // the 申请阅读 flow.
-  if (data === 'no_access') redirect(`/library/${params.slug}`);
+  // Back to the URL as REQUESTED: the detail page runs its own gate before it
+  // would ever redirect a retired slug to the (title-bearing) current one.
+  if (data === 'no_access') redirect(docPath(aliased ? decodeSlugParam(params.slug) : slug));
   if (!data) notFound();
+  if (aliased) {
+    const qs = new URLSearchParams(
+      Object.entries(searchParams).filter((e): e is [string, string] => typeof e[1] === 'string'),
+    ).toString();
+    permanentRedirect(docPath(data.doc.slug, `/read${qs ? `?${qs}` : ''}`));
+  }
 
   return (
     <ReaderShell

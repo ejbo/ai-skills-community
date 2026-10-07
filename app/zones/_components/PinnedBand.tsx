@@ -67,7 +67,7 @@ export function PinnedBand({ items, leadRoles }: { items: ZonePostCardView[]; le
               )}
               <div className="min-w-0 flex-1">
                 <h3 className="line-clamp-2 text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-                  <Link href={zonePostHref(post.zone.slug, post.id)} className="after:absolute after:inset-0 group-hover:underline">
+                  <Link href={zonePostHref(post.zone.slug, post)} className="after:absolute after:inset-0 group-hover:underline">
                     {post.title}
                   </Link>
                 </h3>

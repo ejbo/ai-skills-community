@@ -136,6 +136,8 @@ export interface ZoneAttachmentView {
 
 export interface ZonePostCardView {
   id: string;
+  /** Title slug, unique per zone — view links go through zonePostHref(zone.slug, post). Null = legacy row. */
+  slug: string | null;
   /** `iconUrl` is public zone metadata (every logged-in viewer sees zone icons on the hub). */
   zone: { id: string; slug: string; name: string; iconUrl: string | null; themeColor: string | null };
   type: ZonePostTypeValue;

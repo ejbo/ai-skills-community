@@ -36,20 +36,57 @@
     React's `commitUpdate` right after mouseup. Do not "simplify" it back to an inline literal.
     (`CodeViewer.tsx` and `app/skills/[slug]/FilesTab.tsx` still have the inline form — same latent
     bug, lower stakes.)
-  - **译文 (migration `20260824120000_library_translation_cache`)**: ONE shared cache,
-    `LibraryTranslation(docId, targetLang, sourceHash → text)`, keyed by the hash of the
-    WHITESPACE-NORMALIZED source — so a DOM selection and a stored HTML block hit the same row, a
-    passage is paid for ONCE for the whole community, and the whole-document pass fills exactly the
-    rows on-demand selection-translate reads. Direction is fixed per doc (`targetLangFor`: 中文 doc
-    → English, otherwise → 中文). `POST /api/library/translate` is cache-first and answers a hit
-    WITHOUT touching the model or the rate limiter. The whole-doc pass (`lib/library/translate-doc.ts`)
-    runs automatically after indexing only under `LIBRARY_AUTO_TRANSLATE_MAX_CHARS` (default 40k —
-    articles are ready before anyone opens them, books wait for a reader to click 翻译全文, which is
-    `POST /api/library/docs/[id]/translate` and ignores the cap). It translates LEAF BLOCKS and
-    rebuilds the chapter through `applyBlockTranslations`, which writes each translation with
-    `textContent` — so no model output is ever parsed as markup, tables/figures/images survive, and
-    `<pre>/<code>` is never sent to a translator. Partial coverage is fine: untranslated blocks keep
-    the original. **译文 mode hides highlights** — marks anchor to the ORIGINAL character offsets.
+  - **译文 / 阅读语言 (2026-10-07, migration `20261007120000_library_multilang_translation`)**. Owner:
+    「读者可选 中文 / English / 原文；中文界面默认中文、英文界面默认英文，阅读器里可调；标题也跟着语言走；
+    正文自动翻译（分块交给 AI）」. The model:
+    - **Targets** (`lib/library/translation-shared.ts`, import-free): a doc is readable in 原文 plus every
+      content language that is not its own — `targetLangsFor`: 中文 doc → en, English doc → zh, anything else
+      (`language` null) → both. Only zh/en are translated INTO (fr UI reads English, like the stored twins).
+    - **Default + choice**: reader pref `textLang` (`reader-prefs.ts`, localStorage) = `auto | original | zh | en`;
+      `resolveReaderText` turns it into what to show (`auto` = UI language; a doc already in that language shows
+      原文). The chrome 文A button (`LanguageMenu.tsx`) sets the REMEMBERED pref via `prefForChoice` (picking what
+      `auto` would pick stores `auto`); the in-article notice's 显示原文 and any jump to a highlight / note /
+      citation are a THIS-PAGE override to 原文 (`textOverride`) — marks anchor to original offsets, so a jump
+      first switches to 原文 (`ensureOriginal`), then runs once the original is committed and repainted.
+    - **Storage**: ONE shared passage cache `LibraryTranslation(docId, targetLang, sourceHash)` (unchanged, keyed by
+      the whitespace-normalized source — selection translate and the passes share rows, a passage is paid for
+      once). Rebuilt chapters live in `LibraryChapterTranslation(chapterId, targetLang, html, title, sourceHash)`
+      — `sourceHash` = sha256 of the chapter html it was built from, so an edited chapter reads as untranslated
+      instead of showing a stale page (`isFreshChapterTranslation`; rows migrated from the old one-direction
+      scheme carry `'legacy'` and stay visible). The chapter edit route and `updateChapterContent` also DELETE the
+      chapter's translations. Pass state per language = `LibraryDocTranslation(docId, targetLang, state, error,
+      heartbeatAt, finishedAt)` — it is the LOCK too: claimed with `createMany skipDuplicates` / a guarded
+      `updateMany`, heartbeat after every chapter, a `running` row silent for `STALE_LOCK_MS` (10 min) may be
+      re-claimed (`effectivePassState` reports it as `none`). Never go back to "one translatedHtml per chapter".
+    - **Titles**: `LibraryDoc.titleTranslations` = `{ source, zh?, en? }`, merged ATOMICALLY with `jsonb ||` and
+      conditioned on the title still being `source` (two language passes finish together). Self-invalidating:
+      `pickDocTitle(locale, doc)` / `translatedTitle` ignore it once `source !== title`. Cards, list rows, the
+      detail page (with 原标题 underneath), embeds and the reader (chrome, h1 + 原标题, chapter titles, 目录) all
+      read it. `DOC_CARD_SELECT` carries `language` + `titleTranslations` for this. Search still matches the
+      ORIGINAL title only.
+    - **When it runs** (`lib/library/translate-doc.ts`, `runDocTranslation(docId, lang, {force, startChapter})`):
+      after indexing for every target (`runDocTranslations`) when the doc is under `LIBRARY_AUTO_TRANSLATE_MAX_CHARS`
+      (40k); over it only the TITLE is translated at ingest. Opening the reader in a language with missing
+      chapters/title starts the pass BY ITSELF (once per language per visit, POST `/api/library/docs/[id]/translate
+      {lang, startChapter}` — the chapter on screen first, then wrap). The reader polls `GET …?lang=` every 4 s
+      and `router.refresh()`es when the current/next chapter lands (≥ 8 s apart) and once at the end. A terminal
+      state only counts when its `finishedAt` ≥ the POST's server `at` (a refresh can show the PREVIOUS run's end
+      before this one claims its row), and a server refresh may never end a local `running` — only the poll may.
+      Rate limit counts only passes that actually start (40/h/user). Failures never throw: a chapter with zero
+      coverage gets no row (retried next pass), 3 consecutive all-failed chapters abort the pass, partial
+      coverage keeps the original text for the missing blocks.
+    - **Chunking** (`translation.ts`): ≤ 12 passages AND ≤ 4000 source chars per model call, 2 calls in flight,
+      passages a reply dropped get one more try; only all-calls-failed throws. Leaf blocks are rebuilt with
+      `textContent` (`applyBlockTranslations`) — model output is never parsed as markup; `<pre>/<code>` is never sent.
+    - **Selection translate** (`/api/library/translate`) takes `target` (the reader's UI language) and flips it
+      when the doc is already in it (`selectionTargetFor`). **译文 mode hides highlights and the selection
+      toolbar** — marks anchor to the ORIGINAL character offsets (the menu hint says so).
+  - **链接 = 标题** (`lib/library/slug.ts`, docs/contracts/slugs.md): slugs are title slugs (`大模型推理优化实践`,
+    `attention-is-all-you-need`), never `doc-<nanoid>`. Ingest re-derives the slug from the EXTRACTED title before
+    the creating request returns (`reslugFromTitle` — the provisional title was the URL path / filename), then it
+    is frozen. `pnpm slugs:backfill` moves old hash slugs and records `SlugAlias(kind 'library_doc')`; the three
+    `/library/[slug]` pages resolve aliases (`resolveDocSlugParam`) and 308 to the current slug only AFTER their
+    read gate, and `[embed:library:<old slug>]` refs resolve through the alias too.
   - **知识库分类 live in `LibraryCategory`**, not in code — official rows are curated at
     `/manage/library/categories` and lead the picker; ANY member may add one from the picker's
     新建分类 box. Creation is FIND-OR-CREATE (`lib/library/categories.ts`): typing a name that

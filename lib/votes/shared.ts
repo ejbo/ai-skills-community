@@ -5,6 +5,18 @@
 
 import { parseCoverPos, type CoverAspect } from '@/lib/media/cover-pos';
 
+// ─── 链接 ───────────────────────────────────────────────────────────────────
+// THE way to link an activity (docs/contracts/slugs.md): the title slug when the row
+// has one, the id otherwise (rows created before slugs, until the backfill runs) —
+// /votes/[id] resolves both and redirects an id to the slug. Percent-encoded so a
+// 中文 slug is safe in a Location header, an email or a copied link; browsers show
+// it decoded. API routes stay id-based — never build `/api/votes/<slug>`.
+
+export function voteHref(row: { id: string; slug?: string | null }, sub?: 'edit'): string {
+  const base = `/votes/${row.slug ? encodeURIComponent(row.slug) : row.id}`;
+  return sub ? `${base}/${sub}` : base;
+}
+
 // ─── 文件名解析规则 ─────────────────────────────────────────────────────────
 // The organizer bulk-uploads works whose filenames encode metadata, e.g.
 // "参赛-张三-a12345678-日落时分v2.mp4". A rule strips a literal prefix and the

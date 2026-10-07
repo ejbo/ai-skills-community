@@ -3,6 +3,7 @@
 
 import { markdownInlineToPlainText, markdownToPlainText } from '@/lib/markdown-text';
 import { defaultOrg, type OrgApi } from '@/lib/org';
+import { linkSegment, type Sluggable } from '@/lib/slug-href';
 import {
   INLINE_VIDEO_MIMES,
   OFFICE_EXTS,
@@ -40,12 +41,17 @@ export function slugifyAscii(input: string, max = ZONE_SLUG_MAX): string {
   return s.slice(0, max).replace(/-+$/g, '');
 }
 
-/** Wiki page slugs: same alphabet, 1–60 chars (single-char pages like "faq" are fine). */
-export const WIKI_SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$/;
+/**
+ * Wiki page slugs are TITLE slugs (docs/contracts/slugs.md): letters/digits of
+ * any script plus inner hyphens, 1–60 code points, lowercase — `部署指南`,
+ * `api-规范`, `faq`. They used to be ASCII-only, which sent every Chinese title
+ * to a random `page-<nanoid>`. `~` (the soft-delete rename) stays invalid.
+ */
+export const WIKI_SLUG_RE = /^[\p{L}\p{N}\p{M}](?:[\p{L}\p{N}\p{M}-]{0,58}[\p{L}\p{N}\p{M}])?$/u;
 export const RESERVED_WIKI_SLUGS: ReadonlySet<string> = new Set(['new', 'edit', 'history']);
 
 export function isValidWikiSlug(slug: string): boolean {
-  return WIKI_SLUG_RE.test(slug) && !RESERVED_WIKI_SLUGS.has(slug);
+  return WIKI_SLUG_RE.test(slug) && slug === slug.toLowerCase() && !RESERVED_WIKI_SLUGS.has(slug);
 }
 
 // ── Enumerations (DB values; display through `labels.zone*` i18n keys) ───────
@@ -630,11 +636,23 @@ export function decodeOffsetCursor(raw: string | null | undefined): number {
 export function zoneHref(slug: string): string {
   return `/zones/${slug}`;
 }
-export function zonePostHref(slug: string, postId: string): string {
-  return `/zones/${slug}/posts/${postId}`;
+/**
+ * A post's link. Pass the post (`{id, slug}`) so the URL carries its title slug
+ * (docs/contracts/slugs.md); a bare id still works — the page redirects it.
+ */
+export function zonePostHref(slug: string, post: string | Sluggable): string {
+  return `/zones/${slug}/posts/${linkSegment(post)}`;
+}
+/**
+ * The composer for a post. Deliberately ID-based: a draft's slug follows its
+ * title on every autosave, so a slug edit URL would go stale under the author's
+ * own address bar. Edit URLs are private; only view URLs carry the title.
+ */
+export function zonePostEditHref(slug: string, postId: string): string {
+  return `/zones/${slug}/posts/${encodeURIComponent(postId)}/edit`;
 }
 export function zoneWikiHref(slug: string, pageSlug?: string | null): string {
-  return pageSlug ? `/zones/${slug}/wiki/${pageSlug}` : `/zones/${slug}/wiki`;
+  return pageSlug ? `/zones/${slug}/wiki/${encodeURIComponent(pageSlug)}` : `/zones/${slug}/wiki`;
 }
 
 // ── Limits shared by API + UI ────────────────────────────────────────────────

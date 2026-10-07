@@ -202,3 +202,29 @@
   the same contract. The votes wrapper only supplies `voteCardAspectRatio(kind, aspect)` and the `votes.crop_*`
   strings, so nothing on this board changed. Fix a crop bug THERE, once — do not re-grow a copy here.
 
+
+- **可见范围 (2026-10-07, migration `20261007130000_content_audience_vote_visibility`)** — owner:「结束后可以隐藏，
+  而不是只能留在已结束或删除；也可以只给指定的人看」。通用层见 [`audience.md`](audience.md)；投票这边的不变量：
+  - `VoteActivity.visibility`（`public` / `private` 隐藏 / `audience` 指定成员可见）+ `ContentAudience kind='vote'` 名单。
+    名单授予的是**阅读**权（画廊、详情、按原规则投票/投稿/评论），**不是**共同管理 —— 管理仍然只有发起人和 `votes` 管理员。
+  - **闸门只有一处**：`lib/votes/visibility.ts#canSeeVoteActivity`（deleted ⇒ 无；draft ⇒ 仅所有者；然后看可见范围），
+    `lib/vote-queries.ts` 再导出。走它的：`getVoteActivityView`（⇒ 页面 404）、ballots POST、作品评论 GET/POST、评论点赞、
+    浏览 ping、投稿 POST 与投稿上传、`vote_comment` 翻译加载器。它放在轻量模块里，是为了翻译注册表的测试能跑**真的**闸门。
+  - 列表 WHERE 用 `listVisibilityWhere`：进行中/已结束/精选/个人主页（他人视角）/置顶 = `public` + 名单里有我的
+    `audience` + 我自己发起的 `audience`。**`private` 不进任何浏览列表**（包括发起人和管理员自己的视角）——它在「我发起的」
+    tab、工作台、`/manage/votes`。个人主页本人视角看全部；`countVoteActivitiesByCreator` 现在收 viewer，和列表同口径。
+    站内搜索没有查看者身份，只收 `visibility: 'public'`。
+  - 写入：`PATCH /api/votes/[id] { visibility, audienceUserIds }`（发起人或 `votes` 管理员），列和名单同一事务；
+    管理员改别人的活动记 `logAdmin('set_vote_visibility')`；发布（`publish`）分支改成按 `status:'draft'` 守卫的
+    `updateMany`，并用 `newlyGrantedAudience` 通知草稿期就列好的名单。`GET /api/votes/[id]/audience`（仅所有者）给页头的
+    「可见范围」弹窗现取现用。
+  - 入口：编辑页「基本信息」tab 的「可见范围」区块（独立保存）、画廊页头所有者按钮「可见范围」（`VisibilityDialog`）、
+    `/manage/votes` 的「可见范围」列 + 隐藏/取消隐藏开关（取消隐藏一律回到公开；名单只在发起人编辑页维护）。
+  - **未闸**、有意为之：`/api/votes/media/[...key]` 仍是「登录 + 不可猜的 nanoid key」（与草稿、隐藏作品同一模型；每张海报多一次
+    查库对 X-Accel 热路径不值）—— 一个人在活动被隐藏前拿到的媒体 URL 仍可直接访问。评论删除（作者删自己的）与投稿撤回
+    （投稿人删自己的作品）不看可见范围：那是对自己数据的写，不泄露任何东西。
+- **标题链接 (2026-10-07, 同一迁移)**：`VoteActivity.slug String? @unique`（lib/slug.ts 契约）。创建时 `freeVoteSlug` 按标题分配
+  （冲突重选一次，再冲突留 null）；**草稿期间跟着标题改**（`resyncDraftVoteSlug`，PATCH 回传新 slug，编辑器用
+  `history.replaceState` 把地址栏换成新链接），**发布后冻结**。`/votes/[id]` 与 `/votes/[id]/edit` 同时接受 slug / id / 退役别名
+  （`resolveVoteParam`），非规范访问 308 到 `voteHref`；**闸门先于重定向**（否则拿 id 就能从 Location 读到隐藏活动的标题）。
+  所有链接一律 `voteHref({id, slug}, 'edit'?)`（lib/votes/shared.ts）；API 路由仍按 id。老数据 `lib/votes/slug.ts#backfillVoteSlugs()`。

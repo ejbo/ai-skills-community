@@ -5,6 +5,9 @@ import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
 import { notifyMentions } from '@/lib/mention-notify';
+import { createWithSlug } from '@/lib/slug-server';
+import { feedbackHref } from '@/lib/slug-href';
+import { pickFeedbackSlug } from '@/lib/title-slugs';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -36,10 +39,15 @@ export async function POST(req: Request) {
     );
   }
 
-  const created = await prisma.feedback.create({
-    data: { ...parsed.data, authorId: session.user.id },
-    select: { id: true },
-  });
+  // Title slug for the link (docs/contracts/slugs.md) — frozen from creation on.
+  const created = await createWithSlug(
+    () => pickFeedbackSlug(parsed.data.title),
+    (slug) =>
+      prisma.feedback.create({
+        data: { ...parsed.data, slug, authorId: session.user.id },
+        select: { id: true, slug: true },
+      }),
+  );
 
   // @人 — the 意见反馈 board has no per-item visibility: every member can open
   // any feedback, so there is nothing to gate on. Best-effort, never blocks.
@@ -47,7 +55,7 @@ export async function POST(req: Request) {
     bodyMd: parsed.data.bodyMd,
     actorId: session.user.id,
     actorName: session.user.displayName,
-    site: { what: '反馈', title: parsed.data.title, link: `/feedback/${created.id}` },
+    site: { what: '反馈', title: parsed.data.title, link: feedbackHref(created) },
   });
 
   return NextResponse.json({ ok: true, feedback: created });

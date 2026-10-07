@@ -11,6 +11,7 @@ import { DeptTag } from '@/components/DeptTag';
 import { withBasePath } from '@/lib/base-path';
 import { eventLinkHref, type PublicEventItem } from '@/lib/events/types';
 import { eventOverAt } from '@/lib/events/time';
+import { eventHref } from '@/lib/slug-href';
 import { CancelledBadge, KindBadge, ModeBadge, TopicChip } from './badges';
 import { CardAttendButton } from './CardAttendButton';
 import { EventTimeCard } from './EventTime';
@@ -52,7 +53,7 @@ export async function EventCard({ event, showDate = false }: { event: PublicEven
           {joinable && <CardAttendButton id={event.id} attending={event.attending} />}
         </div>
         <h3 className={`mt-1 truncate text-base font-semibold ${event.cancelled ? 'text-muted line-through' : ''}`}>
-          <Link href={`/events/${event.id}`} className="after:absolute after:inset-0">
+          <Link href={eventHref(event)} className="after:absolute after:inset-0">
             {event.title}
           </Link>
         </h3>

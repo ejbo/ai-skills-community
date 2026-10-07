@@ -1,4 +1,4 @@
-import { notFound, redirect } from 'next/navigation';
+import { notFound, permanentRedirect, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireUser } from '@/lib/admin';
 import { selfHref } from '@/lib/auth/callback-path';
@@ -15,6 +15,8 @@ import { CommentSection } from '@/components/video/CommentSection';
 import { VideoBreadcrumb } from '@/components/video/VideoBreadcrumb';
 import { VideoDescription } from '@/components/video/VideoDescription';
 import { ViewPing } from '@/components/video/ViewPing';
+import { videoHref } from '@/lib/slug-href';
+import { resolveVideoSlugParam } from '@/lib/video/slug';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,8 +28,12 @@ interface PageProps {
 export default async function VideoDetailPage({ params, searchParams }: PageProps) {
   const session = await requireUser(selfHref(`/videos/${params.slug}`, searchParams));
   const actor = await getVideoActor();
-  const video = await getVideoBySlug(params.slug);
+  // Page params arrive percent-encoded; a retired (legacy hash) slug resolves too.
+  const { slug, aliased } = await resolveVideoSlugParam(params.slug);
+  const video = await getVideoBySlug(slug);
   if (!video || !canViewVideo(video, actor)) notFound();
+  // Old link → the title URL, only after the view gate.
+  if (aliased) permanentRedirect(selfHref(videoHref(video.slug), searchParams));
 
   // 随刷短视频 live in the immersive feed, not this detail layout. Comment
   // notifications deep-link here (/videos/<slug>?focus=...) — carry the focus

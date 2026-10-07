@@ -46,6 +46,7 @@ export async function listFeedback(filters: ListFeedbackFilters) {
     take: pageSize,
     select: {
       id: true,
+      slug: true,
       title: true,
       category: true,
       status: true,

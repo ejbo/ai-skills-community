@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
+import { canSeeVoteActivity, VOTE_GATE_SELECT, voteViewerFromSession, type VoteViewer } from '@/lib/vote-queries';
 import { VOTE_COMMENT_MAX } from '@/lib/votes/shared';
 
 export const dynamic = 'force-dynamic';
@@ -12,18 +13,14 @@ export const dynamic = 'force-dynamic';
 const MINUTE_MS = 60 * 1000;
 const COMMENTS_TAKE = 100;
 
-async function findContext(activityId: string, entryId: string) {
+// The lightbox these comments live in is the detail page's — so is the gate: deleted,
+// draft (owner only) and 可见范围 all go through canSeeVoteActivity.
+async function findContext(activityId: string, entryId: string, viewer: VoteViewer) {
   const activity = await prisma.voteActivity.findUnique({
     where: { id: activityId },
-    select: {
-      id: true,
-      deletedAt: true,
-      status: true,
-      creatorId: true,
-      allowComments: true,
-    },
+    select: { ...VOTE_GATE_SELECT, allowComments: true },
   });
-  if (!activity || activity.deletedAt) return null;
+  if (!activity || !(await canSeeVoteActivity(activity, viewer))) return null;
   const entry = await prisma.voteEntry.findUnique({
     where: { id: entryId },
     select: { id: true, activityId: true, hidden: true, status: true },
@@ -45,7 +42,7 @@ export async function GET(
     return NextResponse.json({ error: 'rate_limited', resetAt: gate.resetAt }, { status: 429 });
   }
 
-  const ctx = await findContext(params.id, params.entryId);
+  const ctx = await findContext(params.id, params.entryId, voteViewerFromSession(session));
   if (!ctx) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   const isManager = can(session.user, 'votes') || ctx.activity.creatorId === session.user.id;
   // 隐藏/未过审作品的评论仅管理侧可见（画廊本来就看不到这些作品）。
@@ -111,7 +108,7 @@ export async function POST(
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
 
-  const ctx = await findContext(params.id, params.entryId);
+  const ctx = await findContext(params.id, params.entryId, voteViewerFromSession(session));
   if (!ctx) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   if (!ctx.activity.allowComments) {
     return NextResponse.json({ error: 'comments_disabled' }, { status: 400 });

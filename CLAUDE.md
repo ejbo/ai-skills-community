@@ -38,6 +38,8 @@ pnpm typecheck && pnpm test   # tsc --noEmit + vitest; safe while dev runs
 | 个人主页、名片、悬停卡片 | `/users/[handle]` | [`docs/contracts/profile.md`](docs/contracts/profile.md) |
 | 配色、导航栏、首页、GitHub 热榜 | 全站 chrome | [`docs/contracts/ui.md`](docs/contracts/ui.md) |
 | 站内翻译（翻译 / 显示原文 / 自动翻译） | 所有帖子·评论 | [`docs/contracts/translate.md`](docs/contracts/translate.md) |
+| 可见范围（公开 / 隐藏 / 指定成员可见）、人员选择器 | 投票（今后帖子·文章） | [`docs/contracts/audience.md`](docs/contracts/audience.md) |
+| 链接用标题命名（slug / id / 旧链接重定向） | 活动·话题·反馈·公告·专区帖子·Wiki·视频·投票·知识库 | [`docs/contracts/slugs.md`](docs/contracts/slugs.md) |
 | 出口代理、LLM、邮件、通知、i18n、演示数据 | 基础设施 | [`docs/contracts/platform.md`](docs/contracts/platform.md) |
 
 其他长文档：`docs/huawei-sso-deploy.md`（部署全流程）、`docs/events-capabilities.md`

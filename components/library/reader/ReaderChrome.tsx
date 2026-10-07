@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { ArrowLeft, ExternalLink, List, PanelRight } from 'lucide-react';
 import { TypographyPopover } from './TypographyPopover';
+import { LanguageMenu } from './LanguageMenu';
 import type { ReaderPrefs } from './reader-prefs';
 
 interface Props {
@@ -23,7 +24,8 @@ interface Props {
   prefs: ReaderPrefs;
   onPrefsChange: (patch: Partial<ReaderPrefs>) => void;
   flow: { mode: 'paged' | 'flow'; available: boolean; onChange: (mode: 'paged' | 'flow') => void } | null;
-  translation: React.ComponentProps<typeof TypographyPopover>['translation'];
+  /** 阅读语言 switch (null = nothing to choose: the 原版 PDF view, or no target language). */
+  language: React.ComponentProps<typeof LanguageMenu> | null;
   pdfMode: {
     view: 'original' | 'text';
     canAnnotate: boolean;
@@ -48,7 +50,7 @@ export function ReaderChrome({
   prefs,
   onPrefsChange,
   flow,
-  translation,
+  language,
   pdfMode,
 }: Props) {
   const t = useTranslations('reader');
@@ -127,6 +129,8 @@ export function ReaderChrome({
             </div>
           )}
 
+          {language && <LanguageMenu {...language} />}
+
           <div className="relative">
             <button
               type="button"
@@ -147,7 +151,6 @@ export function ReaderChrome({
               prefs={prefs}
               onChange={onPrefsChange}
               flow={flow}
-              translation={translation}
             />
           </div>
           <ChromeButton label={t('side_panel')} active={panelOpen} onClick={onTogglePanel}>

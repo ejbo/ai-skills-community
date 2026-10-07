@@ -9,6 +9,8 @@ import { deleteVideoFile } from '@/lib/video/storage';
 import { generateVideoSubtitles } from '@/lib/video/subtitles';
 import { parseCoverAspect, parseCoverPos } from '@/lib/media/cover-pos';
 import { parseStoredClip } from '@/lib/media/clip-shared';
+import { retireSlug } from '@/lib/slug-server';
+import { uniqueVideoSlug } from '@/lib/video/slug';
 
 const updateSchema = z.object({
   title: z.string().min(1).max(300).optional(),
@@ -152,11 +154,20 @@ export async function PATCH(req: Request, { params }: { params: { slug: string }
     data.tags = { create: connections };
   }
 
+  // An admin-typed slug goes through the house title-slug rules (docs/contracts/
+  // slugs.md): normalized, de-duplicated with -2/-3, and the old one retired so
+  // every link already shared keeps resolving.
+  if (typeof data.slug === 'string') {
+    data.slug = data.slug === video.slug ? video.slug : await uniqueVideoSlug(data.slug, data.slug, video.id);
+    if (data.slug === video.slug) delete data.slug;
+  }
+
   const updated = await prisma.video.update({
     where: { id: video.id },
     data,
-    select: { id: true, status: true, videoKey: true, posterKey: true, previewKey: true, subtitleStatus: true, subtitleManual: true },
+    select: { id: true, slug: true, status: true, videoKey: true, posterKey: true, previewKey: true, subtitleStatus: true, subtitleManual: true },
   });
+  if (updated.slug !== video.slug) await retireSlug('video', video.slug, video.id).catch(() => {});
 
   // Files this save just orphaned (a re-cut preview, a new poster, a replaced
   // source). Best-effort, AFTER the row points at the new ones, and only when no
@@ -191,7 +202,7 @@ export async function PATCH(req: Request, { params }: { params: { slug: string }
     void generateVideoSubtitles(updated.id);
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, slug: updated.slug });
 }
 
 // DELETE /api/videos/[slug] (admin) — soft delete + best-effort blob cleanup.

@@ -3,8 +3,10 @@ import { Clapperboard, Star, Trophy, Vote } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
+import { VisibilityBadge } from '@/components/audience/VisibilityBadge';
 import { withBasePath } from '@/lib/base-path';
 import type { PublicVoteCard } from '@/lib/vote-queries';
+import { voteHref } from '@/lib/votes/shared';
 import { Countdown } from './Countdown';
 import { COVER_LIVE, COVER_OVER, COVER_SOON } from './vote-theme';
 
@@ -45,7 +47,7 @@ export async function VoteCard({ vote }: { vote: PublicVoteCard }) {
 
   return (
     <Link
-      href={`/votes/${vote.id}`}
+      href={voteHref(vote)}
       className="card-hover surface group block overflow-hidden rounded-2xl border border-zinc-200/70 dark:border-zinc-800/70"
     >
       <div className="relative aspect-[2/1] overflow-hidden bg-zinc-100 dark:bg-zinc-900">
@@ -62,7 +64,11 @@ export async function VoteCard({ vote }: { vote: PublicVoteCard }) {
             {vote.coverIsVideo ? <Clapperboard className="h-10 w-10" /> : <Vote className="h-10 w-10" />}
           </div>
         )}
-        <div className="absolute left-3 top-3 flex items-center gap-2">{stateChip}</div>
+        <div className="absolute left-3 top-3 flex items-center gap-2">
+          {stateChip}
+          {/* 可见范围: only owners / listed members ever receive a non-public card. */}
+          <VisibilityBadge visibility={vote.visibility} tone="onMedia" className="py-1" />
+        </div>
         <div className="absolute right-3 top-3 flex items-center gap-2">
           {vote.over && vote.winnerThumbUrl && (
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-amber-200 to-amber-500 text-amber-950 shadow-sm shadow-black/20">
