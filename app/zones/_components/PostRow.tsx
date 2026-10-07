@@ -39,7 +39,7 @@ import { GlareHover } from '@/components/motion';
 import { CoverImage } from '@/components/media/CoverImage';
 import { withBasePath } from '@/lib/base-path';
 import { leadRoleOf, type LeadRoles } from '@/lib/zones/lead-roles';
-import { zoneHref, zonePostHref } from '@/lib/zones/shared';
+import { zoneHref, zonePostEditHref, zonePostHref } from '@/lib/zones/shared';
 import type { ZoneAttachmentKindView, ZonePostCardView } from '@/lib/zones/types';
 import { RelTime } from './RelTime';
 import { RolePill } from './RolePill';
@@ -103,7 +103,7 @@ export function PostRow({
   const tc = useTranslations('common');
   const VisibilityIcon = VISIBILITY_ICONS[post.visibility];
   const href =
-    post.status === 'draft' ? `${zonePostHref(post.zone.slug, post.id)}/edit` : zonePostHref(post.zone.slug, post.id);
+    post.status === 'draft' ? zonePostEditHref(post.zone.slug, post.id) : zonePostHref(post.zone.slug, post);
   const authors = [post.author, ...post.coauthors];
   const shownAuthors = authors.slice(0, compact ? 1 : 3);
   const moreAuthors = authors.length - shownAuthors.length;
@@ -242,7 +242,7 @@ export function PostRow({
           <span className="inline-flex shrink-0 items-center gap-3 sm:ml-auto">
             {post.isAuthor && post.status === 'published' && (
               <Link
-                href={`${zonePostHref(post.zone.slug, post.id)}/edit`}
+                href={zonePostEditHref(post.zone.slug, post.id)}
                 className="relative z-[1] inline-flex items-center gap-1 rounded font-medium text-zinc-700 outline-none hover:text-zinc-900 hover:underline focus-visible:ring-2 focus-visible:ring-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100 dark:focus-visible:ring-zinc-100"
               >
                 <Pencil className="h-3 w-3 shrink-0" aria-hidden />

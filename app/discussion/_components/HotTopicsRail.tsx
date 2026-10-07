@@ -4,6 +4,7 @@ import { MessageSquare, MessageSquarePlus } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { listHotTopics } from '@/lib/discussion-queries';
 import { toPublicAuthor } from '@/lib/user-identity';
+import { topicHref } from '@/lib/slug-href';
 
 /**
  * 热门讨论 — the right rail beside the 全部 / 动态 streams.
@@ -44,7 +45,7 @@ export async function HotTopicsRail({ canSeeIdentity }: { canSeeIdentity: boolea
             return (
               <li key={topic.id}>
                 <Link
-                  href={`/discussion/topics/${topic.id}`}
+                  href={topicHref(topic)}
                   className="group -mx-2 flex gap-3 rounded-xl px-2 py-2.5 transition hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
                 >
                   <span

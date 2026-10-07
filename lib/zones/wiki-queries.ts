@@ -18,7 +18,9 @@ import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
 import type { ZoneSiteViewer } from './access';
 import { resolveEmbeds } from './embeds';
 import { ZoneError } from './queries';
-import { ZONE_LIMITS, collectEmbedRefs, extractHeadings, isValidWikiSlug, slugifyAscii } from './shared';
+import { ZONE_LIMITS, collectEmbedRefs, extractHeadings, isValidWikiSlug } from './shared';
+import { decodeSlugParam, titleSlug } from '@/lib/slug';
+import { resolveSlugAlias, retireSlug } from '@/lib/slug-server';
 import type { WikiPageView, WikiRevisionView, WikiTreeNode } from './types';
 
 const WIKI_SLUG_MAX = 60;
@@ -215,8 +217,10 @@ function slugBaseFor(input: { slug?: string; title: string }): string {
     if (!isValidWikiSlug(explicit)) throw new ZoneError('wiki_slug_invalid', 400);
     return explicit;
   }
-  const auto = slugifyAscii(input.title, WIKI_SLUG_MAX);
-  return auto && isValidWikiSlug(auto) ? auto : `page-${randomSlugPart()}`;
+  // The title IS the address (docs/contracts/slugs.md) — CJK included. Only a
+  // title with no letters/digits at all (or one naming a route word) falls back.
+  const auto = titleSlug(input.title, WIKI_SLUG_MAX);
+  return auto && isValidWikiSlug(auto) ? auto : 'page';
 }
 
 async function assertParentInZone(zoneId: string, parentId: string): Promise<{ id: string; parentId: string | null }> {
@@ -355,6 +359,8 @@ export async function updateWikiPage(pageId: string, input: Partial<WikiPageInpu
       if (contentSave) {
         await tx.zoneWikiRevision.create({ data: { pageId: page.id, editorId, title, bodyMd, note } });
       }
+      // A renamed page keeps its old address alive: the route redirects it here.
+      if (slug !== page.slug) await retireSlug('wiki_page', page.slug, page.id, page.zoneId, tx);
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
@@ -362,6 +368,53 @@ export async function updateWikiPage(pageId: string, input: Partial<WikiPageInpu
     }
     throw e;
   }
+}
+
+/**
+ * The live slug a `/zones/<z>/wiki/[pageSlug]` param names. Page params arrive
+ * percent-encoded (Next 14), so this decodes; a renamed page's old slug
+ * resolves through SlugAlias and `aliased` tells the page to redirect.
+ */
+export async function resolveWikiSlugParam(zoneId: string, param: string): Promise<{ slug: string; aliased: boolean }> {
+  const slug = decodeSlugParam(param);
+  const live = await prisma.zoneWikiPage.findFirst({ where: { zoneId, slug, deletedAt: null }, select: { id: true } });
+  if (live) return { slug, aliased: false };
+  const id = await resolveSlugAlias('wiki_page', slug, zoneId);
+  if (!id) return { slug, aliased: false };
+  const row = await prisma.zoneWikiPage.findFirst({ where: { id, zoneId, deletedAt: null }, select: { slug: true } });
+  return row ? { slug: row.slug, aliased: true } : { slug, aliased: false };
+}
+
+/** `page-<6 chars>` — the random address pages got when the title had no ASCII. */
+export const LEGACY_WIKI_SLUG_RE = /^page-[a-z0-9]{6}$/;
+
+/**
+ * Backfill: pages still on a random `page-<nanoid>` address move to their title
+ * slug; the old address is retired (SlugAlias, scope = zone) so links redirect.
+ */
+export async function backfillWikiSlugs(opts: { dry?: boolean } = {}): Promise<{ updated: number }> {
+  const rows = await prisma.zoneWikiPage.findMany({
+    where: { deletedAt: null, slug: { startsWith: 'page-' } },
+    select: { id: true, zoneId: true, slug: true, title: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  let updated = 0;
+  for (const row of rows) {
+    if (!LEGACY_WIKI_SLUG_RE.test(row.slug)) continue;
+    const base = titleSlug(row.title, WIKI_SLUG_MAX);
+    if (!base || !isValidWikiSlug(base)) continue;
+    const next = await uniqueWikiSlug(row.zoneId, base, row.id);
+    if (next === row.slug) continue;
+    console.log(`[wiki] ${row.zoneId}/${row.slug} → ${next}`);
+    updated += 1;
+    if (opts.dry) continue;
+    await prisma.$transaction(async (tx) => {
+      await releaseDeletedSlug(tx, row.zoneId, next);
+      await tx.zoneWikiPage.update({ where: { id: row.id }, data: { slug: next } });
+      await retireSlug('wiki_page', row.slug, row.id, row.zoneId, tx);
+    });
+  }
+  return { updated };
 }
 
 /**

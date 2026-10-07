@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
+import { canSeeVoteActivity, VOTE_GATE_SELECT, voteViewerFromSession } from '@/lib/vote-queries';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,11 +27,15 @@ export async function POST(
     select: {
       id: true,
       activityId: true,
-      activity: { select: { deletedAt: true, creatorId: true } },
+      activity: { select: VOTE_GATE_SELECT },
       entry: { select: { hidden: true, status: true } },
     },
   });
-  if (!comment || comment.activityId !== params.id || comment.activity.deletedAt) {
+  if (
+    !comment ||
+    comment.activityId !== params.id ||
+    !(await canSeeVoteActivity(comment.activity, voteViewerFromSession(session)))
+  ) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
   const isManager = can(session.user, 'votes') || comment.activity.creatorId === session.user.id;

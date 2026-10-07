@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useSyncExternalStore } from 'react';
+import { isReaderLangPref, type ReaderLangPref } from '@/lib/library/translation-shared';
 
 export type ReaderTheme = 'auto' | 'light' | 'sepia' | 'dark';
 export type ReaderWidth = 'narrow' | 'normal' | 'wide';
@@ -12,6 +13,12 @@ export interface ReaderPrefs {
   lineHeight: ReaderLineHeight;
   theme: ReaderTheme;
   width: ReaderWidth;
+  /**
+   * 阅读语言: 'auto' follows the UI language (中文界面读中文、英文界面读英文), 'original'
+   * always shows 原文, 'zh' / 'en' pin a language. Resolved per doc by
+   * resolveReaderText — a doc already in that language shows its 原文.
+   */
+  textLang: ReaderLangPref;
 }
 
 export const DEFAULT_READER_PREFS: ReaderPrefs = {
@@ -20,6 +27,7 @@ export const DEFAULT_READER_PREFS: ReaderPrefs = {
   lineHeight: 1.75,
   theme: 'auto',
   width: 'normal',
+  textLang: 'auto',
 };
 
 export const READER_WIDTHS: Record<ReaderWidth, string> = {
@@ -49,7 +57,8 @@ function sanitize(raw: unknown): ReaderPrefs {
   const theme: ReaderTheme =
     p.theme === 'light' || p.theme === 'sepia' || p.theme === 'dark' ? p.theme : 'auto';
   const width: ReaderWidth = p.width === 'narrow' || p.width === 'wide' ? p.width : 'normal';
-  return { fontSize, serif: p.serif === true, lineHeight, theme, width };
+  const textLang: ReaderLangPref = isReaderLangPref(p.textLang) ? p.textLang : 'auto';
+  return { fontSize, serif: p.serif === true, lineHeight, theme, width, textLang };
 }
 
 function load(): ReaderPrefs {

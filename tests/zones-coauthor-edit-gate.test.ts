@@ -26,7 +26,9 @@ const db = vi.hoisted(() => {
     zone: { update: vi.fn(async () => ({})), updateMany: vi.fn(async () => ({ count: 1 })) },
   };
   const prisma = {
-    zonePost: { findUnique: vi.fn(async () => state.post) },
+    // findMany + slugAlias: the title-slug pick (lib/title-slugs.ts) — no namesakes here.
+    zonePost: { findUnique: vi.fn(async () => state.post), findMany: vi.fn(async () => []) },
+    slugAlias: { findMany: vi.fn(async () => []) },
     zonePostAttachment: { findMany: vi.fn(async () => []), count: vi.fn(async () => 0) },
     user: { findMany: vi.fn(async () => []), findUnique: vi.fn(async () => null) },
     $transaction: vi.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx)),

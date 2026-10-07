@@ -1,6 +1,6 @@
 import { cache } from 'react';
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
@@ -11,6 +11,10 @@ import { canViewerEditZonePost } from '@/lib/zones/post-edit';
 import { getZonePostDetail, listZonePosts, recordZonePostView } from '@/lib/zones/post-queries';
 import type { ZoneAccess, ZoneCurrentUser, ZonePostCardView, ZonePostDetailView } from '@/lib/zones/types';
 import { PostDetail } from '@/app/zones/_components/post/PostDetail';
+import { selfHref } from '@/lib/auth/callback-path';
+import { needsCanonicalRedirect } from '@/lib/slug-href';
+import { resolveZonePostParam } from '@/lib/title-slugs';
+import { zonePostHref } from '@/lib/zones/shared';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,10 +67,14 @@ const loadPost = cache(async (slug: string, postId: string) => {
   if (!zone) return null;
   const access = await resolveZoneAccess(zone, viewer);
   const locale = await getLocale();
-  const post = await getZonePostDetail(postId, zone, access, viewer, { session, locale });
+  // The param is a title slug (unique within this zone), a row id (old links,
+  // notifications, embeds) or a retired slug.
+  const resolved = await resolveZonePostParam(zone.id, postId);
+  if (!resolved) return null;
+  const post = await getZonePostDetail(resolved.id, zone, access, viewer, { session, locale });
   if (!post) return null;
   const leadRoles = await loadLeadRoles(zone);
-  return { session, viewer, zone, access, post, leadRoles };
+  return { session, viewer, zone, access, post, leadRoles, resolved };
 });
 
 // 相关帖子: a shared first tag, then the same 栏目 (the taxonomy) — merged,
@@ -108,7 +116,12 @@ export default async function ZonePostPage({
 }) {
   const data = await loadPost(params.slug, params.postId);
   if (!data) notFound();
-  const { session, viewer, zone, access, post, leadRoles } = data;
+  const { session, viewer, zone, access, post, leadRoles, resolved } = data;
+  // Canonical (title) URL — only after the zone + post gates above passed, and
+  // keeping ?focus= deep links.
+  if (needsCanonicalRedirect(resolved)) {
+    permanentRedirect(selfHref(zonePostHref(zone.slug, { id: post.id, slug: resolved.slug }), searchParams));
+  }
 
   // One view per viewer per UTC day (recordZonePostView day-buckets the key).
   // A locked `restricted` post is NOT a read: neither the view nor the related

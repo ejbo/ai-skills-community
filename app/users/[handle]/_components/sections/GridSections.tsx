@@ -24,6 +24,7 @@ import { ShortCard } from '@/components/video/ShortCard';
 import { VoteCard } from '@/app/votes/_components/VoteCard';
 import { StaggerChildren } from '../StaggerChildren';
 import { CursorPager, OffsetPager, OwnerItem, SectionEmpty, SectionHeader } from './SectionShell';
+import { voteHref } from '@/lib/votes/shared';
 
 export interface SectionProps {
   viewer: ProfileViewer;
@@ -202,7 +203,7 @@ export async function VotesSection(props: SectionProps) {
               key={a.id}
               enabled={viewer.isOwner}
               pin={pinFor(props, 'vote', a.id)}
-              editHref={`/votes/${a.id}/edit`}
+              editHref={voteHref(a, 'edit')}
               className="h-full"
             >
               <VoteCard vote={a} />

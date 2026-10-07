@@ -43,6 +43,7 @@ import { zoneHue } from '@/app/zones/_components/zone-color';
 import { withBasePath } from '@/lib/base-path';
 import { relativeTime } from '@/lib/i18n-date';
 import { dayKeyToDate } from '@/lib/events/time';
+import { voteHref } from '@/lib/votes/shared';
 import {
   WS_FAVORITES,
   WS_FOLD,
@@ -67,6 +68,7 @@ import {
   WsSection,
   WsStatusDot,
 } from './ui';
+import { eventHref } from '@/lib/slug-href';
 
 type Dict = Awaited<ReturnType<typeof getTranslations<'dashboard'>>>;
 type Labels = Awaited<ReturnType<typeof getTranslations<'labels'>>>;
@@ -306,7 +308,7 @@ function AttentionPanel({ data, t }: { data: WorkspaceData; t: Dict }) {
       icon: Vote,
       title: i.title,
       text: t('ws_att_vote_submissions', { count: i.count }),
-      href: `/votes/${i.ref}/edit`,
+      href: voteHref({ id: i.ref, slug: i.slug }, 'edit'),
       action: t('ws_att_review'),
     })),
     ...(a.subscriptionUpdates > 0
@@ -729,7 +731,7 @@ function EventRow({ row, locale, muted }: { row: WsEventRow; locale: string; mut
       <DateBlock dayKey={row.dayKey} locale={locale} muted={muted} />
       <div className="min-w-0 flex-1">
         <Link
-          href={`/events/${e.id}`}
+          href={eventHref(e)}
           className={`${WS_TITLE_LINK} block text-sm ${muted ? 'text-zinc-600 dark:text-zinc-400' : ''}`}
         >
           {e.title}
@@ -827,7 +829,7 @@ function VotesSection({ rows, total, ctx }: { rows: WsVoteRow[]; total: number; 
           renderItem={(v) => (
             <li key={v.id} className={`${WS_ROW} flex items-center gap-3 px-4 py-2.5`}>
               <Link
-                href={`/votes/${v.id}`}
+                href={voteHref(v)}
                 tabIndex={-1}
                 aria-hidden
                 className="flex h-10 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-zinc-100 text-zinc-400 ring-1 ring-black/5 dark:bg-zinc-800 dark:text-zinc-500 dark:ring-white/10"
@@ -840,7 +842,7 @@ function VotesSection({ rows, total, ctx }: { rows: WsVoteRow[]; total: number; 
                 )}
               </Link>
               <div className="min-w-0 flex-1">
-                <Link href={`/votes/${v.id}`} className={`${WS_TITLE_LINK} block text-sm`}>
+                <Link href={voteHref(v)} className={`${WS_TITLE_LINK} block text-sm`}>
                   {v.title}
                 </Link>
                 <p className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-muted">
@@ -848,7 +850,7 @@ function VotesSection({ rows, total, ctx }: { rows: WsVoteRow[]; total: number; 
                     {t(`ws_vote_${v.state}`)}
                   </span>
                   {v.pendingSubmissions > 0 && (
-                    <Link href={`/votes/${v.id}/edit`} className={`${WS_ATTENTION_PILL} h-[18px] px-1.5 text-[10px]`}>
+                    <Link href={voteHref(v, 'edit')} className={`${WS_ATTENTION_PILL} h-[18px] px-1.5 text-[10px]`}>
                       {t('ws_vote_pending_badge', { count: v.pendingSubmissions })}
                     </Link>
                   )}
@@ -857,7 +859,7 @@ function VotesSection({ rows, total, ctx }: { rows: WsVoteRow[]; total: number; 
                   </span>
                 </p>
               </div>
-              <Link href={`/votes/${v.id}/edit`} className={WS_ROW_BTN}>
+              <Link href={voteHref(v, 'edit')} className={WS_ROW_BTN}>
                 {t('edit')}
               </Link>
             </li>

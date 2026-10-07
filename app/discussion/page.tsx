@@ -32,6 +32,7 @@ import { TopicUpvoteButton } from './_components/TopicUpvoteButton';
 import { CategoryChipStatic, tagDotClass } from './_components/badges';
 import { discussionTabOf } from './_components/tabs';
 import type { CurrentUser } from './_components/types';
+import { topicHref } from '@/lib/slug-href';
 
 export const dynamic = 'force-dynamic';
 
@@ -409,7 +410,7 @@ async function ForumTab({
                     initialCount={topic.upvoteCount}
                     initialUpvoted={topic.upvotedByMe}
                   />
-                  <Link href={`/discussion/topics/${topic.id}`} className="flex min-w-0 flex-1 items-start gap-4">
+                  <Link href={topicHref(topic)} className="flex min-w-0 flex-1 items-start gap-4">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         {topic.pinned && <Pin className="h-3.5 w-3.5 shrink-0 text-zinc-900 dark:text-zinc-50" />}

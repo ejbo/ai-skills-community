@@ -39,7 +39,9 @@ const db = vi.hoisted(() => {
     zoneMember: { findMany: vi.fn(async () => []) },
     zoneRole: { findUnique: vi.fn(async () => ({ permissions: ['comment'] })) },
     zonePostViewer: { findMany: vi.fn(async () => []) },
-    zonePost: { findUnique: vi.fn(async () => state.existing), count: vi.fn(async () => 1) },
+    // findMany: the title-slug pick (lib/title-slugs.ts) — no namesakes in this zone.
+    zonePost: { findUnique: vi.fn(async () => state.existing), findMany: vi.fn(async () => []), count: vi.fn(async () => 1) },
+    slugAlias: { findMany: vi.fn(async () => []) },
     zone: { count: vi.fn(async () => 0) },
     zonePostAttachment: { findMany: vi.fn(async () => []), count: vi.fn(async () => 0) },
     $transaction: vi.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx)),
@@ -242,6 +244,7 @@ describe('toZonePostCardView — the cover and its framing travel together', () 
     zoneId: 'z1',
     type: 'article',
     title: '海报帖',
+    slug: '海报帖',
     summary: '摘要',
     coverUrl: COVER,
     coverAspect: 'portrait',

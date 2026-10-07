@@ -19,7 +19,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { ChevronDown, FileEdit, Settings2 } from 'lucide-react';
 import { TabBar, type TabItem } from '@/components/motion';
-import { UNCATEGORIZED_COLUMN_PARAM, zoneHref, zonePostHref } from '@/lib/zones/shared';
+import { UNCATEGORIZED_COLUMN_PARAM, zoneHref, zonePostEditHref } from '@/lib/zones/shared';
 import type { ZoneColumnView, ZonePostCardView } from '@/lib/zones/types';
 import { FADE_Y_CLASS, SECTION_TITLE_CLS, hrefWith } from './ui';
 import { columnDotCls } from './zone-color';
@@ -148,7 +148,7 @@ export function ColumnRail({
               {drafts.slice(0, 5).map((d) => (
                 <li key={d.id}>
                   <Link
-                    href={`${zonePostHref(slug, d.id)}/edit`}
+                    href={zonePostEditHref(slug, d.id)}
                     className="block truncate rounded-md px-3 py-1 text-xs text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
                     title={d.title}
                   >

@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
-import { VOTE_TITLE_MAX } from '@/lib/votes/shared';
+import { VOTE_TITLE_MAX, voteHref } from '@/lib/votes/shared';
 import { loginHref } from '@/lib/auth/callback-path';
 
 export function CreateVoteForm() {
@@ -39,7 +39,7 @@ export function CreateVoteForm() {
         setBusy(false);
         return;
       }
-      router.push(`/votes/${data.activity.id}/edit`);
+      router.push(voteHref(data.activity, 'edit'));
     } catch {
       pushToast('error', t('create_failed'));
       setBusy(false);

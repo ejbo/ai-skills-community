@@ -28,11 +28,12 @@ import { DISCOVERABLE_SKILL_WHERE, SKILL_CARD_SELECT } from '@/lib/skill-queries
 import { getCommentsOnMyDocs } from '@/lib/library-queries';
 import { eventViewerFromSession, listEvents } from '@/lib/event-queries';
 import { listVoteActivities } from '@/lib/vote-queries';
-import { excerptOf, zonePostHref } from '@/lib/zones/shared';
+import { excerptOf, zonePostEditHref } from '@/lib/zones/shared';
 import { eventLocalDayKey } from '@/lib/events/time';
 import { toPublicAuthor, type PublicAuthor } from '@/lib/user-identity';
 import { can, type PermissionHolder } from '@/lib/permissions';
 import type { PublicEventItem } from '@/lib/events/types';
+import { voteHref } from '@/lib/votes/shared';
 
 // ─── pure helpers (unit-tested) ─────────────────────────────────────────────
 
@@ -215,6 +216,7 @@ export interface WsDraftRow {
 
 export interface WsVoteRow {
   id: string;
+  slug: string | null; // link through voteHref
   title: string;
   coverUrl: string | null;
   state: WsVoteState;
@@ -242,6 +244,8 @@ export interface WsAttentionItem<K extends string> {
   kind: K;
   /** skill slug / doc slug / vote id — whatever the handling surface is keyed on. */
   ref: string;
+  /** vote only — its title slug, so the link is `voteHref({ id: ref, slug })`. */
+  slug?: string | null;
   title: string;
   count: number;
 }
@@ -376,7 +380,7 @@ async function loadAttention(userId: string): Promise<WorkspaceAttention & { out
     voteGroups.length
       ? prisma.voteActivity.findMany({
           where: { id: { in: voteGroups.map((g) => g.activityId) }, creatorId: userId },
-          select: { id: true, title: true },
+          select: { id: true, slug: true, title: true },
         })
       : [],
   ]);
@@ -401,7 +405,7 @@ async function loadAttention(userId: string): Promise<WorkspaceAttention & { out
   const votes = voteGroups
     .flatMap((g) => {
       const v = voteMap.get(g.activityId);
-      return v ? [{ kind: 'vote' as const, ref: v.id, title: v.title, count: g._count._all }] : [];
+      return v ? [{ kind: 'vote' as const, ref: v.id, slug: v.slug, title: v.title, count: g._count._all }] : [];
     })
     .sort(byCountDesc);
 
@@ -542,7 +546,7 @@ export async function loadWorkspaceData(
       where: voteDraftWhere,
       orderBy: { updatedAt: 'desc' },
       take: 50,
-      select: { id: true, title: true, updatedAt: true },
+      select: { id: true, slug: true, title: true, updatedAt: true },
     }),
     listVoteActivities('mine', voteViewer, 1),
     listEvents({ tab: 'upcoming', mineFor: userId }, eventViewer, 1),
@@ -672,7 +676,7 @@ export async function loadWorkspaceData(
         id: p.id,
         title: p.title,
         updatedAt: p.updatedAt,
-        href: `${zonePostHref(p.zone.slug, p.id)}/edit`,
+        href: zonePostEditHref(p.zone.slug, p.id),
         zone: p.zone,
       })),
       voteDraftRows.map((v) => ({
@@ -680,13 +684,14 @@ export async function loadWorkspaceData(
         id: v.id,
         title: v.title,
         updatedAt: v.updatedAt,
-        href: `/votes/${v.id}/edit`,
+        href: voteHref(v, 'edit'),
         zone: null,
       })),
     ),
     draftCounts,
     votes: voteList.items.map((v) => ({
       id: v.id,
+      slug: v.slug,
       title: v.title,
       coverUrl: v.coverUrl,
       state: voteRowState(v),

@@ -4,6 +4,9 @@ import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { logAdmin } from '@/lib/audit';
+import { audienceUserIds, replaceAudience } from '@/lib/audience';
+import { MAX_AUDIENCE, newlyGrantedAudience, type ContentVisibility } from '@/lib/audience-shared';
+import { notifyAudienceGranted } from '@/lib/notifications';
 import { can } from '@/lib/permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import {
@@ -19,7 +22,9 @@ import {
   MAX_PER_ENTRY_MAX,
   isVoteTimezone,
   parseCustomFields,
+  voteHref,
 } from '@/lib/votes/shared';
+import { resyncDraftVoteSlug } from '@/lib/votes/slug';
 import {
   deleteVoteMediaFile,
   isValidVoteMediaKey,
@@ -98,6 +103,11 @@ const contentSchema = z.object({
   submissionFields: z.unknown().optional(),
   submissionNote: z.string().trim().max(500).optional(),
   allowComments: z.boolean().optional(),
+  // ── 可见范围 (docs/contracts/audience.md) ──
+  visibility: z.enum(['public', 'private', 'audience']).optional(),
+  // The FULL list (replaces the stored one). Normalized + validated server-side
+  // (dedupe, owner dropped, active users only, capped at MAX_AUDIENCE).
+  audienceUserIds: z.array(z.string().min(1).max(64)).max(MAX_AUDIENCE * 2).optional(),
 });
 
 const lifecycleSchema = z.object({
@@ -163,12 +173,22 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         if (visible < 1 && !activity.allowSubmissions) {
           return NextResponse.json({ error: 'no_entries' }, { status: 400 });
         }
-        await prisma.voteActivity.update({
-          where: { id: activity.id },
+        // Guarded on status so two racing publishes notify the audience once.
+        const flipped = await prisma.voteActivity.updateMany({
+          where: { id: activity.id, status: 'draft' },
           data: { status: 'published', publishedAt: activity.publishedAt ?? new Date() },
         });
+        // A draft that already had a 指定成员可见 list becomes visible to it NOW.
+        if (flipped.count > 0 && activity.visibility === 'audience') {
+          const listed = await audienceUserIds(prisma, 'vote', activity.id);
+          await tellNewAudience(session.user.id, activity, newlyGrantedAudience(
+            { live: false, visibility: activity.visibility, audience: listed },
+            { live: true, visibility: activity.visibility, audience: listed },
+          ));
+        }
       }
-      return NextResponse.json({ ok: true, status: 'published' });
+      // The slug is frozen from here on (docs/contracts/slugs.md) — hand back the URL to use.
+      return NextResponse.json({ ok: true, status: 'published', slug: activity.slug });
     }
 
     if (typeof parsed.data.closed === 'boolean') {
@@ -235,6 +255,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
   if (input.submissionNote !== undefined) data.submissionNote = input.submissionNote;
   if (input.allowComments !== undefined) data.allowComments = input.allowComments;
+  const nextVisibility: ContentVisibility = input.visibility ?? activity.visibility;
+  if (input.visibility !== undefined) data.visibility = input.visibility;
 
   // Dates: validate the PAIR against the final values.
   const nextStart =
@@ -294,7 +316,54 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
   }
 
-  await prisma.voteActivity.update({ where: { id: activity.id }, data });
+  // 可见范围: the column and the list move in ONE transaction. The list is replaced only
+  // when sent; rows of a non-`audience` activity are inert, so switching to 公开/隐藏 and
+  // back restores the list instead of making the creator re-type it.
+  const audienceTouched = input.audienceUserIds !== undefined || input.visibility !== undefined;
+  const beforeAudience = audienceTouched ? await audienceUserIds(prisma, 'vote', activity.id) : [];
+  let afterAudience = beforeAudience;
+  await prisma.$transaction(async (tx) => {
+    await tx.voteActivity.update({ where: { id: activity.id }, data });
+    if (input.audienceUserIds !== undefined) {
+      afterAudience = (
+        await replaceAudience(tx, 'vote', activity.id, input.audienceUserIds, {
+          ownerId: activity.creatorId,
+          addedById: session.user.id,
+        })
+      ).userIds;
+    }
+  });
+
+  if (audienceTouched) {
+    const live = activity.status === 'published';
+    await tellNewAudience(
+      session.user.id,
+      activity,
+      newlyGrantedAudience(
+        { live, visibility: activity.visibility, audience: beforeAudience },
+        { live, visibility: nextVisibility, audience: afterAudience },
+      ),
+    );
+    // An admin changing who may see someone else's activity is moderation — audit it.
+    if (viewer.canManage && activity.creatorId !== session.user.id && nextVisibility !== activity.visibility) {
+      await logAdmin({
+        adminUserId: session.user.id,
+        action: 'set_vote_visibility',
+        targetType: 'vote_activity',
+        targetId: activity.id,
+        details: { title: activity.title, visibility: { before: activity.visibility, after: nextVisibility } },
+      });
+    }
+  }
+
+  // 标题链接: a DRAFT's slug follows its title (nobody else can hold its link yet);
+  // a published one is frozen. Best-effort — the id URL always works.
+  let slug = activity.slug;
+  if (input.title !== undefined && input.title !== activity.title && activity.status === 'draft') {
+    await resyncDraftVoteSlug(activity, input.title).catch(() => {});
+    slug = (await prisma.voteActivity.findUnique({ where: { id: activity.id }, select: { slug: true } }))?.slug ?? slug;
+  }
+
   if (oldCoverKeyToDelete && oldCoverKeyToDelete !== input.coverKey) {
     // Unlink only when no surviving row still references the old file.
     const stillUsed = activity.coverUrl
@@ -305,7 +374,29 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       : null;
     if (!stillUsed) await deleteVoteMediaFile(oldCoverKeyToDelete);
   }
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, slug, visibility: nextVisibility });
+}
+
+/** Notify the people the list just let in (never throws — the write already happened). */
+async function tellNewAudience(
+  actorId: string,
+  activity: { id: string; slug: string | null; title: string },
+  recipientIds: string[],
+): Promise<void> {
+  if (recipientIds.length === 0) return;
+  try {
+    const actor = await prisma.user.findUnique({ where: { id: actorId }, select: { displayName: true, handle: true } });
+    await notifyAudienceGranted({
+      recipientIds,
+      actorId,
+      actorName: actor?.displayName?.trim() || actor?.handle || '',
+      what: '投票活动',
+      title: activity.title,
+      link: voteHref(activity),
+    });
+  } catch (e) {
+    console.error('[votes] audience notify failed:', e);
+  }
 }
 
 // DELETE /api/votes/[id] — soft delete (files retained, house policy).

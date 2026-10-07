@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { prisma } from '@/lib/db';
 import { buildIcs } from '@/lib/events/calendar';
 import { withBasePath } from '@/lib/base-path';
+import { eventHref } from '@/lib/slug-href';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +14,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     where: { id: params.id, deletedAt: null },
     select: {
       id: true,
+      slug: true,
       title: true,
       summary: true,
       startAt: true,
@@ -28,7 +30,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   // Absolute detail URL from the proxied request (works at root and subpath).
   const proto = req.headers.get('x-forwarded-proto') ?? 'http';
   const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? '';
-  const url = host ? `${proto}://${host}${withBasePath(`/events/${event.id}`)}` : undefined;
+  const url = host ? `${proto}://${host}${withBasePath(eventHref(event))}` : undefined;
 
   // Same key as AddToCalendar's Google link so both calendars agree, in the
   // locale the downloader is browsing in (the cookie is readable here).

@@ -30,6 +30,8 @@ import {
   Clock,
   Download,
   Eye,
+  EyeOff,
+  Globe2,
   MousePointerClick,
   Link as LinkIcon,
   Loader2,
@@ -45,10 +47,13 @@ import {
   Send,
   Trophy,
   Upload,
+  Users,
   X,
 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Avatar } from '@/components/Avatar';
+import { VisibilityBadge } from '@/components/audience/VisibilityBadge';
+import { VisibilityDialog, type VisibilityState } from '@/components/audience/VisibilityDialog';
 import { DeptTag } from '@/components/DeptTag';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { pushToast } from '@/components/Toaster';
@@ -64,6 +69,7 @@ import {
   reconcileDraft,
   stepDraftCount,
   voteCardAspectClass,
+  voteHref,
   voteTimezoneKey,
   type BallotChange,
   type BallotDraft,
@@ -723,6 +729,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [gridLimit, setGridLimit] = useState(GRID_PAGE);
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [visibilityOpen, setVisibilityOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>({});
   const [submitting, setSubmitting] = useState(false);
   const [popId, setPopId] = useState<string | null>(null);
@@ -891,7 +898,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
       const tt = tRef.current;
       if (!current.viewer.loggedIn) {
         pushToast('info', tt('login_required'));
-        router.push(loginHref(`/votes/${current.id}`));
+        router.push(loginHref(voteHref(current)));
         return;
       }
       if (!current.viewer.canVote) {
@@ -1299,7 +1306,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
       {view.status === 'draft' && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           <span>{t('draft_banner')}</span>
-          <Link href={`/votes/${view.id}/edit`} className="font-medium underline underline-offset-2">
+          <Link href={voteHref(view, 'edit')} className="font-medium underline underline-offset-2">
             {t('draft_edit_link')}
           </Link>
         </div>
@@ -1308,7 +1315,11 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
       {/* header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold tracking-tight">{view.title}</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            {view.title}
+            {/* 可见范围 — only the owner / listed members ever get a non-public payload. */}
+            <VisibilityBadge visibility={view.visibility} className="ml-2 align-middle" />
+          </h1>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted">
             <Avatar name={view.creator.displayName} src={view.creator.avatarUrl} size="xs" handle={view.creator.handle} />
             <Link href={`/users/${view.creator.handle}`} className="hover:underline">
@@ -1354,8 +1365,24 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
                 <Download className="h-4 w-4" />
                 {t('export_results')}
               </a>
+              {/* 可见范围 quick path — the owner hides an ended activity from the hub (or
+                  shares it with specific people) without opening the full editor. */}
+              <button
+                type="button"
+                onClick={() => setVisibilityOpen(true)}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-sm transition hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-800"
+              >
+                {view.visibility === 'private' ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : view.visibility === 'audience' ? (
+                  <Users className="h-4 w-4" />
+                ) : (
+                  <Globe2 className="h-4 w-4" />
+                )}
+                {t('visibility_button')}
+              </button>
               <Link
-                href={`/votes/${view.id}/edit`}
+                href={voteHref(view, 'edit')}
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-zinc-900 px-3 text-sm font-medium text-white transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
               >
                 <Pencil className="h-4 w-4" />
@@ -1923,6 +1950,30 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
           view={view}
           onClose={() => setSubmitOpen(false)}
           onChanged={() => void refresh()}
+        />
+      )}
+
+      {view.isOwner && (
+        <VisibilityDialog
+          open={visibilityOpen}
+          onClose={() => setVisibilityOpen(false)}
+          selfHandle={view.creator.handle}
+          load={async () => {
+            const res = await fetch(`/api/votes/${view.id}/audience`);
+            const data = (await res.json().catch(() => null)) as (VisibilityState & { ok?: boolean }) | null;
+            return res.ok && data ? { visibility: data.visibility, audience: data.audience ?? [] } : null;
+          }}
+          save={async ({ visibility, audienceUserIds }) => {
+            const res = await fetch(`/api/votes/${view.id}`, {
+              method: 'PATCH',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ visibility, audienceUserIds }),
+            });
+            if (!res.ok) return false;
+            setView((v) => ({ ...v, visibility }));
+            router.refresh();
+            return true;
+          }}
         />
       )}
     </div>

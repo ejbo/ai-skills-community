@@ -41,6 +41,7 @@ import {
   normalizeHttpUrl,
   parseEmbedToken,
   zoneHref,
+  zonePostEditHref,
   zonePostHref,
   type ZonePostVisibilityValue,
 } from '@/lib/zones/shared';
@@ -449,7 +450,7 @@ export function PostComposer({
       if (!post) {
         // A fresh draft now has an id: continue on its edit page (attachments
         // gain ids there).
-        router.replace(`/zones/${zone.slug}/posts/${id}/edit`);
+        router.replace(zonePostEditHref(zone.slug, id));
         router.refresh();
         return true;
       }
@@ -541,7 +542,7 @@ export function PostComposer({
   };
 
   const disabled = busy !== null;
-  const backHref = post ? (isPublished ? zonePostHref(zone.slug, post.id) : zoneHref(zone.slug)) : zoneHref(zone.slug);
+  const backHref = post ? (isPublished ? zonePostHref(zone.slug, post) : zoneHref(zone.slug)) : zoneHref(zone.slug);
   const saveLabel = isPublished ? t('composer_unpublish') : t('composer_save_draft');
   const publishLabel = isPublished ? t('composer_update') : t('composer_publish');
 

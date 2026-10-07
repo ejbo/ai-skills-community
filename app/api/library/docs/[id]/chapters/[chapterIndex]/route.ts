@@ -87,10 +87,13 @@ export async function PATCH(
   if (!ok) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   if (parsed.data.title !== undefined) {
-    await prisma.libraryChapter.update({
+    const chapter = await prisma.libraryChapter.update({
       where: { docId_chapterIndex: { docId: doc.id, chapterIndex: idx } },
       data: { title: parsed.data.title?.trim() || null },
+      select: { id: true },
     });
+    // The translated chapter title is stored with its 译文 — rebuild both (cache-cheap).
+    await prisma.libraryChapterTranslation.deleteMany({ where: { chapterId: chapter.id } });
   }
 
   if (!isUploader) {

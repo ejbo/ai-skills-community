@@ -13,7 +13,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const db = vi.hoisted(() => {
   const state = { row: null as { authorId: string; coauthors: { userId: string }[] } | null };
   const prisma = {
-    zonePost: { findUnique: vi.fn(async () => state.row) },
+    // findFirst: the page resolves its [postId] param (slug or id) before the gate.
+    zonePost: { findUnique: vi.fn(async () => state.row), findFirst: vi.fn(async () => ({ id: 'p1', slug: null })) },
     zonePostAuthor: { findMany: vi.fn(async () => []) },
     zonePostViewer: { findMany: vi.fn(async () => []) },
     zone: { findUnique: vi.fn(async () => ({ allowMemberColumns: true })) },

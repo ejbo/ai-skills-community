@@ -7,6 +7,8 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { markdownToPlainText } from '@/lib/markdown-text';
+import { announcementHref, eventHref, feedbackHref, topicHref, videoHref } from '@/lib/slug-href';
+import { zonePostHref } from '@/lib/zones/shared';
 import {
   appUrl,
   notifyAuthorOfRequest,
@@ -100,7 +102,7 @@ export async function notifyCommentReply(opts: {
     const pref = await getPref(opts.recipientId);
     const snippet = bodySnippet(opts.bodyMd);
     const what = opts.isReplyToReply ? '回复' : '评论';
-    const link = `/videos/${opts.videoSlug}?focus=${opts.focusId}`;
+    const link = `${videoHref(opts.videoSlug)}?focus=${opts.focusId}`;
     if (pref.inAppCommentReply) {
       await createInApp({
         recipientId: opts.recipientId,
@@ -138,6 +140,8 @@ export async function notifyFeedbackReply(opts: {
   actorName: string;
   feedbackId: string;
   feedbackTitle: string;
+  /** Title slug for the deep link (docs/contracts/slugs.md); null/absent ⇒ the id. */
+  feedbackSlug?: string | null;
   focusId: string; // the new comment's id (deep-link target)
   bodyMd: string;
   isReplyToComment: boolean; // false = top-level comment on the feedback post
@@ -147,7 +151,7 @@ export async function notifyFeedbackReply(opts: {
     const pref = await getPref(opts.recipientId);
     const snippet = bodySnippet(opts.bodyMd);
     const what = opts.isReplyToComment ? '评论' : '反馈';
-    const link = `/feedback/${opts.feedbackId}?focus=${opts.focusId}`;
+    const link = `${feedbackHref({ id: opts.feedbackId, slug: opts.feedbackSlug })}?focus=${opts.focusId}`;
     if (pref.inAppCommentReply) {
       await createInApp({
         recipientId: opts.recipientId,
@@ -230,6 +234,8 @@ export async function notifyTopicReply(opts: {
   actorId: string;
   actorName: string;
   topicId: string;
+  /** Title slug for the deep link (docs/contracts/slugs.md); null/absent ⇒ the id. */
+  topicSlug?: string | null;
   topicTitle: string;
   focusId: string; // the new reply's id (deep-link target)
   bodyMd: string;
@@ -240,7 +246,7 @@ export async function notifyTopicReply(opts: {
     const pref = await getPref(opts.recipientId);
     const snippet = bodySnippet(opts.bodyMd);
     const what = opts.isReplyToComment ? '回复' : '帖子';
-    const link = `/discussion/topics/${opts.topicId}?focus=${opts.focusId}`;
+    const link = `${topicHref({ id: opts.topicId, slug: opts.topicSlug })}?focus=${opts.focusId}`;
     if (pref.inAppCommentReply) {
       await createInApp({
         recipientId: opts.recipientId,
@@ -347,11 +353,13 @@ export async function notifyAccessDecision(opts: {
 
 export async function fanoutAnnouncement(opts: {
   announcementId: string;
+  /** Title slug for the deep link (docs/contracts/slugs.md); null/absent ⇒ the id. */
+  announcementSlug?: string | null;
   actorId: string;
   title: string;
   summary: string;
 }): Promise<{ inApp: number; email: number }> {
-  const link = `/announcements/${opts.announcementId}`;
+  const link = announcementHref({ id: opts.announcementId, slug: opts.announcementSlug });
   let inApp = 0;
   let email = 0;
   try {
@@ -513,13 +521,15 @@ export async function notifyEventReminder(opts: {
   recipientId: string;
   recipientEmail: string;
   eventId: string;
+  /** Title slug — the stored deep link carries it (docs/contracts/slugs.md). */
+  eventSlug?: string | null;
   eventTitle: string;
   minutesLeft: number;
   timeLabel: string; // e.g. '14:00（北京时间）'
   location: string; // venue/city or 线上
   meetingUrl: string | null;
 }): Promise<void> {
-  const link = `/events/${opts.eventId}`;
+  const link = eventHref({ id: opts.eventId, slug: opts.eventSlug });
   try {
     await createInApp({
       recipientId: opts.recipientId,
@@ -556,6 +566,8 @@ export async function notifyZoneReply(opts: {
   actorName: string;
   zoneSlug: string;
   postId: string;
+  /** The post's title slug for the deep link (docs/contracts/slugs.md); null/absent ⇒ the id. */
+  postSlug?: string | null;
   postTitle: string;
   focusId: string; // the new comment's id (deep-link target)
   bodyMd: string;
@@ -566,7 +578,7 @@ export async function notifyZoneReply(opts: {
     const pref = await getPref(opts.recipientId);
     const snippet = bodySnippet(opts.bodyMd);
     const what = opts.isReplyToComment ? '评论' : '帖子';
-    const link = `/zones/${opts.zoneSlug}/posts/${opts.postId}?focus=${opts.focusId}`;
+    const link = `${zonePostHref(opts.zoneSlug, { id: opts.postId, slug: opts.postSlug })}?focus=${opts.focusId}`;
     if (pref.inAppCommentReply) {
       await createInApp({
         recipientId: opts.recipientId,
@@ -752,4 +764,40 @@ export async function notifyCoauthor(opts: {
       }
     }),
   );
+}
+
+// ── 指定成员可见 ─────────────────────────────────────────────────────────────
+
+/**
+ * Someone made an item visible to you by naming you on its 指定成员可见 list
+ * (docs/contracts/audience.md). The caller passes ONLY the people who can open it now and
+ * could not before (`newlyGrantedAudience` in lib/audience-shared.ts) — so nobody is told
+ * about a draft or a list that is not in force. In-app only and not preference-gated,
+ * like 合著者: it is addressed to you personally. Never throws.
+ */
+export async function notifyAudienceGranted(opts: {
+  recipientIds: readonly string[];
+  actorId: string;
+  actorName: string;
+  /** House Chinese noun for the surface (「投票活动」). */
+  what: string;
+  title: string;
+  link: string;
+}): Promise<void> {
+  const recipients = [...new Set(opts.recipientIds)].filter((id) => id && id !== opts.actorId);
+  if (recipients.length === 0) return;
+  try {
+    await prisma.notification.createMany({
+      data: recipients.map((recipientId) => ({
+        recipientId,
+        actorId: opts.actorId,
+        type: 'audience' as const,
+        title: `${opts.actorName} 邀请你查看${opts.what}「${truncate(opts.title, 40)}」`,
+        body: '仅指定成员可见',
+        link: opts.link,
+      })),
+    });
+  } catch (e) {
+    console.error('[notify] audience grant failed (is the migration applied?):', e);
+  }
 }

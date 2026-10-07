@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { FileText, Languages, Loader2, X } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 import type { AiOverview } from '@/lib/library/types';
@@ -32,6 +32,14 @@ import { useReaderPrefs, READER_WIDTHS } from './reader-prefs';
 import { ReaderHighlighter, supportsNativeHighlights, type HlBox } from './highlighter';
 import { getTextOffsetOfPoint, invalidateAnchorCache, rootTextLength } from './anchoring';
 import { withBasePath } from '@/lib/base-path';
+import { contentLocale } from '@/lib/library/i18n-content';
+import {
+  prefForChoice,
+  resolveReaderText,
+  type ReaderTextChoice,
+  type TargetLang,
+} from '@/lib/library/translation-shared';
+import type { ReaderChapterTranslation, ReaderTranslationStatus } from '@/lib/library-queries';
 
 export interface ReaderDocInfo {
   id: string;
@@ -49,17 +57,20 @@ export interface ReaderDocInfo {
   aiIndexState: string;
   language: string | null;
   commentCount: number;
-  /** 译文 availability — 'none' | 'running' | 'ready' | 'partial' | 'failed'. */
-  translationState: string;
-  translationLang: string | null;
+  /** Languages the doc can be read in besides 原文 (never its own). */
+  targetLangs: TargetLang[];
+  /** Translated title per language (current title only). */
+  titles: Partial<Record<TargetLang, string>>;
+  /** Whole-document pass per language. */
+  translations: Partial<Record<TargetLang, ReaderTranslationStatus>>;
 }
 
 interface ChapterPayload {
   chapterIndex: number;
   title: string | null;
   html: string;
-  /** Whole-chapter 译文, when the document has been translated. */
-  translatedHtml: string | null;
+  /** Fresh whole-chapter 译文 per language. */
+  translations: Partial<Record<TargetLang, ReaderChapterTranslation>>;
 }
 
 interface Props {
@@ -100,6 +111,7 @@ export function ReaderShell({
 }: Props) {
   const t = useTranslations('reader');
   const tc = useTranslations('common');
+  const locale = useLocale();
   const router = useRouter();
   const [prefs, updatePrefs] = useReaderPrefs();
 
@@ -138,13 +150,34 @@ export function ReaderShell({
   // and enables its actions). Written on mouseup only — the drag is over by
   // then, so this can never disturb the selection it describes.
   const [selectionQuote, setSelectionQuote] = useState<string | null>(null);
-  // 原文 / 译文. Highlights anchor to the ORIGINAL text's character offsets, so
-  // they are deliberately not painted over the translation.
-  const [textView, setTextView] = useState<'original' | 'translated'>('original');
-  const [translationState, setTranslationState] = useState(doc.translationState);
-  const [translating, setTranslating] = useState(false);
-  const hasTranslation = translationState === 'ready' || translationState === 'partial';
-  const showTranslated = textView === 'translated' && hasTranslation;
+  // 阅读语言 (owner, 2026-10-07): 原文 / 中文 / English. The REMEMBERED choice is
+  // prefs.textLang ('auto' = the UI language); `textOverride` is a this-page-only
+  // switch to 原文 (the notice's 显示原文, or a jump to a highlight — marks anchor
+  // to the ORIGINAL text's character offsets, so they are never painted over a
+  // translation). A doc already in the wanted language simply shows 原文.
+  const [textOverride, setTextOverride] = useState<ReaderTextChoice | null>(null);
+  const textChoice: ReaderTextChoice =
+    textOverride ?? resolveReaderText(prefs.textLang, locale, doc.language);
+  const readingLang: TargetLang | null =
+    textChoice !== 'original' && doc.targetLangs.includes(textChoice) ? textChoice : null;
+  const [passStatus, setPassStatus] = useState(doc.translations);
+  // A refresh brings the server's view — except for a run this page is
+  // watching: a refresh can land between our start and the pass claiming its
+  // row (showing the PREVIOUS state), so only the poll may end a local 'running'.
+  useEffect(() => {
+    setPassStatus((local) => {
+      const next = { ...doc.translations };
+      for (const lang of Object.keys(local) as TargetLang[]) {
+        if (local[lang]?.state === 'running' && next[lang]?.state !== 'running') next[lang] = local[lang];
+      }
+      return next;
+    });
+  }, [doc.translations]);
+  /** True while ANY rendered chapter shows a translation — marks + selection tools step aside. */
+  const showTranslated =
+    readingLang !== null && chapters.some((c) => Boolean(c.translations[readingLang]));
+  const showTranslatedRef = useRef(showTranslated);
+  showTranslatedRef.current = showTranslated;
   // The mark popover hosts a note textarea — while it is open, nothing may
   // unmount the popover out from under an unsaved draft.
   const [editingMarkNote, setEditingMarkNote] = useState(false);
@@ -837,9 +870,27 @@ export function ReaderShell({
     };
   }, []);
 
+  // Jumps (highlight / note / citation) need the ORIGINAL text on screen —
+  // that is what they anchor to. Switch for this page, then run the jump once
+  // the original has been committed and repainted.
+  const afterOriginalRef = useRef<(() => void) | null>(null);
+  const ensureOriginal = useCallback((then: () => void): boolean => {
+    if (!showTranslatedRef.current) return false;
+    afterOriginalRef.current = then;
+    setTextOverride('original');
+    return true;
+  }, []);
+  useEffect(() => {
+    if (showTranslated || !afterOriginalRef.current) return;
+    const run = afterOriginalRef.current;
+    afterOriginalRef.current = null;
+    window.requestAnimationFrame(() => run());
+  }, [showTranslated]);
+
   const handleCommunityJump = useCallback(
     (note: CommunityNote) => {
       setFocusNoteId(note.id);
+      if (ensureOriginal(() => handleCommunityJumpRef.current(note))) return;
       if (showOriginalPdf) setPdfView('text');
       const root = rootFor(note.chapterIndex);
       const h = highlighterRef.current;
@@ -861,8 +912,10 @@ export function ReaderShell({
       }
       router.replace(readHref(note.chapterIndex), { scroll: false });
     },
-    [doFlash, readHref, rootFor, router, showOriginalPdf],
+    [doFlash, ensureOriginal, readHref, rootFor, router, showOriginalPdf],
   );
+  const handleCommunityJumpRef = useRef(handleCommunityJump);
+  handleCommunityJumpRef.current = handleCommunityJump;
 
   const handleReplyAdded = useCallback(
     (noteId: string, reply: CommunityNote['replies'][number]) => {
@@ -1203,6 +1256,7 @@ export function ReaderShell({
 
   const handleCitationJump = useCallback(
     (citation: Citation) => {
+      if (ensureOriginal(() => handleCitationJumpRef.current(citation))) return;
       if (showOriginalPdf) setPdfView('text');
       const root = rootFor(citation.chapterIndex);
       const h = highlighterRef.current;
@@ -1223,11 +1277,14 @@ export function ReaderShell({
       }
       router.replace(readHref(citation.chapterIndex), { scroll: false });
     },
-    [doFlash, readHref, rootFor, router, showOriginalPdf],
+    [doFlash, ensureOriginal, readHref, rootFor, router, showOriginalPdf],
   );
+  const handleCitationJumpRef = useRef(handleCitationJump);
+  handleCitationJumpRef.current = handleCitationJump;
 
   const handleOwnJump = useCallback(
     (hl: { id: string; chapterIndex: number }) => {
+      if (ensureOriginal(() => handleOwnJumpRef.current(hl))) return;
       if (showOriginalPdf) setPdfView('text');
       if (flashMark(hl.id)) return;
       if (rootFor(hl.chapterIndex)) {
@@ -1237,8 +1294,10 @@ export function ReaderShell({
       flashedRef.current = null;
       router.replace(`${readHref(hl.chapterIndex)}&hl=${hl.id}`, { scroll: false });
     },
-    [flashMark, readHref, rootFor, router, scrollToChapter, showOriginalPdf],
+    [ensureOriginal, flashMark, readHref, rootFor, router, scrollToChapter, showOriginalPdf],
   );
+  const handleOwnJumpRef = useRef(handleOwnJump);
+  handleOwnJumpRef.current = handleOwnJump;
 
   const handleOwnMutated = useCallback(
     (id: string, patch: { color?: string; noteText?: string | null } | null) => {
@@ -1292,7 +1351,8 @@ export function ReaderShell({
       const res = await fetch('/api/library/translate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ docId: doc.id, text: text.slice(0, 6000) }),
+        // The reader's own language; the server flips it when the doc is already in it.
+        body: JSON.stringify({ docId: doc.id, text: text.slice(0, 6000), target: contentLocale(locale) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.translation) {
@@ -1300,47 +1360,96 @@ export function ReaderShell({
       }
       return { text: data.translation as string, cached: Boolean(data.cached) };
     },
+    [doc.id, locale, t],
+  );
+
+  // ── 自动翻译 ──────────────────────────────────────────────────────────
+  // Reading in a language the doc has no (complete) translation for starts the
+  // shared pass by itself — no button — beginning at the chapter on screen. The
+  // original shows meanwhile; each chapter swaps in as it lands (poll → refresh).
+  const autoStartedRef = useRef(new Set<TargetLang>());
+  // The pass claims its row asynchronously, so right after a start the status
+  // can still show the PREVIOUS run's end. A terminal state counts only when it
+  // finished after our start (`passStartRef`, server clock) — or, as a backstop
+  // for a pass that died before claiming, after a few polls.
+  const passStartRef = useRef(0);
+  const graceRef = useRef(0);
+  const lastRefreshRef = useRef(0);
+  const currentChapterRef = useRef(currentChapter);
+  currentChapterRef.current = currentChapter;
+  const chaptersRef = useRef(chapters);
+  chaptersRef.current = chapters;
+
+  const startTranslation = useCallback(
+    async (lang: TargetLang, quiet: boolean) => {
+      setPassStatus((p) => ({ ...p, [lang]: { state: 'running', error: null } }));
+      passStartRef.current = Number.POSITIVE_INFINITY;
+      graceRef.current = 4;
+      try {
+        const res = await fetch(`/api/library/docs/${doc.id}/translate`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ lang, startChapter: currentChapterRef.current }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          passStartRef.current = Date.parse(data?.at ?? '') || 0;
+          return;
+        }
+        setPassStatus((p) => ({ ...p, [lang]: { state: 'failed', error: data?.reason ?? null } }));
+        if (!quiet) pushToast('error', data?.reason ?? t('translate_failed_retry'));
+      } catch {
+        setPassStatus((p) => ({ ...p, [lang]: { state: 'failed', error: null } }));
+        if (!quiet) pushToast('error', t('network_error_retry'));
+      }
+    },
     [doc.id, t],
   );
 
-
-  /** Translate the WHOLE document once, for everyone. */
-  const startDocTranslation = useCallback(async () => {
-    if (translating) return;
-    setTranslating(true);
-    try {
-      const res = await fetch(`/api/library/docs/${doc.id}/translate`, { method: 'POST' });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        pushToast('error', data?.reason ?? t('translate_failed_retry'));
-        setTranslating(false);
-        return;
-      }
-      setTranslationState('running');
-    } catch {
-      pushToast('error', t('network_error_retry'));
-      setTranslating(false);
-    }
-  }, [doc.id, translating, t]);
-
-  // Poll while a whole-document pass runs; a finished pass needs the server's
-  // chapter payload, so refresh the route rather than faking it client-side.
+  const readingState = readingLang ? (passStatus[readingLang]?.state ?? 'none') : 'none';
   useEffect(() => {
-    if (translationState !== 'running') return;
+    if (!readingLang || readingState === 'running') return;
+    if (autoStartedRef.current.has(readingLang)) return; // once per language per visit
+    const missing =
+      chapters.some((c) => !c.translations[readingLang]) || !doc.titles[readingLang];
+    if (!missing) return;
+    autoStartedRef.current.add(readingLang);
+    void startTranslation(readingLang, true);
+  }, [readingLang, readingState, chapters, doc.titles, startTranslation]);
+
+  // Poll the running pass; pull the server payload when a chapter the reader
+  // is on (or about to reach) has landed, and once more when the pass ends.
+  useEffect(() => {
+    if (!readingLang || readingState !== 'running') return;
+    const lang = readingLang;
     const timer = window.setInterval(() => {
       void (async () => {
         try {
-          const res = await fetch(`/api/library/docs/${doc.id}/translate`);
+          const res = await fetch(`/api/library/docs/${doc.id}/translate?lang=${lang}`);
           const data = await res.json().catch(() => null);
-          if (!data?.state || data.state === 'running') return;
-          window.clearInterval(timer);
-          setTranslating(false);
-          setTranslationState(data.state);
-          if (data.state === 'ready' || data.state === 'partial') {
-            setTextView('translated');
+          if (!res.ok || !data?.state) return;
+          const landed = new Set<number>(Array.isArray(data.chapters) ? data.chapters : []);
+          const rendered = chaptersRef.current;
+          const fresh = rendered.filter((c) => landed.has(c.chapterIndex) && !c.translations[lang]);
+          const here = currentChapterRef.current;
+          const near = fresh.some((c) => c.chapterIndex === here || c.chapterIndex === here + 1);
+          const done = data.state !== 'running';
+          const endedAfterStart =
+            typeof data.finishedAt === 'string' && Date.parse(data.finishedAt) >= passStartRef.current - 1000;
+          if (done && !endedAfterStart && graceRef.current > 0) {
+            graceRef.current -= 1; // an earlier run's end — this one has not claimed yet
+            return;
+          }
+          graceRef.current = 0;
+          if (done) {
+            window.clearInterval(timer);
+            setPassStatus((p) => ({ ...p, [lang]: { state: data.state, error: data.error ?? null } }));
             router.refresh();
-          } else if (data.error) {
-            pushToast('error', String(data.error));
+            return;
+          }
+          if (near && Date.now() - lastRefreshRef.current > 8000) {
+            lastRefreshRef.current = Date.now();
+            router.refresh();
           }
         } catch {
           /* retry next tick */
@@ -1348,12 +1457,68 @@ export function ReaderShell({
       })();
     }, 4000);
     return () => window.clearInterval(timer);
-  }, [translationState, doc.id, router, t]);
+  }, [readingLang, readingState, doc.id, router]);
 
+  /** Menu pick = the remembered preference; it also clears a this-page 原文 override. */
+  const chooseText = useCallback(
+    (choice: ReaderTextChoice) => {
+      setTextOverride(null);
+      updatePrefs({ textLang: prefForChoice(choice, locale, doc.language) });
+      if (choice !== 'original') autoStartedRef.current.delete(choice); // an explicit pick may retry
+    },
+    [doc.language, locale, updatePrefs],
+  );
+
+  const langName = (lang: TargetLang) => (lang === 'zh' ? t('lang_in_zh') : t('lang_in_en'));
+  const shownTitle = (readingLang && doc.titles[readingLang]) || doc.title;
+  const displayToc = useMemo(
+    () =>
+      readingLang
+        ? toc.map((e) => ({ ...e, title: e.titles?.[readingLang] || e.title }))
+        : toc,
+    [toc, readingLang],
+  );
+  const readingNotice = (() => {
+    if (!readingLang || showOriginalPdf) return null;
+    const lang = langName(readingLang);
+    const linkCls = 'underline decoration-dotted underline-offset-2 transition hover:opacity-80';
+    if (showTranslated) {
+      return (
+        <p className="r-muted flex flex-wrap items-center gap-x-1.5 text-xs">
+          <Languages className="h-3.5 w-3.5" />
+          <span>{t('notice_translated', { lang })}</span>
+          <span aria-hidden>·</span>
+          <button type="button" className={linkCls} onClick={() => setTextOverride('original')}>
+            {t('notice_show_original')}
+          </button>
+        </p>
+      );
+    }
+    if (readingState === 'running') {
+      return (
+        <p className="r-muted flex items-center gap-1.5 text-xs">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          {t('notice_translating', { lang })}
+        </p>
+      );
+    }
+    if (readingState === 'failed') {
+      return (
+        <p className="r-muted flex flex-wrap items-center gap-x-1.5 text-xs">
+          <span>{t('notice_failed', { lang })}</span>
+          <span aria-hidden>·</span>
+          <button type="button" className={linkCls} onClick={() => void startTranslation(readingLang, false)}>
+            {t('notice_retry')}
+          </button>
+        </p>
+      );
+    }
+    return null;
+  })();
 
   // ── render ────────────────────────────────────────────────────────────
 
-  const currentTitle = toc.find((c) => c.chapterIndex === currentChapter)?.title ?? null;
+  const currentTitle = displayToc.find((c) => c.chapterIndex === currentChapter)?.title ?? null;
   const chapterLabel =
     chapterCount > 1
       ? `${t('chapter_x_of_y', { current: currentChapter + 1, total: chapterCount })}${
@@ -1386,7 +1551,7 @@ export function ReaderShell({
       <ReaderChrome
         visible={chromeVisible}
         onBack={goBack}
-        title={doc.title}
+        title={shownTitle}
         chapterLabel={chapterLabel}
         sourceUrl={doc.sourceUrl}
         tocOpen={tocOpen}
@@ -1403,15 +1568,15 @@ export function ReaderShell({
             ? { mode, available: flowAvailable, onChange: changeMode }
             : null
         }
-        translation={
-          showOriginalPdf
+        language={
+          showOriginalPdf || doc.targetLangs.length === 0
             ? null
             : {
-                state: translationState,
-                view: textView,
-                busy: translating,
-                onChangeView: setTextView,
-                onTranslateAll: () => void startDocTranslation(),
+                choice: readingLang ?? 'original',
+                docLanguage: doc.language,
+                targetLangs: doc.targetLangs,
+                status: passStatus,
+                onChoose: chooseText,
               }
         }
         pdfMode={
@@ -1429,7 +1594,7 @@ export function ReaderShell({
         <TocPanel
           open={tocOpen}
           onClose={() => setTocOpen(false)}
-          toc={toc}
+          toc={displayToc}
           current={currentChapter}
           onSelect={(n) => goChapter(n)}
         />
@@ -1475,9 +1640,10 @@ export function ReaderShell({
                 <section key={ch.chapterIndex} data-chapter-index={ch.chapterIndex}>
                   <ReaderContent
                     html={ch.html}
-                    translatedHtml={ch.translatedHtml}
-                    view={showTranslated ? 'translated' : 'original'}
-                    docTitle={doc.title}
+                    translation={readingLang ? (ch.translations[readingLang] ?? null) : null}
+                    docTitle={shownTitle}
+                    originalTitle={doc.title}
+                    notice={ch.chapterIndex === chapters[0]?.chapterIndex ? readingNotice : null}
                     author={doc.author}
                     siteName={doc.siteName}
                     chapterIndex={ch.chapterIndex}
@@ -1527,7 +1693,7 @@ export function ReaderShell({
             questions={doc.aiOverview?.questions ?? []}
             prefill={chatPrefill}
             onCitationJump={handleCitationJump}
-            toc={toc}
+            toc={displayToc}
             notesVersion={hlVersion}
             editNoteId={editNoteId}
             onJumpOwn={handleOwnJump}

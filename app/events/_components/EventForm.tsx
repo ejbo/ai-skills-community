@@ -25,6 +25,7 @@ import { Avatar } from '@/components/Avatar';
 import { pushToast } from '@/components/Toaster';
 import { withBasePath } from '@/lib/base-path';
 import { currentLoginHref } from '@/lib/auth/callback-path';
+import { eventHref } from '@/lib/slug-href';
 import {
   DEFAULT_EVENT_TIMEZONE,
   EVENT_CITIES,
@@ -100,7 +101,16 @@ async function uploadImage(
   return data as { url: string };
 }
 
-export function EventForm({ eventId, initial }: { eventId?: string; initial?: EventFormInitial }) {
+export function EventForm({
+  eventId,
+  eventSlug = null,
+  initial,
+}: {
+  eventId?: string;
+  /** Title slug of the event being edited — where 保存 lands. */
+  eventSlug?: string | null;
+  initial?: EventFormInitial;
+}) {
   const t = useTranslations('event_form');
   const tc = useTranslations('common');
   const tl = useTranslations('labels');
@@ -238,8 +248,11 @@ export function EventForm({ eventId, initial }: { eventId?: string; initial?: Ev
         return;
       }
       pushToast('success', eventId ? tc('saved') : t('published'));
-      const id = eventId ?? (data.event?.id as string);
-      router.push(`/events/${id}`);
+      router.push(
+        eventId
+          ? eventHref({ id: eventId, slug: eventSlug })
+          : eventHref({ id: data.event?.id as string, slug: (data.event?.slug as string | null) ?? null }),
+      );
       router.refresh();
     } finally {
       setBusy(false);

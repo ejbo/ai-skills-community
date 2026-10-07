@@ -143,6 +143,8 @@ export interface EventSpeakerData {
 /** Event list/detail item as shipped to client components (authors pre-trimmed). */
 export interface PublicEventItem {
   id: string;
+  /** Title slug for the link (eventHref); null = legacy row, the id is used. */
+  slug: string | null;
   title: string;
   summary: string;
   kind: EventKindValue;

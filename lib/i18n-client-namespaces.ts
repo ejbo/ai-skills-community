@@ -26,6 +26,7 @@
  * `pnpm test i18n-client-namespaces` and paste what it names.
  */
 export const CLIENT_MESSAGE_NAMESPACES = [
+  'audience',
   'auth',
   'auth_error',
   'browse',

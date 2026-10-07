@@ -16,6 +16,7 @@ import { eventLocalDayKey } from '@/lib/events/time';
 import { EVENT_TIMEZONES } from '@/lib/events/types';
 import { BROWSABLE_DOC_WHERE, canReadDoc, libraryViewerFromSession } from '@/lib/library-queries';
 import { asAiOverview, pickOverview, pickText } from '@/lib/library/i18n-content';
+import { pickDocTitle } from '@/lib/library/translation-shared';
 import { INSTALLABLE_SKILL_WHERE } from '@/lib/pack-queries';
 import { DISCOVERABLE_SKILL_WHERE, SKILL_CARD_SELECT } from '@/lib/skill-queries';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor } from '@/lib/user-identity';
@@ -54,6 +55,7 @@ import {
   zonePostVisibilityWhere,
 } from './post-queries';
 import { embedKey, hostnameOf, isEmbedFileKey, normalizeEmbedRef, zonePostHref, type EmbedKind, type EmbedRef } from './shared';
+import { eventHref, videoHref } from '@/lib/slug-href';
 import type {
   EmbedCandidate,
   EmbedData,
@@ -93,6 +95,8 @@ const LIBRARY_EMBED_SELECT = {
   id: true,
   slug: true,
   title: true,
+  language: true,
+  titleTranslations: true,
   author: true,
   docType: true,
   format: true,
@@ -112,6 +116,8 @@ type LibraryEmbedRow = {
   id: string;
   slug: string;
   title: string;
+  language: string | null;
+  titleTranslations: unknown;
   author: string | null;
   docType: string;
   format: string;
@@ -135,7 +141,7 @@ async function libraryDataFor(doc: LibraryEmbedRow, ctx: EmbedContext): Promise<
   const canRead = await canReadDoc(doc, lv);
   return {
     slug: doc.slug,
-    title: doc.title,
+    title: pickDocTitle(ctx.locale, doc),
     author: doc.author,
     docType: doc.docType,
     format: doc.format,
@@ -152,10 +158,32 @@ async function libraryDataFor(doc: LibraryEmbedRow, ctx: EmbedContext): Promise<
 async function resolveLibrary(refs: string[], ctx: EmbedContext): Promise<Resolved> {
   const out: Resolved = new Map();
   const docs = await prisma.libraryDoc.findMany({ where: { slug: { in: refs } }, select: LIBRARY_EMBED_SELECT });
+  // `[embed:library:<slug>]` stores a slug. A ref whose doc has since moved to a
+  // title slug (docs/contracts/slugs.md) resolves through SlugAlias and is
+  // answered under the ref AS WRITTEN, so old posts keep their cards.
+  const found = new Set(docs.map((d) => d.slug));
+  const missing = refs.filter((r) => !found.has(r));
+  const aliased = missing.length
+    ? await prisma.slugAlias.findMany({
+        where: { kind: 'library_doc', scope: '', slug: { in: missing } },
+        select: { slug: true, itemId: true },
+      })
+    : [];
+  const movedDocs = aliased.length
+    ? await prisma.libraryDoc.findMany({ where: { id: { in: aliased.map((a) => a.itemId) } }, select: LIBRARY_EMBED_SELECT })
+    : [];
+  const byId = new Map(movedDocs.map((d) => [d.id, d]));
+  const entries: [string, (typeof docs)[number]][] = [
+    ...docs.map((d) => [d.slug, d] as [string, (typeof docs)[number]]),
+    ...aliased.flatMap((a) => {
+      const d = byId.get(a.itemId);
+      return d ? [[a.slug, d] as [string, (typeof docs)[number]]] : [];
+    }),
+  ];
   await Promise.all(
-    docs.map(async (doc) => {
+    entries.map(async ([ref, doc]) => {
       const data = await libraryDataFor(doc, ctx);
-      out.set(doc.slug, typeof data === 'string' ? fail('library', doc.slug, data) : { kind: 'library', ref: doc.slug, ok: true, data });
+      out.set(ref, typeof data === 'string' ? fail('library', ref, data) : { kind: 'library', ref, ok: true, data });
     }),
   );
   return out;
@@ -214,7 +242,7 @@ async function resolveVideo(refs: string[], ctx: EmbedContext): Promise<Resolved
       viewCount: v.viewCount,
       likeCount: v.likeCount,
       uploader: { handle: v.uploader.handle, displayName: v.uploader.displayName, avatarUrl: v.uploader.avatarUrl },
-      href: `/videos/${v.slug}`,
+      href: videoHref(v.slug),
     };
     out.set(v.slug, { kind: 'video', ref: v.slug, ok: true, data });
   }
@@ -303,7 +331,7 @@ async function resolveEvent(refs: string[], ctx: EmbedContext): Promise<Resolved
           coverUrl: ev.coverUrl,
           attendeeCount: ev.attendeeCount,
           cancelled: ev.cancelled,
-          href: `/events/${ev.id}`,
+          href: eventHref(ev),
         };
         out.set(id, { kind: 'event', ref: id, ok: true, data });
       } catch {
@@ -337,6 +365,7 @@ async function resolvePost(refs: string[], ctx: EmbedContext): Promise<Resolved>
     where: { id: { in: refs }, status: 'published', deletedAt: null },
     select: {
       ...ZONE_POST_ACCESS_SELECT,
+      slug: true,
       title: true,
       summary: true,
       type: true,
@@ -370,7 +399,7 @@ async function resolvePost(refs: string[], ctx: EmbedContext): Promise<Resolved>
         publishedAt: p.publishedAt ? p.publishedAt.toISOString() : null,
         likeCount: p.likeCount,
         commentCount: p.commentCount,
-        href: zonePostHref(p.zone.slug, p.id),
+        href: zonePostHref(p.zone.slug, p),
       };
       out.set(p.id, { kind: 'post', ref: p.id, ok: true, data });
     }),

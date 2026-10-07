@@ -39,7 +39,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const topic = await prisma.discussionTopic.findUnique({
     where: { id: params.id },
-    select: { id: true, title: true, locked: true, author: { select: { id: true, email: true } } },
+    select: { id: true, slug: true, title: true, locked: true, author: { select: { id: true, email: true } } },
   });
   if (!topic) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   if (topic.locked && !can(session.user, 'discussion')) {
@@ -117,6 +117,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         actorId: session.user.id,
         actorName: session.user.displayName,
         topicId: topic.id,
+        topicSlug: topic.slug,
         topicTitle: topic.title,
         focusId: reply.id,
         bodyMd,
@@ -130,6 +131,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       actorId: session.user.id,
       actorName: session.user.displayName,
       topicId: topic.id,
+      topicSlug: topic.slug,
       topicTitle: topic.title,
       focusId: reply.id,
       bodyMd,

@@ -11,6 +11,9 @@ import { env } from '@/lib/env';
 import { prisma } from '@/lib/db';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor, type PublicAuthor } from '@/lib/user-identity';
 import { domainViewer, type DomainViewer } from '@/lib/permissions';
+import { loadAudience } from '@/lib/audience';
+import type { AudiencePick, ContentVisibility } from '@/lib/audience-shared';
+import { canSeeVoteActivity, listVisibilityWhere } from '@/lib/votes/visibility';
 import {
   competitionRanks,
   parseCustomFields,
@@ -34,12 +37,18 @@ export function voteViewerFromSession(session: Session | null): VoteViewer {
 
 const BASE_WHERE: Prisma.VoteActivityWhereInput = { deletedAt: null };
 
+// ─── 可见范围 gate ──────────────────────────────────────────────────────────
+// Lives in lib/votes/visibility.ts (light imports, so the translation registry and its
+// tests can run the REAL gate); re-exported here so routes keep one import site.
+export { VOTE_GATE_SELECT, canSeeVoteActivity, isVoteOwner, type VoteGateRow } from '@/lib/votes/visibility';
+
 export type VoteTab = 'active' | 'ended' | 'mine';
 
 // ─── Hub cards ──────────────────────────────────────────────────────────────
 
 export interface PublicVoteCard {
   id: string;
+  slug: string | null; // 标题链接 — always link through voteHref(card)
   title: string;
   coverUrl: string | null; // stored cover or first-entry thumb (root-relative)
   coverIsVideo: boolean; // thumb came from a video entry without poster
@@ -53,6 +62,9 @@ export interface PublicVoteCard {
   voterCount: number;
   voteCount: number | null; // null when results are hidden for this viewer
   featured: boolean;
+  // 可见范围 — only ever ≠ 'public' on cards the viewer may see anyway (their own, or a
+  // list that names them), so it is safe to ship and drives the quiet badge.
+  visibility: ContentVisibility;
   isMine: boolean;
   creator: PublicAuthor;
   createdAt: string;
@@ -90,6 +102,7 @@ function toVoteCard(row: ActivityRow, viewer: VoteViewer, winnerThumbUrl: string
   const fallbackThumb = first ? (first.kind === 'video' ? first.posterUrl : first.fileUrl) : null;
   return {
     id: row.id,
+    slug: row.slug,
     title: row.title,
     coverUrl: row.coverUrl ?? fallbackThumb,
     coverIsVideo: !row.coverUrl && first?.kind === 'video' && !first.posterUrl,
@@ -103,6 +116,7 @@ function toVoteCard(row: ActivityRow, viewer: VoteViewer, winnerThumbUrl: string
     voterCount: row.voterCount,
     voteCount: resultsVisible ? row.voteCount : null,
     featured: row.featured,
+    visibility: row.visibility,
     isMine: Boolean(viewer.id) && viewer.id === row.creatorId,
     creator: toPublicAuthor(row.creator, viewer.canSeeIdentity),
     createdAt: row.createdAt.toISOString(),
@@ -154,6 +168,7 @@ export async function listVoteActivities(
   let orderBy: Prisma.VoteActivityOrderByWithRelationInput[];
 
   if (tab === 'mine') {
+    // 我发起的 lists EVERYTHING the viewer created — drafts and hidden ones included.
     if (!viewer.id) return { items: [], total: 0, page: 1, pageCount: 1 };
     where = { ...BASE_WHERE, creatorId: viewer.id };
     orderBy = [{ createdAt: 'desc' }];
@@ -162,6 +177,7 @@ export async function listVoteActivities(
       ...BASE_WHERE,
       status: 'published',
       OR: [{ closedAt: { not: null } }, { endAt: { lte: now } }],
+      AND: [await listVisibilityWhere(viewer)],
     };
     orderBy = [
       { closedAt: { sort: 'desc', nulls: 'last' } },
@@ -175,6 +191,7 @@ export async function listVoteActivities(
       status: 'published',
       closedAt: null,
       OR: [{ endAt: null }, { endAt: { gt: now } }],
+      AND: [await listVisibilityWhere(viewer)],
     };
     orderBy = [{ endAt: { sort: 'asc', nulls: 'last' } }, { publishedAt: 'desc' }];
   }
@@ -227,9 +244,7 @@ export async function listVoteActivitiesByCreator(
 ): Promise<Omit<VoteListResult, 'items'> & { items: CreatedVoteCard[] }> {
   const pageSize = Math.min(48, Math.max(1, Math.trunc(opts.pageSize ?? VOTE_PAGE_SIZE)));
   const where: Prisma.VoteActivityWhereInput = {
-    ...BASE_WHERE,
-    status: 'published',
-    creatorId,
+    ...(await creatorListWhere(creatorId, viewer)),
     ...(opts.ids ? { id: { in: [...new Set(opts.ids)].slice(0, 100) } } : {}),
   };
   const total = await prisma.voteActivity.count({ where });
@@ -257,15 +272,25 @@ export async function listVoteActivitiesByCreator(
   };
 }
 
-/** How many activities `listVoteActivitiesByCreator` would list. */
-export async function countVoteActivitiesByCreator(creatorId: string): Promise<number> {
-  return prisma.voteActivity.count({ where: { ...BASE_WHERE, status: 'published', creatorId } });
+/** How many activities `listVoteActivitiesByCreator` would list for this viewer. */
+export async function countVoteActivitiesByCreator(creatorId: string, viewer: VoteViewer): Promise<number> {
+  return prisma.voteActivity.count({ where: await creatorListWhere(creatorId, viewer) });
+}
+
+/**
+ * 个人主页 / pins: the creator looking at their own page sees every published activity
+ * (hidden ones too — it is their page); anyone else gets the browse rule.
+ */
+async function creatorListWhere(creatorId: string, viewer: VoteViewer): Promise<Prisma.VoteActivityWhereInput> {
+  const base: Prisma.VoteActivityWhereInput = { ...BASE_WHERE, status: 'published', creatorId };
+  if (viewer.id && viewer.id === creatorId) return base;
+  return { ...base, AND: [await listVisibilityWhere(viewer)] };
 }
 
 /** Admin-featured published votes for the hub's 精选 band (newest featured first). */
 export async function listFeaturedVoteActivities(viewer: VoteViewer): Promise<PublicVoteCard[]> {
   const rows = await prisma.voteActivity.findMany({
-    where: { ...BASE_WHERE, status: 'published', featured: true },
+    where: { ...BASE_WHERE, status: 'published', featured: true, AND: [await listVisibilityWhere(viewer)] },
     orderBy: [{ featuredAt: 'desc' }],
     take: MAX_FEATURED_VOTES,
     include: CARD_INCLUDE,
@@ -324,6 +349,7 @@ export interface VoteMySubmission {
 
 export interface VoteActivityView {
   id: string;
+  slug: string | null; // 标题链接（voteHref）；API 调用仍然用 id
   title: string;
   descriptionMd: string;
   announcement: string;
@@ -345,6 +371,7 @@ export interface VoteActivityView {
   showAuthors: boolean;
   entryOrder: 'random' | 'upload' | 'votes';
   featured: boolean;
+  visibility: ContentVisibility; // 可见范围（非 public 时页头显示徽标；发起人可在页头改）
   over: boolean;
   started: boolean;
   open: boolean; // votingOpen for this instant
@@ -389,8 +416,9 @@ export interface VoteActivityView {
 }
 
 /**
- * Full gallery payload for /votes/[id]. Null when missing/deleted, or a draft
- * viewed by someone other than the creator/admin.
+ * Full gallery payload for /votes/[id]. Null when missing/deleted, a draft viewed by
+ * someone other than the creator/admin, or an activity whose 可见范围 excludes the viewer
+ * (`canSeeVoteActivity`) — the page 404s exactly like a missing one.
  */
 export async function getVoteActivityView(
   id: string,
@@ -400,10 +428,9 @@ export async function getVoteActivityView(
     where: { id },
     include: { creator: AUTHOR_IDENTITY_SELECT },
   });
-  if (!row || row.deletedAt) return null;
+  if (!row || !(await canSeeVoteActivity(row, viewer))) return null;
   const isCreator = Boolean(viewer.id) && viewer.id === row.creatorId;
   const isOwner = isCreator || viewer.canManage;
-  if (row.status === 'draft' && !isOwner) return null;
 
   const over = voteOver(row);
   const started = voteStarted(row);
@@ -558,6 +585,7 @@ export async function getVoteActivityView(
 
   return {
     id: row.id,
+    slug: row.slug,
     title: row.title,
     descriptionMd: row.descriptionMd,
     announcement: row.announcement,
@@ -577,6 +605,7 @@ export async function getVoteActivityView(
     showAuthors: row.showAuthors,
     entryOrder: row.entryOrder,
     featured: row.featured,
+    visibility: row.visibility,
     over,
     started,
     open,
@@ -645,6 +674,7 @@ export interface VoteEntryEditRow {
 
 export interface VoteActivityEdit {
   id: string;
+  slug: string | null; // 草稿期间随标题变（PATCH 回传新值），发布后冻结
   title: string;
   descriptionMd: string;
   announcement: string;
@@ -679,6 +709,9 @@ export interface VoteActivityEdit {
   customFields: VoteCustomField[];
   submissionNote: string;
   allowComments: boolean;
+  visibility: ContentVisibility;
+  audience: AudiencePick[]; // 指定成员可见名单（trimmed with the editor's own `identity` permission）
+  creatorHandle: string; // implicit on the list — the picker never offers them
   pendingCount: number; // 待审核投稿数（entries 里也带 status，这里是快捷徽标）
   entries: VoteEntryEditRow[];
 }
@@ -692,6 +725,7 @@ export async function getVoteActivityForEdit(
   const row = await prisma.voteActivity.findUnique({
     where: { id },
     include: {
+      creator: { select: { handle: true } },
       entries: {
         orderBy: { entryNo: 'asc' },
         select: {
@@ -721,9 +755,11 @@ export async function getVoteActivityForEdit(
   });
   if (!row || row.deletedAt) return null;
   if (row.creatorId !== viewer.id && !viewer.canManage) return null;
+  const audience = await loadAudience('vote', row.id, viewer.canSeeIdentity);
 
   return {
     id: row.id,
+    slug: row.slug,
     title: row.title,
     descriptionMd: row.descriptionMd,
     announcement: row.announcement,
@@ -758,6 +794,9 @@ export async function getVoteActivityForEdit(
     customFields: parseCustomFields(row.submissionFields) ?? [],
     submissionNote: row.submissionNote,
     allowComments: row.allowComments,
+    visibility: row.visibility,
+    audience,
+    creatorHandle: row.creator.handle,
     pendingCount: row.entries.filter((e) => e.status === 'pending').length,
     entries: row.entries.map(({ submitter, ...e }) => ({
       ...e,

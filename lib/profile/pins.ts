@@ -23,8 +23,10 @@ import { PUBLISHED_PUBLIC } from '@/lib/video/queries';
 import { SHORTS_PUBLIC } from '@/lib/video/shorts-queries';
 import { countZoneFeed, listZoneFeed } from '@/lib/zones/post-queries';
 import { zonePostHref } from '@/lib/zones/shared';
+import { eventHref, topicHref, videoHref } from '@/lib/slug-href';
 import { listEventsByAuthor } from '@/lib/event-queries';
 import { listVoteActivitiesByCreator } from '@/lib/vote-queries';
+import { voteHref } from '@/lib/votes/shared';
 
 // ─── Pure ────────────────────────────────────────────────────────────────
 
@@ -207,12 +209,12 @@ async function resolveKind(
     case 'topic': {
       const rows = await prisma.discussionTopic.findMany({
         where: { id: { in: ids }, authorId: uid },
-        select: { id: true, title: true, bodyMd: true, replyCount: true, upvoteCount: true, viewCount: true, createdAt: true },
+        select: { id: true, slug: true, title: true, bodyMd: true, replyCount: true, upvoteCount: true, viewCount: true, createdAt: true },
       });
       return rows.map((r) => ({
         kind,
         id: r.id,
-        href: `/discussion/topics/${r.id}`,
+        href: topicHref(r),
         title: r.title,
         excerpt: excerptOf(r.bodyMd, 120),
         visual: { type: 'none' },
@@ -250,7 +252,7 @@ async function resolveKind(
       return rows.map((r) => ({
         kind,
         id: r.id,
-        href: kind === 'short' ? `/videos/shorts?v=${r.id}` : `/videos/${r.slug}`,
+        href: kind === 'short' ? `/videos/shorts?v=${r.id}` : videoHref(r.slug),
         title: kind === 'short' ? r.summary || r.title : r.title,
         excerpt: kind === 'short' ? '' : r.summary,
         visual: r.posterUrl ? { type: 'image', url: r.posterUrl, shape: kind === 'short' ? 'tall' : 'wide' } : { type: 'none' },
@@ -269,7 +271,7 @@ async function resolveKind(
       return res.items.map((e) => ({
         kind,
         id: e.id,
-        href: `/events/${e.id}`,
+        href: eventHref(e),
         title: e.title,
         excerpt: e.summary,
         visual: e.coverUrl ? { type: 'image', url: e.coverUrl, shape: 'wide' } : { type: 'none' },
@@ -291,7 +293,7 @@ async function resolveKind(
       return res.items.map((p) => ({
         kind,
         id: p.id,
-        href: zonePostHref(p.zone.slug, p.id),
+        href: zonePostHref(p.zone.slug, p),
         title: p.title,
         excerpt: p.summary,
         visual: p.coverUrl ? { type: 'image', url: p.coverUrl, shape: 'wide' } : { type: 'none' },
@@ -313,7 +315,7 @@ async function resolveKind(
         return {
           kind,
           id: a.id,
-          href: `/votes/${a.id}`,
+          href: voteHref(a),
           title: a.title,
           excerpt: '',
           visual: cover && !a.coverIsVideo ? { type: 'image', url: cover, shape: 'wide' } : { type: 'none' },

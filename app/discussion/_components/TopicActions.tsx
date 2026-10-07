@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Lock, LockOpen, Pencil, Pin, PinOff, Trash2 } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
+import { topicHref } from '@/lib/slug-href';
 
 /**
  * Inline moderation on the topic detail page (feedback-board pattern):
@@ -13,12 +14,15 @@ import { pushToast } from '@/components/Toaster';
  */
 export function TopicActions({
   topicId,
+  topicSlug = null,
   pinned,
   locked,
   canModerate,
   isAuthor,
 }: {
   topicId: string;
+  /** Title slug for the edit link (the API stays id-based). */
+  topicSlug?: string | null;
   pinned: boolean;
   locked: boolean;
   canModerate: boolean;
@@ -75,7 +79,7 @@ export function TopicActions({
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2">
       {isAuthor && (
-        <Link href={`/discussion/topics/${topicId}/edit`} className={btn}>
+        <Link href={`${topicHref({ id: topicId, slug: topicSlug })}/edit`} className={btn}>
           <Pencil className="h-3.5 w-3.5" />
           {tc('edit')}
         </Link>

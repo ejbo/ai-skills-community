@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 import { getLocale } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
@@ -14,6 +14,9 @@ import { StatusBadge, CategoryChip } from '../_components/badges';
 import { FeedbackActions } from '../_components/FeedbackActions';
 import { FeedbackComments, type ThreadView } from '../_components/FeedbackComments';
 import { FeedbackBody } from '../_components/FeedbackBody';
+import { selfHref } from '@/lib/auth/callback-path';
+import { feedbackHref, needsCanonicalRedirect } from '@/lib/slug-href';
+import { resolveFeedbackParam } from '@/lib/title-slugs';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,8 +29,15 @@ export default async function FeedbackDetailPage({
 }) {
   const session = await auth();
   const locale = await getLocale();
-  const feedback = await getFeedbackDetail(params.id, session?.user?.id ?? null);
+  // The param is a title slug, a row id (old links) or a retired slug.
+  const resolved = await resolveFeedbackParam(params.id);
+  if (!resolved) notFound();
+  const feedback = await getFeedbackDetail(resolved.id, session?.user?.id ?? null);
   if (!feedback) notFound();
+  // Canonical (title) URL, keeping ?focus= deep links.
+  if (needsCanonicalRedirect(resolved)) {
+    permanentRedirect(selfHref(feedbackHref({ id: feedback.id, slug: resolved.slug }), searchParams));
+  }
 
   const viewer = session?.user
     ? { handle: session.user.handle, canModerate: can(session.user, 'feedback') }

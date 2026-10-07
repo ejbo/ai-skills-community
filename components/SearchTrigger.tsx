@@ -24,6 +24,8 @@ import { useLocale, useTranslations } from 'next-intl';
 import { motion, AnimatePresence } from 'framer-motion';
 import { relativeTime } from '@/lib/i18n-date';
 import { SEARCH_DEBOUNCE_MS, isSearchableQuery } from '@/lib/search-guard';
+import { voteHref } from '@/lib/votes/shared';
+import { eventHref, feedbackHref, topicHref, videoHref } from '@/lib/slug-href';
 
 type GroupKey =
   | 'skills'
@@ -51,7 +53,7 @@ interface Results {
   // 技术专区：版块 (kind 'zone') 与版块帖子 (kind 'post')；href 由服务端给出。
   zones: { kind: 'zone' | 'post'; id: string; slug: string; title: string; author: string; date: string; href: string }[];
   events: { id: string; title: string; author: string; date: string }[];
-  votes: { id: string; title: string; author: string; date: string }[];
+  votes: { id: string; slug?: string | null; title: string; author: string; date: string }[];
   packs: { slug: string; name: string; date: string }[];
   feedback: { id: string; title: string; author: string; date: string }[];
 }
@@ -270,7 +272,7 @@ export function SearchTrigger() {
       items.push({
         group: 'videos',
         key: `v:${v.slug}`,
-        href: `/videos/${v.slug}`,
+        href: videoHref(v.slug),
         label: v.title,
         meta: `${v.author} · ${reldate(v.date, locale)}`,
       }),
@@ -288,7 +290,7 @@ export function SearchTrigger() {
       items.push({
         group: 'discussions',
         key: `d:${d.kind}:${d.id}`,
-        href: d.kind === 'topic' ? `/discussion/topics/${d.id}` : `/discussion/posts/${d.id}`,
+        href: d.kind === 'topic' ? topicHref(d) : `/discussion/posts/${d.id}`,
         label: d.title || t('search_post_media'),
         meta: `${d.author} · ${reldate(d.date, locale)}`,
       }),
@@ -306,7 +308,7 @@ export function SearchTrigger() {
       items.push({
         group: 'events',
         key: `e:${e.id}`,
-        href: `/events/${e.id}`,
+        href: eventHref(e),
         label: e.title,
         meta: `${e.author} · ${reldate(e.date, locale)}`,
       }),
@@ -315,7 +317,7 @@ export function SearchTrigger() {
       items.push({
         group: 'votes',
         key: `vt:${v.id}`,
-        href: `/votes/${v.id}`,
+        href: voteHref(v),
         label: v.title,
         meta: `${v.author} · ${reldate(v.date, locale)}`,
       }),
@@ -333,7 +335,7 @@ export function SearchTrigger() {
       items.push({
         group: 'feedback',
         key: `f:${f.id}`,
-        href: `/feedback/${f.id}`,
+        href: feedbackHref(f),
         label: f.title,
         meta: `${f.author} · ${reldate(f.date, locale)}`,
       }),

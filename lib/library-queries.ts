@@ -4,6 +4,13 @@ import { prisma } from '@/lib/db';
 import { AUTHOR_IDENTITY_FIELDS, AUTHOR_IDENTITY_SELECT } from '@/lib/user-identity';
 import { isDocType, isLibraryCategory, type AiOverview } from '@/lib/library/types';
 import { asAiOverview, pickOverview, pickText } from '@/lib/library/i18n-content';
+import { effectivePassState, isFreshChapterTranslation } from '@/lib/library/translation-state';
+import {
+  isTargetLang,
+  targetLangsFor,
+  translatedTitle,
+  type TargetLang,
+} from '@/lib/library/translation-shared';
 
 // Member reads only ever surface docs that finished extraction and were not
 // soft-deleted; drafts/failures stay visible to their uploader and admins.
@@ -73,6 +80,8 @@ export const DOC_CARD_SELECT = {
   id: true,
   slug: true,
   title: true,
+  language: true,
+  titleTranslations: true,
   author: true,
   docType: true,
   categories: true,
@@ -99,7 +108,11 @@ export const DOC_CARD_SELECT = {
 export interface DocCardData {
   id: string;
   slug: string;
+  /** ORIGINAL title — render through pickDocTitle(locale, doc) (translation-shared.ts). */
   title: string;
+  language: string | null;
+  /** { source, zh?, en? } JSON — see LibraryDoc.titleTranslations. */
+  titleTranslations: unknown;
   author: string | null;
   docType: string;
   categories: string[];
@@ -239,6 +252,7 @@ const DOC_DETAIL_SELECT = {
   id: true,
   slug: true,
   title: true,
+  titleTranslations: true,
   author: true,
   language: true,
   docType: true,
@@ -365,12 +379,25 @@ export interface HighlightRow {
   createdAt: Date;
 }
 
+/** One chapter's 译文 in one language (only FRESH ones — built from the current html). */
+export interface ReaderChapterTranslation {
+  html: string;
+  title: string | null;
+}
+
 export interface ReaderChapterPayload {
   chapterIndex: number;
   title: string | null;
   html: string;
-  /** Whole-chapter 译文, or null when the doc has not been translated. */
-  translatedHtml: string | null;
+  /** Whole-chapter 译文 per language that has one. At most two (a doc never translates into its own language). */
+  translations: Partial<Record<TargetLang, ReaderChapterTranslation>>;
+}
+
+/** Per-language whole-document pass status, as the reader needs it. */
+export interface ReaderTranslationStatus {
+  /** 'none' = never started (or a crashed pass past its stale window). */
+  state: 'none' | 'running' | 'ready' | 'partial' | 'failed';
+  error: string | null;
 }
 
 export interface ReaderData {
@@ -390,8 +417,11 @@ export interface ReaderData {
     aiIndexState: string;
     language: string | null;
     commentCount: number;
-    translationState: string;
-    translationLang: string | null;
+    /** Languages this doc can be translated into (never its own). */
+    targetLangs: TargetLang[];
+    /** Translated title per language, for the CURRENT title only. */
+    titles: Partial<Record<TargetLang, string>>;
+    translations: Partial<Record<TargetLang, ReaderTranslationStatus>>;
   };
   /** 'flow' = whole doc stacked for continuous scrolling; 'paged' = one chapter. */
   mode: 'paged' | 'flow';
@@ -406,6 +436,8 @@ export interface ReaderData {
     aiSummary: string | null;
     pageStart: number | null;
     pageEnd: number | null;
+    /** Translated chapter title per language (目录 follows the reading language). */
+    titles: Partial<Record<TargetLang, string>>;
   }[];
   progress: { chapterIndex: number; scrollRatio: number; percent: number; shareNotes: boolean } | null;
   highlights: HighlightRow[];
@@ -452,18 +484,19 @@ export async function getDocReaderData(
       aiIndexState: true,
       language: true,
       commentCount: true,
-      translationState: true,
-      translationLang: true,
+      titleTranslations: true,
       status: true,
       visibility: true,
       uploaderId: true,
       deletedAt: true,
+      docTranslations: { select: { targetLang: true, state: true, error: true, heartbeatAt: true } },
     },
   });
   if (!doc || doc.status !== 'ready' || doc.deletedAt) return null;
   if (!(await canReadDoc(doc, viewer))) return 'no_access';
 
-  const [progress, toc] = await Promise.all([
+  const targetLangs = targetLangsFor(doc.language);
+  const [progress, toc, tocTitles] = await Promise.all([
     prisma.libraryProgress.findUnique({
       where: { userId_docId: { userId, docId: doc.id } },
       select: { chapterIndex: true, scrollRatio: true, percent: true, shareNotes: true },
@@ -480,6 +513,10 @@ export async function getDocReaderData(
         pageStart: true,
         pageEnd: true,
       },
+    }),
+    prisma.libraryChapterTranslation.findMany({
+      where: { chapter: { docId: doc.id }, targetLang: { in: targetLangs }, title: { not: null } },
+      select: { targetLang: true, title: true, chapter: { select: { chapterIndex: true } } },
     }),
   ]);
 
@@ -503,17 +540,26 @@ export async function getDocReaderData(
           ? 'flow'
           : 'paged';
 
-  const [chapters, highlights] = await Promise.all([
+  const chapterSelect = {
+    chapterIndex: true,
+    title: true,
+    html: true,
+    translations: {
+      where: { targetLang: { in: targetLangs } },
+      select: { targetLang: true, html: true, title: true, sourceHash: true },
+    },
+  } satisfies Prisma.LibraryChapterSelect;
+  const [chapterRows, highlights] = await Promise.all([
     mode === 'flow'
       ? prisma.libraryChapter.findMany({
           where: { docId: doc.id },
           orderBy: { chapterIndex: 'asc' },
-          select: { chapterIndex: true, title: true, html: true, translatedHtml: true },
+          select: chapterSelect,
         })
       : prisma.libraryChapter
           .findUnique({
             where: { docId_chapterIndex: { docId: doc.id, chapterIndex: resolved } },
-            select: { chapterIndex: true, title: true, html: true, translatedHtml: true },
+            select: chapterSelect,
           })
           .then((c) => (c ? [c] : [])),
     prisma.libraryHighlight.findMany({
@@ -538,6 +584,14 @@ export async function getDocReaderData(
     }),
   ]);
 
+  const tocTitlesByChapter = new Map<number, Partial<Record<TargetLang, string>>>();
+  for (const t of tocTitles) {
+    if (!isTargetLang(t.targetLang) || !t.title) continue;
+    const entry = tocTitlesByChapter.get(t.chapter.chapterIndex) ?? {};
+    entry[t.targetLang] = t.title;
+    tocTitlesByChapter.set(t.chapter.chapterIndex, entry);
+  }
+
   return {
     doc: {
       id: doc.id,
@@ -555,16 +609,39 @@ export async function getDocReaderData(
       aiIndexState: doc.aiIndexState,
       language: doc.language,
       commentCount: doc.commentCount,
-      translationState: doc.translationState,
-      translationLang: doc.translationLang,
+      targetLangs,
+      titles: Object.fromEntries(
+        targetLangs.flatMap((l) => {
+          const t = translatedTitle(doc.title, doc.titleTranslations, l);
+          return t ? [[l, t]] : [];
+        }),
+      ),
+      translations: Object.fromEntries(
+        doc.docTranslations
+          .filter((r) => isTargetLang(r.targetLang) && targetLangs.includes(r.targetLang))
+          .map((r) => [
+            r.targetLang,
+            { state: effectivePassState(r) as ReaderTranslationStatus['state'], error: r.error },
+          ]),
+      ),
     },
     mode,
     flowAvailable,
-    chapters,
+    chapters: chapterRows.map((c) => ({
+      chapterIndex: c.chapterIndex,
+      title: c.title,
+      html: c.html,
+      translations: Object.fromEntries(
+        c.translations
+          .filter((t) => isTargetLang(t.targetLang) && isFreshChapterTranslation(t, c.html))
+          .map((t) => [t.targetLang, { html: t.html, title: t.title }]),
+      ),
+    })),
     initialChapter: resolved,
     toc: toc.map(({ aiSummaryEn, ...c }) => ({
       ...c,
       aiSummary: pickText(locale, c.aiSummary, aiSummaryEn) || null,
+      titles: tocTitlesByChapter.get(c.chapterIndex) ?? {},
     })),
     progress: progress ?? null,
     highlights,

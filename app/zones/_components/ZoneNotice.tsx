@@ -38,7 +38,7 @@ export async function ZoneNotice({
   // above every post list read as clutter on a board that simply has no notice.
   if (!post) return null;
 
-  const href = zonePostHref(slug, post.id);
+  const href = zonePostHref(slug, post);
   const role = leadRoleOf(leadRoles, post.author.handle);
   const excerpt = excerptOf(post.summary || '', 180);
 

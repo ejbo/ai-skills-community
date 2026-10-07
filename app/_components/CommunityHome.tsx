@@ -36,6 +36,7 @@ import { Reveal } from './home/Reveal';
 import { SectionHeader } from './home/SectionHeader';
 import { HeroBackdrop } from './home/HeroBackdrop';
 import { HomeCountdown } from './home/HomeCountdown';
+import { announcementHref, eventHref, topicHref } from '@/lib/slug-href';
 
 interface HomeUser {
   id: string;
@@ -101,7 +102,7 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
     prisma.announcement.findFirst({
       where: { publishedAt: { not: null } },
       orderBy: { publishedAt: 'desc' },
-      select: { id: true, title: true },
+      select: { id: true, slug: true, title: true },
     }),
     // Today's figures + the 热议 links. Memoized for 60s inside the module:
     // a dozen COUNT(*)s per signed-in render is real work on a deploy whose
@@ -203,7 +204,7 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
                     {nextEvent && (
                       <BriefLine
                         label={t('briefing_events_label')}
-                        href={`/events/${nextEvent.id}`}
+                        href={eventHref(nextEvent)}
                         text={nextEvent.title}
                         dot={KIND_META[nextEvent.kind]?.dot}
                         // All-day events are stored date-only at UTC midnight, so
@@ -219,7 +220,7 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
                     {announcement && (
                       <BriefLine
                         label={t('announcement_label')}
-                        href={`/announcements/${announcement.id}`}
+                        href={announcementHref(announcement)}
                         text={announcement.title}
                         dot="bg-amber-500"
                       />
@@ -302,7 +303,7 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
                   linkLabel={t('go_discussion')}
                 >
                   {topics.map((topic) => (
-                    <Row key={topic.id} href={`/discussion/topics/${topic.id}`}>
+                    <Row key={topic.id} href={topicHref(topic)}>
                       <div className="flex items-center gap-2">
                         <span className="min-w-0 flex-1 truncate text-sm font-medium">
                           {topic.title}
@@ -330,7 +331,7 @@ export async function CommunityHome({ user }: { user: HomeUser }) {
                   linkLabel={t('go_events')}
                 >
                   {events.map((ev) => (
-                    <Row key={ev.id} href={`/events/${ev.id}`}>
+                    <Row key={ev.id} href={eventHref(ev)}>
                       <div className="flex items-center gap-2">
                         <span className="min-w-0 flex-1 truncate text-sm font-medium">
                           {ev.title}

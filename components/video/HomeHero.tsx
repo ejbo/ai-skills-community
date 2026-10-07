@@ -10,6 +10,7 @@ import { withBasePath } from '@/lib/video/types';
 import { DescriptionModal } from '@/components/video/DescriptionModal';
 import { CoverImage } from '@/components/media/CoverImage';
 import { coverAspectOf, videoCoverRatio } from '@/lib/media/cover-pos';
+import { videoHref } from '@/lib/slug-href';
 
 // 首页横幅 (Geek Videos billboard).
 //
@@ -182,7 +183,7 @@ export function HomeHero({ videos }: { videos: HeroVideo[] }) {
 
                 <div className="mt-5 flex flex-wrap items-center gap-3">
                   <Link
-                    href={`/videos/${active.slug}`}
+                    href={videoHref(active.slug)}
                     className="inline-flex h-11 items-center gap-2 rounded-xl bg-white px-6 text-sm font-semibold text-zinc-900 shadow-sm transition hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
                   >
                     <Play className="h-5 w-5 fill-current" />
@@ -248,7 +249,7 @@ export function HomeHero({ videos }: { videos: HeroVideo[] }) {
         onClose={() => setModalOpen(false)}
         title={active.title}
         content={active.descriptionMd.trim() || active.summary}
-        detailHref={`/videos/${active.slug}`}
+        detailHref={videoHref(active.slug)}
       />
     </section>
   );

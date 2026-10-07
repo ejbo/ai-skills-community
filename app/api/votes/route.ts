@@ -3,7 +3,9 @@ import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { rateLimit } from '@/lib/rate-limit';
+import { isSlugConflict } from '@/lib/slug-server';
 import { VOTE_TITLE_MAX } from '@/lib/votes/shared';
+import { freeVoteSlug } from '@/lib/votes/slug';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,9 +31,23 @@ export async function POST(req: Request) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
 
-  const activity = await prisma.voteActivity.create({
-    data: { creatorId: session.user.id, title: parsed.data.title },
-    select: { id: true },
-  });
+  // Title slug (docs/contracts/slugs.md): picked before the insert, re-picked once if a
+  // same-titled activity won the race; a second collision just leaves it null (the id
+  // URL works, the backfill fills it later) rather than failing the create.
+  const create = (slug: string | null) =>
+    prisma.voteActivity.create({
+      data: { creatorId: session.user.id, title: parsed.data.title, slug },
+      select: { id: true, slug: true },
+    });
+  let activity: { id: string; slug: string | null };
+  try {
+    activity = await create(await freeVoteSlug(parsed.data.title));
+  } catch (e) {
+    if (!isSlugConflict(e)) throw e;
+    activity = await create(await freeVoteSlug(parsed.data.title)).catch((e2) => {
+      if (!isSlugConflict(e2)) throw e2;
+      return create(null);
+    });
+  }
   return NextResponse.json({ ok: true, activity });
 }

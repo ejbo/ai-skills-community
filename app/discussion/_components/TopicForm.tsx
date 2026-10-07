@@ -9,6 +9,7 @@ import { pushToast } from '@/components/Toaster';
 import { DISCUSSION_EMBED_KINDS } from '@/lib/zones/shared';
 import type { DiscussionTagOption } from '@/lib/discussion-tags';
 import { currentLoginHref } from '@/lib/auth/callback-path';
+import { topicHref } from '@/lib/slug-href';
 import { TopicTagPicker } from './TopicTagPicker';
 import { EMPTY_MEDIA, MediaPicker, mediaPayload, type MediaDraft } from './MediaPicker';
 
@@ -22,6 +23,7 @@ import { EMPTY_MEDIA, MediaPicker, mediaPayload, type MediaDraft } from './Media
  */
 export function TopicForm({
   topicId,
+  topicSlug = null,
   officialTags,
   initialTitle = '',
   initialBodyMd = '',
@@ -30,6 +32,8 @@ export function TopicForm({
   initialMedia = EMPTY_MEDIA,
 }: {
   topicId?: string;
+  /** Title slug of the topic being edited — where 保存 lands. */
+  topicSlug?: string | null;
   /** 侧栏分类，服务端渲染进来（不用再跑一趟 /api/discussion/tags）。 */
   officialTags: DiscussionTagOption[];
   initialTitle?: string;
@@ -90,8 +94,11 @@ export function TopicForm({
         return;
       }
       pushToast('success', topicId ? tc('saved') : t('published'));
-      const id = topicId ?? (data.topic?.id as string);
-      router.push(`/discussion/topics/${id}`);
+      router.push(
+        topicId
+          ? topicHref({ id: topicId, slug: topicSlug })
+          : topicHref({ id: data.topic?.id as string, slug: (data.topic?.slug as string | null) ?? null }),
+      );
       router.refresh();
     } catch {
       pushToast('error', topicId ? t('save_failed_retry') : t('publish_failed_retry'));

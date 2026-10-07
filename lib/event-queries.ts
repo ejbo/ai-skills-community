@@ -216,6 +216,7 @@ async function attendingIdsFor(viewerId: string | null, eventIds: string[]): Pro
 export function toPublicEvent(row: EventRow, viewer: Viewer, attending = false): PublicEventItem {
   return {
     id: row.id,
+    slug: row.slug,
     title: row.title,
     summary: row.summary,
     kind: row.kind as EventKindValue,
@@ -438,6 +439,7 @@ export async function listRelatedEvents(
 
 export interface CalendarAgendaItem {
   id: string;
+  slug: string | null;
   title: string;
   startAt: string;
   allDay: boolean;
@@ -487,6 +489,7 @@ export async function getCalendarMonth(
     },
     select: {
       id: true,
+      slug: true,
       title: true,
       startAt: true,
       endAt: true,
@@ -513,6 +516,7 @@ export async function getCalendarMonth(
         : startKey;
     const item: CalendarAgendaItem = {
       id: row.id,
+      slug: row.slug,
       title: row.title,
       startAt: row.startAt.toISOString(),
       allDay: row.allDay,

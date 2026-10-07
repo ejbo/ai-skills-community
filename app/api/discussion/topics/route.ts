@@ -14,6 +14,9 @@ import {
   tagErrorReason,
 } from '@/lib/discussion-tags';
 import { notifyMentions } from '@/lib/mention-notify';
+import { createWithSlug } from '@/lib/slug-server';
+import { topicHref } from '@/lib/slug-href';
+import { pickTopicSlug } from '@/lib/title-slugs';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,25 +83,31 @@ export async function POST(req: Request) {
   }
 
   const { categories, official } = tags.value;
-  const created = await prisma.discussionTopic.create({
-    data: {
-      title: parsed.data.title,
-      bodyMd: parsed.data.bodyMd,
-      categories,
-      // 主分类列 = 第一个侧栏分类（[category, lastActivityAt] 索引仍然有意义）。
-      category: official[0],
-      authorId: session.user.id,
-      media: { create: media },
-    },
-    select: { id: true },
-  });
+  // Title slug for the link (docs/contracts/slugs.md) — frozen from creation on.
+  const created = await createWithSlug(
+    () => pickTopicSlug(parsed.data.title),
+    (slug) =>
+      prisma.discussionTopic.create({
+        data: {
+          title: parsed.data.title,
+          slug,
+          bodyMd: parsed.data.bodyMd,
+          categories,
+          // 主分类列 = 第一个侧栏分类（[category, lastActivityAt] 索引仍然有意义）。
+          category: official[0],
+          authorId: session.user.id,
+          media: { create: media },
+        },
+        select: { id: true, slug: true },
+      }),
+  );
 
   // @人 — 讨论区 topics are readable by anyone, so no visibility gate.
   void notifyMentions({
     bodyMd: parsed.data.bodyMd,
     actorId: session.user.id,
     actorName: session.user.displayName,
-    site: { what: '帖子', title: parsed.data.title, link: `/discussion/topics/${created.id}` },
+    site: { what: '帖子', title: parsed.data.title, link: topicHref(created) },
   });
 
   return NextResponse.json({ ok: true, topic: created });

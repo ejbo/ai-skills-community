@@ -5,7 +5,7 @@ import { VotesManager, type VoteAdminRow } from './VotesManager';
 
 export const dynamic = 'force-dynamic';
 
-// /manage/votes — 投票活动管理（精选 / 删除）。Auth 已由 /manage/layout.tsx 的
+// /manage/votes — 投票活动管理（精选 / 隐藏 / 删除）。Auth 已由 /manage/layout.tsx 的
 // requireAdmin() 把守；本页只查数据。
 export default async function ManageVotesPage() {
   await requirePermission('votes');
@@ -15,8 +15,10 @@ export default async function ManageVotesPage() {
     take: 200,
     select: {
       id: true,
+      slug: true,
       title: true,
       status: true,
+      visibility: true,
       startAt: true,
       endAt: true,
       closedAt: true,
@@ -31,8 +33,10 @@ export default async function ManageVotesPage() {
 
   const items: VoteAdminRow[] = rows.map((r) => ({
     id: r.id,
+    slug: r.slug,
     title: r.title,
     status: r.status,
+    visibility: r.visibility,
     over: voteOver(r),
     endAt: r.endAt?.toISOString() ?? null,
     featured: r.featured,

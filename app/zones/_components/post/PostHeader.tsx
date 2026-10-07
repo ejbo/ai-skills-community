@@ -34,7 +34,7 @@ import { ImageLightbox } from '@/app/events/_components/ImageLightbox';
 import { TranslatedText } from '@/components/translate/TranslatableScope';
 import { relativeTime } from '@/lib/i18n-date';
 import { leadRoleOf, type LeadRoles } from '@/lib/zones/lead-roles';
-import { hostnameOf, zoneHref, zonePostHref } from '@/lib/zones/shared';
+import { hostnameOf, zoneHref, zonePostEditHref, zonePostHref } from '@/lib/zones/shared';
 import type { ZonePostDetailView } from '@/lib/zones/types';
 import { RolePill } from '../RolePill';
 import { PILL_COLUMN, PILL_COLUMN_MEMBER, PILL_INK } from '../ui';
@@ -210,7 +210,7 @@ export function PostHeader({
         </span>
         {canEdit && post.status === 'published' && (
           <Link
-            href={`${zonePostHref(zone.slug, post.id)}/edit`}
+            href={zonePostEditHref(zone.slug, post.id)}
             className="ml-auto inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-zinc-900 px-3 text-xs font-medium text-white outline-none transition hover:bg-zinc-700 focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white dark:focus-visible:ring-zinc-100 dark:focus-visible:ring-offset-zinc-950"
           >
             <Pencil className="h-3.5 w-3.5 shrink-0" aria-hidden />

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { rateLimit } from '@/lib/rate-limit';
-import { recountVisibleEntries } from '@/lib/vote-queries';
+import { canSeeVoteActivity, recountVisibleEntries, voteViewerFromSession } from '@/lib/vote-queries';
 import {
   VOTE_ENTRY_AUTHOR_MAX,
   VOTE_ENTRY_DESCRIPTION_MAX,
@@ -68,7 +68,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const input = parsed.data;
 
   const activity = await prisma.voteActivity.findUnique({ where: { id: params.id } });
-  if (!activity || activity.deletedAt) {
+  // 可见范围: only someone who can see the activity may submit to it.
+  if (!activity || !(await canSeeVoteActivity(activity, voteViewerFromSession(session)))) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
   if (!activity.allowSubmissions || activity.status !== 'published' || voteOver(activity)) {

@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { FeedbackComposer } from './_components/FeedbackComposer';
 import { UpvoteButton } from './_components/UpvoteButton';
 import { StatusBadge, CategoryChip, STATUS_META } from './_components/badges';
+import { feedbackHref } from '@/lib/slug-href';
 
 export const dynamic = 'force-dynamic';
 
@@ -131,7 +132,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Sea
                   initialCount={f.upvoteCount}
                   initialUpvoted={f.upvotedByMe}
                 />
-                <Link href={`/feedback/${f.id}`} className="flex min-w-0 flex-1 items-center gap-4">
+                <Link href={feedbackHref(f)} className="flex min-w-0 flex-1 items-center gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="truncate text-sm font-medium">{f.title}</span>

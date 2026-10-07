@@ -80,7 +80,9 @@ const db = vi.hoisted(() => {
         state.grants.filter((g) => g.postId === where.postId && where.userId.in.includes(g.userId)).map((g) => ({ userId: g.userId })),
       ),
     },
-    zonePost: { findUnique: vi.fn(async () => state.existing) },
+    // findMany + slugAlias: the title-slug pick (lib/title-slugs.ts) — no namesakes here.
+    zonePost: { findUnique: vi.fn(async () => state.existing), findMany: vi.fn(async () => []) },
+    slugAlias: { findMany: vi.fn(async () => []) },
     zonePostAttachment: { findMany: vi.fn(async () => []), count: vi.fn(async () => 0) },
     $transaction: vi.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx)),
   };

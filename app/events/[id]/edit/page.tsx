@@ -1,4 +1,4 @@
-import { notFound, redirect } from 'next/navigation';
+import { notFound, permanentRedirect, redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
@@ -7,7 +7,9 @@ import { BackButton } from '@/components/BackButton';
 import { dayKey, fmtTime, toWallDate } from '@/lib/events/time';
 import { DEFAULT_EVENT_TIMEZONE } from '@/lib/events/types';
 import { EventForm, type EventFormInitial } from '../../_components/EventForm';
-import { loginHref } from '@/lib/auth/callback-path';
+import { loginHref, selfHref } from '@/lib/auth/callback-path';
+import { eventHref, needsCanonicalRedirect } from '@/lib/slug-href';
+import { resolveEventParam } from '@/lib/title-slugs';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,13 +23,18 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function EditEventPage({ params }: { params: { id: string } }) {
   const t = await getTranslations('event_form');
   const session = await auth();
-  if (!session?.user) redirect(loginHref(`/events/${params.id}/edit`));
+  if (!session?.user) redirect(loginHref(`${eventHref(params.id)}/edit`));
 
+  // The param is a title slug, a row id (old links) or a retired slug.
+  const resolved = await resolveEventParam(params.id);
+  if (!resolved) notFound();
   const row = await prisma.event.findFirst({
-    where: { id: params.id, deletedAt: null },
+    where: { id: resolved.id, deletedAt: null },
     include: { speakers: { orderBy: { sortOrder: 'asc' } } },
   });
   if (!row || row.authorId !== session.user.id) notFound();
+  // Canonical URL only AFTER the author gate.
+  if (needsCanonicalRedirect(resolved)) permanentRedirect(selfHref(`${eventHref(row)}/edit`));
 
   // Round-trip stored instants back into the organizer's picked zone — the
   // form edits wall times IN THAT ZONE, not UTC (all-day rows are date-only).
@@ -66,12 +73,12 @@ export default async function EditEventPage({ params }: { params: { id: string }
   return (
     <div className="container max-w-3xl py-8">
       <div className="mb-4">
-        <BackButton fallbackHref={`/events/${row.id}`} label={t('back_to_events')} />
+        <BackButton fallbackHref={eventHref(row)} label={t('back_to_events')} />
       </div>
       <h1 className="text-2xl font-bold tracking-tight">{t('edit_event_h1')}</h1>
       <p className="mt-1 text-sm text-muted">{t('edit_hint')}</p>
       <div className="mt-6">
-        <EventForm eventId={row.id} initial={initial} />
+        <EventForm eventId={row.id} eventSlug={row.slug} initial={initial} />
       </div>
     </div>
   );

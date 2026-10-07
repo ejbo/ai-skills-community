@@ -33,6 +33,7 @@ export default async function AdminDiscussionPage() {
       take: 50,
       select: {
         id: true,
+        slug: true,
         title: true,
         categories: true,
         pinned: true,
@@ -62,6 +63,7 @@ export default async function AdminDiscussionPage() {
         }))}
         topics={topics.map((t) => ({
           id: t.id,
+          slug: t.slug,
           title: t.title,
           // 管理后台是中文界面（见 CLAUDE.md），直接用分类的存储名 —— 成员
           // 自建分类没有 i18n key，只有名字。

@@ -48,7 +48,7 @@ import { RollingNumber } from '@/components/motion';
 import { withBasePath } from '@/lib/base-path';
 import { copyText } from '@/lib/clipboard';
 import { TWEEN } from '@/lib/motion';
-import { zoneHref, zonePostHref } from '@/lib/zones/shared';
+import { zoneHref, zonePostEditHref, zonePostHref } from '@/lib/zones/shared';
 import type { ZoneAccess, ZoneCurrentUser, ZonePostDetailView } from '@/lib/zones/types';
 import type { LikeBookmarkState } from './useLikeBookmark';
 
@@ -158,7 +158,7 @@ export function PostActionBar({
   }, [menuOpen]);
 
   async function share() {
-    const url = `${window.location.origin}${withBasePath(zonePostHref(zoneSlug, post.id))}`;
+    const url = `${window.location.origin}${withBasePath(zonePostHref(zoneSlug, post))}`;
     const ok = await copyText(url);
     pushToast(ok ? 'success' : 'error', ok ? t('post_link_copied') : tc('copy_failed'));
   }
@@ -291,7 +291,7 @@ export function PostActionBar({
       </button>
 
       {canEdit && (
-        <Link href={`${zonePostHref(zoneSlug, post.id)}/edit`} aria-label={tc('edit')} className={`${labelPill} ${idle}`}>
+        <Link href={zonePostEditHref(zoneSlug, post.id)} aria-label={tc('edit')} className={`${labelPill} ${idle}`}>
           <Pencil className="h-4 w-4 shrink-0" aria-hidden />
           <span className="hidden sm:inline">{tc('edit')}</span>
         </Link>

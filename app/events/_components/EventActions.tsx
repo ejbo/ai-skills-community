@@ -10,15 +10,19 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Ban, Loader2, Pencil, Pin, PinOff, RotateCcw, Trash2 } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
+import { eventHref } from '@/lib/slug-href';
 
 export function EventActions({
   id,
+  slug = null,
   pinned,
   cancelled,
   isAuthor,
   canModerate,
 }: {
   id: string;
+  /** Title slug for the edit link (the API stays id-based). */
+  slug?: string | null;
   pinned: boolean;
   cancelled: boolean;
   isAuthor: boolean;
@@ -75,7 +79,7 @@ export function EventActions({
     <div className="flex flex-wrap items-center gap-2">
       {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted" />}
       {isAuthor && (
-        <Link href={`/events/${id}/edit`} className={btn}>
+        <Link href={`${eventHref({ id, slug })}/edit`} className={btn}>
           <Pencil className="h-3.5 w-3.5" />
           {tc('edit')}
         </Link>

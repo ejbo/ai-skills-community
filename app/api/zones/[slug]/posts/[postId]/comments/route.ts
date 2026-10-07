@@ -33,6 +33,7 @@ const createSchema = z.object({
 const POST_SELECT = {
   id: true,
   zoneId: true,
+  slug: true,
   title: true,
   status: true,
   locked: true,
@@ -173,6 +174,7 @@ export async function POST(req: Request, { params }: { params: { slug: string; p
         actorName: session.user.displayName,
         zoneSlug: ctx.zone.slug,
         postId: post.id,
+        postSlug: post.slug,
         postTitle: post.title,
         focusId: comment.id,
         bodyMd,
@@ -187,6 +189,7 @@ export async function POST(req: Request, { params }: { params: { slug: string; p
       actorName: session.user.displayName,
       zoneSlug: ctx.zone.slug,
       postId: post.id,
+      postSlug: post.slug,
       postTitle: post.title,
       focusId: comment.id,
       bodyMd,

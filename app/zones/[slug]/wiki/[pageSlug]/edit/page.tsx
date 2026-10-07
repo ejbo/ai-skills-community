@@ -5,7 +5,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { zoneSiteViewer } from '@/lib/zones/access';
 import { getZoneDetail } from '@/lib/zones/queries';
-import { getWikiPage, getWikiTree } from '@/lib/zones/wiki-queries';
+import { getWikiPage, getWikiTree, resolveWikiSlugParam } from '@/lib/zones/wiki-queries';
 import { zoneHref, zoneWikiHref } from '@/lib/zones/shared';
 import type { ZoneCurrentUser } from '@/lib/zones/types';
 import { ZoneHeader } from '@/app/zones/_components/ZoneHeader';
@@ -19,7 +19,9 @@ const load = cache(async (slug: string, pageSlug: string) => {
   const zone = await getZoneDetail(slug, viewer);
   if (!zone || !zone.access.canRead) return { session, viewer, zone, page: null };
   const locale = await getLocale();
-  const page = await getWikiPage(zone.id, pageSlug, { viewer, session, locale });
+  // Page params arrive percent-encoded (CJK slugs); an old address resolves too.
+  const { slug: liveSlug } = await resolveWikiSlugParam(zone.id, pageSlug);
+  const page = await getWikiPage(zone.id, liveSlug, { viewer, session, locale });
   return { session, viewer, zone, page };
 });
 

@@ -70,6 +70,8 @@ export interface PostThreadView extends PostCommentView {
 /** A forum topic as a card in the 全部 stream (lib/discussion-queries.ts#listDiscussionStream). */
 export interface TopicCardView {
   id: string;
+  /** Title slug for the link (topicHref); null = legacy topic, the id is used. */
+  slug: string | null;
   title: string;
   excerpt: string;
   tags: { slug: string; name: string; nameEn: string; official: boolean }[];

@@ -54,6 +54,7 @@ import { EventTimeAgenda } from './_components/EventTime';
 import { KIND_META } from './_components/badges';
 import { eventLocalDayKey } from '@/lib/events/time';
 import { loginHref } from '@/lib/auth/callback-path';
+import { eventHref } from '@/lib/slug-href';
 
 export const dynamic = 'force-dynamic';
 
@@ -695,7 +696,7 @@ async function MonthAgenda({ sp, cal }: { sp: SearchParams; cal: CalendarMonthDa
                       />
                     </span>
                     <Link
-                      href={`/events/${it.id}`}
+                      href={eventHref(it)}
                       className={`min-w-0 flex-1 truncate transition hover:text-zinc-900 ${
                         it.cancelled ? 'text-muted line-through' : ''
                       }`}

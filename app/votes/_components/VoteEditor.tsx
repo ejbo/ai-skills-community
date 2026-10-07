@@ -23,6 +23,8 @@ import {
 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
+import { VisibilityField } from '@/components/audience/VisibilityField';
+import type { AudiencePick, ContentVisibility } from '@/lib/audience-shared';
 // 通用的时区↔墙上时间换算（Intl 实现，客户端安全）——全站只有这一份，活动日历
 // 也用它；votes 只是它的第二个调用方。
 import { toWallDate, zonedWallToUtc } from '@/lib/events/time';
@@ -44,6 +46,7 @@ import {
   VOTES_PER_USER_MAX,
   MAX_PER_ENTRY_MAX,
   voteTimezoneOf,
+  voteHref,
   type VoteCustomField,
   type VoteFieldPick,
   type VoteNameRule,
@@ -215,6 +218,12 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
   const router = useRouter();
 
   // ── section states ──
+  // 标题链接: a draft's slug follows its title (the PATCH answers with the new one);
+  // published ⇒ frozen. Every link this editor builds goes through voteHref.
+  const [slug, setSlug] = useState(initial.slug);
+  const [visibility, setVisibility] = useState<ContentVisibility>(initial.visibility);
+  const [audience, setAudience] = useState<AudiencePick[]>(initial.audience);
+  const [savingVisibility, setSavingVisibility] = useState(false);
   const [title, setTitle] = useState(initial.title);
   const [announcement, setAnnouncement] = useState(initial.announcement);
   const [descriptionMd, setDescriptionMd] = useState(initial.descriptionMd);
@@ -296,7 +305,8 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [uploadingCount]);
 
-  async function patchActivity(body: Record<string, unknown>): Promise<boolean> {
+  /** Resolves to the response body on success (truthy), `false` on failure (already toasted). */
+  async function patchActivity(body: Record<string, unknown>): Promise<Record<string, unknown> | false> {
     try {
       const res = await fetch(`/api/votes/${initial.id}`, {
         method: 'PATCH',
@@ -322,10 +332,21 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
         );
         return false;
       }
-      return true;
+      return ((await res.json().catch(() => null)) as Record<string, unknown> | null) ?? {};
     } catch {
       pushToast('error', t('ed_save_failed'));
       return false;
+    }
+  }
+
+  /** A draft rename moved the slug: keep the address bar on a URL that still resolves. */
+  function adoptSlug(next: unknown) {
+    if (typeof next !== 'string' || next === slug) return;
+    setSlug(next);
+    try {
+      window.history.replaceState(null, '', withBasePath(voteHref({ id: initial.id, slug: next }, 'edit')));
+    } catch {
+      /* cosmetic — the id URL keeps working */
     }
   }
 
@@ -342,6 +363,16 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
       descriptionMd,
     });
     setSavingInfo(false);
+    if (ok) {
+      adoptSlug(ok.slug);
+      pushToast('success', t('ed_saved'));
+    }
+  }
+
+  async function saveVisibility() {
+    setSavingVisibility(true);
+    const ok = await patchActivity({ visibility, audienceUserIds: audience.map((a) => a.userId) });
+    setSavingVisibility(false);
     if (ok) pushToast('success', t('ed_saved'));
   }
 
@@ -658,7 +689,7 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
     setLifecycleBusy(false);
     if (ok) {
       pushToast('success', t('ed_published'));
-      router.push(`/votes/${initial.id}`);
+      router.push(voteHref({ id: initial.id, slug: typeof ok.slug === 'string' ? ok.slug : slug }));
       router.refresh();
     }
   }
@@ -731,7 +762,7 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Link href={`/votes/${initial.id}`} className={btnSecondary}>
+          <Link href={voteHref({ id: initial.id, slug })} className={btnSecondary}>
             <Eye className="h-4 w-4" />
             {t('ed_preview')}
           </Link>
@@ -853,6 +884,29 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
           <div>
             <button type="button" onClick={() => void saveInfo()} disabled={savingInfo} className={btnPrimary}>
               {savingInfo && <Loader2 className="h-4 w-4 animate-spin" />}
+              {t('ed_save')}
+            </button>
+          </div>
+        </div>
+      </Section>
+      )}
+
+      {/* 可见范围 (docs/contracts/audience.md) — its own save: hiding an ended activity
+          should not require re-saving the title/description form. */}
+      {tab === 'info' && (
+      <Section heading={t('ed_visibility_heading')} hint={t('ed_visibility_hint')}>
+        <div className="space-y-4">
+          <VisibilityField
+            visibility={visibility}
+            onVisibilityChange={setVisibility}
+            audience={audience}
+            onAudienceChange={setAudience}
+            selfHandle={initial.creatorHandle}
+            disabled={savingVisibility}
+          />
+          <div>
+            <button type="button" onClick={() => void saveVisibility()} disabled={savingVisibility} className={btnPrimary}>
+              {savingVisibility && <Loader2 className="h-4 w-4 animate-spin" />}
               {t('ed_save')}
             </button>
           </div>

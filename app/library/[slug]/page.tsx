@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 import Link from 'next/link';
 import { BookOpen, Download, ExternalLink, Lock, Pencil, Star } from 'lucide-react';
 import { format } from 'date-fns';
@@ -9,6 +9,8 @@ import { getDocBySlug, libraryViewerFromSession } from '@/lib/library-queries';
 import { can } from '@/lib/permissions';
 import { CATEGORY_NAME_BY_SLUG, isDocType } from '@/lib/library/types';
 import { pickOverview, pickText } from '@/lib/library/i18n-content';
+import { pickDocTitle } from '@/lib/library/translation-shared';
+import { docPath, resolveDocSlugParam } from '@/lib/library/slug';
 import { listLibraryCategories } from '@/lib/library/categories';
 import { withBasePath } from '@/lib/base-path';
 import { BackButton } from '@/components/BackButton';
@@ -75,8 +77,16 @@ export default async function DocDetailPage({
   ]);
   const session = await auth();
   const viewer = libraryViewerFromSession(session);
-  const doc = await getDocBySlug(params.slug, viewer);
+  const { slug, aliased } = await resolveDocSlugParam(params.slug);
+  const doc = await getDocBySlug(slug, viewer);
   if (!doc) notFound();
+  // A retired (hash) slug — redirect only now, after the read gate passed.
+  if (aliased) {
+    permanentRedirect(docPath(doc.slug, searchParams.focus ? `?focus=${encodeURIComponent(searchParams.focus)}` : ''));
+  }
+  // Title in the viewer's language when the doc is in another one (AI-translated,
+  // shared); the original stays right under it.
+  const displayTitle = pickDocTitle(locale, doc);
 
   const canManage = viewer?.canManage ?? false;
   const isUploader = viewer?.id === doc.uploaderId;
@@ -108,7 +118,7 @@ export default async function DocDetailPage({
       <div className="grid gap-8 lg:grid-cols-[240px_1fr]">
         <div className="space-y-3">
           <DocCover
-            title={doc.title}
+            title={displayTitle}
             coverUrl={doc.coverUrl}
             docType={doc.docType}
             className="mx-auto aspect-[3/4] w-full max-w-[240px] rounded-2xl text-4xl lg:mx-0"
@@ -224,8 +234,11 @@ export default async function DocDetailPage({
             </div>
 
             <h1 className="break-words text-3xl font-semibold tracking-tight md:text-4xl">
-              {doc.title}
+              {displayTitle}
             </h1>
+            {displayTitle !== doc.title && (
+              <p className="break-words text-sm text-muted">{t('original_title', { title: doc.title })}</p>
+            )}
 
             {(doc.author || doc.siteName) && (
               <p className="text-sm text-muted">

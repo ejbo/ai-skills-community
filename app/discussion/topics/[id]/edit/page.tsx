@@ -1,4 +1,4 @@
-import { notFound, redirect } from 'next/navigation';
+import { notFound, permanentRedirect, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { loginHref } from '@/lib/auth/callback-path';
@@ -7,17 +7,22 @@ import { BackButton } from '@/components/BackButton';
 import { listOfficialDiscussionTags, resolveTagViews } from '@/lib/discussion-queries';
 import { TopicForm } from '../../../_components/TopicForm';
 import type { MediaDraft, UploadedItem } from '../../../_components/MediaPicker';
+import { needsCanonicalRedirect, topicHref } from '@/lib/slug-href';
+import { resolveTopicParam } from '@/lib/title-slugs';
 
 export const dynamic = 'force-dynamic';
 
 export default async function EditTopicPage({ params }: { params: { id: string } }) {
   const session = await auth();
-  if (!session?.user) redirect(loginHref(`/discussion/topics/${params.id}/edit`));
+  if (!session?.user) redirect(loginHref(`${topicHref(params.id)}/edit`));
 
+  const resolved = await resolveTopicParam(params.id);
+  if (!resolved) notFound();
   const topic = await prisma.discussionTopic.findUnique({
-    where: { id: params.id },
+    where: { id: resolved.id },
     select: {
       id: true,
+      slug: true,
       authorId: true,
       title: true,
       bodyMd: true,
@@ -30,7 +35,8 @@ export default async function EditTopicPage({ params }: { params: { id: string }
   });
   if (!topic) notFound();
   // Content edits are author-only (the PATCH route enforces the same rule).
-  if (topic.authorId !== session.user.id) redirect(`/discussion/topics/${topic.id}`);
+  if (topic.authorId !== session.user.id) redirect(topicHref(topic));
+  if (needsCanonicalRedirect(resolved)) permanentRedirect(`${topicHref(topic)}/edit`);
   const [t, officialTags, initialTagViews] = await Promise.all([
     getTranslations('discussion_pages'),
     listOfficialDiscussionTags(),
@@ -54,12 +60,13 @@ export default async function EditTopicPage({ params }: { params: { id: string }
   return (
     <div className="container max-w-3xl py-8">
       <div className="mb-5">
-        <BackButton fallbackHref={`/discussion/topics/${topic.id}`} />
+        <BackButton fallbackHref={topicHref(topic)} />
       </div>
       <h1 className="text-2xl font-semibold tracking-tight">{t('edit_topic_title')}</h1>
       <div className="mt-5">
         <TopicForm
           topicId={topic.id}
+          topicSlug={topic.slug}
           officialTags={officialTags}
           initialTagViews={initialTagViews}
           initialTitle={topic.title}

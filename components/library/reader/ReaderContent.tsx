@@ -8,10 +8,14 @@ import { applyBasePathToHtml } from './anchoring';
 
 interface Props {
   html: string;
-  /** Whole-chapter 译文; rendered instead of `html` when view is 'translated'. */
-  translatedHtml?: string | null;
-  view?: 'original' | 'translated';
+  /** The chapter's 译文 in the reading language — rendered instead of `html` when present. */
+  translation?: { html: string; title: string | null } | null;
+  /** Title in the reading language (the original when not translated). */
   docTitle: string;
+  /** The ORIGINAL title, shown small under a translated one so 原文 is never lost. */
+  originalTitle?: string | null;
+  /** One quiet line under the byline (已翻译为… · 显示原文 / 正在翻译…) — first rendered chapter only. */
+  notice?: React.ReactNode;
   author: string | null;
   siteName: string | null;
   chapterIndex: number;
@@ -26,9 +30,10 @@ interface Props {
 /** One chapter's reading block: header + sanitized HTML article. */
 export function ReaderContent({
   html,
-  translatedHtml,
-  view = 'original',
+  translation,
   docTitle,
+  originalTitle,
+  notice,
   author,
   siteName,
   chapterIndex,
@@ -58,7 +63,8 @@ export function ReaderContent({
    * With a stable object identity React skips the prop entirely and the article
    * DOM is never touched after mount.
    */
-  const source = view === 'translated' && translatedHtml ? translatedHtml : html;
+  const source = translation?.html ?? html;
+  const shownChapterTitle = translation?.title || chapterTitle;
   const inner = useMemo(() => ({ __html: applyBasePathToHtml(source) }), [source]);
   const byline = [author, siteName].filter(Boolean).join(' · ');
 
@@ -72,10 +78,14 @@ export function ReaderContent({
         {chapterIndex === 0 ? (
           <>
             <h1 className="text-3xl font-semibold leading-snug tracking-tight">{docTitle}</h1>
-            {byline && <p className="r-muted text-sm">{byline}</p>}
-            {chapterCount > 1 && chapterTitle && (
-              <p className="r-muted border-l-2 border-zinc-900/40 dark:border-zinc-100/40 pl-3 text-sm">{chapterTitle}</p>
+            {originalTitle && originalTitle !== docTitle && (
+              <p className="r-muted text-sm">{t('original_title', { title: originalTitle })}</p>
             )}
+            {byline && <p className="r-muted text-sm">{byline}</p>}
+            {chapterCount > 1 && shownChapterTitle && (
+              <p className="r-muted border-l-2 border-zinc-900/40 dark:border-zinc-100/40 pl-3 text-sm">{shownChapterTitle}</p>
+            )}
+            {notice}
           </>
         ) : (
           <>
@@ -83,8 +93,9 @@ export function ReaderContent({
               {t('chapter_x_of_y', { current: chapterIndex + 1, total: chapterCount })}
             </p>
             <h1 className="text-2xl font-semibold leading-snug tracking-tight">
-              {chapterTitle || t('chapter_n', { n: chapterIndex + 1 })}
+              {shownChapterTitle || t('chapter_n', { n: chapterIndex + 1 })}
             </h1>
+            {notice}
           </>
         )}
       </header>

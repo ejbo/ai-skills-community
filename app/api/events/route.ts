@@ -3,6 +3,8 @@ import { prisma } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
 import { composeEventData, eventContentSchema } from '@/lib/events/validate';
+import { createWithSlug } from '@/lib/slug-server';
+import { pickEventSlug } from '@/lib/title-slugs';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,14 +38,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'invalid_input', reason: composed.reason }, { status: 400 });
   }
 
-  const created = await prisma.event.create({
-    data: {
-      ...composed.value.columns,
-      authorId: session.user.id,
-      speakers: { create: composed.value.speakers },
-    },
-    select: { id: true },
-  });
+  // Title slug for the link (docs/contracts/slugs.md); frozen from here on —
+  // an event is visible the moment it exists.
+  const created = await createWithSlug(
+    () => pickEventSlug(composed.value.columns.title),
+    (slug) =>
+      prisma.event.create({
+        data: {
+          ...composed.value.columns,
+          slug,
+          authorId: session.user.id,
+          speakers: { create: composed.value.speakers },
+        },
+        select: { id: true, slug: true },
+      }),
+  );
 
   return NextResponse.json({ ok: true, event: created });
 }
