@@ -6,6 +6,7 @@
 // message key and renders its stored name (with an optional English twin).
 
 import { prisma } from '@/lib/db';
+import { DEFAULT_SECTION_BY_SLUG, isLibrarySection, type LibrarySection } from './types';
 
 export const MAX_CATEGORIES_PER_DOC = 4;
 const CACHE_MS = 30_000;
@@ -15,9 +16,24 @@ export interface LibraryCategoryOption {
   name: string;
   nameEn: string;
   official: boolean;
+  /** 版块 the topic is grouped under; null = unfiled (browse shows it under 其他). */
+  section: LibrarySection | null;
 }
 
 let cache: { at: number; rows: LibraryCategoryOption[] } | null = null;
+
+const OPTION_SELECT = { slug: true, name: true, nameEn: true, official: true, section: true } as const;
+
+/** A column the migration has not filled yet (db:push dev DBs) still groups the built-ins where the migration would. */
+function toOption(r: { slug: string; name: string; nameEn: string; official: boolean; section: string | null }): LibraryCategoryOption {
+  return {
+    slug: r.slug,
+    name: r.name,
+    nameEn: r.nameEn,
+    official: r.official,
+    section: isLibrarySection(r.section) ? r.section : (DEFAULT_SECTION_BY_SLUG[r.slug] ?? null),
+  };
+}
 
 export function bustCategoryCache(): void {
   cache = null;
@@ -28,10 +44,11 @@ export async function listLibraryCategories(): Promise<LibraryCategoryOption[]> 
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.rows;
   const rows = await prisma.libraryCategory.findMany({
     orderBy: [{ official: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],
-    select: { slug: true, name: true, nameEn: true, official: true },
+    select: OPTION_SELECT,
   });
-  cache = { at: Date.now(), rows };
-  return rows;
+  const options = rows.map(toOption);
+  cache = { at: Date.now(), rows: options };
+  return options;
 }
 
 /** Keep only slugs that exist, deduped and capped. */
@@ -85,9 +102,9 @@ export async function findOrCreateCategory(
 
   const existing = await prisma.libraryCategory.findFirst({
     where: { OR: [{ name: { equals: name, mode: 'insensitive' } }, { nameEn: { equals: name, mode: 'insensitive' } }] },
-    select: { slug: true, name: true, nameEn: true, official: true },
+    select: OPTION_SELECT,
   });
-  if (existing) return { ok: true, category: existing, created: false };
+  if (existing) return { ok: true, category: toOption(existing), created: false };
 
   let slug = slugifyCategory(name);
   // Slug collisions are possible (two different names, same latin skeleton).
@@ -97,24 +114,23 @@ export async function findOrCreateCategory(
     slug = `${slugifyCategory(name)}-${i + 2}`;
   }
 
-  const select = { slug: true, name: true, nameEn: true, official: true } as const;
   const create = (author: string | null) =>
     prisma.libraryCategory.create({
       data: { slug, name, official: false, createdById: author, sortOrder: 200 },
-      select,
+      select: OPTION_SELECT,
     });
 
   try {
     const created = await create(createdById);
     bustCategoryCache();
-    return { ok: true, category: created, created: true };
+    return { ok: true, category: toOption(created), created: true };
   } catch {
     // Lost a race — whoever won created the same name.
     const row = await prisma.libraryCategory.findFirst({
       where: { name: { equals: name, mode: 'insensitive' } },
-      select,
+      select: OPTION_SELECT,
     });
-    if (row) return { ok: true, category: row, created: false };
+    if (row) return { ok: true, category: toOption(row), created: false };
     // Not a race: the only other way the insert fails is a dangling author (a
     // session JWT outliving its user row). The CATEGORY is still worth having —
     // authorship is metadata, not a precondition.
@@ -122,7 +138,7 @@ export async function findOrCreateCategory(
       try {
         const created = await create(null);
         bustCategoryCache();
-        return { ok: true, category: created, created: true };
+        return { ok: true, category: toOption(created), created: true };
       } catch {
         /* fall through */
       }

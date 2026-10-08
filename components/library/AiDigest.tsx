@@ -19,6 +19,7 @@ export function AiDigest({
   docId,
   canTrigger,
   slug,
+  model,
 }: {
   overview: AiOverview | null;
   aiIndexState: string;
@@ -26,8 +27,11 @@ export function AiDigest({
   docId: string;
   canTrigger: boolean;
   slug: string;
+  /** Served model id, shown as attribution. */
+  model?: string | null;
 }) {
   const t = useTranslations('library_ui');
+  const tlib = useTranslations('library');
   const tv = useTranslations('video');
   const router = useRouter();
   const [state, setState] = useState(aiIndexState);
@@ -76,35 +80,51 @@ export function AiDigest({
   }
 
   if (state === 'ready' && overview) {
+    const hasLists = overview.outline.length > 0 || overview.keyPoints.length > 0;
     return (
       <section className="surface rounded-2xl p-5">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-zinc-900 dark:text-zinc-50" />
-          <h2 className="text-sm font-semibold">{t('ai_digest')}</h2>
-        </div>
-        {overview.summary && <p className="mt-3 text-sm leading-relaxed">{overview.summary}</p>}
-        {overview.outline.length > 0 && (
-          <div className="mt-4">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted">{t('outline')}</h3>
-            <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">
-              {overview.outline.map((line, i) => (
-                <li key={i}>{line}</li>
-              ))}
-            </ol>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-zinc-900 dark:text-zinc-50" />
+            <h2 className="text-sm font-semibold">{t('ai_digest')}</h2>
           </div>
-        )}
-        {overview.keyPoints.length > 0 && (
-          <div className="mt-4">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted">{t('key_points')}</h3>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
-              {overview.keyPoints.map((p, i) => (
-                <li key={i}>{p}</li>
-              ))}
-            </ul>
+          {model && <span className="truncate text-[11px] text-muted">{tlib('ai_model', { model })}</span>}
+        </div>
+        {overview.summary && <p className="mt-3 text-[15px] leading-relaxed">{overview.summary}</p>}
+        {hasLists && (
+          // 大纲 and 要点 side by side on wide screens — half the scroll, and the
+          // two lists read as "what it covers" / "what to take away".
+          <div className="mt-5 grid gap-5 md:grid-cols-2">
+            {overview.outline.length > 0 && (
+              <div>
+                <h3 className="text-xs font-medium uppercase tracking-wider text-muted">{t('outline')}</h3>
+                <ol className="mt-2 space-y-1.5 text-sm">
+                  {overview.outline.map((line, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="w-5 shrink-0 pt-0.5 font-mono text-xs tabular-nums text-muted">{i + 1}</span>
+                      <span>{line}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+            {overview.keyPoints.length > 0 && (
+              <div>
+                <h3 className="text-xs font-medium uppercase tracking-wider text-muted">{t('key_points')}</h3>
+                <ul className="mt-2 space-y-1.5 text-sm">
+                  {overview.keyPoints.map((p, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-900 dark:bg-zinc-100" />
+                      <span>{p}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
         {overview.questions.length > 0 && (
-          <div className="mt-4">
+          <div className="mt-5">
             <h3 className="text-xs font-medium uppercase tracking-wider text-muted">{t('ask_suggestions')}</h3>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {overview.questions.map((q, i) => (
@@ -120,6 +140,9 @@ export function AiDigest({
             </div>
           </div>
         )}
+        <p className="mt-4 border-t border-zinc-100 pt-3 text-[11px] text-muted dark:border-zinc-800">
+          {tlib('ai_disclaimer')}
+        </p>
       </section>
     );
   }

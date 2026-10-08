@@ -1212,6 +1212,28 @@
       "en": "英文",
       "fr": "法文",
       "unknown": "其他语言"
+    },
+    "libSection": {
+      "models": "模型与算法",
+      "systems": "系统与算力",
+      "agents": "Agent 与应用",
+      "data": "数据与评测",
+      "engineering": "工程实践",
+      "industry": "产业与趋势",
+      "learning": "学习与前沿",
+      "other": "其他"
+    },
+    "libSource": {
+      "wechat": "公众号",
+      "zhihu": "知乎",
+      "arxiv": "arXiv",
+      "github": "GitHub",
+      "juejin": "掘金",
+      "csdn": "CSDN",
+      "medium": "Medium",
+      "substack": "Substack",
+      "web": "网页",
+      "file": "文件"
     }
   },
   "ui": {
@@ -2803,7 +2825,25 @@
     "category_created": "分类已创建",
     "category_reused": "已选择同名的现有分类",
     "category_create_failed": "创建分类失败",
-    "original_title": "原标题：{title}"
+    "original_title": "原标题：{title}",
+    "section_all": "全部",
+    "topics_in_section": "主题",
+    "rail_featured": "精选推荐",
+    "rail_featured_all": "查看全部精选",
+    "rail_popular": "最多收藏",
+    "rail_continue": "继续阅读",
+    "rail_shelf_link": "我的书架",
+    "rail_empty": "暂无内容",
+    "type_filter": "类型",
+    "type_all": "全部类型",
+    "added_by": "{name} 收录",
+    "added_by_short": "收录",
+    "stat_reading_people": "{count} 人在读",
+    "stat_notes_people": "{count} 条公开笔记",
+    "people_hint": "点击查看名单",
+    "section_other": "其他主题",
+    "ai_disclaimer": "AI 生成，可能有疏漏——以原文为准",
+    "ai_model": "模型 {model}"
   },
   "library_ui": {
     "access_submitted": "已提交阅读申请，等待上传者审批",

@@ -7,6 +7,8 @@ import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
 import { FetchUrlError } from './fetch-url';
 import { htmlToPlainText, sanitizeChapterHtml } from './sanitize';
+import { stripBoilerplate } from './boilerplate';
+import { isWeChatArticle } from './source';
 import { detectLanguage, type ExtractedChapter, type ExtractedDoc } from './types';
 
 const MIN_CONTENT_CHARS = 200;
@@ -293,6 +295,16 @@ export function extractArticle(html: string, url: string): ExtractedDoc {
       'unsupported_content',
       '无法从该网页提取正文——该页面可能依赖 JavaScript 动态加载，或有反爬限制。可尝试保存为 PDF/HTML 后上传。',
     );
+  }
+
+  // 公众号 chrome (「点击蓝字关注」 banners, 往期推荐 / 扫码 / 在看 footers) is not
+  // the article — and it is what readers meant by 「首尾的广告」. Conservative
+  // by construction (lib/library/boilerplate.ts); re-extraction applies it to
+  // existing docs.
+  const stripped = stripBoilerplate(sanitized, { wechat: isWeChatArticle(url) });
+  if (stripped.removedHead || stripped.removedTail) {
+    sanitized = stripped.html;
+    text = htmlToPlainText(sanitized);
   }
 
   const chapters = splitChapters(sanitized, text);

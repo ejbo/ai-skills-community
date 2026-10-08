@@ -87,6 +87,41 @@
     is frozen. `pnpm slugs:backfill` moves old hash slugs and records `SlugAlias(kind 'library_doc')`; the three
     `/library/[slug]` pages resolve aliases (`resolveDocSlugParam`) and 308 to the current slug only AFTER their
     read gate, and `[embed:library:<old slug>]` refs resolve through the alias too.
+  - **浏览页 /library (2026-10-08 改版)**. Owner: 「首页杂乱无章，日后内容多了很难找；分类不合理；精选位置不对；要展示上传者
+    与来源（公众号要注明）」. Shape follows what reading sites do at volume (Readwise / Pocket / Lobsters / 豆瓣 / Medium brief):
+    - **One dominant list, facets narrow it.** 版块 rail on top (`LIBRARY_SECTIONS`, 7 fixed, code + `labels.libSection.*`),
+      the chosen 版块's topics as a second chip row with counts, then a quiet toolbar: search · 类型 (`TypeFilter`, a dropdown
+      — format is a facet, never the top-level nav) · 排序 · 列表/卡片 toggle. **List is the default** (`?layout=grid` opts
+      in). The 16-item left sidebar and the 类型 tab bar are gone; do not bring either back.
+    - **Two-level taxonomy = `LibraryCategory.section`** (migration `20261008100000_library_category_section`). Sections are
+      few and fixed in code; topics stay admin-curated / member-extendable in the table, each filed under one section
+      (`/manage/library/categories` has the select; unfiled = 其他, shown only when it has docs). A doc still tags TOPICS
+      only — its section(s) follow from them (`getBrowseCounts` counts a doc once per section). `?section=` filters
+      `categories hasSome <topics of section>`; `?cat=` a single topic (validated against the LIVE list — the old
+      `isLibraryCategory` check silently ignored member-created topics). `CategoryPicker` groups options the same way.
+    - **精选 is a RAIL, not a hero**: ≤5 titles in the right column (`getFeaturedDocs(5)`), 「查看全部精选」→ `?sort=featured`;
+      under it 最多收藏 (top 5 by shelfCount, numbered, hidden when nobody shelved) and 继续阅读 (`getContinueReading`,
+      unfinished = `percent < FINISHED_PERCENT`, logged-in only). Never a full-width card grid above the list again.
+    - **Every row says who and where from**: eyebrow = `SourceLine` (`lib/library/source.ts#librarySourceKind`: 公众号 /
+      知乎 / arXiv / GitHub / … as a label + the account/site name; plain web = host; uploaded file = format badge PDF /
+      EPUB / PPT / Word) · 阅读时长 · 精选 · 时间; footer = `<Avatar handle>` + 「{上传者} 收录」 + ≤2 topic chips + ★评分 ·
+      收藏 · 评论. `DOC_CARD_SELECT` carries `sourceUrl` for this. Rows/cards are whole-row click targets via the title
+      link's `after:absolute after:inset-0` overlay; the uploader chip and topic links sit above it (`relative z-10`) —
+      never an `<a>` inside an `<a>`. Relative times carry `suppressHydrationWarning` (second-granular text differs
+      between SSR and hydration for a doc added seconds ago).
+  - **详情页 layout (2026-10-08)**: counters (字数 / 阅读时长 / 浏览 / 收藏 / 评论 = `DocFigures`, server) live in the LEFT
+    column under 编辑内容与信息; the two figures that are PEOPLE (在读 = shelfCount, 公开笔记) are `DocPeople` — bordered pill
+    BUTTONS with a chevron at the right end of the provenance row (查看原文 · 收录者 · 收录于), roster popover on click; 评分
+    sits directly under them. The AI `summary` paragraph is NOT shown on the detail page (it duplicated AI 导读 — cards
+    still use it as the blurb). 发表于 rides on the source line. `AiDigest`: 大纲 / 要点 side by side on md+, model
+    attribution top-right, 「AI 生成，可能有疏漏」 footer.
+  - **公众号 boilerplate (`lib/library/boilerplate.ts`, `tests/library-boilerplate.test.ts`)**: `extractArticle` runs
+    `stripBoilerplate` on the sanitized html before chapter splitting. Head rules (「点击上方蓝字关注」 lines, GIF/QR
+    banners) apply only to `mp.weixin.qq.com`; tail TRIGGERS (往期推荐 / 推荐阅读 / 扫码关注 / 点个在看 / END / 商务合作 …)
+    apply to every site but only inside the closing stretch (last 16 blocks AND last 40 % of text), only when a short line
+    or heading matches, and only when what follows is lines / links / images (a 「相关阅读」 heading followed by real
+    paragraphs is a section). Safety rails: never cut > 35 % of the text or below 200 chars. 重新处理 re-applies it to
+    existing docs. WeChat's in-feed ads are client-injected and never in the HTML — this is about the head/tail chrome.
   - **知识库分类 live in `LibraryCategory`**, not in code — official rows are curated at
     `/manage/library/categories` and lead the picker; ANY member may add one from the picker's
     新建分类 box. Creation is FIND-OR-CREATE (`lib/library/categories.ts`): typing a name that

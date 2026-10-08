@@ -4,6 +4,18 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Plus, Star, StarOff, Trash2 } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
+import { LIBRARY_SECTIONS } from '@/lib/library/types';
+
+// /manage 按设计保持中文 — the public side reads labels.libSection.*.
+const SECTION_NAMES: Record<string, string> = {
+  models: '模型与算法',
+  systems: '系统与算力',
+  agents: 'Agent 与应用',
+  data: '数据与评测',
+  engineering: '工程实践',
+  industry: '产业与趋势',
+  learning: '学习与前沿',
+};
 
 interface Row {
   id: string;
@@ -12,6 +24,7 @@ interface Row {
   nameEn: string;
   official: boolean;
   sortOrder: number;
+  section: string | null;
   createdBy: string | null;
   docCount: number;
 }
@@ -97,7 +110,33 @@ export function LibraryCategoryManager({ categories }: { categories: Row[] }) {
                   成员创建{c.createdBy ? ` · ${c.createdBy}` : ''}
                 </span>
               )}
-              <span className="ml-auto shrink-0 font-mono text-xs tabular-nums text-muted">
+              <select
+                value={c.section ?? ''}
+                disabled={busy === c.id}
+                aria-label="所属版块"
+                onChange={async (e) => {
+                  const section = e.target.value || null;
+                  setBusy(c.id);
+                  await call(
+                    {
+                      method: 'PATCH',
+                      headers: { 'content-type': 'application/json' },
+                      body: JSON.stringify({ id: c.id, section }),
+                    },
+                    section ? `已归入「${SECTION_NAMES[section]}」` : '已移出版块',
+                  );
+                  setBusy(null);
+                }}
+                className="ml-auto h-8 shrink-0 rounded-lg border border-zinc-200 bg-transparent px-2 text-xs dark:border-zinc-700"
+              >
+                <option value="">未归入版块（前台显示在「其他」）</option>
+                {LIBRARY_SECTIONS.map((sec) => (
+                  <option key={sec} value={sec}>
+                    {SECTION_NAMES[sec]}
+                  </option>
+                ))}
+              </select>
+              <span className="shrink-0 font-mono text-xs tabular-nums text-muted">
                 {c.docCount} 篇
               </span>
               <button

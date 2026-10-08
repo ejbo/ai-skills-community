@@ -1732,6 +1732,9 @@ model LibraryCategory {
   description String?
   official    Boolean  @default(false)
   sortOrder   Int      @default(100)
+  /// 版块 (lib/library/types.ts#LIBRARY_SECTIONS) this topic is grouped under on
+  /// the browse page. Null = member-created and not yet filed (shown under 其他).
+  section     String?
   /// Null for the seeded built-ins.
   createdById String?
   createdAt   DateTime @default(now())

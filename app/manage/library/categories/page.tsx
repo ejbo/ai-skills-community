@@ -16,6 +16,7 @@ export default async function ManageLibraryCategoriesPage() {
       nameEn: true,
       official: true,
       sortOrder: true,
+      section: true,
       createdBy: { select: { handle: true, displayName: true } },
     },
   });
@@ -35,6 +36,7 @@ export default async function ManageLibraryCategoriesPage() {
         <p className="mt-1 text-sm text-muted">
           官方分类排在选择器最前面，也是 AI 自动归类时唯一可选的范围。成员自建的分类对所有人可见，
           可以「设为官方」提升；删除只是撤下这个选项，已经用它归类的文档不受影响。
+          每个分类归入一个版块（浏览页顶部的 7 个入口）；未归入的在前台显示在「其他」下。
           <Link href="/manage/library" className="ml-2 text-zinc-900 dark:text-zinc-50 hover:underline">
             返回知识库后台
           </Link>
@@ -48,6 +50,7 @@ export default async function ManageLibraryCategoriesPage() {
           nameEn: r.nameEn,
           official: r.official,
           sortOrder: r.sortOrder,
+          section: r.section,
           createdBy: r.createdBy?.displayName ?? null,
           docCount: counts[r.slug] ?? 0,
         }))}
