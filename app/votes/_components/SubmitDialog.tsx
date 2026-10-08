@@ -28,6 +28,7 @@ import {
   VOTE_ENTRY_AUTHOR_MAX,
   VOTE_ENTRY_DESCRIPTION_MAX,
   VOTE_ENTRY_TITLE_MAX,
+  voteThumbUrl,
 } from '@/lib/votes/shared';
 import { probeAndCapture, uploadVoteSubmission } from './vote-upload';
 import { PosterCropEditor } from './PosterCropEditor';
@@ -391,7 +392,7 @@ export function SubmitDialog({
                     <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-900">
                       {thumb ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={withBasePath(thumb)} alt="" className="h-full w-full object-cover" />
+                        <img src={withBasePath(voteThumbUrl(thumb))} alt="" className="h-full w-full object-cover" />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-zinc-400">
                           <Play className="h-4 w-4" />

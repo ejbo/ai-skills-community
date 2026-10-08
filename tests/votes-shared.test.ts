@@ -13,8 +13,10 @@ import {
   voteCardAspectRatio,
   voteDayKey,
   voteOver,
+  votePageItems,
   voteStarted,
   votingOpen,
+  parseVotePageParam,
   type VoteNameRule,
 } from '@/lib/votes/shared';
 
@@ -581,5 +583,38 @@ describe('voteCardAspect*', () => {
         );
       }
     }
+  });
+});
+
+describe('votePageItems', () => {
+  it('lists every page when there are at most 7', () => {
+    expect(votePageItems(0, 1)).toEqual([0]);
+    expect(votePageItems(2, 7)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(votePageItems(0, 0)).toEqual([]);
+  });
+
+  it('keeps 7 slots — first, last, current ±1, gaps as null — wherever the current page is', () => {
+    expect(votePageItems(0, 20)).toEqual([0, 1, 2, 3, 4, null, 19]);
+    expect(votePageItems(3, 20)).toEqual([0, 1, 2, 3, 4, null, 19]);
+    expect(votePageItems(4, 20)).toEqual([0, null, 3, 4, 5, null, 19]);
+    expect(votePageItems(10, 20)).toEqual([0, null, 9, 10, 11, null, 19]);
+    expect(votePageItems(15, 20)).toEqual([0, null, 14, 15, 16, null, 19]);
+    expect(votePageItems(16, 20)).toEqual([0, null, 15, 16, 17, 18, 19]);
+    expect(votePageItems(19, 20)).toEqual([0, null, 15, 16, 17, 18, 19]);
+    for (let p = 0; p < 20; p++) expect(votePageItems(p, 20)).toHaveLength(7);
+    for (let p = 0; p < 8; p++) expect(votePageItems(p, 8)).toContain(p);
+  });
+});
+
+describe('parseVotePageParam', () => {
+  it('maps the 1-based ?page= to a 0-based index and ignores junk', () => {
+    expect(parseVotePageParam(undefined)).toBe(0);
+    expect(parseVotePageParam('1')).toBe(0);
+    expect(parseVotePageParam('3')).toBe(2);
+    expect(parseVotePageParam(['4', '9'])).toBe(3);
+    expect(parseVotePageParam('0')).toBe(0);
+    expect(parseVotePageParam('-2')).toBe(0);
+    expect(parseVotePageParam('2abc')).toBe(0);
+    expect(parseVotePageParam('9999999999')).toBe(0);
   });
 });

@@ -70,6 +70,8 @@ import {
   stepDraftCount,
   voteCardAspectClass,
   voteHref,
+  votePageItems,
+  voteThumbUrl,
   voteTimezoneKey,
   type BallotChange,
   type BallotDraft,
@@ -98,7 +100,11 @@ import { SubmitDialog } from './SubmitDialog';
 import { loginHref } from '@/lib/auth/callback-path';
 
 type SortMode = 'default' | 'no' | 'votes';
-const GRID_PAGE = 48;
+// 分页（不是「加载更多」）：一页之外的卡片整个卸载，图片、解码缓存、悬停播放器
+// 一起放掉。以前的窗口只增不减，滚到底几百张原图同时挂在 DOM 里。
+// 网格 24 = 4/3/2 列都能整行排满；榜单一行很矮，一页多放一些。
+const GRID_PAGE_SIZE = 24;
+const LIST_PAGE_SIZE = 50;
 // 悬停多久才真正开始加载预览：鼠标扫过一整排卡片时，没有哪张停留超过这个时间，
 // 所以扫一遍不会触发任何一次网络请求（Geek Videos 卡片的同一个数字）。
 const PREVIEW_DELAY_MS = 400;
@@ -215,7 +221,8 @@ function aspectClass(entry: VoteEntryView): string {
 }
 
 function EntryMedia({ entry, alt, eager = false }: { entry: VoteEntryView; alt: string; eager?: boolean }) {
-  const thumb = entry.kind === 'video' ? entry.posterUrl : entry.fileUrl;
+  // 卡片只拉缩略图（短边 640）；原图只在灯箱里加载。
+  const thumb = voteThumbUrl(entry.kind === 'video' ? entry.posterUrl : entry.fileUrl);
   if (!thumb) {
     // 抓帧失败的视频：给一块带编号的渐变底，而不是一片什么都没有的空白
     // （VideoCard 无封面时用标题首字，同一个思路）。
@@ -455,7 +462,7 @@ function VoteButton({ entry, draftCount, ctx, pop, size = 'sm', onStep }: VoteBu
 
 /**
  * 同一时刻只允许一张卡片播预览。鼠标扫过网格时前一张必须先 pause + 卸掉 src，
- * 否则一屏 48 张卡片会留下一串还在缓冲的 <video>（ShortsFeed 那句「每个可播放
+ * 否则一页 24 张卡片会留下一串还在缓冲的 <video>（ShortsFeed 那句「每个可播放
  * 元素要 30-80 MB」是同一个道理）。
  */
 let activePreview: { current: () => void } | null = null;
@@ -549,7 +556,13 @@ const EntryCard = memo(function EntryCard({ entry, draftCount, ctx, pop, onOpen,
 
   return (
     <div
-      className="group cv-auto -m-1 flex h-full flex-col p-1"
+      // **不要加 h-full。** 网格项默认就 stretch 到整行高度，flex-col + 投票行
+      // mt-auto 照样贴底对齐。h-full 会把 border-box 钉死成行高，而行高是按
+      // margin-box 算的 —— 外面这圈 -m-1 p-1（给焦点环留的地方）一抵消，内容就
+      // 比盒子高出 8px；`.cv-auto` 的 content-visibility 自带 paint containment，
+      // 溢出的那截直接被裁掉，表现就是每行最高那张卡的「投票」按钮底部被切平。
+      data-entry-id={entry.id}
+      className="group cv-auto -m-1 flex scroll-mt-20 flex-col p-1"
       onPointerEnter={(e) => startHover(e.pointerType)}
       onPointerLeave={() => stopRef.current()}
     >
@@ -586,8 +599,8 @@ const EntryCard = memo(function EntryCard({ entry, draftCount, ctx, pop, onOpen,
           </div>
 
           {/* <video> 只在这张卡真的要播时才存在。VideoCard 是常驻元素 + 延迟挂
-              src；这里不行 —— 画廊的窗口是只增不减的，滚到底就有几百上千张卡
-              同时挂着，常驻几百个媒体元素毫无意义。没有元素 = 零网络、零解码器。 */}
+              src；这里不行 —— 一页 24 张卡，同一时刻最多一张在播，常驻 24 个
+              媒体元素毫无意义。没有元素 = 零网络、零解码器。 */}
           {previewing && preview && (
             <video
               ref={releaseVideo}
@@ -712,7 +725,89 @@ const EntryCard = memo(function EntryCard({ entry, draftCount, ctx, pop, onOpen,
   );
 });
 
-export function VoteGallery({ initial }: { initial: VoteActivityView }) {
+const PAGER_BTN =
+  'inline-flex h-9 min-w-9 items-center justify-center rounded-lg px-2 text-sm tabular-nums transition ' +
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 dark:focus-visible:ring-zinc-100 ' +
+  'disabled:pointer-events-none disabled:opacity-35';
+
+// 页码条是 chrome（全墨），不是投票色板里的语义色 —— 当前页 = 墨色实心。
+function Pager({
+  page,
+  pageCount,
+  from,
+  to,
+  total,
+  onPage,
+}: {
+  page: number;
+  pageCount: number;
+  from: number;
+  to: number;
+  total: number;
+  onPage: (page: number) => void;
+}) {
+  const t = useTranslations('votes');
+  return (
+    <nav
+      aria-label={t('pagination_label')}
+      className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-between"
+    >
+      <span className="text-xs tabular-nums text-muted">{t('page_range', { from, to, total })}</span>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          aria-label={t('prev_page')}
+          title={t('prev_page')}
+          disabled={page === 0}
+          onClick={() => onPage(page - 1)}
+          className={`${PAGER_BTN} border border-zinc-200 hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-800`}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        {/* 窄屏放不下 7 个页码：只留「第 x / y 页」。 */}
+        <span className="px-3 text-sm tabular-nums text-muted sm:hidden">
+          {t('page_indicator', { page: page + 1, pageCount })}
+        </span>
+        <span className="hidden items-center gap-1 sm:flex">
+          {votePageItems(page, pageCount).map((p, i) =>
+            p === null ? (
+              <span key={`gap-${i}`} className="w-6 text-center text-sm text-muted" aria-hidden>
+                …
+              </span>
+            ) : (
+              <button
+                key={p}
+                type="button"
+                aria-current={p === page ? 'page' : undefined}
+                onClick={() => p !== page && onPage(p)}
+                className={`${PAGER_BTN} ${
+                  p === page
+                    ? 'bg-zinc-900 font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900'
+                    : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                }`}
+              >
+                {p + 1}
+              </button>
+            ),
+          )}
+        </span>
+        <button
+          type="button"
+          aria-label={t('next_page')}
+          title={t('next_page')}
+          disabled={page >= pageCount - 1}
+          onClick={() => onPage(page + 1)}
+          className={`${PAGER_BTN} border border-zinc-200 hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-800`}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+    </nav>
+  );
+}
+
+/** `initialPage` is 0-based (page.tsx parses `?page=` with parseVotePageParam). */
+export function VoteGallery({ initial, initialPage = 0 }: { initial: VoteActivityView; initialPage?: number }) {
   const t = useTranslations('votes');
   const locale = useLocale();
   const router = useRouter();
@@ -727,7 +822,9 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
   const [lightboxId, setLightboxId] = useState<string | null>(null);
   const [panelTab, setPanelTab] = useState<'info' | 'comments'>('info');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [gridLimit, setGridLimit] = useState(GRID_PAGE);
+  // 0-based; clamped against the real page count below (entries can shrink
+  // under a filter, a poll, or a stale ?page= in the URL).
+  const [page, setPage] = useState(initialPage);
   const [submitOpen, setSubmitOpen] = useState(false);
   const [visibilityOpen, setVisibilityOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>({});
@@ -1054,25 +1151,64 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
   const lightboxIndex = lightboxId === null ? -1 : shown.findIndex((e) => e.id === lightboxId);
   const lightboxEntry = lightboxIndex >= 0 ? shown[lightboxIndex] : null;
 
-  // 大量作品时分批渲染（DOM 数量才是卡顿来源；数据本来就一次性到位）。
+  // ── 分页 ──
+  // 数据仍然一次性到位（随机顺序、搜索、草稿预算、灯箱 ←/→ 都要整份列表），
+  // 分的是**渲染**：只有当前页的卡片在 DOM 里，翻页即卸载上一页的图片和播放器。
+  const pageSize = listMode ? LIST_PAGE_SIZE : GRID_PAGE_SIZE;
+  const pageSizeRef = useRef(pageSize);
+  pageSizeRef.current = pageSize;
+  const pageCount = Math.max(1, Math.ceil(shown.length / pageSize));
+  const currentPage = Math.min(Math.max(0, page), pageCount - 1);
+  const pageStart = currentPage * pageSize;
+  const pageEntries = useMemo(() => shown.slice(pageStart, pageStart + pageSize), [shown, pageStart, pageSize]);
+
+  // ?page= 跟着走（replaceState：刷新/返回能回到这一页，又不会给每次翻页塞一条历史）。
+  // 不走 router —— 这是 force-dynamic 页面，router.replace 会把整份作品 payload 重新拉一遍。
   useEffect(() => {
-    setGridLimit(GRID_PAGE);
-  }, [deferredQ, sort, viewMode]);
-  const loadMoreRef = useRef<HTMLDivElement>(null);
+    const url = new URL(window.location.href);
+    const want = currentPage > 0 ? String(currentPage + 1) : null;
+    if (url.searchParams.get('page') === want) return;
+    if (want) url.searchParams.set('page', want);
+    else url.searchParams.delete('page');
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+  }, [currentPage]);
+
+  // 翻页后回到网格顶部（只在已经滚过网格顶的时候 —— 页码条在底部，几乎总是）。
+  // 瞬间跳而不是 smooth：平滑滚动会一路扫过新一页的所有卡片，把它们的图按从下往上
+  // 的顺序全触发一遍。
+  const goToPage = useCallback((next: number) => {
+    setPage(next);
+    const el = toolbarSentinelRef.current;
+    if (!el) return;
+    const top = el.getBoundingClientRect().top + window.scrollY;
+    if (window.scrollY > top) window.scrollTo({ top, behavior: 'auto' });
+  }, []);
+
+  // 灯箱里 ←/→ 能一路翻过页界；关掉时把网格带到最后看的那件作品所在页，并把它
+  // 滚进视野 —— 否则关掉灯箱看到的是另一页、另一批作品。只在真的翻过作品时才跟：
+  // 点开一件、看完关掉（尤其是从页顶领奖台点开的）不该把页面滚走。
+  const [revealId, setRevealId] = useState<string | null>(null);
+  const openedIdRef = useRef<string | null>(null);
   useEffect(() => {
-    const el = loadMoreRef.current;
-    if (!el || gridLimit >= shown.length) return;
-    const obs = new IntersectionObserver(
-      (hits) => {
-        if (hits.some((h) => h.isIntersecting)) {
-          setGridLimit((l) => Math.min(l + GRID_PAGE, shownRef.current.length));
-        }
-      },
-      { rootMargin: '600px' },
-    );
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [gridLimit, shown.length]);
+    if (lightboxId === null) openedIdRef.current = null;
+    else if (openedIdRef.current === null) openedIdRef.current = lightboxId;
+  }, [lightboxId]);
+  const closeLightbox = useCallback(() => {
+    const id = lightboxIdRef.current;
+    const opened = openedIdRef.current;
+    setLightboxId(null);
+    if (!id || id === opened) return;
+    const idx = shownRef.current.findIndex((e) => e.id === id);
+    if (idx < 0) return;
+    setPage(Math.floor(idx / pageSizeRef.current));
+    setRevealId(id);
+  }, []);
+  useEffect(() => {
+    if (!revealId || lightboxId !== null) return;
+    const el = document.querySelector<HTMLElement>(`[data-entry-id="${CSS.escape(revealId)}"]`);
+    el?.scrollIntoView({ block: 'nearest' });
+    setRevealId(null);
+  }, [revealId, lightboxId, currentPage]);
 
   // ── sticky toolbar: dock at the top and hold the main navbar hidden ──
   // A 1px sentinel sits directly above the toolbar; once it scrolls out at the
@@ -1149,7 +1285,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
       if (next) setLightboxId(next.id);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setLightboxId(null);
+      if (e.key === 'Escape') closeLightbox();
       else if (e.key === 'ArrowLeft') step(-1);
       else if (e.key === 'ArrowRight') step(1);
     };
@@ -1160,7 +1296,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = prevOverflow;
     };
-  }, [lightboxOpen]);
+  }, [lightboxOpen, closeLightbox]);
 
   // ── 浏览计数 ────────────────────────────────────────────────────────────
   // 打开灯箱 = 看了这件作品。服务端按 (viewer, entry, UTC 日) 去重，所以来回
@@ -1466,6 +1602,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
                 type="button"
                 onClick={() => {
                   // 搜索过滤可能把该作品排除在 shown 之外 — 打开前清掉过滤。
+                  // 页码不用管：关灯箱时 closeLightbox 会翻到它所在的页。
                   setQ('');
                   setLightboxId(entry.id);
                 }}
@@ -1575,14 +1712,20 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
             <input
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => {
+                setQ(e.target.value);
+                setPage(0);
+              }}
               placeholder={t('search_placeholder')}
               className="h-8 w-full rounded-lg border border-zinc-200 bg-transparent pl-9 pr-3 text-sm outline-none transition focus:border-zinc-500 dark:border-zinc-800 dark:focus:border-zinc-400"
             />
           </div>
           <select
             value={sort}
-            onChange={(e) => setSort(e.target.value as SortMode)}
+            onChange={(e) => {
+              setSort(e.target.value as SortMode);
+              setPage(0);
+            }}
             className="h-8 rounded-lg border border-zinc-200 bg-transparent px-2 text-sm outline-none dark:border-zinc-800 dark:bg-zinc-950"
             aria-label={t('sort_label')}
           >
@@ -1595,7 +1738,11 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
               <button
                 type="button"
                 title={t('view_grid')}
-                onClick={() => setViewMode('grid')}
+                onClick={() => {
+                  if (viewMode === 'grid') return;
+                  setViewMode('grid');
+                  setPage(0);
+                }}
                 className={`flex h-7 w-7 items-center justify-center rounded-md transition ${
                   viewMode === 'grid'
                     ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
@@ -1607,7 +1754,11 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
               <button
                 type="button"
                 title={t('view_list')}
-                onClick={() => setViewMode('list')}
+                onClick={() => {
+                  if (viewMode === 'list') return;
+                  setViewMode('list');
+                  setPage(0);
+                }}
                 className={`flex h-7 w-7 items-center justify-center rounded-md transition ${
                   viewMode === 'list'
                     ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
@@ -1628,12 +1779,13 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
         </div>
       ) : listMode ? (
         <div className="mt-6 overflow-hidden rounded-2xl border border-zinc-200/70 dark:border-zinc-800/70">
-          {shown.slice(0, gridLimit).map((entry, idx) => (
+          {pageEntries.map((entry, idx) => (
             <button
               key={entry.id}
               type="button"
+              data-entry-id={entry.id}
               onClick={() => setLightboxId(entry.id)}
-              className="flex w-full items-center gap-3 border-b border-zinc-100 px-3 py-2.5 text-left transition last:border-0 hover:bg-zinc-50 dark:border-zinc-900 dark:hover:bg-zinc-900/60 sm:gap-4 sm:px-4"
+              className="flex w-full scroll-mt-20 items-center gap-3 border-b border-zinc-100 px-3 py-2.5 text-left transition last:border-0 hover:bg-zinc-50 dark:border-zinc-900 dark:hover:bg-zinc-900/60 sm:gap-4 sm:px-4"
             >
               <span
                 className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold tabular-nums ${
@@ -1642,7 +1794,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
                     : RANK_PLAIN
                 }`}
               >
-                {entry.rank ?? idx + 1}
+                {entry.rank ?? pageStart + idx + 1}
               </span>
               <span className="relative h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-900">
                 <EntryMedia entry={entry} alt={entryTitle(entry, t)} />
@@ -1696,7 +1848,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
         </div>
       ) : (
         <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
-          {shown.slice(0, gridLimit).map((entry) => (
+          {pageEntries.map((entry) => (
             <EntryCard
               key={entry.id}
               entry={entry}
@@ -1710,16 +1862,15 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
         </div>
       )}
 
-      {gridLimit < shown.length && (
-        <div ref={loadMoreRef} className="mt-6 flex justify-center">
-          <button
-            type="button"
-            onClick={() => setGridLimit((l) => Math.min(l + GRID_PAGE, shown.length))}
-            className="inline-flex h-9 items-center rounded-lg border border-zinc-200 px-4 text-sm transition hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-800"
-          >
-            {t('load_more', { rest: shown.length - gridLimit })}
-          </button>
-        </div>
+      {pageCount > 1 && (
+        <Pager
+          page={currentPage}
+          pageCount={pageCount}
+          from={pageStart + 1}
+          to={pageStart + pageEntries.length}
+          total={shown.length}
+          onPage={goToPage}
+        />
       )}
 
       {/* lightbox */}
@@ -1730,7 +1881,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
             className="fixed inset-0 z-[100] flex flex-col bg-black/95"
             role="dialog"
             aria-modal="true"
-            onClick={() => setLightboxId(null)}
+            onClick={closeLightbox}
           >
             <div
               className="flex items-center justify-between px-4 py-2.5 text-sm text-white/85"
@@ -1743,7 +1894,7 @@ export function VoteGallery({ initial }: { initial: VoteActivityView }) {
               <button
                 type="button"
                 aria-label={t('close')}
-                onClick={() => setLightboxId(null)}
+                onClick={closeLightbox}
                 className="flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15"
               >
                 <X className="h-5 w-5" />

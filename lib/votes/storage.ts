@@ -7,10 +7,19 @@
 
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
+import type { FileHandle } from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { nanoid } from 'nanoid';
 import { tryRunMediaJob } from '@/lib/uploads/job-queue';
+import {
+  VOTE_THUMB_MAX_RATIO,
+  VOTE_THUMB_MIN_SOURCE_BYTES,
+  jpegOrientation,
+  voteThumbFfmpegArgs,
+  voteThumbKeyFor,
+  voteThumbSkipKeyFor,
+} from './thumb';
 
 const MEDIA_ROOT = path.resolve(
   process.cwd(),
@@ -219,6 +228,15 @@ export async function deleteVoteMediaFile(key: string | null | undefined): Promi
   const full = voteMediaAbsPath(key);
   if (!full) return;
   await fsp.unlink(full).catch(() => undefined);
+  // 卡片缩略图是从原图键推导出来的派生文件（不在任何表里）——原图走了它也得走，
+  // 否则就是没人认领的孤儿文件。
+  const thumbKey = voteThumbKeyFor(key);
+  if (thumbKey) {
+    for (const k of [thumbKey, voteThumbSkipKeyFor(thumbKey)]) {
+      const p = voteMediaAbsPath(k);
+      if (p) await fsp.unlink(p).catch(() => undefined);
+    }
+  }
 }
 
 // ─── ffmpeg helpers (faststart remux + duration probe) ──────────────────────
@@ -487,4 +505,91 @@ export async function probeVoteMediaDurationSec(key: string): Promise<number | n
       resolve(null);
     }
   });
+}
+
+// ─── 卡片缩略图（按需生成、落盘缓存）────────────────────────────────────────
+// 纯函数（键名、EXIF、ffmpeg 参数）在 ./thumb.ts。这里同样是 best-effort：永不抛，
+// 任何失败都回落成「给原图」—— 卡片最差也就是改动前的样子。
+//
+// 走共享的 media job 队列（和 faststart remux / 预览短片同一个闸）：解一张 50 MB 的
+// 原图也是整文件读盘，不能绕开那个并发上限。等槽位有上限（THUMB_MAX_WAIT_MS）：
+// 这是一个 <img> 请求，排不上就先给原图（短缓存），下次再生成。
+
+const THUMB_FFMPEG_TIMEOUT_MS = 20_000;
+const THUMB_MAX_WAIT_MS = 8_000;
+const JPEG_HEAD_BYTES = 128 * 1024; // EXIF APP1 最多 64 KB，前面顶多再有 JFIF/ICC 段
+
+export type VoteThumbResult =
+  | { kind: 'thumb'; key: string; size: number }
+  // final = 这个结论不会再变（不适用 / 不值得 / ffmpeg 读不了），原图可以长缓存；
+  // !final = 只是这次没排上 / 本机没 ffmpeg，缓存要短，之后还要再试。
+  | { kind: 'original'; final: boolean };
+
+// 同一张图被多个请求同时要（多人同时打开同一页）时只跑一个 ffmpeg。
+const thumbJobs = new Map<string, Promise<VoteThumbResult>>();
+
+/**
+ * 卡片缩略图：已有就直接给；没有就现做一张（短边 640、EXIF 转正）存到
+ * `thumb/` 下。`sourceSize` 是原图字节数（调用方已经 stat 过）。
+ */
+export async function ensureVoteThumb(key: string, sourceSize: number): Promise<VoteThumbResult> {
+  const thumbKey = voteThumbKeyFor(key);
+  if (!thumbKey || sourceSize < VOTE_THUMB_MIN_SOURCE_BYTES) return { kind: 'original', final: true };
+  const existing = await statVoteMediaAsync(thumbKey);
+  if (existing && existing.size > 0) return { kind: 'thumb', key: thumbKey, size: existing.size };
+  if (await statVoteMediaAsync(voteThumbSkipKeyFor(thumbKey))) return { kind: 'original', final: true };
+  let job = thumbJobs.get(thumbKey);
+  if (!job) {
+    job = makeVoteThumb(key, thumbKey, sourceSize).finally(() => thumbJobs.delete(thumbKey));
+    thumbJobs.set(thumbKey, job);
+  }
+  return job;
+}
+
+async function readJpegOrientation(full: string): Promise<number> {
+  let fh: FileHandle | null = null;
+  try {
+    fh = await fsp.open(full, 'r');
+    const buf = Buffer.alloc(JPEG_HEAD_BYTES);
+    const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
+    return jpegOrientation(buf.subarray(0, bytesRead));
+  } catch {
+    return 1;
+  } finally {
+    await fh?.close().catch(() => undefined);
+  }
+}
+
+async function makeVoteThumb(key: string, thumbKey: string, sourceSize: number): Promise<VoteThumbResult> {
+  const notNow: VoteThumbResult = { kind: 'original', final: false };
+  const src = voteMediaAbsPath(key);
+  const dst = voteMediaAbsPath(thumbKey);
+  const skip = voteMediaAbsPath(voteThumbSkipKeyFor(thumbKey));
+  if (!src || !dst || !skip) return { kind: 'original', final: true };
+  // 扩展名和目标一致，ffmpeg 才会选对的 muxer；写 tmp 再 rename，被杀掉的 ffmpeg
+  // 永远不会留下一张半截的「缩略图」被当成成品服务出去。
+  const tmp = `${dst}.tmp.${dst.split('.').pop()}`;
+  try {
+    if (!(await hasFfmpeg())) return notNow;
+    const orientation = key.endsWith('.jpg') ? await readJpegOrientation(src) : 1;
+    await fsp.mkdir(path.dirname(dst), { recursive: true });
+    const outcome = await tryRunMediaJob(
+      () => runFfmpeg(voteThumbFfmpegArgs(src, tmp, orientation), THUMB_FFMPEG_TIMEOUT_MS),
+      THUMB_MAX_WAIT_MS,
+    );
+    if (!outcome.ran) return notNow; // 没排上：ffmpeg 根本没起，也没有 tmp
+    const st = outcome.value ? await fsp.stat(tmp).catch(() => null) : null;
+    if (!st || st.size === 0 || st.size >= sourceSize * VOTE_THUMB_MAX_RATIO) {
+      // ffmpeg 读不了这张图，或者压出来根本没省多少：记下来，以后直接给原图，
+      // 不再为同一个结论一遍遍起 ffmpeg。
+      await fsp.unlink(tmp).catch(() => undefined);
+      await fsp.writeFile(skip, '').catch(() => undefined);
+      return { kind: 'original', final: true };
+    }
+    await fsp.rename(tmp, dst);
+    return { kind: 'thumb', key: thumbKey, size: st.size };
+  } catch {
+    await fsp.unlink(tmp).catch(() => undefined);
+    return notNow;
+  }
 }

@@ -2,7 +2,7 @@ import { notFound, permanentRedirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { auth } from '@/lib/auth';
 import { getVoteActivityView, voteViewerFromSession } from '@/lib/vote-queries';
-import { voteHref } from '@/lib/votes/shared';
+import { parseVotePageParam, voteHref } from '@/lib/votes/shared';
 import { resolveVoteParam } from '@/lib/votes/slug';
 import { VoteGallery } from '../_components/VoteGallery';
 
@@ -50,7 +50,7 @@ export default async function VoteDetailPage({
 
   return (
     <div className="container max-w-6xl py-8">
-      <VoteGallery initial={view} />
+      <VoteGallery initial={view} initialPage={parseVotePageParam(searchParams.page)} />
     </div>
   );
 }

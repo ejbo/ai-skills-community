@@ -3,6 +3,7 @@ import { Readable } from 'node:stream';
 import { auth } from '@/lib/auth';
 import { env } from '@/lib/env';
 import {
+  ensureVoteThumb,
   openVoteMediaRange,
   statVoteMediaAsync,
   voteMediaContentType,
@@ -16,6 +17,11 @@ export const dynamic = 'force-dynamic';
 // poster/cover) from local disk. Same access model as the video board: login +
 // unguessable capability key; everything renders inline (Range support for
 // video seeking).
+//
+// `?thumb=1` (cards, podium, 榜单, hub covers, editor tables — see voteThumbUrl in
+// lib/votes/shared.ts): serve the derived card thumbnail instead of the original,
+// generating it on first request (ensureVoteThumb). Same access model — the
+// thumb is reachable only through its source's unguessable key.
 export async function GET(req: Request, { params }: { params: { key: string[] } }) {
   const session = await auth();
   if (!session?.user) return new NextResponse('Unauthorized', { status: 401 });
@@ -31,11 +37,25 @@ export async function GET(req: Request, { params }: { params: { key: string[] } 
   const stat = await statVoteMediaAsync(key);
   if (!stat) return new NextResponse('Not found', { status: 404 });
 
-  const { size } = stat;
+  let { size } = stat;
+  // Every URL is immutable (keys are never reused) — EXCEPT a `?thumb=1` that had
+  // to fall back to the original only because ffmpeg was busy/missing this time:
+  // caching THAT for a year would pin the full-size original under the thumb URL.
+  let cacheControl = 'private, max-age=31536000, immutable';
+  if (new URL(req.url).searchParams.get('thumb') === '1') {
+    const thumb = await ensureVoteThumb(key, size);
+    if (thumb.kind === 'thumb') {
+      key = thumb.key;
+      size = thumb.size;
+    } else if (!thumb.final) {
+      cacheControl = 'private, max-age=300';
+    }
+  }
+
   const contentType = voteMediaContentType(key);
   const baseHeaders = {
     'content-type': contentType,
-    'cache-control': 'private, max-age=31536000, immutable',
+    'cache-control': cacheControl,
     'x-content-type-options': 'nosniff',
     'content-disposition': 'inline',
   };

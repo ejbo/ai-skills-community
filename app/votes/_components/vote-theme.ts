@@ -49,17 +49,21 @@ export const VOTE_LOCKED =
 export const BADGE_PENDING = 'bg-amber-400 text-amber-950 shadow-sm shadow-black/25';
 export const BADGE_DONE = 'bg-emerald-500 text-white shadow-sm shadow-black/25';
 
+// 深色底色写成 `/[0.12]` 而不是 `/12`：12 不在 Tailwind 的透明度刻度里
+// （0、5、10…100），`/12` 不会生成任何 CSS，深色模式就退回浅色的 bg-*-50，
+// 药丸在黑底上发白。改透明度时只用刻度值或方括号写法。
+
 /** 我的票数预算：还有票 = 淡玫红（去投），投完 = 中性描边。 */
 export const BUDGET_LEFT =
-  'border border-rose-300/70 bg-rose-50 text-rose-700 dark:border-rose-500/35 dark:bg-rose-500/12 dark:text-rose-300';
+  'border border-rose-300/70 bg-rose-50 text-rose-700 dark:border-rose-500/35 dark:bg-rose-500/[0.12] dark:text-rose-300';
 export const BUDGET_OUT =
   'border border-zinc-300 text-zinc-600 dark:border-zinc-700 dark:text-zinc-300';
 
 /** 活动状态药丸：进行中 = 玫红，未开始 = 琥珀，已结束 = 中性。 */
 export const STATUS_LIVE =
-  'border border-rose-300/70 bg-rose-50 text-rose-700 dark:border-rose-500/35 dark:bg-rose-500/12 dark:text-rose-300';
+  'border border-rose-300/70 bg-rose-50 text-rose-700 dark:border-rose-500/35 dark:bg-rose-500/[0.12] dark:text-rose-300';
 export const STATUS_SOON =
-  'border border-amber-300/80 bg-amber-50 text-amber-800 dark:border-amber-500/35 dark:bg-amber-500/12 dark:text-amber-200';
+  'border border-amber-300/80 bg-amber-50 text-amber-800 dark:border-amber-500/35 dark:bg-amber-500/[0.12] dark:text-amber-200';
 export const STATUS_OVER =
   'border border-zinc-200 bg-zinc-100 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-800/60 dark:text-zinc-300';
 
