@@ -130,8 +130,8 @@
   `VoteEntry.commentCount`; list = newest 100 rendered oldest-first — desc scan + reverse,
   an asc take would pin the oldest 100; comments on hidden/unapproved entries 404 for
   non-managers). The lightbox has a right side panel (详情: description/custom answers/rank;
-  评论: EntryComments). Gallery renders WINDOWED (GRID_PAGE=48 + IntersectionObserver
-  sentinel — DOM count, not payload, is the load concern) and offers a 榜单 list view when
+  评论: EntryComments). Gallery renders PAGED (see 「画廊分页 + 卡片缩略图」 below — it was
+  a grow-only 48-card window until 2026-10-08) and offers a 榜单 list view when
   results are visible ('shown' feeds both the list and lightbox nav). VoteEditor is 5 TABS
   (基本信息/投票规则/成员投稿/作品/数据); the 数据 tab is the PRIMARY stats surface
   (`/api/votes/[id]/stats` ranked entries + distinct-voter counts; per-entry voter lists
@@ -169,7 +169,7 @@
     （lib/votes/shared.ts）：有 preview 就播 preview；没有时只有原片 ≤ `VOTE_HOVER_SOURCE_MAX_BYTES`
     (64 MB) 才回退播原片，并且只循环开头 8 秒。这是对 Video delivery 那条「绝不回退播原片」
     的**有闸门的**例外，成立的前提是四件事一起在：400ms 悬停延迟、`<video>` 元素**只在悬停
-    时才挂载**（画廊的渲染窗口只增不减，滚到底会有上千张卡，常驻媒体元素毫无意义）、
+    时才挂载**（一页 24 张卡、同一时刻最多一张在播，常驻媒体元素毫无意义）、
     模块级 `activePreview` 保证全站同一时刻只有一张卡在播、以及 `pause()+removeAttribute('src')+load()`
     的硬卸载。删掉其中任何一件，闸门就不成立了。
   - **浏览数只给发起人/管理员**。`VoteEntry.viewCount` + `VoteEntryVisit`（sessionHash 按
@@ -228,3 +228,40 @@
   `history.replaceState` 把地址栏换成新链接），**发布后冻结**。`/votes/[id]` 与 `/votes/[id]/edit` 同时接受 slug / id / 退役别名
   （`resolveVoteParam`），非规范访问 308 到 `voteHref`；**闸门先于重定向**（否则拿 id 就能从 Location 读到隐藏活动的标题）。
   所有链接一律 `voteHref({id, slug}, 'edit'?)`（lib/votes/shared.ts）；API 路由仍按 id。老数据 `lib/votes/slug.ts#backfillVoteSlugs()`。
+
+- **画廊分页 + 卡片缩略图 (2026-10-08)** — owner：「图片和视频一多加载就很慢，做个分页；投票按钮被截断了」。
+  改动前实测（58 件、手机原图大小的测试活动）：首屏 24 个媒体请求 **157 MB**，DOM 里 48 张卡且只增不减；
+  改动后同样 24 个请求 **2.8 MB**、DOM 里 24 张卡。慢的大头是**图片作品的卡片直接 `<img src=原图>`**（单张上限 50 MB），
+  分页只是另一半。三条契约：
+  - **分页是分渲染，不是分数据**。`GET /api/votes/[id]` / 页面 payload 仍是整份作品：随机顺序（`seededShuffle`）、
+    搜索、草稿预算（`draftBudget` 要看所有 `myVotes`）、灯箱 ←/→、领奖台都依赖整份列表 —— 别把它改成服务端分页。
+    `VoteGallery` 只渲染 `shown.slice(page)`：网格 `GRID_PAGE_SIZE=24`、榜单 `LIST_PAGE_SIZE=50`；翻页即卸载上一页
+    （图片、解码缓存、悬停播放器一起放掉）。页码 0 起存在 state，`?page=`（1 起，`parseVotePageParam`）用
+    `history.replaceState` 同步 —— **不走 router**，force-dynamic 页面的 `router.replace` 会把整份 payload 重拉一遍。
+    搜索/排序/切视图在**事件处理里** `setPage(0)`（不是 effect：effect 会在挂载时把 `?page=3` 冲掉）；页号对实际页数
+    再夹一次（过滤、轮询、陈旧链接都会让页数变少）。灯箱照旧在整份 `shown` 里翻页；关灯箱走 `closeLightbox`：把网格
+    带到最后看的那件所在页并 `scrollIntoView`（卡片带 `data-entry-id` + `scroll-mt-20`，吸顶工具栏不遮）。翻页后
+    瞬间（不是 smooth）回到网格顶 —— 平滑滚动会一路扫过新一页的所有卡片、从下往上触发懒加载。页码条是 chrome，全墨。
+  - **卡片缩略图**：`voteThumbUrl(url)`（lib/votes/shared.ts，客户端安全）给 `image|poster|cover` 的 jpg/png/webp 存储 URL
+    加 `?thumb=1`；媒体路由据此调 `ensureVoteThumb`（lib/votes/storage.ts；纯函数在 lib/votes/thumb.ts）。缩略图**按需生成、
+    落盘缓存**，键由原图键推导（`thumb/<kind>-<id>_s640.<jpg|png>`）—— 不进数据库，所以老作品零迁移零回填；
+    `deleteVoteMediaFile` 删原图时顺带删缩略图和 skip 标记（派生文件不在任何表里，漏删就是孤儿）。规则：短边 640、不放大；
+    原图 < 512 KB 直接给原图；JPEG 出 JPEG、PNG/WebP 出 PNG（透明通道转 JPEG 会变黑底）；gif/avif/视频不做；压出来
+    ≥ 原图 70% 或 ffmpeg 读不了 ⇒ 写 `.skip` 标记、以后直接给原图（不为同一个结论反复起 ffmpeg）。用在：画廊卡片、领奖台、
+    榜单、大厅 `VoteCard` 封面、编辑页作品表与封面预览、数据面板、我的投稿列表。**灯箱和封面裁切器必须用原图**。
+    四个不能「简化」掉的点：
+    1. **EXIF 方向自己读**（`jpegOrientation`）+ `-noautorotate` + 显式 transpose/flip。ffmpeg 8.x 会按 EXIF 自动转正图片、
+       老版本不会，服务器版本不确定；浏览器显示原图是转正的，`posterAspect` 也按转正后的宽高定。8 个方向已逐像素对过
+       ffmpeg 8.1 的 autorotate。
+    2. **输入白名单** `image2,jpeg_pipe,png_pipe,webp_pipe` + `protocol_whitelist file`（`inputGuardArgs`）。上传只看声明类型，
+       ffmpeg 按内容选解复用器：一份 HLS 播放列表存成 `.jpg`，不设防就会跟着去开别的文件/内网地址。
+    3. **走共享 media job 队列**，等槽位 ≤ 8 s；没排上 / 本机没 ffmpeg ⇒ 给原图但 `cache-control: private, max-age=300`
+       （不是 immutable —— 否则原图会以缩略图 URL 被浏览器缓存一年）。成品与「最终就给原图」的结论才是 immutable。
+    4. 同一张图的并发请求共享一个 job（`thumbJobs`），写 tmp 再 rename。
+  - **卡片外壳不许 `h-full`**（这次「投票按钮被截断」的根因）。`EntryCard` 外层是 `-m-1 p-1`（给焦点环留地方）+ `.cv-auto`；
+    网格行高按 margin-box 算，`h-full` 再把 border-box 钉成行高，内容就比盒子高 8px，而 `content-visibility: auto` 自带
+    paint containment，溢出的 4px 被裁掉 —— 每行最高那张卡的按钮底边被切平。网格项默认 stretch 就够了，flex-col +
+    投票行 `mt-auto` 照样贴底对齐。在 `.cv-auto` 元素上加任何「固定高度 + 负外边距」的组合前先想清楚这一条。
+  - **深色药丸底色**：`vote-theme.ts` 里 `BUDGET_LEFT` / `STATUS_LIVE` / `STATUS_SOON` 的深色底写成 `dark:bg-*-500/[0.12]`。
+    原来的 `/12` 不在 Tailwind 透明度刻度（0、5、10…100）里，根本不生成 CSS，深色模式退回浅色 `bg-*-50`，药丸在黑底上发白。
+    改透明度只用刻度值或方括号写法。

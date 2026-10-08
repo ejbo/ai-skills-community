@@ -43,6 +43,51 @@ export const LIBRARY_CATEGORIES = [
 
 export type LibraryCategorySlug = (typeof LIBRARY_CATEGORIES)[number]['slug'];
 
+// ── 版块 (sections) — the 7 top-level groups the browse page navigates by.
+// Owner (2026-10-08): 16 flat categories were 杂乱 and would not scale. Reading
+// sites that work at volume (豆瓣 6 headings over ~140 tags, Lobsters 12 groups
+// over 117 tags) keep a SHORT fixed top level and let finer topics live under
+// it. Sections are code (a few, fixed, translated via `labels.libSection.*`);
+// topics stay in `LibraryCategory` (admin-curated, member-extendable) and each
+// carries a `section`. A doc keeps tagging TOPICS only — its section(s) follow
+// from them, so no doc column, no AI-prompt change, no editor field.
+
+export const LIBRARY_SECTIONS = [
+  'models', // 模型与算法
+  'systems', // 系统与算力
+  'agents', // Agent 与应用
+  'data', // 数据与评测
+  'engineering', // 工程实践
+  'industry', // 产业与趋势
+  'learning', // 学习与前沿
+] as const;
+export type LibrarySection = (typeof LIBRARY_SECTIONS)[number];
+
+export function isLibrarySection(v: unknown): v is LibrarySection {
+  return typeof v === 'string' && (LIBRARY_SECTIONS as readonly string[]).includes(v);
+}
+
+/** Where each built-in topic lives. The migration writes this; reads fall back to it for a null column. */
+export const DEFAULT_SECTION_BY_SLUG: Record<string, LibrarySection> = {
+  llm: 'models',
+  multimodal: 'models',
+  finetune: 'models',
+  safety: 'models',
+  inference: 'systems',
+  agent: 'agents',
+  prompt: 'agents',
+  rag: 'agents',
+  embodied: 'agents',
+  product: 'agents',
+  data: 'data',
+  eval: 'data',
+  dev: 'engineering',
+  industry: 'industry',
+  tutorial: 'learning',
+  research: 'learning',
+};
+
+
 export const CATEGORY_NAME_BY_SLUG: Record<string, string> = Object.fromEntries(
   LIBRARY_CATEGORIES.map((c) => [c.slug, c.name]),
 );

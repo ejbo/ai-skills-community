@@ -47,6 +47,7 @@ import {
   MAX_PER_ENTRY_MAX,
   voteTimezoneOf,
   voteHref,
+  voteThumbUrl,
   type VoteCustomField,
   type VoteFieldPick,
   type VoteNameRule,
@@ -852,7 +853,7 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
             <div className="flex items-center gap-3">
               {coverUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={withBasePath(coverUrl)} alt="" className="h-16 w-32 rounded-lg object-cover" />
+                <img src={withBasePath(voteThumbUrl(coverUrl))} alt="" className="h-16 w-32 rounded-lg object-cover" />
               ) : (
                 <div className="flex h-16 w-32 items-center justify-center rounded-lg border border-dashed border-zinc-300 text-zinc-400 dark:border-zinc-700">
                   <ImagePlus className="h-5 w-5" />
@@ -1377,7 +1378,7 @@ export function VoteEditor({ initial }: { initial: VoteActivityEdit }) {
                         <div className="relative h-12 w-16 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900">
                           {thumb ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={withBasePath(thumb)} alt="" loading="lazy" className="h-full w-full object-cover" />
+                            <img src={withBasePath(voteThumbUrl(thumb))} alt="" loading="lazy" className="h-full w-full object-cover" />
                           ) : (
                             <div className="flex h-full w-full items-center justify-center text-zinc-400">
                               <Play className="h-4 w-4" />

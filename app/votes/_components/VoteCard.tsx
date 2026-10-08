@@ -6,7 +6,7 @@ import { DeptTag } from '@/components/DeptTag';
 import { VisibilityBadge } from '@/components/audience/VisibilityBadge';
 import { withBasePath } from '@/lib/base-path';
 import type { PublicVoteCard } from '@/lib/vote-queries';
-import { voteHref } from '@/lib/votes/shared';
+import { voteHref, voteThumbUrl } from '@/lib/votes/shared';
 import { Countdown } from './Countdown';
 import { COVER_LIVE, COVER_OVER, COVER_SOON } from './vote-theme';
 
@@ -54,7 +54,7 @@ export async function VoteCard({ vote }: { vote: PublicVoteCard }) {
         {cover ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={withBasePath(cover)}
+            src={withBasePath(voteThumbUrl(cover))}
             alt={vote.title}
             loading="lazy"
             className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"

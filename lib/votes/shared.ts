@@ -615,6 +615,20 @@ export function voteCardAspectClass(kind: VoteEntryKind, aspect: VotePosterAspec
   return kind === 'video' ? 'aspect-video' : 'aspect-[4/3]';
 }
 
+// ─── 卡片缩略图 ────────────────────────────────────────────────────────────
+// 卡片、领奖台、榜单、大厅封面、编辑页/数据页的小图一律走缩略图：原图（单张可到
+// 50 MB）只在灯箱里看、在封面裁切器里裁。服务端（/api/votes/media + ?thumb=1，
+// lib/votes/storage.ts#ensureVoteThumb）决定到底给缩略图还是原图 —— 小图、gif、
+// 生成失败都会原样给原图，所以这里只做「形状上可能有缩略图」的判断，宁宽勿严。
+const THUMBABLE_URL_RE = /^\/api\/votes\/media\/(image|poster|cover)\/[A-Za-z0-9_-]+\.(jpg|png|webp)$/;
+
+/** 存储型根相对媒体 URL → 卡片缩略图 URL（不适用的原样返回）。渲染时照常再包 withBasePath。 */
+export function voteThumbUrl(url: string): string;
+export function voteThumbUrl(url: string | null | undefined): string | null | undefined;
+export function voteThumbUrl(url: string | null | undefined): string | null | undefined {
+  return url && THUMBABLE_URL_RE.test(url) ? `${url}?thumb=1` : url;
+}
+
 // ─── 卡片悬停预览 ───────────────────────────────────────────────────────────
 // Geek Videos 的卡片悬停就播视频，靠的是上传时另存的一段短 preview clip；
 // components/video/VideoCard.tsx 里那段注释写得很清楚：绝不回退到原片，
@@ -664,4 +678,37 @@ export function pickHoverPreview(entry: VoteHoverPreviewInput): VoteHoverPreview
   // sizeBytes 是 int32 clamp 过的上传体积；0 表示未知（老数据），不冒险。
   if (entry.sizeBytes <= 0 || entry.sizeBytes > VOTE_HOVER_SOURCE_MAX_BYTES) return null;
   return { src: entry.fileUrl, isSource: true };
+}
+
+// ─── 画廊分页 ──────────────────────────────────────────────────────────────
+
+/**
+ * 页码条要显示哪些页（0 起）：首页、末页、当前页 ±1，中间用省略号（null）。
+ * 超过 7 页时宽度恒为 7 格，翻页时按钮不左右跳。
+ */
+export function votePageItems(current: number, count: number): (number | null)[] {
+  if (count <= 7) return Array.from({ length: Math.max(0, count) }, (_, i) => i);
+  let from = Math.max(1, current - 1);
+  let to = Math.min(count - 2, current + 1);
+  if (current <= 3) {
+    from = 1;
+    to = 4;
+  }
+  if (current >= count - 4) {
+    from = count - 5;
+    to = count - 2;
+  }
+  const items: (number | null)[] = [0];
+  if (from > 1) items.push(null);
+  for (let i = from; i <= to; i++) items.push(i);
+  if (to < count - 2) items.push(null);
+  items.push(count - 1);
+  return items;
+}
+
+/** `?page=` 的值（1 起）→ 0 起页号；缺省/乱填 ⇒ 0。越界由画廊按实际页数再夹一次。 */
+export function parseVotePageParam(raw: string | string[] | undefined): number {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  const n = v && /^\d{1,6}$/.test(v) ? Number.parseInt(v, 10) : 1;
+  return Math.max(0, n - 1);
 }

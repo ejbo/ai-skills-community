@@ -1,10 +1,15 @@
 'use client';
 
+// 在读 / 公开笔记 — the two figures that are PEOPLE, not counters, so they are
+// buttons that look like buttons (owner, 2026-10-08: 「需要让用户知道这个是可以
+// 点击的」): bordered pills with a chevron, hover state, and a popover with the
+// roster. Counts are server-rendered; the roster loads on first open.
+
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { BookOpen, Loader2, StickyNote } from 'lucide-react';
+import { BookOpen, ChevronDown, Loader2, StickyNote } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
-import { DeptTag } from '@/components/DeptTag';
+import { UserHoverCard } from '@/components/user/UserHoverCard';
 
 interface PublicPerson {
   handle: string;
@@ -22,23 +27,22 @@ interface PeopleData {
   annotators: { author: PublicPerson; count: number }[];
 }
 
-/**
- * 在读 / 批注 people: counts first, click to pop the roster. Readers appear
- * only with 阅读动态 privacy on; annotators by their per-doc 公开笔记 opt-in.
- */
+type Roster = 'readers' | 'annotators';
+
 export function DocPeople({
   docId,
-  shelfCount,
-  sharedNoteCount,
   loggedIn,
+  readerCount,
+  sharedNoteCount,
 }: {
   docId: string;
-  shelfCount: number;
-  sharedNoteCount: number;
   loggedIn: boolean;
+  readerCount: number;
+  sharedNoteCount: number;
 }) {
   const t = useTranslations('library_cards');
-  const [open, setOpen] = useState<'readers' | 'annotators' | null>(null);
+  const tlib = useTranslations('library');
+  const [open, setOpen] = useState<Roster | null>(null);
   const [data, setData] = useState<PeopleData | null>(null);
   const [loading, setLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -62,105 +66,121 @@ export function DocPeople({
     };
   }, [open]);
 
-  async function toggle(kind: 'readers' | 'annotators') {
-    if (open === kind) {
-      setOpen(null);
-      return;
-    }
-    setOpen(kind);
-    if (data || !loggedIn) return;
+  useEffect(() => {
+    if (!open || data || !loggedIn) return;
     setLoading(true);
-    try {
-      const res = await fetch(`/api/library/docs/${docId}/people`);
-      const body = await res.json().catch(() => null);
-      if (res.ok && body) setData(body);
-    } catch {
-      /* leave empty */
-    } finally {
-      setLoading(false);
-    }
-  }
+    void (async () => {
+      try {
+        const res = await fetch(`/api/library/docs/${docId}/people`);
+        const json = await res.json().catch(() => null);
+        if (res.ok && json) setData(json);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [open, data, loggedIn, docId]);
 
-  const chip =
-    'inline-flex items-center gap-1 rounded-full border border-zinc-200 px-2.5 py-1 text-xs text-muted transition hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-700';
+  const pill = (active: boolean) =>
+    `inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition ${
+      active
+        ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
+        : 'border-zinc-300 text-zinc-700 hover:border-zinc-900 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:border-zinc-100 dark:hover:bg-zinc-800'
+    } ${loggedIn ? '' : 'cursor-default'}`;
+  const toggle = (r: Roster) => {
+    if (!loggedIn) return;
+    setOpen((cur) => (cur === r ? null : r));
+  };
 
   return (
-    <div ref={ref} className="relative flex flex-wrap items-center gap-2">
-      <button type="button" onClick={() => void toggle('readers')} className={chip} aria-expanded={open === 'readers'}>
+    <div ref={ref} className="relative inline-flex flex-wrap items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => toggle('readers')}
+        aria-haspopup="dialog"
+        aria-expanded={open === 'readers'}
+        title={loggedIn ? tlib('people_hint') : t('login_to_see_people')}
+        className={pill(open === 'readers')}
+      >
         <BookOpen className="h-3.5 w-3.5" />
-        {t.rich('reading_count', {
-          count: data?.readerCount ?? shelfCount,
-          num: (chunks) => <span className="font-mono tabular-nums">{chunks}</span>,
-        })}
+        {tlib('stat_reading_people', { count: data?.readerCount ?? readerCount })}
+        {loggedIn && <ChevronDown className="h-3 w-3 opacity-60" />}
       </button>
       <button
         type="button"
-        onClick={() => void toggle('annotators')}
-        className={chip}
+        onClick={() => toggle('annotators')}
+        aria-haspopup="dialog"
         aria-expanded={open === 'annotators'}
+        title={loggedIn ? tlib('people_hint') : t('login_to_see_people')}
+        className={pill(open === 'annotators')}
       >
         <StickyNote className="h-3.5 w-3.5" />
-        {t.rich('public_notes_count', {
-          count: data?.noteCount ?? sharedNoteCount,
-          num: (chunks) => <span className="font-mono tabular-nums">{chunks}</span>,
-        })}
+        {tlib('stat_notes_people', { count: data?.noteCount ?? sharedNoteCount })}
+        {loggedIn && <ChevronDown className="h-3 w-3 opacity-60" />}
       </button>
 
       {open && (
-        <div className="surface absolute left-0 top-full z-30 mt-2 w-72 rounded-xl p-3 shadow-lg">
-          {!loggedIn ? (
-            <p className="py-4 text-center text-xs text-muted">{t('login_to_see_people')}</p>
-          ) : loading || !data ? (
+        <div
+          role="dialog"
+          className="surface absolute left-0 top-full z-30 mt-2 w-72 rounded-xl p-3 shadow-lg ring-1 ring-black/5 dark:ring-white/10"
+        >
+          <p className="mb-2 text-[11px] font-medium text-muted">
+            {open === 'readers'
+              ? t('readers_title', { count: data?.readerCount ?? readerCount })
+              : t('annotators_title', { count: data?.annotators.length ?? 0 })}
+          </p>
+          {loading ? (
             <div className="flex justify-center py-4">
-              <Loader2 className="h-4 w-4 animate-spin text-zinc-900 dark:text-zinc-50" />
+              <Loader2 className="h-4 w-4 animate-spin" />
             </div>
           ) : open === 'readers' ? (
-            <>
-              <p className="mb-2 text-xs font-medium">
-                {t('readers_title', { count: data.readerCount })}
-                {data.visibleReaders.length < data.readerCount && (
-                  <span className="ml-1 font-normal text-muted">{t('readers_partial_note')}</span>
-                )}
-              </p>
-              {data.visibleReaders.length === 0 ? (
-                <p className="py-3 text-center text-xs text-muted">{t('readers_empty')}</p>
-              ) : (
-                <ul className="max-h-64 space-y-1.5 overflow-y-auto">
-                  {data.visibleReaders.map((u) => (
-                    <li key={u.handle} className="flex items-center gap-2">
-                      <Avatar name={u.displayName} src={u.avatarUrl} size="xs" handle={u.handle} />
-                      <span className="min-w-0 truncate text-xs">{u.displayName}</span>
-                      <DeptTag department={u.department} lab={u.lab} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </>
+            <PersonList
+              empty={t('no_readers_yet')}
+              note={t('readers_partial_note')}
+              people={(data?.visibleReaders ?? []).map((p) => ({ person: p }))}
+            />
           ) : (
-            <>
-              <p className="mb-2 text-xs font-medium">
-                {t('annotators_title', { count: data.annotators.length })}
-              </p>
-              {data.annotators.length === 0 ? (
-                <p className="py-3 text-center text-xs text-muted">{t('annotators_empty')}</p>
-              ) : (
-                <ul className="max-h-64 space-y-1.5 overflow-y-auto">
-                  {data.annotators.map(({ author, count }) => (
-                    <li key={author.handle} className="flex items-center gap-2">
-                      <Avatar name={author.displayName} src={author.avatarUrl} size="xs" handle={author.handle} />
-                      <span className="min-w-0 flex-1 truncate text-xs">{author.displayName}</span>
-                      <DeptTag department={author.department} lab={author.lab} />
-                      <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted">
-                        {t('annotation_count', { count })}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </>
+            <PersonList
+              empty={t('no_annotators_yet')}
+              people={(data?.annotators ?? []).map((a) => ({ person: a.author, count: a.count }))}
+            />
           )}
         </div>
       )}
     </div>
+  );
+}
+
+function PersonList({
+  people,
+  empty,
+  note,
+}: {
+  people: { person: PublicPerson; count?: number }[];
+  empty: string;
+  note?: string;
+}) {
+  const t = useTranslations('library_cards');
+  if (people.length === 0) return <p className="py-3 text-center text-xs text-muted">{empty}</p>;
+  return (
+    <>
+      <ul className="max-h-64 space-y-1.5 overflow-y-auto">
+        {people.map(({ person, count }) => (
+          <li key={person.handle} className="flex items-center gap-2">
+            <UserHoverCard handle={person.handle}>
+              <span className="flex min-w-0 flex-1 items-center gap-2">
+                <Avatar name={person.displayName} src={person.avatarUrl} size="xs" handle={person.handle} />
+                <span className="min-w-0 truncate text-xs font-medium">{person.displayName}</span>
+              </span>
+            </UserHoverCard>
+            {count !== undefined && (
+              <span className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-muted">
+                {t('n_annotations', { count })}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+      {note && <p className="mt-2 text-[11px] text-muted">{note}</p>}
+    </>
   );
 }

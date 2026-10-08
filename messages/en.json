@@ -1212,6 +1212,28 @@
       "en": "English",
       "fr": "French",
       "unknown": "another language"
+    },
+    "libSection": {
+      "models": "Models & Algorithms",
+      "systems": "Systems & Compute",
+      "agents": "Agents & Applications",
+      "data": "Data & Evaluation",
+      "engineering": "Engineering Practice",
+      "industry": "Industry & Trends",
+      "learning": "Learning & Frontier",
+      "other": "Other"
+    },
+    "libSource": {
+      "wechat": "WeChat",
+      "zhihu": "Zhihu",
+      "arxiv": "arXiv",
+      "github": "GitHub",
+      "juejin": "Juejin",
+      "csdn": "CSDN",
+      "medium": "Medium",
+      "substack": "Substack",
+      "web": "Web",
+      "file": "File"
     }
   },
   "ui": {
@@ -2803,7 +2825,25 @@
     "category_created": "Category created",
     "category_reused": "Selected the existing category with that name",
     "category_create_failed": "Could not create the category",
-    "original_title": "Original title: {title}"
+    "original_title": "Original title: {title}",
+    "section_all": "All",
+    "topics_in_section": "Topics",
+    "rail_featured": "Featured",
+    "rail_featured_all": "See all featured",
+    "rail_popular": "Most shelved",
+    "rail_continue": "Continue reading",
+    "rail_shelf_link": "My shelf",
+    "rail_empty": "Nothing here yet",
+    "type_filter": "Type",
+    "type_all": "All types",
+    "added_by": "Added by {name}",
+    "added_by_short": "added",
+    "stat_reading_people": "{count} reading",
+    "stat_notes_people": "{count} public notes",
+    "people_hint": "Click to see who",
+    "section_other": "Other topics",
+    "ai_disclaimer": "AI-generated and may miss things — the original is authoritative",
+    "ai_model": "Model {model}"
   },
   "library_ui": {
     "access_submitted": "Request sent — waiting for the uploader to approve",
@@ -3634,7 +3674,8 @@
     "huawei_hint": "This account has no Huawei W3 identity — you can browse but not vote",
     "view_grid": "Grid view",
     "view_list": "Leaderboard view",
-    "load_more": "Load more ({rest} left)",
+    "page_range": "{from}–{to} of {total} entries",
+    "pagination_label": "Entry pages",
     "panel_info": "Details",
     "panel_comments": "Comments",
     "ed_tab_info": "Basics",

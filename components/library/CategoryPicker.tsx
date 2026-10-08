@@ -13,12 +13,15 @@ import { useTranslations } from 'next-intl';
 import { Loader2, Plus, X } from 'lucide-react';
 import { pushToast } from '@/components/Toaster';
 import { withBasePath } from '@/lib/base-path';
+import { LIBRARY_SECTIONS, type LibrarySection } from '@/lib/library/types';
 
 export interface CategoryOption {
   slug: string;
   name: string;
   nameEn: string;
   official: boolean;
+  /** 版块 (labels.libSection.*); null = 其他. */
+  section?: string | null;
 }
 
 /** Built-ins keep their translated labels; member categories show their name. */
@@ -125,31 +128,52 @@ export function CategoryPicker({
   // never silently drops off a document the member is editing.
   const extra = selected
     .filter((s) => !options.some((o) => o.slug === s))
-    .map((slug) => ({ slug, name: slug, nameEn: slug, official: false }));
+    .map((slug) => ({ slug, name: slug, nameEn: slug, official: false, section: null }));
+
+  // Topics are offered under their 版块 (the browse page's top level) so a
+  // member filing a doc sees the same map readers navigate by.
+  const groups = new Map<string, CategoryOption[]>();
+  for (const c of [...options, ...extra]) {
+    const key = c.section && LIBRARY_SECTIONS.includes(c.section as LibrarySection) ? c.section : 'other';
+    groups.set(key, [...(groups.get(key) ?? []), c]);
+  }
+  const chip = (c: CategoryOption) => {
+    const on = selected.includes(c.slug);
+    return (
+      <button
+        key={c.slug}
+        type="button"
+        aria-pressed={on}
+        disabled={disabled}
+        onClick={() => toggle(c.slug)}
+        className={`rounded-full px-2.5 py-1 text-xs transition disabled:opacity-60 ${
+          on
+            ? 'bg-zinc-900 dark:bg-zinc-100 font-medium text-white dark:text-zinc-900'
+            : c.official
+              ? 'border border-zinc-200 text-muted hover:border-zinc-400 hover:text-zinc-900 dark:border-zinc-700'
+              : 'border border-dashed border-zinc-300 text-muted hover:border-zinc-400 hover:text-zinc-900 dark:border-zinc-600'
+        }`}
+      >
+        {categoryLabel(c, locale, tl)}
+      </button>
+    );
+  };
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {[...options, ...extra].map((c) => {
-        const on = selected.includes(c.slug);
+    <div className="space-y-2">
+      {[...LIBRARY_SECTIONS, 'other'].map((sec) => {
+        const items = groups.get(sec);
+        if (!items?.length) return null;
         return (
-          <button
-            key={c.slug}
-            type="button"
-            aria-pressed={on}
-            disabled={disabled}
-            onClick={() => toggle(c.slug)}
-            className={`rounded-full px-2.5 py-1 text-xs transition disabled:opacity-60 ${
-              on
-                ? 'bg-zinc-900 dark:bg-zinc-100 font-medium text-white dark:text-zinc-900'
-                : c.official
-                  ? 'border border-zinc-200 text-muted hover:border-zinc-400 hover:text-zinc-900 dark:border-zinc-700'
-                  : 'border border-dashed border-zinc-300 text-muted hover:border-zinc-400 hover:text-zinc-900 dark:border-zinc-600'
-            }`}
-          >
-            {categoryLabel(c, locale, tl)}
-          </button>
+          <div key={sec} className="flex flex-wrap items-center gap-1.5">
+            <span className="w-full text-[11px] font-medium text-muted sm:w-24 sm:shrink-0">
+              {tl(`libSection.${sec}`)}
+            </span>
+            {items.map(chip)}
+          </div>
         );
       })}
+      <div className="flex flex-wrap items-center gap-1.5">
 
       {adding ? (
         <span className="inline-flex items-center gap-1">
@@ -201,6 +225,7 @@ export function CategoryPicker({
           {t('category_new')}
         </button>
       )}
+      </div>
     </div>
   );
 }

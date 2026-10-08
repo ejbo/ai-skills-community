@@ -9,6 +9,7 @@ import { ChevronDown, ChevronRight, Loader2, Play, RefreshCw } from 'lucide-reac
 import { useLocale, useTranslations } from 'next-intl';
 import { pushToast } from '@/components/Toaster';
 import { withBasePath } from '@/lib/base-path';
+import { voteThumbUrl } from '@/lib/votes/shared';
 import { relativeTime } from '@/lib/i18n-date';
 
 interface StatsEntry {
@@ -214,7 +215,7 @@ function VoteStatsRow({
           <div className="relative h-10 w-14 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-900">
             {entry.thumbUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={withBasePath(entry.thumbUrl)} alt="" loading="lazy" className="h-full w-full object-cover" />
+              <img src={withBasePath(voteThumbUrl(entry.thumbUrl))} alt="" loading="lazy" className="h-full w-full object-cover" />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-zinc-400">
                 <Play className="h-3.5 w-3.5" />

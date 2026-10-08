@@ -24,7 +24,9 @@ import { AdminDocActions } from '@/components/library/AdminDocActions';
 import { DocViewPing } from '@/components/library/DocViewPing';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { RatingStars } from '@/components/library/RatingStars';
-import { DocStats } from '@/components/library/DocStats';
+import { DocPeople } from '@/components/library/DocPeople';
+import { DocFigures } from '@/components/library/DocFigures';
+import { SourceLine } from '@/components/library/SourceLine';
 import { UserHoverCard } from '@/components/user/UserHoverCard';
 import { DocComments } from '@/components/library/DocComments';
 import { AccessRequestButton } from '@/components/library/AccessRequestButton';
@@ -97,7 +99,6 @@ export default async function DocDetailPage({
   const formatLabel = doc.format === 'url' ? t('format_web') : FORMAT_LABELS[doc.format] ?? doc.format;
   // Stored prose is bilingual (lib/library/i18n-content.ts) — resolve it here so
   // the client components below never see two languages at once.
-  const localizedSummary = pickText(locale, doc.summary, doc.summaryEn);
   const localizedAbstract = pickText(locale, doc.abstractMd, doc.abstractMdEn);
   const localizedOverview = pickOverview(locale, doc.aiOverview, doc.aiOverviewEn);
   // Member-created categories have no message key — show their stored name.
@@ -178,6 +179,20 @@ export default async function DocDetailPage({
               )}
             </div>
           )}
+          {ready && (
+            // The counters (字数 / 时长 / 浏览 / 收藏 / 评论) live with the actions;
+            // the two figures that are PEOPLE (在读 / 公开笔记) sit by the byline.
+            <DocFigures
+              className="mx-auto w-full max-w-[240px] lg:mx-0"
+              wordCountLabel={
+                doc.wordCount > 0 ? t('word_count', { value: wordCountValue(doc.wordCount, locale) }) : null
+              }
+              readMinutes={doc.estReadMinutes}
+              viewCount={doc.viewCount}
+              shelfCount={doc.shelfCount}
+              commentCount={doc.commentCount}
+            />
+          )}
         </div>
 
         <div className="min-w-0 space-y-5">
@@ -240,73 +255,69 @@ export default async function DocDetailPage({
               <p className="break-words text-sm text-muted">{t('original_title', { title: doc.title })}</p>
             )}
 
-            {(doc.author || doc.siteName) && (
-              <p className="text-sm text-muted">
-                {[doc.author, doc.siteName].filter(Boolean).join(' · ')}
+            {(doc.author || doc.siteName || doc.sourceUrl || doc.publishedAt) && (
+              <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
+                <SourceLine sourceUrl={doc.sourceUrl} siteName={doc.siteName} author={doc.author} format={doc.format} />
+                {doc.publishedAt && (
+                  <>
+                    {(doc.author || doc.siteName || doc.sourceUrl) && <span aria-hidden>·</span>}
+                    <span>{t('published_at', { date: format(doc.publishedAt, 'yyyy-MM-dd') })}</span>
+                  </>
+                )}
               </p>
             )}
 
-            {doc.sourceUrl && (
-              <a
-                href={doc.sourceUrl}
-                target="_blank"
-                rel="noopener noreferrer nofollow"
-                className="inline-flex max-w-full items-center gap-1.5 text-sm font-medium text-zinc-900 dark:text-zinc-50 transition hover:text-zinc-900 dark:hover:text-zinc-50"
-              >
-                <ExternalLink className="h-4 w-4 shrink-0" />
-                <span className="truncate">{t('view_source', { host: hostOf(doc.sourceUrl) })}</span>
-              </a>
-            )}
-
-            {/* Byline stays a sentence; the FIGURES move into their own block
-                so the eye lands on numbers in fixed positions. */}
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-muted">
-              <UserHoverCard handle={doc.uploader.handle}>
-                <span className="flex items-center gap-1.5">
-                  <Avatar
-                    name={doc.uploader.displayName}
-                    src={doc.uploader.avatarUrl}
-                    size="xs"
-              handle={doc.uploader.handle}
-            />
-                  {doc.uploader.displayName}
+            {/* Provenance (查看原文 · 收录者 · 日期) with the two PEOPLE figures at
+                its right as real buttons, and the rating directly under them. */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted">
+              {doc.sourceUrl && (
+                <a
+                  href={doc.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
+                  className="inline-flex max-w-full items-center gap-1 font-medium text-zinc-900 transition hover:underline dark:text-zinc-50"
+                >
+                  <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{t('view_source', { host: hostOf(doc.sourceUrl) })}</span>
+                </a>
+              )}
+              <span className="flex flex-wrap items-center gap-x-1.5">
+                <UserHoverCard handle={doc.uploader.handle}>
+                  <span className="flex items-center gap-1.5">
+                    <Avatar
+                      name={doc.uploader.displayName}
+                      src={doc.uploader.avatarUrl}
+                      size="xs"
+                      handle={doc.uploader.handle}
+                    />
+                    {doc.uploader.displayName}
+                  </span>
+                </UserHoverCard>
+                <span aria-hidden>·</span>
+                <span suppressHydrationWarning>{t('added_at', { time: relativeTime(doc.createdAt, locale) })}</span>
+              </span>
+              {ready && (
+                <span className="sm:ml-auto">
+                  <DocPeople
+                    docId={doc.id}
+                    loggedIn={Boolean(viewer)}
+                    readerCount={doc.shelfCount}
+                    sharedNoteCount={doc.sharedNoteCount}
+                  />
                 </span>
-              </UserHoverCard>
-              <span>·</span>
-              <span>{t('added_at', { time: relativeTime(doc.createdAt, locale) })}</span>
-              {doc.publishedAt && (
-                <>
-                  <span>·</span>
-                  <span>{t('published_at', { date: format(doc.publishedAt, 'yyyy-MM-dd') })}</span>
-                </>
               )}
             </div>
 
             {ready && (
-              <DocStats
-                docId={doc.id}
-                loggedIn={Boolean(viewer)}
-                wordCountLabel={
-                  doc.wordCount > 0
-                    ? t('word_count', { value: wordCountValue(doc.wordCount, locale) })
-                    : null
-                }
-                readMinutes={doc.estReadMinutes}
-                viewCount={doc.viewCount}
-                shelfCount={doc.shelfCount}
-                commentCount={doc.commentCount}
-                sharedNoteCount={doc.sharedNoteCount}
-              />
-            )}
-
-            {ready && (
-              <RatingStars
-                docId={doc.id}
-                initialAvg={doc.avgRating}
-                initialCount={doc.ratingCount}
-                initialMine={doc.myRating}
-                canRate={Boolean(viewer)}
-              />
+              <div className="flex sm:justify-end">
+                <RatingStars
+                  docId={doc.id}
+                  initialAvg={doc.avgRating}
+                  initialCount={doc.ratingCount}
+                  initialMine={doc.myRating}
+                  canRate={Boolean(viewer)}
+                />
+              </div>
             )}
 
             {canManage && (
@@ -334,8 +345,6 @@ export default async function DocDetailPage({
             </div>
           ) : (
             <>
-              {localizedSummary && <p className="text-lg text-muted">{localizedSummary}</p>}
-
               {localizedAbstract && (
                 <section className="surface rounded-2xl p-5">
                   <h2 className="text-sm font-semibold tracking-tight text-muted">{t('abstract_title')}</h2>
@@ -352,6 +361,7 @@ export default async function DocDetailPage({
                 docId={doc.id}
                 canTrigger={Boolean(session?.user)}
                 slug={doc.slug}
+                model={doc.aiModel}
               />
 
               {doc.chapters.length > 1 && (

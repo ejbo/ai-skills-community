@@ -5,6 +5,7 @@ import { auth } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { logAdmin } from '@/lib/audit';
 import { bustCategoryCache, findOrCreateCategory } from '@/lib/library/categories';
+import { LIBRARY_SECTIONS } from '@/lib/library/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,10 +19,13 @@ async function gate() {
   return { session };
 }
 
+const sectionSchema = z.enum(LIBRARY_SECTIONS).nullable();
+
 const createSchema = z.object({
   name: z.string().trim().min(2).max(24),
   nameEn: z.string().trim().max(48).optional(),
   sortOrder: z.number().int().min(0).max(999).optional(),
+  section: sectionSchema.optional(),
 });
 
 // POST — add an OFFICIAL category (the curated ones members pick from first).
@@ -43,8 +47,9 @@ export async function POST(req: Request) {
       official: true,
       ...(parsed.data.nameEn !== undefined ? { nameEn: parsed.data.nameEn } : {}),
       ...(parsed.data.sortOrder !== undefined ? { sortOrder: parsed.data.sortOrder } : {}),
+      ...(parsed.data.section !== undefined ? { section: parsed.data.section } : {}),
     },
-    select: { id: true, slug: true, name: true, nameEn: true, official: true, sortOrder: true },
+    select: { id: true, slug: true, name: true, nameEn: true, official: true, sortOrder: true, section: true },
   });
   bustCategoryCache();
   await logAdmin({
@@ -63,6 +68,7 @@ const patchSchema = z.object({
   nameEn: z.string().trim().max(48).optional(),
   official: z.boolean().optional(),
   sortOrder: z.number().int().min(0).max(999).optional(),
+  section: sectionSchema.optional(),
 });
 
 export async function PATCH(req: Request) {
@@ -76,7 +82,7 @@ export async function PATCH(req: Request) {
   const updated = await prisma.libraryCategory.update({
     where: { id },
     data,
-    select: { id: true, slug: true, name: true, nameEn: true, official: true, sortOrder: true },
+    select: { id: true, slug: true, name: true, nameEn: true, official: true, sortOrder: true, section: true },
   });
   bustCategoryCache();
   await logAdmin({

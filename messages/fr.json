@@ -1212,6 +1212,28 @@
       "en": "anglais",
       "fr": "français",
       "unknown": "une autre langue"
+    },
+    "libSection": {
+      "models": "Modèles et algorithmes",
+      "systems": "Systèmes et calcul",
+      "agents": "Agents et applications",
+      "data": "Données et évaluation",
+      "engineering": "Pratiques d'ingénierie",
+      "industry": "Industrie et tendances",
+      "learning": "Apprentissage et recherche",
+      "other": "Autres"
+    },
+    "libSource": {
+      "wechat": "WeChat",
+      "zhihu": "Zhihu",
+      "arxiv": "arXiv",
+      "github": "GitHub",
+      "juejin": "Juejin",
+      "csdn": "CSDN",
+      "medium": "Medium",
+      "substack": "Substack",
+      "web": "Web",
+      "file": "Fichier"
     }
   },
   "ui": {
@@ -2803,7 +2825,25 @@
     "category_created": "Catégorie créée",
     "category_reused": "Catégorie existante du même nom sélectionnée",
     "category_create_failed": "Impossible de créer la catégorie",
-    "original_title": "Titre d'origine : {title}"
+    "original_title": "Titre d'origine : {title}",
+    "section_all": "Tout",
+    "topics_in_section": "Thèmes",
+    "rail_featured": "Sélection",
+    "rail_featured_all": "Voir toute la sélection",
+    "rail_popular": "Les plus ajoutés",
+    "rail_continue": "Reprendre la lecture",
+    "rail_shelf_link": "Mon étagère",
+    "rail_empty": "Rien ici pour le moment",
+    "type_filter": "Type",
+    "type_all": "Tous les types",
+    "added_by": "Ajouté par {name}",
+    "added_by_short": "ajouté",
+    "stat_reading_people": "{count} en lecture",
+    "stat_notes_people": "{count} notes publiques",
+    "people_hint": "Cliquer pour voir qui",
+    "section_other": "Autres thèmes",
+    "ai_disclaimer": "Généré par IA, peut comporter des omissions — l'original fait foi",
+    "ai_model": "Modèle {model}"
   },
   "library_ui": {
     "access_submitted": "Demande envoyée — en attente de l'approbation de l'auteur",
@@ -3634,7 +3674,8 @@
     "huawei_hint": "Ce compte n’a pas d’identité Huawei W3 — consultation seule, vote impossible",
     "view_grid": "Vue grille",
     "view_list": "Vue classement",
-    "load_more": "Charger plus ({rest} restantes)",
+    "page_range": "Œuvres {from}–{to} sur {total}",
+    "pagination_label": "Pages des œuvres",
     "panel_info": "Détails",
     "panel_comments": "Commentaires",
     "ed_tab_info": "Informations",

@@ -2,7 +2,8 @@ import { Prisma } from '@prisma/client';
 import { hasPermission, type PermissionHolder } from '@/lib/permissions';
 import { prisma } from '@/lib/db';
 import { AUTHOR_IDENTITY_FIELDS, AUTHOR_IDENTITY_SELECT } from '@/lib/user-identity';
-import { isDocType, isLibraryCategory, type AiOverview } from '@/lib/library/types';
+import { isDocType, type AiOverview } from '@/lib/library/types';
+import { listLibraryCategories } from '@/lib/library/categories';
 import { asAiOverview, pickOverview, pickText } from '@/lib/library/i18n-content';
 import { effectivePassState, isFreshChapterTranslation } from '@/lib/library/translation-state';
 import {
@@ -90,6 +91,7 @@ export const DOC_CARD_SELECT = {
   summary: true,
   summaryEn: true,
   siteName: true,
+  sourceUrl: true,
   coverUrl: true,
   estReadMinutes: true,
   wordCount: true,
@@ -122,6 +124,8 @@ export interface DocCardData {
   /** English card blurb; empty ⇒ the card falls back to `summary` (中文). */
   summaryEn: string;
   siteName: string | null;
+  /** Web docs only — cards derive the 来源 kind (公众号 / 知乎 / …) from it; null for uploaded files. */
+  sourceUrl: string | null;
   coverUrl: string | null;
   estReadMinutes: number;
   wordCount: number;
@@ -146,6 +150,8 @@ export interface BrowseDocFilters {
   sort?: string;
   page?: number;
   pageSize?: number;
+  /** Topic slugs of one 版块 (used when no single `cat` is chosen). */
+  cats?: string[];
 }
 
 export async function browseDocs(filters: BrowseDocFilters): Promise<{
@@ -164,7 +170,14 @@ export async function browseDocs(filters: BrowseDocFilters): Promise<{
 
   const where: Prisma.LibraryDocWhereInput = { ...BROWSABLE_DOC_WHERE };
   if (isDocType(filters.type)) where.docType = filters.type;
-  if (isLibraryCategory(filters.cat)) where.categories = { has: filters.cat };
+  if (filters.cat) {
+    // Member-created topics are not in the code constant — validate against the live list.
+    const known = new Set((await listLibraryCategories()).map((c) => c.slug));
+    if (known.has(filters.cat)) where.categories = { has: filters.cat };
+  } else if (filters.cats) {
+    // A 版块: any of its topics. An empty section matches nothing, correctly.
+    where.categories = { hasSome: filters.cats };
+  }
   if (filters.q) {
     const q = filters.q.trim();
     if (q) {
@@ -235,17 +248,44 @@ export async function getRelatedDocs(docId: string, limit = 6): Promise<DocCardD
   });
 }
 
-/** Per-category doc counts for the browse sidebar (ready, non-private docs). */
-export async function getCategoryCounts(): Promise<Record<string, number>> {
-  const rows = await prisma.libraryDoc.findMany({
-    where: BROWSABLE_DOC_WHERE,
-    select: { categories: true },
-  });
-  const counts: Record<string, number> = {};
+/**
+ * Browse counts for the 版块 rail and the topic chips (ready, non-private docs).
+ * A doc counts once per section however many of that section's topics it carries.
+ */
+export async function getBrowseCounts(): Promise<{
+  byTopic: Record<string, number>;
+  bySection: Record<string, number>;
+}> {
+  const [rows, categories] = await Promise.all([
+    prisma.libraryDoc.findMany({ where: BROWSABLE_DOC_WHERE, select: { categories: true } }),
+    listLibraryCategories(),
+  ]);
+  const sectionOf = new Map(categories.map((c) => [c.slug, c.section ?? 'other']));
+  const byTopic: Record<string, number> = {};
+  const bySection: Record<string, number> = {};
   for (const row of rows) {
-    for (const cat of row.categories) counts[cat] = (counts[cat] ?? 0) + 1;
+    const sections = new Set<string>();
+    for (const cat of row.categories) {
+      byTopic[cat] = (byTopic[cat] ?? 0) + 1;
+      sections.add(sectionOf.get(cat) ?? 'other');
+    }
+    for (const sec of sections) bySection[sec] = (bySection[sec] ?? 0) + 1;
   }
-  return counts;
+  return { byTopic, bySection };
+}
+
+/** 继续阅读 rail — the viewer's most recently touched, unfinished docs. */
+export async function getContinueReading(
+  userId: string,
+  limit = 3,
+): Promise<{ doc: DocCardData; percent: number }[]> {
+  const rows = await prisma.libraryProgress.findMany({
+    where: { userId, percent: { gt: 0, lt: FINISHED_PERCENT }, doc: READY_DOC_WHERE },
+    orderBy: { updatedAt: 'desc' },
+    take: limit,
+    select: { percent: true, doc: { select: DOC_CARD_SELECT } },
+  });
+  return rows.map((r) => ({ doc: r.doc, percent: r.percent }));
 }
 
 const DOC_DETAIL_SELECT = {
