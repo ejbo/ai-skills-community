@@ -2413,7 +2413,8 @@
     "stat_dash": "—",
     "no_readers_yet": "Personne ne lit ce document pour l'instant.",
     "no_annotators_yet": "Personne n'a encore partagé de notes.",
-    "n_annotations": "{count}"
+    "n_annotations": "{count}",
+    "sort_readers": "Les plus lus"
   },
   "skill_compare": {
     "view_empty": "Aucune comparaison pour l’instant.",
@@ -2843,7 +2844,28 @@
     "people_hint": "Cliquer pour voir qui",
     "section_other": "Autres thèmes",
     "ai_disclaimer": "Généré par IA, peut comporter des omissions — l'original fait foi",
-    "ai_model": "Modèle {model}"
+    "ai_model": "Modèle {model}",
+    "share": "Partager",
+    "share_hint": "Copier le titre, la source, le résumé IA et le lien",
+    "share_copied": "Texte de partage copié",
+    "share_copy_failed": "Échec de la copie — copiez manuellement",
+    "share_source": "Source : ",
+    "share_author": "Auteur : ",
+    "share_digest": "Résumé IA : ",
+    "readers_count": "{count} lecteurs",
+    "rail_hot": "Tendances",
+    "hot_tab_hot": "Populaires",
+    "hot_tab_commented": "Commentaires 7 j",
+    "hot_tab_read": "Les plus lus",
+    "hot_tab_shelved": "Les plus ajoutés",
+    "n_comments_window": "{count} commentaires",
+    "rail_activity": "Derniers commentaires et notes",
+    "activity_comment": "commentaire",
+    "activity_note": "note",
+    "activity_expand": "Voir plus ({count})",
+    "activity_collapse": "Réduire",
+    "activity_open_hint": "Ouvrir dans le panneau latéral à cet endroit",
+    "activity_empty": "Pas encore de commentaires ni de notes partagées"
   },
   "library_ui": {
     "access_submitted": "Demande envoyée — en attente de l'approbation de l'auteur",

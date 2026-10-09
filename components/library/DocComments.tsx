@@ -6,7 +6,8 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Loader2, MessageSquare, Trash2 } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
-import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { ZoneMarkdown } from '@/components/zones/ZoneMarkdown';
+import { DISCUSSION_EMBED_KINDS } from '@/lib/zones/shared';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { pushToast } from '@/components/Toaster';
 import { relativeTime } from '@/lib/i18n-date';
@@ -86,8 +87,11 @@ export function DocComments({
       const el = listRef.current?.querySelector(`[data-comment-id="${focusId.replace(/"/g, '')}"]`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        el.classList.add('ring-2', 'ring-zinc-900/25 dark:ring-zinc-100/25', 'rounded-xl');
-        window.setTimeout(() => el.classList.remove('ring-2', 'ring-zinc-900/25 dark:ring-zinc-100/25', 'rounded-xl'), 2600);
+        // One token per argument — a space inside a token throws InvalidCharacterError,
+        // which is why this flash never showed before 2026-10-09.
+        const ring = ['ring-2', 'ring-zinc-900/25', 'dark:ring-zinc-100/25', 'rounded-xl'];
+        el.classList.add(...ring);
+        window.setTimeout(() => el.classList.remove(...ring), 2600);
       }
     }, 250);
     return () => window.clearTimeout(timer);
@@ -210,7 +214,7 @@ export function DocComments({
               ) : (
                 <>
                   {tr.note}
-                  <MarkdownRenderer content={tr.body} compact />
+                  <ZoneMarkdown content={tr.body} compact headingIds={false} />
                   {tr.control && <div className="mt-1">{tr.control}</div>}
                 </>
               )}
@@ -246,10 +250,14 @@ export function DocComments({
             </button>
           </p>
         )}
+        {/* The v3 full editor (owner, 2026-10-09): every formatting control plus 插入引用.
+            Same kinds as 讨论区 replies; `[embed:…]` cards in the list self-fetch by token
+            through ZoneMarkdown, so the comments API stays as it is. */}
         <RichTextEditor
           value={text}
           onChange={setText}
-          variant="compact"
+          variant="full"
+          embedPicker={{ kinds: DISCUSSION_EMBED_KINDS }}
           maxLength={10_000}
           maxHeight={320}
           placeholder={currentUser ? t('comment_placeholder') : t('login_to_comment')}

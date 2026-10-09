@@ -111,11 +111,19 @@ export function PreviewBody({
 }) {
   const t = useTranslations('zones');
   const tl = useTranslations('labels');
+  const isPage = target.kind === 'page';
   const preset = target.data && target.data.ok && target.data.kind === target.kind ? target.data : null;
   const [fetched, setFetched] = useState<EmbedData | null>(null);
 
+  // A framed page resolves itself: its title is the opener's, 打开原页面 is the path.
   useEffect(() => {
-    if (preset) return;
+    if (!isPage) return;
+    onResolved({ title: target.title ?? '', href: target.ref, external: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPage, target.ref, target.title]);
+
+  useEffect(() => {
+    if (preset || target.kind === 'page') return;
     let cancelled = false;
     setFetched(null);
     fetchEmbed(target.kind, target.ref).then((e) => {
@@ -146,6 +154,35 @@ export function PreviewBody({
   }, [target.kind]);
 
   const maximized = fullscreenMode === 'maximized';
+
+  if (isPage) {
+    // Same height chain as a framed file: the iframe owns the column in the dock
+    // and in fullscreen; in the modal drawer it gets a viewport-sized box.
+    const pageFill = fill || isFull;
+    const shell = previewShellClasses({ maximized, isFull, fileFill: pageFill, measure: 'max-w-none' });
+    const src = withBasePath(target.ref);
+    const frame = (
+      <iframe
+        src={src}
+        title={target.title ?? ''}
+        className={pageFill ? 'min-h-0 w-full flex-1 border-0 bg-white dark:bg-zinc-950' : 'h-[72vh] w-full border-0 bg-white dark:bg-zinc-950'}
+      />
+    );
+    return (
+      <div ref={fsRef} className={shell.root}>
+        {shell.inner ? (
+          <div className={shell.inner}>
+            <motion.div className={shell.content} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={TWEEN_FAST}>
+              {frame}
+            </motion.div>
+          </div>
+        ) : (
+          frame
+        )}
+        {isFull && <PreviewToolbar title={target.title ?? ''} openHref={src} onExit={onToggleFullscreen} />}
+      </div>
+    );
+  }
 
   if (!embed) return <Skeleton fill={fill} />;
 

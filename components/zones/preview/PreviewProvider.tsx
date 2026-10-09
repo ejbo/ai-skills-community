@@ -38,7 +38,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useTranslations } from 'next-intl';
-import { ArrowLeft, ChevronDown, ChevronUp, Expand, ExternalLink, Maximize2, Minimize2, Shrink } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, Expand, ExternalLink, Maximize2, Minimize2, PanelRight, Shrink } from 'lucide-react';
 import { BTN_ICON } from '@/app/zones/_components/ui';
 import { DrawerShell } from '@/components/motion';
 import { DockShell } from '@/components/motion/DockShell';
@@ -56,8 +56,16 @@ import { useFullscreen } from './useFullscreen';
 
 export type { PageBand } from './page-band';
 
+/**
+ * Embed kinds plus `page`: an INTERNAL route framed as-is (ref = the path, with
+ * its query). 知识库's 最新评论与批注 opens `/library/<slug>?focus=<comment>` and
+ * `/library/<slug>/read?ch=&hl=<note>` this way, so the panel shows the real
+ * detail page scrolled to the comment, or the reader on the highlighted passage.
+ */
+export type PreviewKind = EmbedKind | 'page';
+
 export interface PreviewTarget {
-  kind: EmbedKind;
+  kind: PreviewKind;
   ref: string;
   title?: string;
   /** Pre-resolved embed for kind+ref: the body renders instantly and skips /api/zones/embed. */
@@ -308,7 +316,9 @@ export function PreviewProvider({ children, mode = 'modal' }: { children: ReactN
   const sibCount = shown?.siblings?.length ?? 0;
   const sibIndex = shown ? siblingIndex(shown) : -1;
   const canFullscreen = !!shown && shown.kind !== 'link' && shown.fullscreenable !== false;
-  const title = shown ? shown.liveTitle ?? shown.title ?? t(`embed_kind_${shown.kind}`) : '';
+  const title = shown
+    ? shown.liveTitle ?? shown.title ?? (shown.kind === 'page' ? '' : t(`embed_kind_${shown.kind}`))
+    : '';
   const bodyMode: 'scroll' | 'fill' = shown?.kind === 'file' ? 'fill' : 'scroll';
   const topOffset = dockTopOffset({ expanded, maximized: fs.mode === 'maximized', navVisible });
 
@@ -457,7 +467,7 @@ export function PreviewProvider({ children, mode = 'modal' }: { children: ReactN
   const footer =
     shown?.kind === 'file' && shown.embed?.ok && shown.embed.kind === 'file' ? <FilePreviewFooter data={shown.embed.data} /> : undefined;
 
-  const KindIcon = shown ? EMBED_KIND_ICONS[shown.kind] : null;
+  const KindIcon = shown ? (shown.kind === 'page' ? PanelRight : EMBED_KIND_ICONS[shown.kind]) : null;
   const labels = useMemo(
     () => ({ close: t('panel_close'), resize: t('panel_resize'), region: t('panel_aria'), keyboardHint: t('panel_keyboard_hint') }),
     [t],

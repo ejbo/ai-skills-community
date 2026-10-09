@@ -21,6 +21,7 @@ import { pickDocTitle } from '@/lib/library/translation-shared';
 import { Avatar } from '@/components/Avatar';
 import { DocCover } from './DocCover';
 import { SourceLine } from './SourceLine';
+import { ShareButton } from './ShareButton';
 import { rememberListScroll } from './ScrollMemory';
 
 export interface DocListRowProps extends Omit<DocCardData, 'createdAt'> {
@@ -33,7 +34,6 @@ export function DocListRow(props: DocListRowProps) {
   const t = useTranslations('library_ui');
   const tlib = useTranslations('library');
   const tl = useTranslations('labels');
-  const tp = useTranslations('profile');
   const locale = useLocale();
   const created = typeof props.createdAt === 'string' ? new Date(props.createdAt) : props.createdAt;
   const summary = pickText(locale, props.summary, props.summaryEn);
@@ -112,13 +112,23 @@ export function DocListRow(props: DocListRowProps) {
                 {t('rating_with_count', { rating: props.avgRating.toFixed(1), count: props.ratingCount })}
               </span>
             )}
-            <span>{tp('n_shelved', { count: props.shelfCount })}</span>
+            <span>{tlib('readers_count', { count: props.readerCount })}</span>
             {props.commentCount > 0 && (
               <span className="inline-flex items-center gap-0.5">
                 <MessageSquare className="h-3 w-3" />
                 {props.commentCount}
               </span>
             )}
+            <ShareButton
+              slug={props.slug}
+              title={title}
+              sourceUrl={props.sourceUrl}
+              siteName={props.siteName}
+              author={props.author}
+              format={props.format}
+              summary={props.summary}
+              summaryEn={props.summaryEn}
+            />
           </span>
         </div>
       </div>

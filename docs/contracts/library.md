@@ -115,6 +115,37 @@
     sits directly under them. The AI `summary` paragraph is NOT shown on the detail page (it duplicated AI 导读 — cards
     still use it as the blurb). 发表于 rides on the source line. `AiDigest`: 大纲 / 要点 side by side on md+, model
     attribution top-right, 「AI 生成，可能有疏漏」 footer.
+  - **「N 人读过」+ 分享 (2026-10-09)**: list rows and cards show `LibraryDoc.readerCount` (distinct members who opened the
+    reader = one per `LibraryProgress` row; migration `20261009100000_library_reader_count` backfills) instead of 收藏 —
+    the progress route does create-then-update, not upsert, so the counter moves exactly once per (member, doc) under
+    racing first pings (P2002 = loser). 收藏 still ranks the 最多收藏 rail and shows on the detail page. **分享** =
+    `ShareButton` (icon on rows/cards above the click overlay, full-width button under 喜欢 on the detail page): one
+    click copies `lib/library/share.ts#buildShareText` — `标题 / 来源：公众号 · 账号 / 作者： / AI 导读：summary / 绝对链接`,
+    empty lines dropped, an author equal to the source dropped — via `lib/clipboard.ts#copyText` (works on plain HTTP).
+    The link is `window.location.origin + withBasePath(/library/<slug>)`, so it is right on both deploys. Cards use
+    `summary` (= the AI 导读 summary the indexer copies unless the uploader rewrote it); the detail page passes the live
+    `aiOverview.summary`.
+  - **评论编辑器 = the v3 full editor** (`variant="full"`, `embedPicker={{ kinds: DISCUSSION_EMBED_KINDS }}`, same as 讨论区
+    replies). Comment bodies render through `ZoneMarkdown compact headingIds={false}` so `[embed:…]` cards self-fetch by
+    token — the comments API is unchanged. Do not drop back to `MarkdownRenderer` (it has no embed cards).
+  - **热门 rail = 4 views (2026-10-09)**: 最热 · 7 日评论 · 最多阅读 · 最多收藏 (`HotRail`, all four lists server-loaded,
+    tab switch is local). **最热 = time-decayed engagement** (`lib/library/hot-shared.ts`: window 7 d, half-life 3 d,
+    weights view 1 / read 3 / like 2 / shelf 4 / note 4 / comment 5 / the doc's own creation 2 as a freshness term)
+    summed per EVENT in one SQL pass over LibraryView / LibraryProgress(updatedAt) / LibraryShelfItem / LibraryLike /
+    LibraryComment(visible) / LibraryHighlight / LibraryDoc (`getHotDocs`). Change a weight in hot-shared.ts only — the
+    SQL interpolates the constants. 7 日评论 = `getTopCommentedDocs` (groupBy on visible comments); 最多阅读 = the new
+    `readers` sort (`readerCount`); 最多收藏 = `shelved`.
+  - **最新评论与批注 rail + 侧栏定位 (2026-10-09)**: `getRecentActivity` merges newest visible comments and SHARED notes
+    (`LibraryProgress.shareNotes` per user per doc — correlated in SQL) on PUBLIC docs, identity trimmed with the viewer's
+    permission; 5 shown, 展开更多 reveals the 15 sent. **Clicking opens where the item lives, in the side dock**: `/library`
+    now has `app/library/layout.tsx` = `PreviewProvider mode="dock"` (the zones 并排阅读 panel), and `PreviewTarget` gained
+    `kind: 'page'` — an INTERNAL route framed as-is (`PreviewBody` iframes `withBasePath(ref)` with the file kind's
+    height chain; the provider titles it from the opener). A comment opens `/library/<slug>?focus=<id>` (DocComments
+    scrolls + rings it — the ring used to throw `InvalidCharacterError` on a space-joined class token, fixed), a note opens
+    `/library/<slug>/read?ch=<chapter>&hl=<id>`; `ReaderShell`'s `?hl=` now also resolves a SHARED community note
+    (turns 显示他人批注 on and runs the 批注-list jump), not only the viewer's own marks. `BrowseColumns` collapses the
+    browse grid to one column when the dock takes the width (`usePageBand`, never `xl:`). Below lg the same target
+    opens in the modal drawer.
   - **公众号 boilerplate (`lib/library/boilerplate.ts`, `tests/library-boilerplate.test.ts`)**: `extractArticle` runs
     `stripBoilerplate` on the sanitized html before chapter splitting. Head rules (「点击上方蓝字关注」 lines, GIF/QR
     banners) apply only to `mp.weixin.qq.com`; tail TRIGGERS (往期推荐 / 推荐阅读 / 扫码关注 / 点个在看 / END / 商务合作 …)
