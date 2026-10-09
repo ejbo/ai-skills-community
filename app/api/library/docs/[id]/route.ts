@@ -22,6 +22,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       aiIndexState: true,
       chapterCount: true,
       deletedAt: true,
+      title: true,
     },
   });
   if (!doc || doc.deletedAt) return NextResponse.json({ error: 'not_found' }, { status: 404 });
@@ -29,6 +30,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   return NextResponse.json({
     id: doc.id,
     slug: doc.slug,
+    title: doc.title,
     status: doc.status,
     processingError: doc.processingError,
     aiIndexState: doc.aiIndexState,

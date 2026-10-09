@@ -135,6 +135,11 @@ function triggerIndexing(docId: string): void {
   void import('./indexer')
     .then((m) => m.runDocIndexing(docId))
     .catch((e) => console.error('[library] failed to start indexing', e))
+    // The member may have 收起 the dialog and moved on: tell them from the bell
+    // once the 导读 has landed (or given up). Only here — a re-index is silent.
+    .then(() => import('@/lib/notifications'))
+    .then((m) => m.notifyLibraryIngested(docId))
+    .catch((e) => console.error('[library] failed to notify ingest', e))
     .then(() => import('./translate-doc'))
     .then((m) => m.runDocTranslations(docId))
     .catch((e) => console.error('[library] failed to start translation', e));
@@ -357,6 +362,10 @@ async function markFailed(docId: string, e: unknown): Promise<void> {
       where: { id: docId },
       data: { status: 'failed', processingError: message.slice(0, 500) },
     })
+    .catch(() => undefined);
+  // Same bell as success: the member who added it learns it did not work out.
+  void import('@/lib/notifications')
+    .then((m) => m.notifyLibraryIngested(docId))
     .catch(() => undefined);
 }
 

@@ -29,6 +29,7 @@ import { ThemeProvider } from '@/components/ThemeProvider';
 import { AuthProvider } from '@/components/AuthProvider';
 import { NavBar } from '@/components/NavBar';
 import { Toaster } from '@/components/Toaster';
+import { IngestJobsProvider } from '@/components/library/ingest/IngestJobsProvider';
 import { TranslatePrefsProvider } from '@/components/translate/TranslatePrefs';
 import { loadTranslatePrefs } from '@/lib/translate/prefs-server';
 import { VisitTracker } from '@/components/VisitTracker';
@@ -95,8 +96,10 @@ export default async function RootLayout({
           <AuthProvider session={session}>
             <NextIntlClientProvider locale={locale} messages={clientMessages}>
               <TranslatePrefsProvider initial={translatePrefs}>
-                <NavBar session={session} />
-                <main className="min-h-[calc(100vh-64px)]">{children}</main>
+                <IngestJobsProvider>
+                  <NavBar session={session} />
+                  <main className="min-h-[calc(100vh-64px)]">{children}</main>
+                </IngestJobsProvider>
               </TranslatePrefsProvider>
               <Toaster />
               <VisitTracker enabled={Boolean(session?.user)} />

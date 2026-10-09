@@ -152,6 +152,20 @@
     reader's 返回 goes to its doc page inside the panel; `BackButton` posts `preview:close` to the host, which the
     provider listens for (same origin) and closes the panel. Any new back-style control on a page that can be framed
     must check `isFramed()` first.
+  - **后台收录 (2026-10-09)**: 添加内容 no longer blocks. `components/library/ingest/IngestJobsProvider` is mounted ONCE in
+    the ROOT layout (inside NextIntlClientProvider) and owns the dialog state, the job list, the requests (fetch for a URL,
+    XHR for a file so progress events exist) and a poll of `GET /api/library/docs/[id]` (now returns `title`) until
+    `settleFromPoll` says extraction AND the 导读 settled (`lib/library/ingest-shared.ts`, tested). Client-side navigation
+    keeps the provider alive, so an upload keeps going while the member browses; a hard reload is the one thing that drops
+    it. The dialog (`AddDocDialog`) submits and clears at once, lists jobs with a three-step bar (上传/抓取 → 解析 → AI 导读,
+    `JobRow`) and a 收起 button; closing while anything runs = 收起. Minimized jobs show in `IngestDock` (fixed bottom-right,
+    z-40 under the z-[120] toasts) with the live count, 查看 on finished rows, 展开 to reopen, 清除. **Nothing navigates on
+    completion** — the old dialog pushed to the doc the moment it was created; 「查看」 is now the member's call. The
+    `AddDocButton` is only a button (`useIngestJobs().openDialog()`; outside the provider it is a no-op).
+    Server side: `NotificationType.library_ready` (migration `20261009120000_notification_library_ready`) +
+    `notifyLibraryIngested(docId)` fires from the NEW-doc chain only (`triggerIndexing` after indexing, and `markFailed`) —
+    never from a re-index — and is not gated by NotificationPreference (adding the doc is the opt-in). Titles:
+    已收录，AI 导读已生成 / 已收录（AI 导读未生成）/ 收录失败 (+ reason as body), link = the doc page.
   - **公众号 boilerplate (`lib/library/boilerplate.ts`, `tests/library-boilerplate.test.ts`)**: `extractArticle` runs
     `stripBoilerplate` on the sanitized html before chapter splitting. Head rules (「点击上方蓝字关注」 lines, GIF/QR
     banners) apply only to `mp.weixin.qq.com`; tail TRIGGERS (往期推荐 / 推荐阅读 / 扫码关注 / 点个在看 / END / 商务合作 …)
