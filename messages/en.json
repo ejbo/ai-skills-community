@@ -2413,8 +2413,7 @@
     "stat_dash": "—",
     "no_readers_yet": "Nobody is reading this yet.",
     "no_annotators_yet": "Nobody has shared notes yet.",
-    "n_annotations": "{count}",
-    "sort_readers": "Most read"
+    "n_annotations": "{count}"
   },
   "skill_compare": {
     "view_empty": "No comparison yet.",
@@ -2852,10 +2851,9 @@
     "share_source": "Source: ",
     "share_author": "Author: ",
     "share_digest": "AI digest: ",
-    "readers_count": "{count} readers",
     "rail_hot": "Trending",
     "hot_tab_hot": "Hot",
-    "hot_tab_commented": "7-day comments",
+    "hot_tab_commented": "Most commented",
     "hot_tab_read": "Most read",
     "hot_tab_shelved": "Most shelved",
     "n_comments_window": "{count} comments",

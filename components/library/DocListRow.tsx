@@ -12,7 +12,7 @@
 
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { MessageSquare, Star } from 'lucide-react';
+import { Eye, MessageSquare, Star } from 'lucide-react';
 import type { DocCardData } from '@/lib/library-queries';
 import { CATEGORY_NAME_BY_SLUG } from '@/lib/library/types';
 import { relativeTime } from '@/lib/i18n-date';
@@ -34,6 +34,7 @@ export function DocListRow(props: DocListRowProps) {
   const t = useTranslations('library_ui');
   const tlib = useTranslations('library');
   const tl = useTranslations('labels');
+  const tp = useTranslations('profile');
   const locale = useLocale();
   const created = typeof props.createdAt === 'string' ? new Date(props.createdAt) : props.createdAt;
   const summary = pickText(locale, props.summary, props.summaryEn);
@@ -112,7 +113,10 @@ export function DocListRow(props: DocListRowProps) {
                 {t('rating_with_count', { rating: props.avgRating.toFixed(1), count: props.ratingCount })}
               </span>
             )}
-            <span>{tlib('readers_count', { count: props.readerCount })}</span>
+            <span className="inline-flex items-center gap-0.5" title={tp('n_views', { count: props.viewCount })}>
+              <Eye className="h-3 w-3" />
+              {props.viewCount}
+            </span>
             {props.commentCount > 0 && (
               <span className="inline-flex items-center gap-0.5">
                 <MessageSquare className="h-3 w-3" />

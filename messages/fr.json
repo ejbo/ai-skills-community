@@ -2413,8 +2413,7 @@
     "stat_dash": "—",
     "no_readers_yet": "Personne ne lit ce document pour l'instant.",
     "no_annotators_yet": "Personne n'a encore partagé de notes.",
-    "n_annotations": "{count}",
-    "sort_readers": "Les plus lus"
+    "n_annotations": "{count}"
   },
   "skill_compare": {
     "view_empty": "Aucune comparaison pour l’instant.",
@@ -2852,10 +2851,9 @@
     "share_source": "Source : ",
     "share_author": "Auteur : ",
     "share_digest": "Résumé IA : ",
-    "readers_count": "{count} lecteurs",
     "rail_hot": "Tendances",
     "hot_tab_hot": "Populaires",
-    "hot_tab_commented": "Commentaires 7 j",
+    "hot_tab_commented": "Les plus commentés",
     "hot_tab_read": "Les plus lus",
     "hot_tab_shelved": "Les plus ajoutés",
     "n_comments_window": "{count} commentaires",

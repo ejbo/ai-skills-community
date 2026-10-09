@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ArrowLeft } from 'lucide-react';
+import { isFramed, requestPreviewClose } from '@/lib/framed';
 
 /**
  * Back button that returns the user to wherever they came from, preserving
@@ -32,7 +33,8 @@ export function BackButton({
   return (
     <button
       type="button"
-      onClick={() => (canGoBack ? router.back() : router.push(fallbackHref))}
+      // Framed in the side dock: history is the HOST's, so 返回 closes the panel instead.
+      onClick={() => (isFramed() ? requestPreviewClose() : canGoBack ? router.back() : router.push(fallbackHref))}
       className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-muted transition hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 dark:focus-visible:ring-zinc-100 dark:hover:bg-zinc-800 dark:hover:text-white"
     >
       <ArrowLeft className="h-4 w-4" />

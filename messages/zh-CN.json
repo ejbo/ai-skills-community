@@ -2413,8 +2413,7 @@
     "stat_dash": "—",
     "no_readers_yet": "还没有人在读。",
     "no_annotators_yet": "还没有人公开笔记。",
-    "n_annotations": "{count} 条",
-    "sort_readers": "最多阅读"
+    "n_annotations": "{count} 条"
   },
   "skill_compare": {
     "view_empty": "暂无对比内容。",
@@ -2852,10 +2851,9 @@
     "share_source": "来源：",
     "share_author": "作者：",
     "share_digest": "AI 导读：",
-    "readers_count": "{count} 人读过",
     "rail_hot": "热门",
     "hot_tab_hot": "最热",
-    "hot_tab_commented": "7 日评论",
+    "hot_tab_commented": "最多评论",
     "hot_tab_read": "最多阅读",
     "hot_tab_shelved": "最多收藏",
     "n_comments_window": "{count} 评论",

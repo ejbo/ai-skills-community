@@ -44,6 +44,7 @@ import { DrawerShell } from '@/components/motion';
 import { DockShell } from '@/components/motion/DockShell';
 import { EMBED_KIND_ICONS } from '@/components/zones/embeds/EmbedCard';
 import { TWEEN } from '@/lib/motion';
+import { PREVIEW_CLOSE_MESSAGE } from '@/lib/framed';
 import { holdNavBarHidden, holdNavBarVisible, useNavBarVisible } from '@/lib/nav-chrome';
 import type { EmbedKind } from '@/lib/zones/shared';
 import type { EmbedData } from '@/lib/zones/types';
@@ -235,6 +236,17 @@ export function PreviewProvider({ children, mode = 'modal' }: { children: ReactN
     keyboardRef.current = false;
     openerRef.current = null;
   }, []);
+
+  // A framed `page` target (lib/framed.ts) cannot pop history without moving
+  // THIS page, so its 返回 posts a close request instead. Same origin only.
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data && typeof e.data === 'object' && e.data.type === PREVIEW_CLOSE_MESSAGE) close();
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [close]);
 
   const back = useCallback(() => {
     dirRef.current = -1;
