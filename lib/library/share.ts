@@ -39,5 +39,6 @@ export function buildShareText(doc: ShareDoc, labels: ShareLabels): string {
   if (author && author !== source && !source.endsWith(` · ${author}`)) lines.push(`${labels.author}${author}`);
   if (summary) lines.push(`${labels.digest}${summary}`);
   lines.push(doc.url);
-  return lines.join('\n');
+  // One blank line between the parts — pasted into a chat, each reads as its own line.
+  return lines.join('\n\n');
 }

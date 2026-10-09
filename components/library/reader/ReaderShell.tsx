@@ -32,6 +32,7 @@ import { useReaderPrefs, READER_WIDTHS } from './reader-prefs';
 import { ReaderHighlighter, supportsNativeHighlights, type HlBox } from './highlighter';
 import { getTextOffsetOfPoint, invalidateAnchorCache, rootTextLength } from './anchoring';
 import { withBasePath } from '@/lib/base-path';
+import { isFramed } from '@/lib/framed';
 import { contentLocale } from '@/lib/library/i18n-content';
 import {
   prefForChoice,
@@ -399,7 +400,9 @@ export function ReaderShell({
   );
 
   const goBack = useCallback(() => {
-    if (window.history.length > 1) router.back();
+    // Framed in the side dock: the frame shares the host's history, so a pop
+    // would move the host page. Go to the doc page inside the panel instead.
+    if (window.history.length > 1 && !isFramed()) router.back();
     else router.push(`/library/${doc.slug}`);
   }, [router, doc.slug]);
 

@@ -1116,6 +1116,7 @@ enum NotificationType {
   mention // 有人在帖子、评论或回复里 @ 了你
   coauthor // 有人把你加为某篇内容的合著者（发布时才通知）
   audience // 有人把你加入了某项内容的「指定成员可见」名单（内容对你可见时才通知）
+  library_ready // 知识库：你收录的内容处理完成（或失败）—— 收录本身就是订阅，不走偏好开关
 }
 
 // One row per recipient. title/body/link are rendered at creation time so the

@@ -109,7 +109,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Sear
       getFeaturedDocs(RAIL_FEATURED),
       getHotDocs(RAIL_HOT),
       getTopCommentedDocs(undefined, RAIL_HOT),
-      browseDocs({ sort: 'readers', pageSize: RAIL_HOT }).then((r) => r.items.filter((d) => d.readerCount > 0)),
+      browseDocs({ sort: 'views', pageSize: RAIL_HOT }).then((r) => r.items.filter((d) => d.viewCount > 0)),
       browseDocs({ sort: 'shelved', pageSize: RAIL_HOT }).then((r) => r.items.filter((d) => d.shelfCount > 0)),
       session?.user ? getContinueReading(session.user.id, RAIL_CONTINUE) : Promise.resolve([]),
       getRecentActivity({

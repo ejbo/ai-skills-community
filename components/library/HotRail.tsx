@@ -1,11 +1,12 @@
 'use client';
 
 // 热门 rail with four views (owner, 2026-10-09): 最热 (time-decayed engagement,
-// lib/library/hot-shared.ts) · 7 日评论 · 最多阅读 · 最多收藏. All four lists arrive
+// lib/library/hot-shared.ts) · 最多评论 (last 7 days) · 最多阅读 (views) · 最多收藏. All four lists arrive
 // from the server; switching is a local state flip, no fetch, no URL state.
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { Eye, MessageSquare } from 'lucide-react';
 import type { DocCardData } from '@/lib/library-queries';
 import { RailItem } from './RailItem';
 
@@ -18,6 +19,7 @@ export interface HotLists {
   shelved: DocCardData[];
 }
 
+// 最多评论 is counted over the last 7 days (the label does not say so); 最多阅读 = views.
 const TABS: HotTab[] = ['hot', 'commented', 'read', 'shelved'];
 
 export function HotRail({ lists }: { lists: HotLists }) {
@@ -65,12 +67,21 @@ export function HotRail({ lists }: { lists: HotLists }) {
               key={doc.id}
               doc={doc}
               rank={i + 1}
+              showUploader
               metric={
-                tab === 'commented'
-                  ? t('n_comments_window', { count: (doc as HotLists['commented'][number]).windowComments })
-                  : tab === 'shelved'
-                    ? tp('n_shelved', { count: doc.shelfCount })
-                    : t('readers_count', { count: doc.readerCount })
+                tab === 'commented' ? (
+                  <span className="inline-flex items-center gap-0.5" title={t('n_comments_window', { count: (doc as HotLists['commented'][number]).windowComments })}>
+                    <MessageSquare className="h-3 w-3" />
+                    {(doc as HotLists['commented'][number]).windowComments}
+                  </span>
+                ) : tab === 'shelved' ? (
+                  tp('n_shelved', { count: doc.shelfCount })
+                ) : (
+                  <span className="inline-flex items-center gap-0.5" title={tp('n_views', { count: doc.viewCount })}>
+                    <Eye className="h-3 w-3" />
+                    {doc.viewCount}
+                  </span>
+                )
               }
             />
           ))}

@@ -7,7 +7,7 @@
 
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Star } from 'lucide-react';
+import { Eye, Star } from 'lucide-react';
 import type { DocCardData } from '@/lib/library-queries';
 import { relativeTime } from '@/lib/i18n-date';
 import { pickText } from '@/lib/library/i18n-content';
@@ -25,6 +25,7 @@ export interface DocCardProps extends Omit<DocCardData, 'createdAt'> {
 export function DocCard(props: DocCardProps) {
   const t = useTranslations('library_ui');
   const tlib = useTranslations('library');
+  const tp = useTranslations('profile');
   const locale = useLocale();
   const created = typeof props.createdAt === 'string' ? new Date(props.createdAt) : props.createdAt;
   const summary = pickText(locale, props.summary, props.summaryEn);
@@ -98,7 +99,10 @@ export function DocCard(props: DocCardProps) {
                 {props.avgRating.toFixed(1)}
               </span>
             )}
-            <span>{tlib('readers_count', { count: props.readerCount })}</span>
+            <span className="inline-flex items-center gap-0.5" title={tp('n_views', { count: props.viewCount })}>
+              <Eye className="h-3 w-3" />
+              {props.viewCount}
+            </span>
             <ShareButton
               slug={props.slug}
               title={title}

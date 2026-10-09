@@ -69,7 +69,7 @@ export async function canReadDoc(
   return granted?.status === 'approved';
 }
 
-export const LIBRARY_SORTS = ['newest', 'featured', 'shelved', 'views', 'readers'] as const;
+export const LIBRARY_SORTS = ['newest', 'featured', 'shelved', 'views'] as const;
 export type LibrarySort = (typeof LIBRARY_SORTS)[number];
 
 export function isLibrarySort(v: unknown): v is LibrarySort {
@@ -140,7 +140,7 @@ export interface DocCardData {
   shelfCount: number;
   likeCount: number;
   viewCount: number;
-  /** Distinct members who opened the reader — 「N 人读过」 on cards. */
+  /** Distinct members who opened the reader (kept as a counter; cards show `viewCount`, owner's call 2026-10-09). */
   readerCount: number;
   commentCount: number;
   ratingCount: number;
@@ -206,9 +206,7 @@ export async function browseDocs(filters: BrowseDocFilters): Promise<{
         ? [{ shelfCount: 'desc' }, { createdAt: 'desc' }]
         : sort === 'views'
           ? [{ viewCount: 'desc' }, { createdAt: 'desc' }]
-          : sort === 'readers'
-            ? [{ readerCount: 'desc' }, { createdAt: 'desc' }]
-            : [{ createdAt: 'desc' }];
+          : [{ createdAt: 'desc' }];
 
   // Count first so an out-of-range ?page= clamps to the last real page.
   const total = await prisma.libraryDoc.count({ where });

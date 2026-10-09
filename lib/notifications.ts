@@ -509,6 +509,41 @@ export async function notifyLibraryAccessDecision(opts: {
   }
 }
 
+// ─── 知识库收录完成 ─────────────────────────────────────────────────────────
+
+/**
+ * The doc a member added has settled: extraction ready (with or without an AI
+ * 导读) or failed. Fires once, from the ingest chain (never from a re-index), so
+ * a member who 收起 the dialog and kept browsing hears about it from the bell.
+ * Deliberately NOT gated by NotificationPreference: adding the doc is the opt-in.
+ */
+export async function notifyLibraryIngested(docId: string): Promise<void> {
+  try {
+    const doc = await prisma.libraryDoc.findUnique({
+      where: { id: docId },
+      select: { slug: true, title: true, uploaderId: true, status: true, processingError: true, aiIndexState: true, deletedAt: true },
+    });
+    if (!doc || doc.deletedAt) return;
+    const name = truncate(doc.title, 40);
+    const failed = doc.status === 'failed';
+    const title = failed
+      ? `《${name}》收录失败`
+      : doc.aiIndexState === 'ready'
+        ? `《${name}》已收录，AI 导读已生成`
+        : `《${name}》已收录（AI 导读未生成）`;
+    await createInApp({
+      recipientId: doc.uploaderId,
+      actorId: null,
+      type: 'library_ready',
+      title,
+      body: failed ? (doc.processingError ?? null) : null,
+      link: `/library/${doc.slug}`,
+    });
+  } catch (e) {
+    console.error('[notify] library ingested failed:', e);
+  }
+}
+
 // ─── 活动提醒 ──────────────────────────────────────────────────────────────
 
 /**

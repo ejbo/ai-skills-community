@@ -115,21 +115,23 @@
     sits directly under them. The AI `summary` paragraph is NOT shown on the detail page (it duplicated AI 导读 — cards
     still use it as the blurb). 发表于 rides on the source line. `AiDigest`: 大纲 / 要点 side by side on md+, model
     attribution top-right, 「AI 生成，可能有疏漏」 footer.
-  - **「N 人读过」+ 分享 (2026-10-09)**: list rows and cards show `LibraryDoc.readerCount` (distinct members who opened the
-    reader = one per `LibraryProgress` row; migration `20261009100000_library_reader_count` backfills) instead of 收藏 —
-    the progress route does create-then-update, not upsert, so the counter moves exactly once per (member, doc) under
-    racing first pings (P2002 = loser). 收藏 still ranks the 最多收藏 rail and shows on the detail page. **分享** =
+  - **👁 count + 分享 (2026-10-09)**: list rows, cards and the 热门 rail show `viewCount` as an eye icon + number instead
+    of 收藏 (owner: 「读过按浏览量计算，不要写几人读过，改成 icon」). `LibraryDoc.readerCount` (distinct members who opened
+    the reader, migration `20261009100000_library_reader_count`, maintained by the progress route's create-then-update)
+    stays as a counter but is not displayed. 收藏 still ranks the 最多收藏 view and shows on the detail page. **分享** =
     `ShareButton` (icon on rows/cards above the click overlay, full-width button under 喜欢 on the detail page): one
-    click copies `lib/library/share.ts#buildShareText` — `标题 / 来源：公众号 · 账号 / 作者： / AI 导读：summary / 绝对链接`,
-    empty lines dropped, an author equal to the source dropped — via `lib/clipboard.ts#copyText` (works on plain HTTP).
+    click copies `lib/library/share.ts#buildShareText` — `标题 / 来源：公众号 · 账号 / 作者： / AI 导读：summary / 绝对链接`
+    with ONE BLANK LINE between parts, empty parts dropped, an author equal to the source dropped — via
+    `lib/clipboard.ts#copyText` (works on plain HTTP).
     The link is `window.location.origin + withBasePath(/library/<slug>)`, so it is right on both deploys. Cards use
     `summary` (= the AI 导读 summary the indexer copies unless the uploader rewrote it); the detail page passes the live
     `aiOverview.summary`.
   - **评论编辑器 = the v3 full editor** (`variant="full"`, `embedPicker={{ kinds: DISCUSSION_EMBED_KINDS }}`, same as 讨论区
     replies). Comment bodies render through `ZoneMarkdown compact headingIds={false}` so `[embed:…]` cards self-fetch by
     token — the comments API is unchanged. Do not drop back to `MarkdownRenderer` (it has no embed cards).
-  - **热门 rail = 4 views (2026-10-09)**: 最热 · 7 日评论 · 最多阅读 · 最多收藏 (`HotRail`, all four lists server-loaded,
-    tab switch is local). **最热 = time-decayed engagement** (`lib/library/hot-shared.ts`: window 7 d, half-life 3 d,
+  - **热门 rail = 4 views (2026-10-09)**: 最热 · 最多评论 (label says no window; counted over 7 days) · 最多阅读 (= views)
+    · 最多收藏 (`HotRail`, all four lists server-loaded, tab switch is local; each row carries the 收录 member as an
+    avatar-only hover card, above the row's click overlay). **最热 = time-decayed engagement** (`lib/library/hot-shared.ts`: window 7 d, half-life 3 d,
     weights view 1 / read 3 / like 2 / shelf 4 / note 4 / comment 5 / the doc's own creation 2 as a freshness term)
     summed per EVENT in one SQL pass over LibraryView / LibraryProgress(updatedAt) / LibraryShelfItem / LibraryLike /
     LibraryComment(visible) / LibraryHighlight / LibraryDoc (`getHotDocs`). Change a weight in hot-shared.ts only — the
@@ -145,7 +147,25 @@
     `/library/<slug>/read?ch=<chapter>&hl=<id>`; `ReaderShell`'s `?hl=` now also resolves a SHARED community note
     (turns 显示他人批注 on and runs the 批注-list jump), not only the viewer's own marks. `BrowseColumns` collapses the
     browse grid to one column when the dock takes the width (`usePageBand`, never `xl:`). Below lg the same target
-    opens in the modal drawer.
+    opens in the modal drawer. **A framed page never pops history** (`lib/framed.ts`): an iframe shares the HOST's
+    session history, so `router.back()` there navigated the browse page away (the 「全屏再返回，路径不对」 bug). The
+    reader's 返回 goes to its doc page inside the panel; `BackButton` posts `preview:close` to the host, which the
+    provider listens for (same origin) and closes the panel. Any new back-style control on a page that can be framed
+    must check `isFramed()` first.
+  - **后台收录 (2026-10-09)**: 添加内容 no longer blocks. `components/library/ingest/IngestJobsProvider` is mounted ONCE in
+    the ROOT layout (inside NextIntlClientProvider) and owns the dialog state, the job list, the requests (fetch for a URL,
+    XHR for a file so progress events exist) and a poll of `GET /api/library/docs/[id]` (now returns `title`) until
+    `settleFromPoll` says extraction AND the 导读 settled (`lib/library/ingest-shared.ts`, tested). Client-side navigation
+    keeps the provider alive, so an upload keeps going while the member browses; a hard reload is the one thing that drops
+    it. The dialog (`AddDocDialog`) submits and clears at once, lists jobs with a three-step bar (上传/抓取 → 解析 → AI 导读,
+    `JobRow`) and a 收起 button; closing while anything runs = 收起. Minimized jobs show in `IngestDock` (fixed bottom-right,
+    z-40 under the z-[120] toasts) with the live count, 查看 on finished rows, 展开 to reopen, 清除. **Nothing navigates on
+    completion** — the old dialog pushed to the doc the moment it was created; 「查看」 is now the member's call. The
+    `AddDocButton` is only a button (`useIngestJobs().openDialog()`; outside the provider it is a no-op).
+    Server side: `NotificationType.library_ready` (migration `20261009120000_notification_library_ready`) +
+    `notifyLibraryIngested(docId)` fires from the NEW-doc chain only (`triggerIndexing` after indexing, and `markFailed`) —
+    never from a re-index — and is not gated by NotificationPreference (adding the doc is the opt-in). Titles:
+    已收录，AI 导读已生成 / 已收录（AI 导读未生成）/ 收录失败 (+ reason as body), link = the doc page.
   - **公众号 boilerplate (`lib/library/boilerplate.ts`, `tests/library-boilerplate.test.ts`)**: `extractArticle` runs
     `stripBoilerplate` on the sanitized html before chapter splitting. Head rules (「点击上方蓝字关注」 lines, GIF/QR
     banners) apply only to `mp.weixin.qq.com`; tail TRIGGERS (往期推荐 / 推荐阅读 / 扫码关注 / 点个在看 / END / 商务合作 …)
