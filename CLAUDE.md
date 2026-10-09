@@ -44,6 +44,7 @@ pnpm typecheck && pnpm test   # tsc --noEmit + vitest; safe while dev runs
 
 其他长文档：`docs/huawei-sso-deploy.md`（部署全流程）、`docs/events-capabilities.md`
 （活动面向用户的能力清单——做胶片/写文档直接取用，不要再开调研重读代码）、
+`docs/library-capabilities.md`（文章板块能力清单 + 推介口径，同上）、
 `docs/capacity-tuning.md`、`docs/video-performance-notes.md`、`docs/skills-cli-usage.md`。
 
 ## 内部部署（`/ai-community`）
