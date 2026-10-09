@@ -1565,6 +1565,9 @@ model LibraryDoc {
   featuredAt       DateTime?
   uploaderId       String
   viewCount        Int               @default(0)
+  // 几个人读过 — distinct members who opened the reader (one per LibraryProgress row;
+  // bumped by the guarded create in the progress route). What cards show as 「N 人读过」.
+  readerCount      Int               @default(0)
   likeCount        Int               @default(0)
   shelfCount       Int               @default(0)
   commentCount     Int               @default(0)

@@ -7,19 +7,23 @@ import {
   getBrowseCounts,
   getContinueReading,
   getFeaturedDocs,
-  type DocCardData,
+  getHotDocs,
+  getRecentActivity,
+  getTopCommentedDocs,
 } from '@/lib/library-queries';
+import { can } from '@/lib/permissions';
 import { listLibraryCategories, type LibraryCategoryOption } from '@/lib/library/categories';
 import { CATEGORY_NAME_BY_SLUG, LIBRARY_SECTIONS, isLibrarySection } from '@/lib/library/types';
-import { pickDocTitle } from '@/lib/library/translation-shared';
 import { SearchBar } from '@/components/SearchBar';
 import { EmptyState } from '@/components/EmptyState';
+import { ActivityRail } from '@/components/library/ActivityRail';
+import { BrowseColumns } from '@/components/library/BrowseColumns';
 import { DocCard } from '@/components/library/DocCard';
-import { DocCover } from '@/components/library/DocCover';
 import { DocListRow } from '@/components/library/DocListRow';
+import { HotRail } from '@/components/library/HotRail';
 import { ListScrollRestore } from '@/components/library/ScrollMemory';
 import { LibrarySort } from '@/components/library/LibrarySort';
-import { SourceLine } from '@/components/library/SourceLine';
+import { RailItem } from '@/components/library/RailItem';
 import { TypeFilter } from '@/components/library/TypeFilter';
 import { AddDocButton } from '@/components/library/AddDocButton';
 
@@ -42,8 +46,11 @@ interface SearchParams {
 }
 
 const RAIL_FEATURED = 5;
-const RAIL_POPULAR = 5;
+const RAIL_HOT = 5;
 const RAIL_CONTINUE = 3;
+/** 最新评论与批注: this many visible at first, the rest behind 展开更多. */
+const RAIL_ACTIVITY_SHOWN = 5;
+const RAIL_ACTIVITY_TOTAL = 15;
 
 /** `/library?…` with `patch` applied; `page` always drops (a filter change restarts paging). */
 function hrefWith(sp: SearchParams, patch: Record<string, string | null>): string {
@@ -80,8 +87,17 @@ export default async function LibraryPage({ searchParams }: { searchParams: Sear
   const topicsInRail = railSection ? categories.filter((c) => sectionOf(c) === railSection) : [];
   const layout = searchParams.layout === 'grid' ? 'grid' : 'list';
 
-  const [{ items, total, page, pageSize, hasMore }, featured, popular, continueReading, counts] =
-    await Promise.all([
+  const [
+    { items, total, page, pageSize, hasMore },
+    featured,
+    hot,
+    commented,
+    mostRead,
+    mostShelved,
+    continueReading,
+    activity,
+    counts,
+  ] = await Promise.all([
       browseDocs({
         q: searchParams.q,
         type: searchParams.type,
@@ -91,8 +107,16 @@ export default async function LibraryPage({ searchParams }: { searchParams: Sear
         page: Number(searchParams.page ?? 1),
       }),
       getFeaturedDocs(RAIL_FEATURED),
-      browseDocs({ sort: 'shelved', pageSize: RAIL_POPULAR }).then((r) => r.items.filter((d) => d.shelfCount > 0)),
+      getHotDocs(RAIL_HOT),
+      getTopCommentedDocs(undefined, RAIL_HOT),
+      browseDocs({ sort: 'readers', pageSize: RAIL_HOT }).then((r) => r.items.filter((d) => d.readerCount > 0)),
+      browseDocs({ sort: 'shelved', pageSize: RAIL_HOT }).then((r) => r.items.filter((d) => d.shelfCount > 0)),
       session?.user ? getContinueReading(session.user.id, RAIL_CONTINUE) : Promise.resolve([]),
+      getRecentActivity({
+        limit: RAIL_ACTIVITY_TOTAL,
+        locale,
+        canSeeIdentity: session?.user ? can(session.user, 'identity') : false,
+      }),
       getBrowseCounts(),
     ]);
 
@@ -180,58 +204,55 @@ export default async function LibraryPage({ searchParams }: { searchParams: Sear
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_288px]">
-        <div className="min-w-0">
-          {items.length === 0 ? (
-            <EmptyState
-              title={t('empty_title')}
-              description={t('empty_desc')}
-              actionLabel={filtered ? tHome('view_all') : undefined}
-              actionHref={filtered ? '/library' : undefined}
-            />
-          ) : layout === 'grid' ? (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {items.map((doc) => (
-                <DocCard key={doc.id} {...doc} />
-              ))}
-            </div>
-          ) : (
-            <div className="surface divide-y divide-zinc-100 overflow-hidden rounded-2xl dark:divide-zinc-800/60">
-              {items.map((doc) => (
-                <DocListRow key={doc.id} {...doc} categoryNames={categoryNames} />
-              ))}
-            </div>
-          )}
-
-          {(page > 1 || hasMore) && (
-            <Pagination searchParams={searchParams} current={page} pageSize={pageSize} total={total} hasMore={hasMore} />
-          )}
-        </div>
-
-        <aside className="space-y-7">
-          {featured.length > 0 && (
-            <Rail title={t('rail_featured')} moreHref="/library?sort=featured" moreLabel={t('rail_featured_all')}>
-              {featured.map((doc) => (
-                <RailItem key={doc.id} doc={doc} locale={locale} />
-              ))}
-            </Rail>
-          )}
-          {popular.length > 0 && (
-            <Rail title={t('rail_popular')}>
-              {popular.map((doc, i) => (
-                <RailItem key={doc.id} doc={doc} locale={locale} rank={i + 1} />
-              ))}
-            </Rail>
-          )}
-          {continueReading.length > 0 && (
-            <Rail title={t('rail_continue')} moreHref="/library/shelf" moreLabel={t('rail_shelf_link')}>
-              {continueReading.map(({ doc, percent }) => (
-                <RailItem key={doc.id} doc={doc} locale={locale} percent={percent} />
-              ))}
-            </Rail>
-          )}
-        </aside>
-      </div>
+      <BrowseColumns
+        main={
+          <>
+            {items.length === 0 ? (
+              <EmptyState
+                title={t('empty_title')}
+                description={t('empty_desc')}
+                actionLabel={filtered ? tHome('view_all') : undefined}
+                actionHref={filtered ? '/library' : undefined}
+              />
+            ) : layout === 'grid' ? (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {items.map((doc) => (
+                  <DocCard key={doc.id} {...doc} />
+                ))}
+              </div>
+            ) : (
+              <div className="surface divide-y divide-zinc-100 overflow-hidden rounded-2xl dark:divide-zinc-800/60">
+                {items.map((doc) => (
+                  <DocListRow key={doc.id} {...doc} categoryNames={categoryNames} />
+                ))}
+              </div>
+            )}
+            {(page > 1 || hasMore) && (
+              <Pagination searchParams={searchParams} current={page} pageSize={pageSize} total={total} hasMore={hasMore} />
+            )}
+          </>
+        }
+        aside={
+          <>
+            {featured.length > 0 && (
+              <Rail title={t('rail_featured')} moreHref="/library?sort=featured" moreLabel={t('rail_featured_all')}>
+                {featured.map((doc) => (
+                  <RailItem key={doc.id} doc={doc} />
+                ))}
+              </Rail>
+            )}
+            <HotRail lists={{ hot, commented, read: mostRead, shelved: mostShelved }} />
+            {continueReading.length > 0 && (
+              <Rail title={t('rail_continue')} moreHref="/library/shelf" moreLabel={t('rail_shelf_link')}>
+                {continueReading.map(({ doc, percent }) => (
+                  <RailItem key={doc.id} doc={doc} percent={percent} />
+                ))}
+              </Rail>
+            )}
+            <ActivityRail items={activity} initial={RAIL_ACTIVITY_SHOWN} />
+          </>
+        }
+      />
     </div>
   );
 }
@@ -260,58 +281,6 @@ function Rail({
       </div>
       <ul className="mt-2.5 space-y-1">{children}</ul>
     </section>
-  );
-}
-
-async function RailItem({
-  doc,
-  locale,
-  rank,
-  percent,
-}: {
-  doc: DocCardData;
-  locale: string;
-  rank?: number;
-  percent?: number;
-}) {
-  const [t, tp] = await Promise.all([getTranslations('library'), getTranslations('profile')]);
-  const title = pickDocTitle(locale, doc);
-  return (
-    <li>
-      <Link
-        href={`/library/${doc.slug}`}
-        className="-mx-2 flex gap-3 rounded-lg px-2 py-1.5 transition hover:bg-zinc-100/70 dark:hover:bg-zinc-800/60"
-      >
-        {rank !== undefined ? (
-          <span className="w-5 shrink-0 pt-0.5 font-mono text-sm tabular-nums text-muted">{rank}</span>
-        ) : (
-          <span className="h-12 w-9 shrink-0 overflow-hidden rounded">
-            <DocCover title={title} coverUrl={doc.coverUrl} docType={doc.docType} className="h-full w-full text-sm" />
-          </span>
-        )}
-        <span className="min-w-0 flex-1">
-          <span className="line-clamp-2 text-[13px] font-medium leading-snug">{title}</span>
-          {percent !== undefined ? (
-            <span className="mt-1.5 flex items-center gap-2">
-              <span className="h-1 flex-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
-                <span className="block h-full bg-zinc-900 dark:bg-zinc-100" style={{ width: `${Math.round(percent)}%` }} />
-              </span>
-              <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted">{Math.round(percent)}%</span>
-            </span>
-          ) : (
-            <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted">
-              <SourceLine sourceUrl={doc.sourceUrl} siteName={doc.siteName} author={doc.author} format={doc.format} className="min-w-0" />
-              {rank !== undefined && (
-                <>
-                  <span aria-hidden>·</span>
-                  <span className="shrink-0 font-mono tabular-nums">{tp('n_shelved', { count: doc.shelfCount })}</span>
-                </>
-              )}
-            </span>
-          )}
-        </span>
-      </Link>
-    </li>
   );
 }
 

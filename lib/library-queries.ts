@@ -4,6 +4,11 @@ import { prisma } from '@/lib/db';
 import { AUTHOR_IDENTITY_FIELDS, AUTHOR_IDENTITY_SELECT } from '@/lib/user-identity';
 import { isDocType, type AiOverview } from '@/lib/library/types';
 import { listLibraryCategories } from '@/lib/library/categories';
+import { HOT_HALF_LIFE_DAYS, HOT_WEIGHTS, HOT_WINDOW_DAYS } from '@/lib/library/hot-shared';
+import { activityHref, type ActivityItem } from '@/lib/library/activity-shared';
+import { pickDocTitle } from '@/lib/library/translation-shared';
+import { markdownToPlainText } from '@/lib/markdown-text';
+import { toPublicAuthor } from '@/lib/user-identity';
 import { asAiOverview, pickOverview, pickText } from '@/lib/library/i18n-content';
 import { effectivePassState, isFreshChapterTranslation } from '@/lib/library/translation-state';
 import {
@@ -64,7 +69,7 @@ export async function canReadDoc(
   return granted?.status === 'approved';
 }
 
-export const LIBRARY_SORTS = ['newest', 'featured', 'shelved', 'views'] as const;
+export const LIBRARY_SORTS = ['newest', 'featured', 'shelved', 'views', 'readers'] as const;
 export type LibrarySort = (typeof LIBRARY_SORTS)[number];
 
 export function isLibrarySort(v: unknown): v is LibrarySort {
@@ -100,6 +105,7 @@ export const DOC_CARD_SELECT = {
   shelfCount: true,
   likeCount: true,
   viewCount: true,
+  readerCount: true,
   commentCount: true,
   ratingCount: true,
   avgRating: true,
@@ -134,6 +140,8 @@ export interface DocCardData {
   shelfCount: number;
   likeCount: number;
   viewCount: number;
+  /** Distinct members who opened the reader — 「N 人读过」 on cards. */
+  readerCount: number;
   commentCount: number;
   ratingCount: number;
   avgRating: number;
@@ -198,7 +206,9 @@ export async function browseDocs(filters: BrowseDocFilters): Promise<{
         ? [{ shelfCount: 'desc' }, { createdAt: 'desc' }]
         : sort === 'views'
           ? [{ viewCount: 'desc' }, { createdAt: 'desc' }]
-          : [{ createdAt: 'desc' }];
+          : sort === 'readers'
+            ? [{ readerCount: 'desc' }, { createdAt: 'desc' }]
+            : [{ createdAt: 'desc' }];
 
   // Count first so an out-of-range ?page= clamps to the last real page.
   const total = await prisma.libraryDoc.count({ where });
@@ -272,6 +282,151 @@ export async function getBrowseCounts(): Promise<{
     for (const sec of sections) bySection[sec] = (bySection[sec] ?? 0) + 1;
   }
   return { byTopic, bySection };
+}
+
+/**
+ * 最热 — docs ranked by time-decayed engagement inside the last HOT_WINDOW_DAYS
+ * (lib/library/hot-shared.ts has the model and the constants). One SQL pass over
+ * the six event tables + the doc's own creation; browsable docs only.
+ */
+export async function getHotDocs(limit = 5): Promise<DocCardData[]> {
+  const since = new Date(Date.now() - HOT_WINDOW_DAYS * 86_400_000);
+  const halfLifeSec = HOT_HALF_LIFE_DAYS * 86_400;
+  const rows = await prisma.$queryRaw<{ docId: string; score: number }[]>`
+    SELECT e."docId", SUM(e.w)::float AS score
+    FROM (
+      SELECT "docId", ${HOT_WEIGHTS.view}::float * POWER(0.5, EXTRACT(EPOCH FROM (now() - "createdAt")) / ${halfLifeSec}) AS w
+        FROM "LibraryView" WHERE "createdAt" >= ${since}
+      UNION ALL
+      SELECT "docId", ${HOT_WEIGHTS.read}::float * POWER(0.5, EXTRACT(EPOCH FROM (now() - "updatedAt")) / ${halfLifeSec})
+        FROM "LibraryProgress" WHERE "updatedAt" >= ${since}
+      UNION ALL
+      SELECT "docId", ${HOT_WEIGHTS.shelf}::float * POWER(0.5, EXTRACT(EPOCH FROM (now() - "createdAt")) / ${halfLifeSec})
+        FROM "LibraryShelfItem" WHERE "createdAt" >= ${since}
+      UNION ALL
+      SELECT "docId", ${HOT_WEIGHTS.like}::float * POWER(0.5, EXTRACT(EPOCH FROM (now() - "createdAt")) / ${halfLifeSec})
+        FROM "LibraryLike" WHERE "createdAt" >= ${since}
+      UNION ALL
+      SELECT "docId", ${HOT_WEIGHTS.comment}::float * POWER(0.5, EXTRACT(EPOCH FROM (now() - "createdAt")) / ${halfLifeSec})
+        FROM "LibraryComment" WHERE "createdAt" >= ${since} AND "status" = 'visible'
+      UNION ALL
+      SELECT "docId", ${HOT_WEIGHTS.note}::float * POWER(0.5, EXTRACT(EPOCH FROM (now() - "createdAt")) / ${halfLifeSec})
+        FROM "LibraryHighlight" WHERE "createdAt" >= ${since}
+      UNION ALL
+      SELECT "id" AS "docId", ${HOT_WEIGHTS.fresh}::float * POWER(0.5, EXTRACT(EPOCH FROM (now() - "createdAt")) / ${halfLifeSec})
+        FROM "LibraryDoc" WHERE "createdAt" >= ${since}
+    ) e
+    JOIN "LibraryDoc" d ON d."id" = e."docId"
+    WHERE d."status" = 'ready' AND d."deletedAt" IS NULL AND d."visibility" <> 'private'
+    GROUP BY e."docId"
+    ORDER BY score DESC
+    LIMIT ${limit}`;
+  if (rows.length === 0) return [];
+  const docs = await prisma.libraryDoc.findMany({
+    where: { id: { in: rows.map((r) => r.docId) } },
+    select: DOC_CARD_SELECT,
+  });
+  const byId = new Map(docs.map((d) => [d.id, d]));
+  return rows.flatMap((r) => byId.get(r.docId) ?? []);
+}
+
+/** 7 日评论 — docs with the most visible comments in the window, with that count. */
+export async function getTopCommentedDocs(
+  days = HOT_WINDOW_DAYS,
+  limit = 5,
+): Promise<(DocCardData & { windowComments: number })[]> {
+  const since = new Date(Date.now() - days * 86_400_000);
+  const groups = await prisma.libraryComment.groupBy({
+    by: ['docId'],
+    where: { status: 'visible', createdAt: { gte: since }, doc: BROWSABLE_DOC_WHERE },
+    _count: { _all: true },
+    orderBy: { _count: { docId: 'desc' } },
+    take: limit,
+  });
+  if (groups.length === 0) return [];
+  const docs = await prisma.libraryDoc.findMany({
+    where: { id: { in: groups.map((g) => g.docId) } },
+    select: DOC_CARD_SELECT,
+  });
+  const byId = new Map(docs.map((d) => [d.id, d]));
+  return groups.flatMap((g) => {
+    const d = byId.get(g.docId);
+    return d ? [{ ...d, windowComments: g._count._all }] : [];
+  });
+}
+
+const ACTIVITY_DOC_SELECT = { slug: true, title: true, language: true, titleTranslations: true } as const;
+const ACTIVITY_EXCERPT = 160;
+
+/**
+ * 最新评论与批注 — newest visible comments and SHARED notes on public docs,
+ * merged by time. A note is shared when its owner turned on 公开我的笔记 for that
+ * doc (LibraryProgress.shareNotes — per user per doc, so it is correlated in SQL).
+ * Identity is trimmed HERE with the viewer's permission; public docs only, so an
+ * anonymous visitor sees nothing they could not open.
+ */
+export async function getRecentActivity(opts: {
+  limit: number;
+  locale: string;
+  canSeeIdentity: boolean;
+}): Promise<ActivityItem[]> {
+  const publicDoc = { ...READY_DOC_WHERE, visibility: 'public' as const };
+  const [comments, noteIds] = await Promise.all([
+    prisma.libraryComment.findMany({
+      where: { status: 'visible', doc: publicDoc },
+      orderBy: { createdAt: 'desc' },
+      take: opts.limit,
+      select: { id: true, bodyMd: true, createdAt: true, doc: { select: ACTIVITY_DOC_SELECT }, author: AUTHOR_IDENTITY_SELECT },
+    }),
+    prisma.$queryRaw<{ id: string }[]>`
+      SELECT h."id"
+      FROM "LibraryHighlight" h
+      JOIN "LibraryProgress" p ON p."userId" = h."userId" AND p."docId" = h."docId" AND p."shareNotes" = true
+      JOIN "LibraryDoc" d ON d."id" = h."docId"
+      WHERE h."noteText" IS NOT NULL AND h."noteText" <> ''
+        AND d."status" = 'ready' AND d."deletedAt" IS NULL AND d."visibility" = 'public'
+      ORDER BY h."createdAt" DESC
+      LIMIT ${opts.limit}`,
+  ]);
+  const notes = noteIds.length
+    ? await prisma.libraryHighlight.findMany({
+        where: { id: { in: noteIds.map((r) => r.id) } },
+        select: {
+          id: true,
+          quote: true,
+          noteText: true,
+          chapterIndex: true,
+          createdAt: true,
+          doc: { select: ACTIVITY_DOC_SELECT },
+          user: AUTHOR_IDENTITY_SELECT,
+        },
+      })
+    : [];
+
+  const items: ActivityItem[] = [
+    ...comments.map((c) => ({
+      kind: 'comment' as const,
+      id: c.id,
+      createdAt: c.createdAt.toISOString(),
+      author: toPublicAuthor(c.author, opts.canSeeIdentity),
+      text: markdownToPlainText(c.bodyMd, { max: ACTIVITY_EXCERPT }),
+      quote: null,
+      doc: { slug: c.doc.slug, title: pickDocTitle(opts.locale, c.doc) },
+      href: activityHref({ kind: 'comment', id: c.id, slug: c.doc.slug }),
+    })),
+    ...notes.map((n) => ({
+      kind: 'note' as const,
+      id: n.id,
+      createdAt: n.createdAt.toISOString(),
+      author: toPublicAuthor(n.user, opts.canSeeIdentity),
+      text: (n.noteText ?? '').slice(0, ACTIVITY_EXCERPT),
+      quote: n.quote,
+      doc: { slug: n.doc.slug, title: pickDocTitle(opts.locale, n.doc) },
+      href: activityHref({ kind: 'note', id: n.id, slug: n.doc.slug, chapterIndex: n.chapterIndex }),
+    })),
+  ];
+  items.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+  return items.slice(0, opts.limit);
 }
 
 /** 继续阅读 rail — the viewer's most recently touched, unfinished docs. */

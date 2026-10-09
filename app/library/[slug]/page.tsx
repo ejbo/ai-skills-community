@@ -27,6 +27,7 @@ import { RatingStars } from '@/components/library/RatingStars';
 import { DocPeople } from '@/components/library/DocPeople';
 import { DocFigures } from '@/components/library/DocFigures';
 import { SourceLine } from '@/components/library/SourceLine';
+import { ShareButton } from '@/components/library/ShareButton';
 import { UserHoverCard } from '@/components/user/UserHoverCard';
 import { DocComments } from '@/components/library/DocComments';
 import { AccessRequestButton } from '@/components/library/AccessRequestButton';
@@ -157,6 +158,16 @@ export default async function DocDetailPage({
                 docId={doc.id}
                 initialLiked={doc.likedByMe}
                 initialCount={doc.likeCount}
+              />
+              <ShareButton
+                variant="button"
+                slug={doc.slug}
+                title={displayTitle}
+                sourceUrl={doc.sourceUrl}
+                siteName={doc.siteName}
+                author={doc.author}
+                format={doc.format}
+                summary={localizedOverview?.summary || pickText(locale, doc.summary, doc.summaryEn)}
               />
               {hasFile && canRead && (
                 <a

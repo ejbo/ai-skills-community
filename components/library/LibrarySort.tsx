@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 
 // 与 lib/library-queries.ts 的 LIBRARY_SORTS 保持一致（值模块含 Prisma，
 // 客户端组件不能 runtime import，故在此复制枚举）。
-const SORTS = ['newest', 'featured', 'shelved', 'views'] as const;
+const SORTS = ['newest', 'featured', 'shelved', 'views', 'readers'] as const;
 type Sort = (typeof SORTS)[number];
 
 /** 排序下拉（SortMenu 式样）：写 `?sort=`，默认 newest 删参。 */
@@ -19,6 +19,7 @@ export function LibrarySort() {
     featured: t('sort_featured'),
     shelved: t('sort_shelved'),
     views: t('sort_views'),
+    readers: t('sort_readers'),
   };
   const params = useSearchParams();
   const router = useRouter();

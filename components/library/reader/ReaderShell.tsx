@@ -954,10 +954,21 @@ export function ReaderShell({
   useEffect(() => {
     if (!focusHighlightId || flashedRef.current === focusHighlightId) return;
     const timer = window.setTimeout(() => {
-      if (flashMark(focusHighlightId)) flashedRef.current = focusHighlightId;
+      if (flashMark(focusHighlightId)) {
+        flashedRef.current = focusHighlightId;
+        return;
+      }
+      // Not one of mine: a SHARED note (最新评论与批注 deep link). Make sure others'
+      // marks are painted, then jump exactly as a click in the 批注 list would.
+      const note = communityNotes?.find((n) => n.id === focusHighlightId);
+      if (note) {
+        setShowOthers(true);
+        handleCommunityJumpRef.current(note);
+        flashedRef.current = focusHighlightId;
+      }
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [focusHighlightId, chaptersKey, marksVersion, flashMark]);
+  }, [focusHighlightId, chaptersKey, marksVersion, flashMark, communityNotes]);
 
   // Cross-chapter jump left in sessionStorage (paged navigation only).
   useEffect(() => {

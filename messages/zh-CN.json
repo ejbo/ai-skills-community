@@ -2413,7 +2413,8 @@
     "stat_dash": "—",
     "no_readers_yet": "还没有人在读。",
     "no_annotators_yet": "还没有人公开笔记。",
-    "n_annotations": "{count} 条"
+    "n_annotations": "{count} 条",
+    "sort_readers": "最多阅读"
   },
   "skill_compare": {
     "view_empty": "暂无对比内容。",
@@ -2843,7 +2844,28 @@
     "people_hint": "点击查看名单",
     "section_other": "其他主题",
     "ai_disclaimer": "AI 生成，可能有疏漏——以原文为准",
-    "ai_model": "模型 {model}"
+    "ai_model": "模型 {model}",
+    "share": "分享",
+    "share_hint": "复制标题、来源、AI 导读和链接",
+    "share_copied": "已复制分享文案",
+    "share_copy_failed": "复制失败，请手动复制",
+    "share_source": "来源：",
+    "share_author": "作者：",
+    "share_digest": "AI 导读：",
+    "readers_count": "{count} 人读过",
+    "rail_hot": "热门",
+    "hot_tab_hot": "最热",
+    "hot_tab_commented": "7 日评论",
+    "hot_tab_read": "最多阅读",
+    "hot_tab_shelved": "最多收藏",
+    "n_comments_window": "{count} 评论",
+    "rail_activity": "最新评论与批注",
+    "activity_comment": "评论",
+    "activity_note": "批注",
+    "activity_expand": "展开更多（{count}）",
+    "activity_collapse": "收起",
+    "activity_open_hint": "在侧栏打开并定位到这条",
+    "activity_empty": "还没有评论或公开批注"
   },
   "library_ui": {
     "access_submitted": "已提交阅读申请，等待上传者审批",
