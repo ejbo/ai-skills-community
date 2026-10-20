@@ -8,7 +8,7 @@
 import fsp from 'node:fs/promises';
 import type { Prisma, ZoneReportStatus } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { getLibraryProvider } from '@/lib/library/llm';
+import { getReportProvider } from './provider';
 import { zoneMediaAbsPath } from '@/lib/zones/storage';
 import { assembleReport } from './assemble';
 import { matchRosterToUsers } from './authors';
@@ -16,6 +16,7 @@ import { buildDigest, buildListBundle, buildOutline, buildThemeBundle, computeSt
 import { ingestReportAssets } from './library';
 import { callJson, ReportLlmError } from './llm';
 import { parseChat, parseManifest } from './parse';
+import { unpackReportBundle } from './unpack';
 import { clusterPrompt, mergeClustersPrompt, overviewPrompt, recapPrompt, themePrompt } from './prompts';
 import {
   clusterSchema,
@@ -96,28 +97,28 @@ export async function runZoneReport(id: string): Promise<boolean> {
   });
   if (claimed.count === 0) return false;
 
-  const row = await prisma.zoneReport.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      zoneId: true,
-      createdById: true,
-      kind: true,
-      title: true,
-      subject: true,
-      periodStart: true,
-      periodEnd: true,
-      status: true,
-      sourceKey: true,
-      sourceName: true,
-      manifestKey: true,
-      importKey: true,
-      messagesJson: true,
-      clusterJson: true,
-      reportJson: true,
-      assets: { select: { key: true, name: true } },
-    },
-  });
+  const select = {
+    id: true,
+    zoneId: true,
+    createdById: true,
+    kind: true,
+    title: true,
+    subject: true,
+    periodStart: true,
+    periodEnd: true,
+    status: true,
+    sourceKey: true,
+    sourceName: true,
+    manifestKey: true,
+    importKey: true,
+    bundleKey: true,
+    namesJson: true,
+    messagesJson: true,
+    clusterJson: true,
+    reportJson: true,
+    assets: { select: { key: true, name: true } },
+  } satisfies Prisma.ZoneReportSelect;
+  let row = await prisma.zoneReport.findUnique({ where: { id }, select });
   if (!row) return false;
   const log: string[] = [];
   const note = (line: string) => {
@@ -126,15 +127,26 @@ export async function runZoneReport(id: string): Promise<boolean> {
   };
   const from = row.periodStart ? row.periodStart.toISOString().slice(0, 10) : undefined;
   const to = row.periodEnd ? row.periodEnd.toISOString().slice(0, 10) : undefined;
-  const assetKeys = new Map(row.assets.map((a) => [a.name, a.key]));
+  let assetKeys = new Map(row.assets.map((a) => [a.name, a.key]));
   let modelName: string | null = null;
   try {
-    modelName = (await getLibraryProvider()).model;
+    modelName = (await getReportProvider()).model;
   } catch {
     modelName = null;
   }
 
   try {
+    // ── 0. 整包上传：先解包成 sourceKey / manifestKey / importKey / assets（可重入）────
+    if (row.bundleKey && !row.sourceKey && !row.importKey) {
+      await setStage(id, 'parsing', '解包上传的文件夹 / zip', 2);
+      const un = await unpackReportBundle(id, row.bundleKey, note);
+      if (un.skipped.length) note(`跳过：${un.skipped.slice(0, 20).join('；')}`);
+      const fresh = await prisma.zoneReport.findUnique({ where: { id }, select });
+      if (!fresh) return false;
+      row = fresh;
+      assetKeys = new Map(row.assets.map((a) => [a.name, a.key]));
+    }
+
     // ── 导入模式：skill 产出的 report.json ──────────────────────────────────
     if (row.importKey) {
       await setStage(id, 'assembling', '导入 report.json', 10);
@@ -165,7 +177,8 @@ export async function runZoneReport(id: string): Promise<boolean> {
       if (!text) throw new Error('读不到上传的聊天记录文件');
       const manifestText = await readKey(row.manifestKey);
       const manifest = manifestText ? parseManifest(manifestText) : null;
-      chat = parseChat(text, { subject: row.subject || undefined, from, to, manifest, presentFiles: new Set(assetKeys.keys()), sourceName: row.sourceName ?? '' });
+      const names = row.namesJson && typeof row.namesJson === 'object' && !Array.isArray(row.namesJson) ? (row.namesJson as Record<string, string>) : undefined;
+      chat = parseChat(text, { subject: row.subject || undefined, from, to, manifest, names, presentFiles: new Set(assetKeys.keys()), sourceName: row.sourceName ?? '' });
       const matches = await matchRosterToUsers(chat.roster);
       await setStage(id, 'parsing', `解析完成：${chat.messages.length} 条消息，${chat.roster.length} 位发言人`, 10, {
         messagesJson: chat as unknown as Prisma.InputJsonValue,

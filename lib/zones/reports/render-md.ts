@@ -1,6 +1,8 @@
 // 版块报告 — report.json → 帖子 Markdown 正文（docs/contracts/reports.md §3）。
 //
-// 顺序与 skill 的 report.html 一致：要点 → 各主题 → 活动 → Recap → 资源索引 → 数据概览 → 附录。
+// 顺序与 skill 的 report.html 一致：要点 → 各专题 → 活动 → Recap → 资源索引 → 数据概览 → 附录。
+// 文风同 skill 的 HTML（内部技术汇报）：章节标题带【】标签，没有「一句话」之类的标签词和统计药丸，
+// 主线判断直接做引文，每个专题以「启示」收束；置信度写成括号文字，不做徽章。
 // 图片 = `![](/api/zones/media/<key>)`（MarkdownRenderer 自己过 withBasePath 并接灯箱）；
 // 文件 = 自成一行的 `[embed:file:<key>]`；已收录的文档 = `[embed:library:<slug>]`（右侧并排阅读）。
 // 纯函数：输入 report + 文件名→key/slug 的映射，输出字符串。
@@ -25,7 +27,7 @@ const cell = (s: string) => s.replace(/\|/g, '｜').replace(/\n/g, ' ');
 export function renderReportMarkdown(report: Report, opts: RenderMdOptions = {}): string {
   const attById = new Map(report.attachments.map((a) => [a.id, a]));
   const themeNum = new Map(report.themes.map((t, i) => [t.id, String(i + 1).padStart(2, '0')]));
-  const themeRef = (id?: string | null) => (id && themeNum.has(id) ? `（→ ${themeNum.get(id)}）` : '');
+  const themeRef = (id?: string | null) => (id && themeNum.has(id) ? `（→ 专题 ${themeNum.get(id)}）` : '');
   const out: string[] = [];
 
   function media(ids: string[]): string[] {
@@ -44,28 +46,30 @@ export function renderReportMarkdown(report: Report, opts: RenderMdOptions = {})
     list.length ? `来源：${list.map((s) => (s.url ? `[${s.label}](${s.url})` : s.label)).join(' ｜ ')}` : '';
 
   const S = report.summary;
-  out.push(`> **一句话** ${S.headline}`, '');
-  out.push(`## ★ 本期要点`, '');
+  if (S.headline) out.push(`> ${S.headline}`, '');
+  out.push(`## 【要点】本期要点`, '');
   S.highlights.forEach((h, i) => out.push(`${i + 1}. ${h.text}${themeRef(h.themeId)}`));
-  out.push('', `**关键判断**`, '');
-  for (const j of S.judgments) out.push(`- 【${CONF_LABEL[j.confidence] ?? ''}】${j.text}${themeRef(j.themeId)}`);
+  if (S.judgments.length) {
+    out.push('', `**关键判断**`, '');
+    for (const j of S.judgments) out.push(`- ${j.text}（置信度 ${CONF_LABEL[j.confidence] ?? '—'}）${themeRef(j.themeId)}`);
+  }
   if (S.actions.length) {
-    out.push('', `**待办与跟踪**`, '', `| 事项 | 负责人 | 主题 |`, `| --- | --- | --- |`);
-    for (const a of S.actions) out.push(`| ${cell(a.text)} | ${cell(a.owner ?? '—')} | ${a.themeId && themeNum.has(a.themeId) ? themeNum.get(a.themeId) : '—'} |`);
+    out.push('', `**待办与跟踪**`, '', `| 事项 | 负责人 | 专题 |`, `| --- | --- | --- |`);
+    for (const a of S.actions) out.push(`| ${cell(a.text)} | ${cell(a.owner ?? '—')} | ${a.themeId && themeNum.has(a.themeId) ? `${themeNum.get(a.themeId)} ${cell(report.themes.find((x) => x.id === a.themeId)?.title ?? '')}` : '—'} |`);
   }
   out.push('');
 
   report.themes.forEach((t, i) => {
-    out.push(`## ${String(i + 1).padStart(2, '0')} · ${t.title}`, '', `> **主题定位** ${t.tagline}`, '');
+    out.push(`## 【专题 ${String(i + 1).padStart(2, '0')}】${t.title}`, '');
+    if (t.tagline) out.push(t.tagline, '');
     if (t.macro.length) {
-      out.push(`**宏观总结**`, '');
-      for (const m of t.macro) out.push(`- **${m.tag}** ${m.text}`);
+      for (const m of t.macro) out.push(`- **【${m.tag}】** ${m.text}`);
       out.push('');
     }
     out.push(`**观点时间线**`, '');
     const trailing: string[] = [];
     for (const v of t.viewpoints) {
-      out.push(`- **${v.dates.join(' / ')} · ${v.speaker}**${v.role ? `（${v.role}）` : ''}：${v.text}${src(v.sources) ? ` — ${src(v.sources)}` : ''}`);
+      out.push(`- **${v.dates.join(' / ')} · ${v.speaker}**${v.role ? `［${v.role}］` : ''}：${v.text}${src(v.sources) ? ` — ${src(v.sources)}` : ''}`);
       if (v.quote) out.push(`  > ${v.quote}`);
       // 图片跟在观点下；文件 / 文档卡片是顶层令牌，放到时间线后面
       for (const line of media(v.attachments)) {
@@ -75,13 +79,13 @@ export function renderReportMarkdown(report: Report, opts: RenderMdOptions = {})
     }
     out.push('');
     if (trailing.length) out.push(...trailing.flatMap((l) => [l, '']));
-    if (t.conclusion) out.push(`**结论** ${t.conclusion}`, '');
     if (t.openQuestions.length) out.push(`**待验证 · 待跟踪**`, '', ...t.openQuestions.map((q) => `- ${q}`), '');
-    if (t.resources.length) out.push(`**本主题资料**`, '', ...t.resources.map((r) => `- [${RES_LABEL[r.kind ?? 'other'] ?? '链接'}] [${r.label}](${r.url})`), '');
+    if (t.resources.length) out.push(`**本专题资料**`, '', ...t.resources.map((r) => `- [${RES_LABEL[r.kind ?? 'other'] ?? '链接'}] [${r.label}](${r.url})`), '');
+    if (t.conclusion) out.push(`**启示**：${t.conclusion}`, '');
   });
 
   if (report.events.length) {
-    out.push(`## 活动与通知`, '', `| 日期 | 活动 | 主办 / 发起 |`, `| --- | --- | --- |`);
+    out.push(`## 【活动】活动与通知`, '', `| 日期 | 活动 | 主办 / 发起 |`, `| --- | --- | --- |`);
     for (const e of [...report.events].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))) {
       out.push(`| ${e.date ?? '—'} | ${e.url ? `[${cell(e.title)}](${e.url})` : cell(e.title)}${e.note ? `<br>${cell(e.note)}` : ''} | ${cell(e.host ?? '—')} |`);
     }
@@ -91,7 +95,7 @@ export function renderReportMarkdown(report: Report, opts: RenderMdOptions = {})
   }
 
   if (report.recap?.items.length) {
-    out.push(`## ${report.recap.title || '非科研 · 快速 Recap'}`, '');
+    out.push(`## 【动态】${report.recap.title || '非科研 · 快速 Recap'}`, '');
     for (const it of report.recap.items) {
       out.push(`- **${(it.date ?? '').slice(5)} · ${it.speaker ?? ''}**：${it.text}${src(it.sources) ? ` — ${src(it.sources)}` : ''}`);
       for (const line of media(it.attachments)) if (line.startsWith('![')) out.push('', `  ${line}`, '');
@@ -108,17 +112,17 @@ export function renderReportMarkdown(report: Report, opts: RenderMdOptions = {})
     if (rows.length) groups.push({ id: t.id, rows });
   }
   if (groups.length) {
-    out.push(`## 资源索引`, '');
+    out.push(`## 【资料】资源索引`, '');
     for (const g of groups) {
       const t = report.themes.find((x) => x.id === g.id)!;
-      out.push(`**${themeNum.get(g.id)} ${t.title}**`, '', ...g.rows.map((r) => `- [${RES_LABEL[r.kind] ?? '链接'}] [${r.label}](${r.url})`), '');
+      out.push(`**专题 ${themeNum.get(g.id)} · ${t.title}**`, '', ...g.rows.map((r) => `- [${RES_LABEL[r.kind] ?? '链接'}] [${r.label}](${r.url})`), '');
     }
   }
 
   if (opts.includeStats) {
     const st = report.stats;
     out.push(
-      `## 数据概览`,
+      `## 【数据】数据概览`,
       '',
       `- 区间 ${report.period.start} ~ ${report.period.end} · 消息 ${st.messages}（有信息量 ${st.substantive}）· 发言人 ${st.speakers} · 链接 ${st.links} · 图片/附件 ${st.attachments || st.attachmentPlaceholders}`,
       `- 活跃 ${st.activeDays} 天，峰值 ${st.peakDay.date}（${st.peakDay.count} 条）`,
@@ -129,11 +133,11 @@ export function renderReportMarkdown(report: Report, opts: RenderMdOptions = {})
 
   const appendix = report.attachments.filter((a) => a.placement.kind === 'appendix' && a.assetKey);
   if (appendix.length) {
-    out.push(`## 附录 · 未归入观点的图片与文件`, '');
+    out.push(`## 【附录】未随文的图片与文件`, '');
     const lines = media(appendix.map((a) => a.id));
     out.push(...lines.flatMap((l) => [l, '']));
   }
-  if (report.unassigned.length) out.push(`<!-- 未归入任何主题的消息：${report.unassigned.join(' ')} -->`, '');
+  if (report.unassigned.length) out.push(`<!-- 未归入任何专题的消息：${report.unassigned.join(' ')} -->`, '');
 
   return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trim()}\n`;
 }

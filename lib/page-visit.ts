@@ -121,6 +121,7 @@ export const PAGE_NAMES: readonly PageNameEntry[] = [
   ['/manage/zones/org', '技术专区组织架构'],
   ['/manage/zones/columns', '技术专区栏目预设'],
   ['/manage/zones/settings', '技术专区首页设置'],
+  ['/manage/zones/report-llm', '技术专区报告模型'],
   ['/manage/library', '知识库管理'],
   ['/manage/library/categories', '知识库分类'],
   ['/manage/categories', '类别管理'],

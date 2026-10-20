@@ -1,7 +1,7 @@
 'use client';
 
-// 技术专区后台的二级导航（/manage 全站中文）：版块 / 组织架构 / 栏目预设 / 首页设置。
-// 四个页面顶部都渲染它；当前页按 pathname 前缀高亮（/manage/zones 只在精确匹配时高亮，
+// 技术专区后台的二级导航（/manage 全站中文）：版块 / 组织架构 / 栏目预设 / 首页设置 / 报告模型。
+// 五个页面顶部都渲染它；当前页按 pathname 前缀高亮（/manage/zones 只在精确匹配时高亮，
 // 否则每个子页都会把「版块」一起点亮）。
 
 import Link from 'next/link';
@@ -12,6 +12,7 @@ const ITEMS: ReadonlyArray<{ href: string; label: string; exact?: boolean }> = [
   { href: '/manage/zones/org', label: '组织架构' },
   { href: '/manage/zones/columns', label: '栏目预设' },
   { href: '/manage/zones/settings', label: '首页设置' },
+  { href: '/manage/zones/report-llm', label: '报告模型' },
 ];
 
 export function ZonesSubNav() {

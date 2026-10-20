@@ -2840,6 +2840,11 @@ model ZoneReport {
   manifestKey   String?
   // 导入模式：直接上传 skill 产出的 report.json（zone media `file/` key）。
   importKey     String?
+  // 一次上传整个文件夹 / zip（zone media `file/` key）：流水线第一步按 lib/zones/reports/bundle.ts
+  // 的规则解包成 sourceKey / manifestKey / importKey / assets；解包后 bundleKey 保留供重试与排错。
+  bundleKey     String?
+  // welink-cli 输入的账号→姓名（来自 names.json / wl_names/*.json）。
+  namesJson     Json?
   // 中间产物。messagesJson 可达数百 KB——列表 / 状态接口永远不 select 它。
   messagesJson  Json?
   clusterJson   Json?
@@ -2862,6 +2867,20 @@ model ZoneReport {
 }
 
 // 报告上传的图片 / 文件：name = 原文件名（与 report.attachments[].file 对上）。
+// 版块报告用的模型（/manage/zones/report-llm）。useLibrary=true 时沿用知识库 AI 的配置
+// （LibrarySetting → env），否则用这一行自己的；字段语义与 LibrarySetting 相同。
+model ZoneReportSetting {
+  id                 String   @id @default("default")
+  useLibrary         Boolean  @default(true)
+  llmProvider        String? // 'anthropic' | 'openai'
+  llmBaseUrl         String?
+  llmApiKey          String?
+  llmModel           String?
+  llmDisableThinking Boolean  @default(false)
+  llmJsonMode        Boolean  @default(false)
+  updatedAt          DateTime @updatedAt
+}
+
 model ZoneReportAsset {
   id           String   @id @default(cuid())
   reportId     String

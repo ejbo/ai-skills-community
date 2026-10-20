@@ -183,6 +183,17 @@ export async function saveZoneMediaStream(
   }
 }
 
+/** Whole-buffer variant of saveZoneMediaStream for files that already sit in memory (zip entries). */
+export async function saveZoneMediaBuffer(key: string, buf: Buffer, maxBytes: number): Promise<number> {
+  const full = zoneMediaAbsPath(key);
+  if (!full) throw new Error('invalid_key');
+  if (buf.length === 0) throw new Error('empty_body');
+  if (buf.length > maxBytes) throw new Error('file_too_large');
+  await fsp.mkdir(path.dirname(full), { recursive: true });
+  await fsp.writeFile(full, buf);
+  return buf.length;
+}
+
 export interface ZoneMediaStat {
   size: number;
   contentType: string;

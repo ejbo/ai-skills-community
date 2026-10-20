@@ -162,9 +162,11 @@ export const createReportInputSchema = z
     sourceName: z.string().trim().max(200).nullable().default(null),
     manifestKey: z.string().regex(ZONE_MEDIA_KEY_RE).nullable().default(null),
     importKey: z.string().regex(ZONE_MEDIA_KEY_RE).nullable().default(null),
+    /** 一次上传的整个文件夹 / zip（`file/*.zip`）；流水线第一步解包（lib/zones/reports/bundle.ts 的规则）。 */
+    bundleKey: z.string().regex(ZONE_MEDIA_KEY_RE).nullable().default(null),
     assets: z.array(reportAssetInputSchema).max(MAX_REPORT_ASSETS).default([]),
   })
-  .refine((v) => !!v.sourceKey || !!v.importKey, { message: 'source_required' });
+  .refine((v) => !!v.sourceKey || !!v.importKey || !!v.bundleKey, { message: 'source_required' });
 export type CreateReportInput = z.infer<typeof createReportInputSchema>;
 
 /** 上传过的 key 必须真实存在于磁盘（和帖子附件一样再验一遍）。 */
@@ -176,7 +178,7 @@ async function assertOnDisk(keys: string[]): Promise<void> {
 }
 
 export async function createZoneReport(zoneId: string, creatorId: string, input: CreateReportInput): Promise<{ id: string }> {
-  const keys = [input.sourceKey, input.manifestKey, input.importKey, ...input.assets.map((a) => a.key)].filter((k): k is string => !!k);
+  const keys = [input.sourceKey, input.manifestKey, input.importKey, input.bundleKey, ...input.assets.map((a) => a.key)].filter((k): k is string => !!k);
   if (new Set(keys).size !== keys.length) throw new ZoneError('attachments_invalid', 400);
   await assertOnDisk(keys);
   if (input.periodStart && input.periodEnd && input.periodStart > input.periodEnd) throw new ZoneError('invalid_input', 400);
@@ -194,6 +196,7 @@ export async function createZoneReport(zoneId: string, creatorId: string, input:
       sourceName: input.sourceName,
       manifestKey: input.manifestKey,
       importKey: input.importKey,
+      bundleKey: input.bundleKey,
       status: 'queued',
       stage: '排队中',
       assets: { create: input.assets.map((a) => ({ key: a.key, name: a.name.slice(0, 200), kind: a.kind, mimeType: a.mimeType, sizeBytes: a.sizeBytes })) },

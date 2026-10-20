@@ -135,13 +135,16 @@ describe('overview', () => {
 
     it('renders markdown with the brief, the theme timeline, the image and the events table', () => {
       const md = renderReportMarkdown(report, { librarySlugs: new Map() });
-      expect(md).toContain('> **一句话** 决策模型进入评估阶段');
-      expect(md).toContain('## 01 · 决策模型');
-      expect(md).toContain('**09-20 · 李思昊**（提出）：Jev 引爆了决策模型 — 来源：[typesafe.ai](https://typesafe.ai/)');
+      expect(md).toContain('> 决策模型进入评估阶段');
+      expect(md).not.toContain('一句话');
+      expect(md).toContain('## 【要点】本期要点');
+      expect(md).toContain('## 【专题 01】决策模型');
+      expect(md).toContain('- **【分歧】** 白东峰 vs 李思昊');
+      expect(md).toContain('**09-20 · 李思昊**［提出］：Jev 引爆了决策模型 — 来源：[typesafe.ai](https://typesafe.ai/)');
       expect(md).toContain('![jev.png](/api/zones/media/image/abc.png)');
       expect(md).toContain('| 2026-09-20 | [RSI 洞见烩](https://2012labs.huawei.com/#/seminar/1) | 白东峰 |');
-      expect(md).toContain('## 非科研 · 快速 Recap');
-      expect(md).not.toContain('## 数据概览');
+      expect(md).toContain('## 【动态】非科研 · 快速 Recap');
+      expect(md).not.toContain('数据概览');
     });
 
     it('uses a library embed when the attachment was ingested, a file embed otherwise', () => {
@@ -158,7 +161,7 @@ describe('overview', () => {
       withDoc.attachments[0].file = 'jev.pdf';
       expect(renderReportMarkdown(withDoc, { librarySlugs: new Map([['jev.pdf', 'jev-paper']]) })).toContain('[embed:library:jev-paper]');
       expect(renderReportMarkdown(withDoc, { includeStats: true })).toContain('[embed:file:file/abc.pdf]');
-      expect(renderReportMarkdown(withDoc, { includeStats: true })).toContain('## 数据概览');
+      expect(renderReportMarkdown(withDoc, { includeStats: true })).toContain('## 【数据】数据概览');
     });
 
     it('derives kind and tags', () => {

@@ -2,7 +2,7 @@
 // 失败把错误原样贴回模型重试（与 skill scripts/llm.mjs 同策略）。
 
 import type { z } from 'zod';
-import { getLibraryProvider } from '@/lib/library/llm';
+import { getReportProvider } from './provider';
 import { extractJsonObject } from '@/lib/skill-assist';
 import type { LLMMessage, LLMProvider } from '@/lib/llm';
 import { REPORT_SYSTEM_PROMPT } from './prompts';
@@ -49,7 +49,7 @@ export function parseModelJson(text: string): Record<string, unknown> | null {
 }
 
 export async function callJson<T>(opts: CallJsonOptions<T>): Promise<{ value: T; warnings: string[]; attempts: number }> {
-  const provider = opts.provider ?? (await getLibraryProvider()).provider;
+  const provider = opts.provider ?? (await getReportProvider()).provider;
   const retries = opts.retries ?? 2;
   const messages: LLMMessage[] = [{ role: 'user', content: opts.prompt }];
   let attempt = 0;

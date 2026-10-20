@@ -409,6 +409,96 @@
       "zh-CN": "{names} 正在编辑",
       "en": "{names} editing now",
       "fr": "{names} en cours de modification"
+    },
+    "report_bundle": {
+      "zh-CN": "资料",
+      "en": "Source files",
+      "fr": "Fichiers source"
+    },
+    "report_pick_folder": {
+      "zh-CN": "选择文件夹",
+      "en": "Choose a folder",
+      "fr": "Choisir un dossier"
+    },
+    "report_pick_zip": {
+      "zh-CN": "选择 zip",
+      "en": "Choose a zip",
+      "fr": "Choisir un zip"
+    },
+    "report_pick_files": {
+      "zh-CN": "选择文件",
+      "en": "Choose files",
+      "fr": "Choisir des fichiers"
+    },
+    "report_bundle_hint": {
+      "zh-CN": "把 WeLink 导出 / welink-cli 拉下来的整个目录交上来即可：聊天记录（.txt 或 welink-cli .json）、图片附件清单 .csv、已下载的图片与文件。目录里有 skill 产出的 report.json 就直接导入、不再调模型。一次上传、服务端解包，识别规则与这里显示的一致。",
+      "en": "Hand over the whole folder exported from WeLink / fetched with welink-cli: the chat record (.txt or welink-cli .json), the attachment manifest .csv and the downloaded images and files. If it contains a report.json produced by the skill it is imported as-is without calling the model. One upload; the server unpacks it with the same rules shown here.",
+      "fr": "Déposez le dossier entier exporté depuis WeLink / récupéré avec welink-cli : la discussion (.txt ou .json welink-cli), le manifeste des pièces jointes .csv et les images et fichiers téléchargés. S'il contient un report.json produit par le skill, il est importé tel quel sans appeler le modèle. Un seul envoi ; le serveur le décompresse avec les règles affichées ici."
+    },
+    "report_bundle_picked": {
+      "zh-CN": "{count} 个文件 · {size}",
+      "en": "{count} files · {size}",
+      "fr": "{count} fichiers · {size}"
+    },
+    "report_bundle_reading": {
+      "zh-CN": "正在读取 zip 目录…",
+      "en": "Reading the zip index…",
+      "fr": "Lecture de l'index du zip…"
+    },
+    "report_bundle_bad_zip": {
+      "zh-CN": "读不了这个 zip 文件",
+      "en": "This zip file cannot be read",
+      "fr": "Impossible de lire ce fichier zip"
+    },
+    "report_bundle_no_chat": {
+      "zh-CN": "没有找到聊天记录（.txt / welink-cli .json）或 report.json",
+      "en": "No chat record (.txt / welink-cli .json) or report.json found",
+      "fr": "Aucune discussion (.txt / .json welink-cli) ni report.json trouvé"
+    },
+    "report_bundle_too_large": {
+      "zh-CN": "总大小超过 {max}，请分批或去掉大文件",
+      "en": "Total size exceeds {max}; split the upload or drop large files",
+      "fr": "La taille totale dépasse {max} ; divisez l'envoi ou retirez les gros fichiers"
+    },
+    "report_zipping": {
+      "zh-CN": "正在打包 {count} 个文件…",
+      "en": "Packing {count} files…",
+      "fr": "Compression de {count} fichiers…"
+    },
+    "report_detected_import": {
+      "zh-CN": "report.json（导入模式，不调模型）",
+      "en": "report.json (import mode, no model call)",
+      "fr": "report.json (mode import, sans appel au modèle)"
+    },
+    "report_detected_pages": {
+      "zh-CN": "welink-cli 分页 JSON {count} 页（将合并）",
+      "en": "{count} welink-cli JSON pages (will be merged)",
+      "fr": "{count} pages JSON welink-cli (seront fusionnées)"
+    },
+    "report_detected_chat": {
+      "zh-CN": "聊天记录",
+      "en": "Chat record",
+      "fr": "Discussion"
+    },
+    "report_detected_manifest": {
+      "zh-CN": "图片附件清单（图片随文的前提；没有也能生成）",
+      "en": "Attachment manifest (needed for inline images; optional)",
+      "fr": "Manifeste des pièces jointes (requis pour les images en ligne ; facultatif)"
+    },
+    "report_detected_assets": {
+      "zh-CN": "图片 {images} · 文件 {files}",
+      "en": "{images} images · {files} files",
+      "fr": "{images} images · {files} fichiers"
+    },
+    "report_detected_names": {
+      "zh-CN": "姓名表 {count} 份",
+      "en": "{count} name lists",
+      "fr": "{count} listes de noms"
+    },
+    "report_detected_skipped": {
+      "zh-CN": "跳过 {count} 个",
+      "en": "{count} skipped",
+      "fr": "{count} ignorés"
     }
   },
   "api_errors": {

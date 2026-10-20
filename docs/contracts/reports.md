@@ -29,6 +29,8 @@ Owner 的诉求：「我会生成这样的聊天记录，配合提及的图片�
 | 表 | 作用 | 关键字段 |
 | --- | --- | --- |
 | `ZoneReport` | 一次生成任务 + 结果 | `zoneId, createdById, kind(daily/weekly/monthly/custom), title, subject, periodStart/End, status(queued→parsing→clustering→summarizing→assembling→ingesting→ready / failed), stage, progress(0-100), error, sourceKey/sourceName（聊天文件，zone media `file/` key）, manifestKey（图片附件清单 CSV，可空）, messagesJson, clusterJson, reportJson, authorMatches, postId(@unique), heartbeatAt` |
+| `ZoneReport.bundleKey / namesJson`（migration `20261020160000_zone_report_bundle_setting`） | 整包上传 | `bundleKey`：一次上传的整个文件夹 / zip（`file/*.zip`），流水线第 0 步解包；`namesJson`：welink-cli 输入的账号→姓名 |
+| `ZoneReportSetting`（同上迁移） | 报告用的模型（一行，id `default`） | `useLibrary`（默认 true = 沿用知识库 AI）+ 与 `LibrarySetting` 同形的 `llmProvider/llmBaseUrl/llmApiKey/llmModel/llmDisableThinking/llmJsonMode` |
 | `ZoneReportAsset` | 上传的图片 / 文件 | `reportId, key(@unique zone media key), name（原文件名，用来和 report.attachments[].file 对上）, kind(image/file), mimeType, sizeBytes, libraryDocId（收录进知识库后）` |
 | `ZonePostRevision` | 帖子内容快照 | `postId, number(1..n, @@unique[postId,number]), editorId, title, summary, bodyMd, note, createdAt` |
 | `ZonePostEditor` | 谁正在编辑 | `@@id[postId,userId], startedAt, lastSeenAt` |
@@ -50,10 +52,28 @@ queued ─parse（parse.ts: TXT / welink-cli JSON → messages；manifest CSV �
      ─ready / failed（error 里是哪一步、什么错；retry 从失败的那一步继续，中间产物都在行上）
 ```
 
-- LLM 走 `getLibraryProvider()`（和知识库同一个可后台配置的模型），`json: true`，每步最多重试 2 次：JSON 解析失败或校验器报 ✖ 时把错误原样贴回模型。
+- LLM 走 `getReportProvider()`（`lib/zones/reports/provider.ts`）：`ZoneReportSetting.useLibrary` 为 true（默认）时沿用 `getLibraryProvider()`（/manage/library 的配置 → env），否则用 `/manage/zones/report-llm` 单独配的那份；两者都经 `buildLlmOverride` → `llmFetch`，**默认直连**内网模型，只有 `LLM_USE_PROXY=true` 才按主机走代理（platform.md）。`json: true`，每步最多重试 2 次：JSON 解析失败或校验器报 ✖ 时把错误原样贴回模型。后台「测试连接」要求模型回 `{"ok":true}`，顺便验证 JSON 模式真的能用。
 - `heartbeatAt` 每步更新；`running` 超过 `STALE_LOCK_MS`（10 分钟）无心跳视为死亡，`retry` 可重新认领（与 translate-doc 同一套锁语义）。
 - **导入模式**：上传 skill 产出的 `report.json`（`importKey`）则跳过 ①–④，只跑 validateReport + 附件匹配 + ingesting。opencode 侧生成、站内发布。
 - 模型永远不碰：发言人姓名（由账号查名单）、配图（邻域规则）、统计、链接表、未归类审计。
+
+### 2a. 整包上传（`bundleKey`，`lib/zones/reports/bundle.ts` + `unpack.ts`）
+
+用户手里的是一个目录（WeLink 导出 TXT + 图片附件清单 CSV + 已下载的图片目录，或 welink-cli 的分页 JSON + `wl_names/`），
+向导不再让他一个个挑：**选文件夹 / 选 zip / 多选文件 → 一个 zip、一次上传**（文件夹与多选在浏览器里用 JSZip 打包，图片 STORE、文本 DEFLATE；zip 原样上传；上限 = `MAX_ZONE_FILE_BYTES` 200 MB）。
+识别规则是**一份纯函数** `planReportBundle(files)`（只看路径与大小，不读内容、不碰 node API），向导和服务端解包都调它，所以向导里显示的识别结果就是流水线用的：
+
+| 规则 | 结果 |
+| --- | --- |
+| `report.json`（basename） | `importJson` → 导入模式，不调模型 |
+| 最大的 `.txt` | `source`；其余 txt 当附件 |
+| 没有 txt 时的 `.json`：1 个 → `source`；多个 → `sourcePages`（按 msgId 去重合并成一个数组） | 有 txt 时的 json 一律忽略（多半是 skill 的中间产物） |
+| `.csv`：名字含 清单/manifest/attach/image 的优先，否则第一个 | `manifest`；其余 csv 当附件 |
+| `names.json` / `wl_names/*.json` | `names` → `namesJson`（账号→姓名） |
+| png/jpg/gif/webp/avif | 附件 image；其它扩展名 → 附件 file |
+| `.DS_Store`、`__MACOSX/`、`work/`、点开头、0 字节、嵌套 zip、`report.html/md`、`digest.md` 等 skill 产物 | 忽略（向导列出原因） |
+
+服务端 `unpackReportBundle` 在 `parsing` 状态下跑（stage「解包上传的文件夹 / zip」），落盘成普通 zone media（key 永远是 nanoid，zip 内路径从不进磁盘路径，无 zip-slip），建 `ZoneReportAsset`（同名只建一次，可重入），回写 `sourceKey/manifestKey/importKey/namesJson`；之后的流程与逐个上传完全一样。条目 ≤ 3000、附件 ≤ 300、单文件按 kind 的上限，超了跳过并记进日志。
 
 ## 3. 发布（`publishZoneReport`）
 
@@ -95,7 +115,8 @@ queued ─parse（parse.ts: TXT / welink-cli JSON → messages；manifest CSV �
 | --- | --- |
 | 看报告列表 / 详情 | `access.canRead`；详情里的 `authorMatches` 过身份脱敏 |
 | 新建 / 重试 / 删除 / 发布 | `access.canPost`（发布为帖子再过 `createZonePost` 自己的门）；删除还要是创建者或 `canModerate` |
-| 上传聊天文件与附件 | 复用 `/attachments/upload`（`canPost ∥ canModerate`） |
+| 上传聊天文件与附件 / 整包 zip | 复用 `/attachments/upload`（`canPost ∥ canModerate`） |
+| 报告模型配置 `/manage/zones/report-llm`、`/api/admin/zones/report-llm{,/test}` | 站级 `zones` 权限（`requirePermission` / `gateApi`），保存走 `logAdmin` |
 | 历史 | `canRead`；恢复 = `canEditZonePostContent` |
 | 在线编辑者心跳 | `canEditZonePostContent` |
 | 限流 | 新建报告 5 次 / 小时 / 人（LLM 成本）；心跳不限 |
@@ -113,12 +134,16 @@ lib/zones/reports/
   assemble.ts      report.json 装配 + 邻域配图
   render-md.ts     report.json → 帖子 Markdown（含 embed 令牌）
   authors.ts       工号 → 用户匹配
-  pipeline.ts      状态机 + triggerZoneReport + retry + 导入模式
+  bundle.ts        整包上传的识别规则（纯函数，向导与服务端共用）+ welink-cli 分页合并 + 姓名表
+  unpack.ts        zip → zone media + ZoneReportAsset + 回写 source/manifest/import/names
+  provider.ts      getReportProvider：ZoneReportSetting（沿用知识库 / 单独）→ LLMProvider，60 s 缓存
+  pipeline.ts      状态机 + triggerZoneReport + retry + 导入模式 + 第 0 步解包
   queries.ts       视图、列表、创建、删除、publishZoneReport
   library.ts       附件 → 知识库收录；listZoneLibraryDocs
 lib/zones/post-revisions.ts   快照 / 列表 / 恢复
 lib/zones/post-presence.ts    心跳 / 活跃编辑者
 app/api/zones/[slug]/reports/route.ts, [reportId]/route.ts, [reportId]/publish/route.ts, [reportId]/retry/route.ts
+app/api/admin/zones/report-llm/route.ts, test/route.ts；app/manage/zones/report-llm/page.tsx, ReportLlmCard.tsx
 app/api/zones/[slug]/posts/[postId]/editors/route.ts, revisions/route.ts, revisions/[revisionId]/route.ts
 app/zones/[slug]/reports/page.tsx, new/page.tsx, [reportId]/page.tsx
 app/zones/[slug]/posts/[postId]/history/page.tsx
@@ -133,6 +158,9 @@ tests/zone-reports-*.test.ts, tests/zone-post-revisions.test.ts
 2. 聚类覆盖率 < 85% 直接判错让模型补；别放宽——漏掉的消息就是漏掉的内容。
 3. url 校验是「记录里出现过」而不是「可访问」：内网机器不能出公网，不要在流水线里 fetch 链接。
 4. 发言人姓名以名单为准（账号查），模型写错名字不影响渲染。
+5. **报告正文的文风**（render-md.ts，与 skill 的 render.mjs 同一套）：内部技术汇报风——章节标题带【】标签、主线判断直接做引文、每个专题以「启示」收束；**没有**「一句话」之类的标签词、统计药丸、置信度徽章（用户评价那种"很 AI"）。HTML 版白底、华为红 `#E60012` 是唯一强调色。改结构先改 skill 的 `reference/report-structure.md`，两边保持同序。
+6. 整包上传的识别只看文件名：一个目录里放两份不同群的 TXT 会只取最大的那份——向导会把识别结果显示出来，让用户自己看。
+7. welink-cli 不能搬到服务端：它要 WeLink PC 客户端在本机运行 + 手机扫码（约 90 分钟有效）+ 下载附件要绕开公司代理。拉取永远在用户自己的电脑上做，站内只接收结果。
 5. 配图只认 `report.attachments[].file` 与 `ZoneReportAsset.name` 的文件名相等（大小写敏感）；清单里的文件名就是云盘下载的文件名。
 6. 快照条件和 `editedAt` 完全一致（内容变化且已发布）；草稿自动保存不进历史，否则每次打字都是一版。
 7. 409 的判断在 `updateZonePost` 事务里再做一次（`updateMany where revision = base` 守卫写），路由层的预检只是为了给出友好 body。
