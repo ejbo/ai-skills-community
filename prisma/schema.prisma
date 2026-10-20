@@ -181,6 +181,9 @@ model User {
   zoneColumnsCreated    ZoneColumn[]          @relation("CreatedZoneColumns")
   zonePostGrants        ZonePostViewer[]      @relation("ZonePostGrants")
   zonePostGrantsIssued  ZonePostViewer[]      @relation("ZonePostGrantsIssued")
+  zonePostRevisions     ZonePostRevision[]    @relation("ZonePostRevisions")
+  zonePostEditing       ZonePostEditor[]      @relation("ZonePostEditing")
+  zoneReportsCreated    ZoneReport[]          @relation("CreatedZoneReports")
 
   // ── 个人主页与名片 (1:1, lib/profile/*) ──
   profile UserProfile?
@@ -2563,6 +2566,24 @@ enum ZoneCommentStatus {
   deleted // tombstone: kept to preserve thread shape, body wiped
 }
 
+enum ZoneReportKind {
+  daily
+  weekly
+  monthly
+  custom
+}
+
+enum ZoneReportStatus {
+  queued
+  parsing
+  clustering
+  summarizing
+  assembling
+  ingesting
+  ready
+  failed
+}
+
 // 版块。`ownerId` = 主版主（隐含全部版块权限）；其他权限走 ZoneRole。
 model Zone {
   id                 String         @id @default(cuid())
@@ -2615,6 +2636,7 @@ model Zone {
   posts      ZonePost[]
   wikiPages  ZoneWikiPage[]
   ZoneColumn ZoneColumn[]
+  reports    ZoneReport[]
 
   @@index([deletedAt, lastActivityAt])
   @@index([featured, featuredAt])
@@ -2715,6 +2737,9 @@ model ZonePost {
   // Who last edited the CONTENT (author, co-author, or a 版主 acting on it).
   // Null until the first edit; SetNull so a departed editor never blocks the post.
   editedById    String?
+  // 内容版本号（docs/contracts/reports.md §4）：title/summary/bodyMd 任一变化且帖子已发布时 +1，
+  // 同一事务写一条 ZonePostRevision 快照。编辑器带 baseRevision 保存，不等则 409 stale_revision。
+  revision      Int                @default(0)
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   deletedAt     DateTime?
@@ -2730,6 +2755,9 @@ model ZonePost {
   bookmarks   ZonePostBookmark[]
   comments    ZonePostComment[]
   views       ZonePostView[]
+  revisions   ZonePostRevision[]
+  editors     ZonePostEditor[]
+  report      ZoneReport?
 
   @@unique([zoneId, slug])
   @@index([zoneId, status, deletedAt, pinned, publishedAt])
@@ -2753,6 +2781,102 @@ model ZonePostAuthor {
 
   @@id([postId, userId])
   @@index([userId])
+}
+
+// 帖子内容快照（docs/contracts/reports.md §4）：每次已发布帖子的内容变化写一条；
+// 恢复 = 以快照内容再保存一次（又是一条新快照），历史永不被改写。
+model ZonePostRevision {
+  id        String   @id @default(cuid())
+  postId    String
+  number    Int
+  editorId  String
+  title     String
+  summary   String   @default("")
+  bodyMd    String
+  note      String   @default("")
+  createdAt DateTime @default(now())
+
+  post   ZonePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  editor User     @relation("ZonePostRevisions", fields: [editorId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, number])
+  @@index([postId, createdAt])
+  @@index([editorId])
+}
+
+// 正在编辑此帖的人（心跳；60 秒无心跳即视为离开；不是锁）。
+model ZonePostEditor {
+  postId     String
+  userId     String
+  startedAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  post ZonePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User     @relation("ZonePostEditing", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([postId, userId])
+  @@index([postId, lastSeenAt])
+}
+
+// 版块报告：聊天记录 → 结构化日报/周报/月报（docs/contracts/reports.md）。
+// 一行 = 一次生成任务 + 它的全部中间产物与结果；发布后 postId 指向生成的帖子。
+model ZoneReport {
+  id            String           @id @default(cuid())
+  zoneId        String
+  createdById   String
+  kind          ZoneReportKind   @default(monthly)
+  title         String
+  subject       String           @default("")
+  periodStart   DateTime?        @db.Date
+  periodEnd     DateTime?        @db.Date
+  status        ZoneReportStatus @default(queued)
+  // 人读的进度说明（哪一步、第几个主题）；progress 0-100。
+  stage         String           @default("")
+  progress      Int              @default(0)
+  error         String?
+  // 聊天记录文件（zone media `file/` key）与原文件名；图片附件清单 CSV（可空）。
+  sourceKey     String?
+  sourceName    String?
+  manifestKey   String?
+  // 导入模式：直接上传 skill 产出的 report.json（zone media `file/` key）。
+  importKey     String?
+  // 中间产物。messagesJson 可达数百 KB——列表 / 状态接口永远不 select 它。
+  messagesJson  Json?
+  clusterJson   Json?
+  reportJson    Json?
+  // [{ account, name, count, userId|null, handle|null }]
+  authorMatches Json?
+  model         String?
+  heartbeatAt   DateTime?
+  postId        String?          @unique
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  zone      Zone              @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  createdBy User              @relation("CreatedZoneReports", fields: [createdById], references: [id], onDelete: Cascade)
+  post      ZonePost?         @relation(fields: [postId], references: [id], onDelete: SetNull)
+  assets    ZoneReportAsset[]
+
+  @@index([zoneId, createdAt])
+  @@index([createdById])
+}
+
+// 报告上传的图片 / 文件：name = 原文件名（与 report.attachments[].file 对上）。
+model ZoneReportAsset {
+  id           String   @id @default(cuid())
+  reportId     String
+  key          String   @unique
+  name         String
+  kind         String
+  mimeType     String   @default("")
+  sizeBytes    Int      @default(0)
+  // 收录进知识库后的文档 id（PDF / HTML / PPTX / DOCX）。
+  libraryDocId String?
+  createdAt    DateTime @default(now())
+
+  report ZoneReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
 }
 
 // 附件。key 全站唯一（DB 兜底防止一次上传被两个帖子认领）。

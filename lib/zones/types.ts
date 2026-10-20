@@ -195,6 +195,30 @@ export interface ZonePostDetailView extends ZonePostCardView {
    * past the per-render live-fetch budget has NO entry (the card fetches it).
    */
   embeds: Record<string, EmbedData>;
+  /** 内容版本号（docs/contracts/reports.md §4）；编辑器把它作为 baseRevision 带回。 */
+  revision: number;
+  /** 已存快照数（页头「历史 (n)」）。 */
+  revisionCount: number;
+}
+
+export interface ZonePostRevisionView {
+  id: string;
+  number: number;
+  title: string;
+  note: string;
+  createdAt: string;
+  editor: PublicAuthor;
+  /** 字数（bodyMd.length），列表里显示增减用。 */
+  size: number;
+  /** Only when a single revision is fetched. */
+  bodyMd?: string;
+  summary?: string;
+}
+
+export interface ZonePostEditorView {
+  user: PublicAuthor;
+  startedAt: string;
+  lastSeenAt: string;
 }
 
 export interface ZoneCommentView {

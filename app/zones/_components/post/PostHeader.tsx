@@ -25,7 +25,7 @@
 import Link from 'next/link';
 import type { RefObject } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Clock, ExternalLink, Eye, FolderOpen, Lock, Megaphone, Pencil, PencilLine, Pin } from 'lucide-react';
+import { Clock, ExternalLink, Eye, FolderOpen, History, Lock, Megaphone, Pencil, PencilLine, Pin } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { DeptTag } from '@/components/DeptTag';
 import { GlareHover } from '@/components/motion';
@@ -38,6 +38,7 @@ import { hostnameOf, zoneHref, zonePostEditHref, zonePostHref } from '@/lib/zone
 import type { ZonePostDetailView } from '@/lib/zones/types';
 import { RolePill } from '../RolePill';
 import { PILL_COLUMN, PILL_COLUMN_MEMBER, PILL_INK } from '../ui';
+import { LiveEditorsPill } from './LiveEditorsPill';
 import { VISIBILITY_ICONS } from './VisibilityPicker';
 
 export function PostHeader({
@@ -208,6 +209,15 @@ export function PostHeader({
           <Eye className="h-3 w-3" />
           {t('post_views', { count: post.viewCount })}
         </span>
+        {/* 正在编辑（docs/contracts/reports.md §4）：只读提示，没人时不渲染。 */}
+        {post.status === 'published' && <LiveEditorsPill zoneSlug={zone.slug} postId={post.id} />}
+        {/* 版本历史（docs/contracts/reports.md §4）：有快照才显示，能看帖子就能看历史。 */}
+        {post.revisionCount > 0 && (
+          <Link href={`${zoneHref(zone.slug)}/posts/${encodeURIComponent(post.id)}/history`} className="inline-flex items-center gap-1 font-mono tabular-nums hover:text-zinc-900 dark:hover:text-zinc-50">
+            <History className="h-3 w-3" />
+            {t('post_history_link', { count: post.revisionCount })}
+          </Link>
+        )}
         {canEdit && post.status === 'published' && (
           <Link
             href={zonePostEditHref(zone.slug, post.id)}

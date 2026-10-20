@@ -21,6 +21,7 @@ const db = vi.hoisted(() => {
       updateMany: vi.fn(async () => ({ count: 1 })),
     },
     zonePostAuthor: { deleteMany: vi.fn(async () => ({ count: 0 })), createMany: vi.fn(async () => ({ count: 0 })) },
+    zonePostRevision: { create: vi.fn(async () => ({})) },
     zonePostViewer: { deleteMany: vi.fn(async () => ({ count: 0 })), createMany: vi.fn(async () => ({ count: 0 })) },
     zonePostAttachment: { deleteMany: vi.fn(async () => ({ count: 0 })), updateMany: vi.fn(async () => ({ count: 0 })), create: vi.fn(async () => ({})) },
     zone: { update: vi.fn(async () => ({})), updateMany: vi.fn(async () => ({ count: 1 })) },
@@ -88,6 +89,7 @@ function post() {
     pinned: false,
     locked: false,
     deletedAt: null,
+    revision: 0,
     coauthors: [{ userId: 'coauthor' }],
     zone: {
       id: 'z1',

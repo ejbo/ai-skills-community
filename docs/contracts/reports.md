@@ -1,0 +1,139 @@
+# 版块报告（聊天记录 → 日报/周报/月报）、帖子版本历史与同时编辑
+
+> 2026-10-20 新增。入口 `/zones/[slug]/reports/*`、`/zones/[slug]/posts/[postId]/history`；
+> 契约模块 `lib/zones/reports/*`、`lib/zones/post-revisions.ts`、`lib/zones/post-presence.ts`。
+> 与独立 skill `chat-report`（opencode / deepseek 侧）共用同一份数据契约 `report.json v1`
+> （skill 里的 `schema/report.schema.json` ⇔ 站内 `lib/zones/reports/schema.ts`，改一处必须改另一处）。
+
+## 0. 这是什么，为什么这么做
+
+Owner 的诉求：「我会生成这样的聊天记录，配合提及的图片和文件，生成月报/周报/日报；把它作为版块里的一个工具；
+文档自动录入知识库、在帖子侧边就能看；聊天里的人按工号匹配成作者并共同编辑，要避免冲突、能看到谁在同时改、有版本历史。」
+
+四条设计决定：
+
+1. **内容与呈现分离，模型只写小 JSON。** 旧流程让模型直接写带 HTML 的 JS 字面量（主题骨架写死、配图按「人 + 日期」匹配、无法溯源）。
+   新流程：确定性代码做解析 / 统计 / 切片 / 校验 / 配图 / 渲染，模型分四步各输出一个小 JSON（聚类 → 逐主题 → 活动与花絮 → 要点），
+   每步过 zod + 引用校验（消息 id 必须存在、url 必须出现在记录里、发言人账号必须在名单里）。这是 deepseek-v4-flash 这类模型也能稳定产出的前提。
+2. **报告 = 帖子。** 生成结果渲染成 Markdown 正文发布为普通 `ZonePost`（走 `createZonePost`，所有现成能力——栏目、可见性、评论、点赞、嵌入卡片、并排阅读——
+   零改动可用）；`report.json` 原样存在 `ZoneReport.reportJson`，随时可重渲染。没有「报告帖」这种新类型。
+3. **文档进知识库，不复制一套。** 聊天附带的 PDF / HTML / PPT / Word 走 `createDocFromFile`（去重、章节提取、AI 导读全部复用），
+   正文里用 `[embed:library:<slug>]`，读者点卡片就在右侧并排阅读面板里打开（zones 已有）。
+   「把知识库下放到版块」= 每个版块有自己的「资料」视角（`listZoneLibraryDocs`：本版块报告收录的文档），不是第二套存储。
+4. **合著 = 现有的 `ZonePostAuthor`。** 聊天里的发言人按工号 → `User.huaweiW3Id` 匹配（`accountMatchKey` 数字串比对，和员工名单同一条规则），
+   发布时写成合著者，他们天然拥有编辑权（`canEditZonePostContent` 不变）。冲突由**乐观并发 + 版本快照 + 在线编辑者提示**三件套处理，
+   不做 OT/CRDT 实时协同（没有这个基础设施，也没有这个必要）。
+
+## 1. 数据模型（migration `20261020120000_zone_reports_post_revisions`）
+
+| 表 | 作用 | 关键字段 |
+| --- | --- | --- |
+| `ZoneReport` | 一次生成任务 + 结果 | `zoneId, createdById, kind(daily/weekly/monthly/custom), title, subject, periodStart/End, status(queued→parsing→clustering→summarizing→assembling→ingesting→ready / failed), stage, progress(0-100), error, sourceKey/sourceName（聊天文件，zone media `file/` key）, manifestKey（图片附件清单 CSV，可空）, messagesJson, clusterJson, reportJson, authorMatches, postId(@unique), heartbeatAt` |
+| `ZoneReportAsset` | 上传的图片 / 文件 | `reportId, key(@unique zone media key), name（原文件名，用来和 report.attachments[].file 对上）, kind(image/file), mimeType, sizeBytes, libraryDocId（收录进知识库后）` |
+| `ZonePostRevision` | 帖子内容快照 | `postId, number(1..n, @@unique[postId,number]), editorId, title, summary, bodyMd, note, createdAt` |
+| `ZonePostEditor` | 谁正在编辑 | `@@id[postId,userId], startedAt, lastSeenAt` |
+| `ZonePost.revision Int` | 当前内容版本号 | 内容（title/summary/bodyMd）变化时 +1，并写一条 `ZonePostRevision` |
+
+`ZoneReport.messagesJson` 可达几百 KB（535 条 ≈ 400 KB jsonb），只在流水线里读；列表/状态接口永远不 select 它。
+
+## 2. 流水线（`lib/zones/reports/pipeline.ts`）
+
+`triggerZoneReport(id)` 与知识库 `triggerIndexing` 同款：fire-and-forget，状态落在行上，页面轮询 `GET /api/zones/[slug]/reports/[id]`。
+
+```
+queued ─parse（parse.ts: TXT / welink-cli JSON → messages；manifest CSV → 附件对消息；assets 对文件名）
+     ─digest（digest.ts: 有信息量的消息一行一条 + stats + links）
+     ─clustering（LLM ① → clusterSchema + 覆盖率校验；超 60k 字按天分片、逐片聚类再合并）
+     ─summarizing（slice.ts 切 bundle → LLM ② 逐主题，并发 2，validateTheme 引用校验；LLM ③ 活动与花絮；outline → LLM ④ 要点）
+     ─assembling（assemble.ts: 统一姓名、编号、按消息邻域配图、未归类、stats → report.json；validateReport）
+     ─ingesting（可选：PDF/HTML/PPTX/DOCX 附件 → createDocFromFile → asset.libraryDocId；失败只记日志）
+     ─ready / failed（error 里是哪一步、什么错；retry 从失败的那一步继续，中间产物都在行上）
+```
+
+- LLM 走 `getLibraryProvider()`（和知识库同一个可后台配置的模型），`json: true`，每步最多重试 2 次：JSON 解析失败或校验器报 ✖ 时把错误原样贴回模型。
+- `heartbeatAt` 每步更新；`running` 超过 `STALE_LOCK_MS`（10 分钟）无心跳视为死亡，`retry` 可重新认领（与 translate-doc 同一套锁语义）。
+- **导入模式**：上传 skill 产出的 `report.json`（`importKey`）则跳过 ①–④，只跑 validateReport + 附件匹配 + ingesting。opencode 侧生成、站内发布。
+- 模型永远不碰：发言人姓名（由账号查名单）、配图（邻域规则）、统计、链接表、未归类审计。
+
+## 3. 发布（`publishZoneReport`）
+
+`POST /api/zones/[slug]/reports/[id]/publish { coauthorUserIds, columnId, visibility, status: 'draft'|'published', libraryEmbeds: boolean }`
+
+1. `render-md.ts` 把 `reportJson` 渲染成帖子 Markdown：要点 → 各主题（定位 / 宏观 / 观点时间线 / 结论 / 待验证 / 资料）→ 活动表 → Recap → 资源索引 → 数据概览 → 附录。
+   图片 = `![](/api/zones/media/<key>)`（MarkdownRenderer 自己过 `withBasePath`）；文件 = `[embed:file:<key>]`；已收录的文档 = `[embed:library:<slug>]`（右侧并排阅读）。
+2. `createZonePost(zone, actor, input)`：`attachments` = 全部 assets（服务端再和正文 file key 取并集，契约不变）、`coauthorIds` = 用户勾选的匹配结果（默认全选已匹配的发言人，创建者本人除外）、`tags` = 主题关键词 ≤ 6。
+3. `ZoneReport.postId` 写回；之后 `reportJson` 只作存档，正文以帖子为准（合著者会继续改它）。
+4. 发布为 `published` 走 `createZonePost` 原有的合著者通知；`draft` 则跳到编辑页让创建者先审一遍。
+
+**工号匹配（`authors.ts`）**：`roster[].account`（`l00974474`）→ `accountMatchKey`（数字串 `00974474`）→ `User.huaweiW3Id` 的数字串；
+一次 `findMany` 预过滤 `huaweiW3Id contains <digits>` 再精确比对（和 `lib/employee-directory.ts` 一样，预过滤永远不单独信）。
+未匹配的发言人保留在报告正文里（姓名 + 账号），只是不成为合著者；页面上列出「未匹配」让创建者知道。
+**隐私**：authorMatches 返回给页面前过 `toPublicAuthor(…, canSeeIdentity)`，手机/邮箱永远不出现。
+
+## 4. 版本历史与同时编辑（所有帖子，不只报告）
+
+- **快照**：`updateZonePost` 在 `contentChanged`（title / summary / bodyMd 任一变化）时，在同一事务里 `revision += 1` 并插入 `ZonePostRevision{number: revision}`。
+  第一次编辑前的原文也要能找回：首次产生快照时先补写 `number 1 = 保存前的内容`（`editorId` = 原作者），所以历史里永远能看到发布时的版本。
+  草稿阶段的自动保存不写快照（和 `editedAt` 同一条件）。
+- **乐观并发**：`PATCH /posts/[postId]` 接受 `baseRevision?: number`。带了且 ≠ 当前 `revision` → **409 `stale_revision`**，body 带 `{ revision, editedBy, editedAt }`，什么都不写。
+  不带 `baseRevision` 的客户端（CLI / 旧接口 / 版主只改 pinned）行为不变。合著者的编辑器一定带。
+- **编辑器处理 409**：弹层「X 在 n 分钟前保存了新版本」，三个选择：**查看最新版本**（新标签打开帖子 / 历史）、**在最新版本上重做**（刷新 composer，本地草稿留在 localStorage 可复制）、**仍用我的版本覆盖**（以服务器当前 `revision` 重发；被覆盖的内容仍在历史里，可恢复）。
+- **在线编辑者**：composer 打开已有帖子后每 20 s `PUT /posts/[postId]/editors`（upsert lastSeenAt），返回 60 s 内活跃的其他编辑者（公开身份）；关闭 / 离开 `DELETE`。
+  顶栏显示「周春华 也在编辑 · 3 分钟前开始」。阅读页头部同样显示「正在编辑」（同一接口 GET）。这是提示，不是锁——锁会把合著者挡在外面，与「共同编辑」相悖。
+- **历史页** `/zones/[slug]/posts/[postId]/history`（`canRead`）：列表（第 n 版 · 编辑者 · 时间 · 备注 · 字数增减）→ 选中后并排显示（当前 | 选中，Markdown 源）→ **恢复此版本**（编辑权限）= 以快照内容走一次 `updateZonePost`，产生新版本，永不覆盖历史。
+  接口与 Wiki 修订一一对应：`GET /revisions`、`GET /revisions/[id]`、`POST /revisions/[id]`（恢复）。
+- `ZonePostDetailView` 新增 `revision: number`、`revisionCount: number`；帖子头部多一个「历史 (n)」链接。
+
+## 5. 版块里的「资料」视角（知识库下放）
+
+不新建存储。`lib/zones/reports/library.ts#listZoneLibraryDocs(zoneId, viewer)`：本版块所有报告 assets 的 `libraryDocId` ∪ 本版块帖子正文里 `[embed:library:]` 引用的文档，
+过 `canReadDoc` 后按收录时间排序。页面 `/zones/[slug]/reports` 右栏列出（点击在并排面板打开）。以后要让版主直接在版块上传资料，就是「上传 → createDocFromFile → 记一条 ZoneReportAsset 到一个『手工收录』报告」，模型已经允许 `reportJson = null` 的行。
+
+## 6. 权限与限流
+
+| 动作 | 门 |
+| --- | --- |
+| 看报告列表 / 详情 | `access.canRead`；详情里的 `authorMatches` 过身份脱敏 |
+| 新建 / 重试 / 删除 / 发布 | `access.canPost`（发布为帖子再过 `createZonePost` 自己的门）；删除还要是创建者或 `canModerate` |
+| 上传聊天文件与附件 | 复用 `/attachments/upload`（`canPost ∥ canModerate`） |
+| 历史 | `canRead`；恢复 = `canEditZonePostContent` |
+| 在线编辑者心跳 | `canEditZonePostContent` |
+| 限流 | 新建报告 5 次 / 小时 / 人（LLM 成本）；心跳不限 |
+
+## 7. 文件清单
+
+```
+lib/zones/reports/
+  schema.ts        zod：cluster / theme / recap / overview / report + validate*（引用校验，可独立测）
+  parse.ts         TXT / welink-cli JSON → messages；manifest CSV；表情码、卡片、um_begin 协议
+  digest.ts        digest 文本 + stats + links（含按天分片）
+  slice.ts         主题 bundle 文本
+  prompts.ts       四段提示词（与 skill prompts/*.md 同文）
+  llm.ts           callJson：provider.complete(json) + 解析 + 校验回贴重试
+  assemble.ts      report.json 装配 + 邻域配图
+  render-md.ts     report.json → 帖子 Markdown（含 embed 令牌）
+  authors.ts       工号 → 用户匹配
+  pipeline.ts      状态机 + triggerZoneReport + retry + 导入模式
+  queries.ts       视图、列表、创建、删除、publishZoneReport
+  library.ts       附件 → 知识库收录；listZoneLibraryDocs
+lib/zones/post-revisions.ts   快照 / 列表 / 恢复
+lib/zones/post-presence.ts    心跳 / 活跃编辑者
+app/api/zones/[slug]/reports/route.ts, [reportId]/route.ts, [reportId]/publish/route.ts, [reportId]/retry/route.ts
+app/api/zones/[slug]/posts/[postId]/editors/route.ts, revisions/route.ts, revisions/[revisionId]/route.ts
+app/zones/[slug]/reports/page.tsx, new/page.tsx, [reportId]/page.tsx
+app/zones/[slug]/posts/[postId]/history/page.tsx
+app/zones/_components/reports/*（ReportWizard / ReportProgress / ReportPublishPanel / ReportList）
+app/zones/_components/post/PostHistory.tsx, EditorsBand.tsx, StaleRevisionDialog.tsx
+tests/zone-reports-*.test.ts, tests/zone-post-revisions.test.ts
+```
+
+## 8. 踩过 / 预判的坑
+
+1. `messagesJson` 不进列表 select；`reportJson` 只在详情与发布时读。
+2. 聚类覆盖率 < 85% 直接判错让模型补；别放宽——漏掉的消息就是漏掉的内容。
+3. url 校验是「记录里出现过」而不是「可访问」：内网机器不能出公网，不要在流水线里 fetch 链接。
+4. 发言人姓名以名单为准（账号查），模型写错名字不影响渲染。
+5. 配图只认 `report.attachments[].file` 与 `ZoneReportAsset.name` 的文件名相等（大小写敏感）；清单里的文件名就是云盘下载的文件名。
+6. 快照条件和 `editedAt` 完全一致（内容变化且已发布）；草稿自动保存不进历史，否则每次打字都是一版。
+7. 409 的判断在 `updateZonePost` 事务里再做一次（`updateMany where revision = base` 守卫写），路由层的预检只是为了给出友好 body。
+8. 心跳表要定期清：`PUT` 时顺手删掉本帖 10 分钟没心跳的行；不做定时任务。

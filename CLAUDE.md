@@ -30,6 +30,7 @@ pnpm typecheck && pnpm test   # tsc --noEmit + vitest; safe while dev runs
 | 登录跳转、RBAC、身份脱敏、员工名单 | `/manage`, `/auth/*` | [`docs/contracts/auth-access.md`](docs/contracts/auth-access.md) |
 | 富文本编辑器、表情包、`[poll:]` 组件 | 所有编辑器 | [`docs/contracts/editor.md`](docs/contracts/editor.md) |
 | 技术专区、Wiki、栏目、组织架构 | `/zones` | [`docs/contracts/zones.md`](docs/contracts/zones.md) |
+| 版块报告（聊天记录→日报/周报/月报）、帖子版本历史、同时编辑 | `/zones/[slug]/reports`, `/posts/[id]/history` | [`docs/contracts/reports.md`](docs/contracts/reports.md) |
 | 动态 / 讨论区、意见反馈 | `/discussion`, `/feedback` | [`docs/contracts/discussion.md`](docs/contracts/discussion.md) |
 | 投票活动（作品评选） | `/votes` | [`docs/contracts/votes.md`](docs/contracts/votes.md) |
 | 知识库、阅读器、共享批注 | `/library` | [`docs/contracts/library.md`](docs/contracts/library.md) |

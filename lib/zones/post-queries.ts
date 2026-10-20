@@ -186,6 +186,9 @@ const ZONE_POST_DETAIL_SELECT = {
   // into a view for a viewer who is not the author / a co-author / 版主.
   accessCode: true,
   attachments: { orderBy: { sortOrder: 'asc' as const }, select: ZONE_ATTACHMENT_SELECT },
+  // 版本历史（docs/contracts/reports.md §4）：编辑器带着 revision 保存，页头显示「历史 (n)」。
+  revision: true,
+  _count: { select: { revisions: true } },
 } satisfies Prisma.ZonePostSelect;
 
 const PUBLISHED_WHERE = { status: 'published', deletedAt: null } satisfies Prisma.ZonePostWhereInput;
@@ -568,6 +571,8 @@ export async function getZonePostDetail(
     attachments: locked ? [] : row.attachments.map(toAttachmentView),
     headings: locked ? [] : extractHeadings(row.bodyMd),
     embeds,
+    revision: row.revision,
+    revisionCount: row._count.revisions,
   };
 }
 
@@ -1414,10 +1419,28 @@ export async function createZonePost(
   return { id: created.id, slug: created.slug };
 }
 
+export class StaleRevisionError extends ZoneError {
+  constructor(public readonly revision: number) {
+    super('stale_revision', 409);
+    this.name = 'StaleRevisionError';
+  }
+}
+
 export async function updateZonePost(
   postId: string,
   patch: Partial<ZonePostInput>,
-  opts: { canModerate?: boolean; actorId?: string } = {},
+  opts: {
+    canModerate?: boolean;
+    actorId?: string;
+    /**
+     * 乐观并发（docs/contracts/reports.md §4）：编辑器打开时的 ZonePost.revision。
+     * 带了且与当前不等 ⇒ StaleRevisionError(409)，什么都不写。不带（CLI / 旧客户端 /
+     * 只改 pinned 的版主）⇒ 行为不变。
+     */
+    baseRevision?: number;
+    /** 写进本次快照的备注（恢复历史版本时用）。 */
+    revisionNote?: string;
+  } = {},
 ): Promise<void> {
   const existing = await prisma.zonePost.findUnique({
     where: { id: postId },
@@ -1430,6 +1453,7 @@ export async function updateZonePost(
       slug: true,
       summary: true,
       bodyMd: true,
+      revision: true,
       coverKey: true,
       linkUrl: true,
       columnId: true,
@@ -1457,6 +1481,8 @@ export async function updateZonePost(
   });
   if (!existing || existing.deletedAt) throw new ZoneError('not_found', 404);
   const actorId = opts.actorId ?? existing.authorId;
+  // 友好的预检（路由据此给出 editedBy / editedAt）；真正的守卫在事务里（guarded increment）。
+  if (opts.baseRevision !== undefined && opts.baseRevision !== existing.revision) throw new StaleRevisionError(existing.revision);
 
   // Backstop for the route gate: the stored type only ever changes by a
   // moderator's 设为公告 / 取消公告 (the composer never sends it).
@@ -1571,8 +1597,42 @@ export async function updateZonePost(
     if (nextSlug !== existing.slug) data.slug = nextSlug;
   }
 
+  // 版本快照：与 editedAt 同一条件（已发布 + 内容变化）。首次快照时先补写 #1 = 保存前的
+  // 内容（编辑者 = 原作者），所以历史里永远能看到发布时的版本；草稿自动保存不进历史。
+  const snapshot = contentChanged && existing.status === 'published';
+  const backfillFirst = snapshot && existing.revision === 0;
+  const bump = snapshot ? (backfillFirst ? 2 : 1) : 0;
+  const nextRevision = existing.revision + bump;
+
   const runTx = () => prisma.$transaction(async (tx) => {
+    // 乐观并发守卫：带 baseRevision 的保存只在版本号未动时落地；两个同 base 的保存，
+    // 第二个在这里拿到 count 0 ⇒ 409，内容不会被静默覆盖。增量和守卫在同一条语句里。
+    if (opts.baseRevision !== undefined || bump > 0) {
+      const guard = await tx.zonePost.updateMany({
+        where: { id: existing.id, ...(opts.baseRevision !== undefined ? { revision: opts.baseRevision } : {}) },
+        data: bump > 0 ? { revision: { increment: bump } } : { revision: existing.revision },
+      });
+      if (guard.count === 0) throw new StaleRevisionError(existing.revision);
+    }
     await tx.zonePost.update({ where: { id: existing.id }, data });
+    if (snapshot) {
+      if (backfillFirst) {
+        await tx.zonePostRevision.create({
+          data: { postId: existing.id, number: existing.revision + 1, editorId: existing.authorId, title: existing.title, summary: existing.summary, bodyMd: existing.bodyMd, note: '发布时的版本' },
+        });
+      }
+      await tx.zonePostRevision.create({
+        data: {
+          postId: existing.id,
+          number: nextRevision,
+          editorId: actorId,
+          title: title.slice(0, ZONE_LIMITS.postTitleMax),
+          summary: patch.summary !== undefined ? patch.summary : existing.summary,
+          bodyMd,
+          note: (opts.revisionNote ?? '').slice(0, 200),
+        },
+      });
+    }
 
     // 指定成员可见 bookkeeping. Leaving `restricted` clears every grant; rotating
     // the code evicts whoever came in through the OLD one (designated members

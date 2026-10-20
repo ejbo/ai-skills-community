@@ -251,3 +251,8 @@
     `components/media/CoverCropDialog` with `postCoverRatio` (2:1 / 3:4). `DraftState` gained the two fields
     APPENDED and default-filled WITHOUT a `DRAFT_VERSION` bump, so an older build can still read a newer draft.
 
+- **版块报告 + 帖子版本历史 + 同时编辑 (2026-10-20, migration `20261020120000_zone_reports_post_revisions`)**:
+  契约在 [`reports.md`](reports.md)。对本文件的影响只有三点：`ZonePost.revision`（内容版本号，编辑器以 `baseRevision`
+  带回，不等 ⇒ PATCH 409 `stale_revision`，守卫式 increment 在 `updateZonePost` 事务里）；`ZonePostDetailView.revision /
+  revisionCount`；`updateZonePost` 在「已发布 + 内容变化」时写 `ZonePostRevision` 快照（首次补写 #1 = 保存前的内容）——
+  这是和 `editedAt` 同一条件，草稿自动保存不进历史。报告发布就是一次 `createZonePost`，没有新的帖子类型。
