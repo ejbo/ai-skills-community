@@ -36,6 +36,8 @@ const SKIP_DIR_RE = /(^|\/)(__MACOSX|\.git|node_modules|work)(\/|$)/;
 const SKIP_NAME = new Set(['.ds_store', 'thumbs.db', 'desktop.ini']);
 const SKILL_OUTPUT_NAMES = new Set(['report.html', 'report.md', 'digest.md', 'stats.json', 'links.json', 'messages.json', 'themes.json', 'overview.json', 'recap.json']);
 const MANIFEST_HINT_RE = /清单|manifest|attach|image|图片/i;
+/** welink-monthly-report 契约的合并消息 JSON（`*_msgs.json`）：比 TXT 全（附件协议块 / 引用卡片都在），有它就优先。 */
+const MSGS_JSON_RE = /_msgs\.json$/i;
 
 export function bundleBasename(path: string): string {
   const i = path.lastIndexOf('/');
@@ -84,8 +86,13 @@ export function planReportBundle<T extends BundleFile>(files: T[]): BundlePlan<T
     else rest.push(f);
   }
 
-  // 聊天记录：最大的 TXT；没有 TXT 时把 JSON 当 welink-cli 页
-  if (txts.length) {
+  // 聊天记录：`*_msgs.json` 最优先（welink-cli 合并产物，信息最全）；其次最大的 TXT；都没有时把 JSON 当 welink-cli 页
+  const msgsJson = jsons.filter((f) => MSGS_JSON_RE.test(bundleBasename(f.path))).sort((a, b) => b.size - a.size)[0];
+  if (msgsJson) {
+    plan.source = msgsJson;
+    for (const f of jsons) if (f !== msgsJson) plan.ignored.push({ file: f, reason: 'json_with_msgs' });
+    for (const f of txts) plan.ignored.push({ file: f, reason: 'txt_with_msgs' });
+  } else if (txts.length) {
     txts.sort((a, b) => b.size - a.size);
     plan.source = txts[0];
     for (const f of txts.slice(1)) plan.assets.push({ file: f, kind: 'file' });

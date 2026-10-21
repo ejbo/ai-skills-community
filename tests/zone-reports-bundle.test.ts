@@ -51,6 +51,15 @@ describe('planReportBundle', () => {
     ]);
   });
 
+  it('prefers the welink-monthly-report *_msgs.json over the human-readable txt next to it', () => {
+    const plan = planReportBundle([f('加研思想院_0920-1015/加研思想院_0920-1015_msgs.json', 900000), f('加研思想院_0920-1015/加研思想院_0920-1015_消息记录.txt', 500000), f('加研思想院_0920-1015/wl_names/l00974474.json', 10), f('加研思想院_0920-1015/加研思想院_0920-1015_图片附件清单.csv', 100)]);
+    expect(plan.source?.path).toBe('加研思想院_0920-1015/加研思想院_0920-1015_msgs.json');
+    expect(plan.sourcePages).toEqual([]);
+    expect(plan.names).toHaveLength(1);
+    expect(plan.manifest?.path).toContain('图片附件清单.csv');
+    expect(plan.ignored.map((i) => i.reason)).toEqual(['txt_with_msgs']);
+  });
+
   it('switches to import mode on report.json and drops the skill side-products and work/ dir', () => {
     const plan = planReportBundle([
       f('out/report.json', 900),

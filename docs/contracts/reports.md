@@ -66,7 +66,8 @@ queued ─parse（parse.ts: TXT / welink-cli JSON → messages；manifest CSV �
 | 规则 | 结果 |
 | --- | --- |
 | `report.json`（basename） | `importJson` → 导入模式，不调模型 |
-| 最大的 `.txt` | `source`；其余 txt 当附件 |
+| `*_msgs.json`（welink-monthly-report 的合并产物，信息最全） | `source`；旁边的 txt / 其他 json 忽略 |
+| 否则最大的 `.txt` | `source`；其余 txt 当附件 |
 | 没有 txt 时的 `.json`：1 个 → `source`；多个 → `sourcePages`（按 msgId 去重合并成一个数组） | 有 txt 时的 json 一律忽略（多半是 skill 的中间产物） |
 | `.csv`：名字含 清单/manifest/attach/image 的优先，否则第一个 | `manifest`；其余 csv 当附件 |
 | `names.json` / `wl_names/*.json` | `names` → `namesJson`（账号→姓名） |
@@ -176,6 +177,7 @@ tests/zone-reports-*.test.ts, tests/zone-post-revisions.test.ts
 4. 发言人姓名以名单为准（账号查），模型写错名字不影响渲染。
 5. **报告正文的文风**（render-md.ts，与 skill 的 render.mjs 同一套）：内部技术汇报风——章节标题带【】标签、主线判断直接做引文、每个专题以「启示」收束；**没有**「一句话」之类的标签词、统计药丸、置信度徽章（用户评价那种"很 AI"）。HTML 版白底、华为红 `#E60012` 是唯一强调色。改结构先改 skill 的 `reference/report-structure.md`，两边保持同序。
 6. 整包上传的识别只看文件名：一个目录里放两份不同群的 TXT 会只取最大的那份——向导会把识别结果显示出来，让用户自己看。
+9. TXT 有两种版式（`parse.ts` 顶部注释）：`[YYYY-MM-DD HH:mm:ss] 姓名（账号）`，以及 welink-monthly-report 的 `#### 日期 ####` + `[HH:mm:ss] 姓名（账号）· 类型`。两种都是 agent 从 welink-cli JSON 转的，JSON 更全（附件协议块 / 引用卡片），整包上传时 `*_msgs.json` 优先于 TXT（bundle.ts `MSGS_JSON_RE`），别的 json 名字不认——用户目录里 TXT 和 JSON 通常并存。给 agent 的拉取话术在 skill 的 `reference/welink-fetch.md`。
 8. `ReportArticle` 是客户端组件：只能 import `sections.ts` 这类纯模块，**不要** import `post-view.ts` / `messages.ts`（它们带 prisma）；类型用 `import type`。
 7. welink-cli 不能搬到服务端：它要 WeLink PC 客户端在本机运行 + 手机扫码（约 90 分钟有效）+ 下载附件要绕开公司代理。拉取永远在用户自己的电脑上做，站内只接收结果。
 5. 配图只认 `report.attachments[].file` 与 `ZoneReportAsset.name` 的文件名相等（大小写敏感）；清单里的文件名就是云盘下载的文件名。
