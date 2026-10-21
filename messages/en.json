@@ -3322,7 +3322,10 @@
     "zone_report_already_published": "This report has already been published as a post",
     "zone_report_not_ready": "The report is not ready yet",
     "zone_source_required": "Upload a chat export or a report.json",
-    "report_not_published": "The report has not been shared into a zone yet, so there is no post to set co-authors on"
+    "report_not_published": "The report has not been shared into a zone yet, so there is no post to set co-authors on",
+    "report_asset_unsupported": "The library does not ingest this file type (PDF / EPUB / HTML / PPTX / DOCX only)",
+    "report_asset_share_failed": "Could not share to the library",
+    "report_asset_not_found": "Attachment not found"
   },
   "stickers": {
     "title": "My stickers",
@@ -4937,8 +4940,8 @@
   "tools": {
     "title": "Tools",
     "subtitle": "Standalone utilities: upload material, generate asynchronously, then export, share a page or post to a zone.",
-    "chat_report_title": "Chat → report",
-    "chat_report_desc": "Turn a WeLink group export plus its images and files into a daily / weekly / monthly report: export to Word / PDF, publish a share page with its own audience, or post it into a zone column.",
+    "chat_report_title": "Export chat as report",
+    "chat_report_desc": "Turn a WeLink group chat into a daily / weekly / monthly report: themes, viewpoint timelines, sources and images; export Word / PDF, share page, share into a zone",
     "chat_report_new": "New report",
     "report_export": "Export",
     "report_export_failed": "Export failed",
@@ -4966,6 +4969,14 @@
     "report_coauthors_hint": "Editable any time after sharing: click a speaker to add / remove, or search anyone on the site; newly added people are notified on save.",
     "report_coauthors_save": "Save co-authors",
     "report_coauthors_saved": "Co-authors updated",
-    "report_coauthors_failed": "Could not save co-authors"
+    "report_coauthors_failed": "Could not save co-authors",
+    "report_assets_title": "{count} attachments",
+    "report_assets_hint": "Attachments stay inside this report (openable from the report / post page). Click \"Share to library\" to make one searchable site-wide.",
+    "report_asset_share": "Share to library",
+    "report_asset_in_library": "In library",
+    "report_asset_shared": "Shared to the library (extracting in the background)",
+    "report_asset_share_existing": "The library already had this file; linked",
+    "report_asset_share_failed": "Could not share to the library",
+    "report_assets_images": "{count} more images are placed inline / in the appendix"
   }
 }

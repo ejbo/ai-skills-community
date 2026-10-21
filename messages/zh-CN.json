@@ -3322,7 +3322,10 @@
     "zone_report_already_published": "这份报告已经发布为帖子",
     "zone_report_not_ready": "报告还没有生成完成",
     "zone_source_required": "请上传聊天记录或 report.json",
-    "report_not_published": "报告还没有分享到版块，没有帖子可以设置合著者"
+    "report_not_published": "报告还没有分享到版块，没有帖子可以设置合著者",
+    "report_asset_unsupported": "这种文件类型知识库不收录（只收 PDF / EPUB / HTML / PPTX / DOCX）",
+    "report_asset_share_failed": "分享到知识库失败",
+    "report_asset_not_found": "附件不存在"
   },
   "stickers": {
     "title": "我的表情包",
@@ -4937,8 +4940,8 @@
   "tools": {
     "title": "工具",
     "subtitle": "独立于各个板块的小工具：上传资料、异步生成，结果可以导出、分享页面或发到技术专区。",
-    "chat_report_title": "聊天记录 → 报告",
-    "chat_report_desc": "把 WeLink 群聊记录和配套图片、文件整理成日报 / 周报 / 月报：可导出 Word / PDF，生成独立分享页并设置谁可读，或分享到技术专区的指定栏目。",
+    "chat_report_title": "聊天记录导出成报告",
+    "chat_report_desc": "把 WeLink 群聊记录整理成日报 / 周报 / 月报：按主题归类、观点时间线、来源与配图；可导出 Word / PDF、分享页、分享到技术专区",
     "chat_report_new": "新建报告",
     "report_export": "导出",
     "report_export_failed": "导出失败",
@@ -4966,6 +4969,14 @@
     "report_coauthors_hint": "分享到版块后随时可改：点一下发言人加入 / 移除，或搜索站内任何人；保存后新加的人会收到通知。",
     "report_coauthors_save": "保存合著者",
     "report_coauthors_saved": "合著者已更新",
-    "report_coauthors_failed": "合著者保存失败"
+    "report_coauthors_failed": "合著者保存失败",
+    "report_assets_title": "附件 {count} 个",
+    "report_assets_hint": "附件只留在这份报告里（报告页 / 帖子页可直接打开）；想让全站都能在知识库里搜到，再点「分享到知识库」。",
+    "report_asset_share": "分享到知识库",
+    "report_asset_in_library": "已在知识库",
+    "report_asset_shared": "已分享到知识库（后台提取中，稍后可读）",
+    "report_asset_share_existing": "知识库里已有同一份文件，已关联",
+    "report_asset_share_failed": "分享到知识库失败",
+    "report_assets_images": "另有 {count} 张图片随文 / 在附录里"
   }
 }

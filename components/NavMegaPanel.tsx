@@ -409,6 +409,9 @@ function useLabel() {
   const nav = useTranslations('nav');
   const shorts = useTranslations('shorts');
   const discussion = useTranslations('discussion');
+  const tools = useTranslations('tools');
+  // 每个出现在 nav-mega-items.ts 里的命名空间都要在这里有一个 case——漏掉的会落到 `nav` 里，
+  // 面板上就显示成裸 key（2026-10-21 工具面板的「聊天记录导出成报告」就是这么露出 nav.chat_report_title 的）。
   return (spec: string) => {
     const i = spec.indexOf(':');
     const ns = spec.slice(0, i);
@@ -418,6 +421,8 @@ function useLabel() {
         return shorts(key);
       case 'discussion':
         return discussion(key);
+      case 'tools':
+        return tools(key);
       default:
         return nav(key);
     }

@@ -38,7 +38,7 @@ export function ReportArticle({ originalsHref, view, embeds }: { originalsHref: 
     ids
       .map((id) => attById.get(id))
       .filter((a): a is ReportAttachment => !!a)
-      .map((a) => ({ file: a.file, kind: a.kind, url: assetUrls[a.id] ?? null, caption: `${a.name} · ${(a.time || '').slice(5, 16)}` }));
+      .map((a) => ({ file: a.file, kind: a.kind, url: assetUrls[a.id] ?? null, caption: `${a.name} · ${(a.time || '').slice(5, 16)}`, sizeBytes: a.size }));
   const librarySlugOf = (ids: string[]): string | null => {
     for (const id of ids) {
       const a = attById.get(id);

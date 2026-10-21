@@ -144,11 +144,25 @@ export interface ThumbItem {
   /** 根相对 URL（这里过 withBasePath）；null = 没上传。 */
   url: string | null;
   caption?: string;
+  sizeBytes?: number;
 }
 
-/** 图片缩略图（点开灯箱）+ 文件卡片（新窗口打开）。灯箱是每个列表自己的（受控）。 */
+/** 文件卡片 → 预览 dock 的 file 目标（预置数据，不发请求：PDF 直接在面板里读，office 类给下载卡）。 */
+function filePreset(a: ThumbItem): EmbedData {
+  const url = a.url!;
+  const ext = (/\.([a-z0-9]{1,5})$/i.exec(a.file)?.[1] ?? '').toLowerCase();
+  return {
+    kind: 'file',
+    ref: url,
+    ok: true,
+    data: { id: '', kind: 'file', url, name: a.file, mimeType: '', sizeBytes: a.sizeBytes ?? 0, width: null, height: null, posterUrl: null, ext, previewStatus: 'none', previewUrl: null, postId: '', zoneSlug: '' },
+  };
+}
+
+/** 图片缩略图（点开灯箱）+ 文件卡片（点开预览 dock；中键 / 新标签仍是直链）。灯箱是每个列表自己的（受控）。 */
 export function Thumbs({ items, size = 'md' }: { items: ThumbItem[]; size?: 'sm' | 'md' }) {
   const t = useTranslations('zones');
+  const preview = usePreview();
   const [lightbox, setLightbox] = useState<BodyImage | null>(null);
   const close = useCallback(() => setLightbox(null), []);
   if (!items.length) return null;
@@ -156,6 +170,11 @@ export function Thumbs({ items, size = 'md' }: { items: ThumbItem[]; size?: 'sm'
   const onImg = (e: MouseEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     setLightbox({ src: img.currentSrc || img.src, alt: img.alt, rect: img.getBoundingClientRect() });
+  };
+  const onFile = (a: ThumbItem) => (e: MouseEvent<HTMLAnchorElement>) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; // 让浏览器开新标签
+    e.preventDefault();
+    preview.open({ kind: 'file', ref: a.url!, title: a.file, data: filePreset(a), via: 'pointer' });
   };
   return (
     <div className="mt-2 flex flex-wrap gap-2">
@@ -171,6 +190,7 @@ export function Thumbs({ items, size = 'md' }: { items: ThumbItem[]; size?: 'sm'
             href={withBasePath(a.url)}
             target="_blank"
             rel="noopener"
+            onClick={onFile(a)}
             className={`${box} flex flex-col items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 px-2 text-center text-[11px] text-zinc-600 transition hover:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400`}
           >
             <FileText className="h-5 w-5" />

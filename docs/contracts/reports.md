@@ -65,7 +65,7 @@ queued ─parse（parse.ts: 任何形状 JSON / TXT / CSV → messages，都认�
      ─clustering（LLM ① → coerceCluster → clusterSchema + 覆盖率校验 → 重试用尽 autofix / fallbackCluster；超 60k 字按天分片、逐片聚类再合并）
      ─summarizing（slice.ts 切 bundle → LLM ② 逐主题，并发 2，coerceTheme + validateTheme → fallbackTheme；LLM ③ 活动与花絮；outline → LLM ④ 要点；每一步都「收，不拒」§2d）
      ─assembling（assemble.ts: 统一姓名、编号、按消息邻域配图、未归类、stats → report.json；validateReport）
-     ─ingesting（可选：PDF/HTML/PPTX/DOCX 附件 → createDocFromFile → asset.libraryDocId；失败只记日志）
+     ─（ingesting 已停用，2026-10-21：附件不再自动进知识库——所有者在工具详情页按个「分享到知识库」，`library.ts#ingestOneReportAsset`）
      ─ready / failed（error 里是哪一步、什么错；retry 从失败的那一步继续，中间产物都在行上）
 ```
 
@@ -186,10 +186,14 @@ Word 用 `docx` 包纯 JS 生成（文风同 skill 的 HTML：红标题 + 【】
   接口与 Wiki 修订一一对应：`GET /revisions`、`GET /revisions/[id]`、`POST /revisions/[id]`（恢复）。
 - `ZonePostDetailView` 新增 `revision: number`、`revisionCount: number`；帖子头部多一个「历史 (n)」链接。
 
-## 5. 版块里的「资料」视角（知识库下放）
+## 5. 附件与知识库的关系（2026-10-21 改：按需分享，不自动收录）
 
-不新建存储。`lib/zones/reports/library.ts#listZoneLibraryDocs(zoneId, viewer)`：本版块所有报告 assets 的 `libraryDocId` ∪ 本版块帖子正文里 `[embed:library:]` 引用的文档，
-过 `canReadDoc` 后按收录时间排序。页面 `/zones/[slug]/reports` 右栏列出（点击在并排面板打开）。以后要让版主直接在版块上传资料，就是「上传 → createDocFromFile → 记一条 ZoneReportAsset 到一个『手工收录』报告」，模型已经允许 `reportJson = null` 的行。
+owner：「不要把月报里的内容直接转到知识库里……会变得很乱。最好局限于当前这个月报内，或者当前技术专区内；他们可以一键分享到 library」。所以：
+
+- 附件（`ZoneReportAsset`）**留在报告里**：报告页 / 帖子页 / 分享页里的文件卡点开是预览 dock 的 `file` 目标（预置数据，PDF 直接在面板里读；office 类给下载卡），中键 / 新标签仍是直链 `/api/zones/media/<key>`。图片走灯箱。可见范围 = 报告 / 帖子本身的可见范围。
+- **一键分享**：工具详情页的「附件」卡（`components/reports/ReportAssets.tsx`）对能收录的格式（pdf / epub / html / pptx / docx）给所有者一个「分享到知识库」按钮 → `POST /api/tools/chat-report/[id]/assets/[assetId]/library` → `ingestOneReportAsset`（复制进 library storage → `createDocFromFile`，内容哈希去重）→ `asset.libraryDocId`。之后正文里的「知识库文档」chip 才出现（且要 `LibraryDoc.status = ready`）。
+- `ingestReportAssets`（整批）保留给脚本 / 将来的「全部分享」；流水线不再调用，`ingesting` 状态值保留（枚举不删），没有步骤会进入它。
+- `listZoneLibraryDocs`（版块「资料」= 本版块报告已分享进知识库的文档）保留，目前没有页面调用——**版块级资料库（把知识库下放到每个版块、可订阅、可一键升级到全站）是下一步的设计**，见 owner 2026-10-21 的要求；在那之前不要再往全站知识库里自动塞东西。
 
 ## 6. 权限与限流
 

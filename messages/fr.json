@@ -3322,7 +3322,10 @@
     "zone_report_already_published": "Ce rapport a déjà été publié",
     "zone_report_not_ready": "Le rapport n'est pas encore prêt",
     "zone_source_required": "Importez une discussion ou un report.json",
-    "report_not_published": "Le rapport n'a pas encore été partagé dans une zone : aucune publication pour définir des co-auteurs"
+    "report_not_published": "Le rapport n'a pas encore été partagé dans une zone : aucune publication pour définir des co-auteurs",
+    "report_asset_unsupported": "La bibliothèque ne prend pas ce type de fichier (PDF / EPUB / HTML / PPTX / DOCX seulement)",
+    "report_asset_share_failed": "Partage vers la bibliothèque impossible",
+    "report_asset_not_found": "Pièce jointe introuvable"
   },
   "stickers": {
     "title": "Mes mèmes",
@@ -4937,8 +4940,8 @@
   "tools": {
     "title": "Outils",
     "subtitle": "Petits outils indépendants des sections : déposez vos fichiers, générez en arrière-plan, puis exportez, partagez une page ou publiez dans une zone.",
-    "chat_report_title": "Discussion → rapport",
-    "chat_report_desc": "Transformez un export de groupe WeLink et ses images / fichiers en rapport quotidien, hebdomadaire ou mensuel : export Word / PDF, page de partage avec audience, ou publication dans une rubrique de zone.",
+    "chat_report_title": "Exporter une discussion en rapport",
+    "chat_report_desc": "Transformer une discussion de groupe WeLink en rapport quotidien / hebdomadaire / mensuel : thèmes, chronologie des points de vue, sources et images ; export Word / PDF, page de partage, partage dans une zone",
     "chat_report_new": "Nouveau rapport",
     "report_export": "Exporter",
     "report_export_failed": "Échec de l'export",
@@ -4966,6 +4969,14 @@
     "report_coauthors_hint": "Modifiable à tout moment après le partage : cliquez sur un intervenant pour l'ajouter / le retirer, ou cherchez n'importe qui sur le site ; les nouveaux co-auteurs sont notifiés.",
     "report_coauthors_save": "Enregistrer les co-auteurs",
     "report_coauthors_saved": "Co-auteurs mis à jour",
-    "report_coauthors_failed": "Impossible d'enregistrer les co-auteurs"
+    "report_coauthors_failed": "Impossible d'enregistrer les co-auteurs",
+    "report_assets_title": "{count} pièces jointes",
+    "report_assets_hint": "Les pièces jointes restent dans ce rapport (ouvrables depuis le rapport / la publication). Cliquez « Partager vers la bibliothèque » pour en rendre une consultable sur tout le site.",
+    "report_asset_share": "Partager vers la bibliothèque",
+    "report_asset_in_library": "Dans la bibliothèque",
+    "report_asset_shared": "Partagé vers la bibliothèque (extraction en cours)",
+    "report_asset_share_existing": "La bibliothèque avait déjà ce fichier ; lié",
+    "report_asset_share_failed": "Partage vers la bibliothèque impossible",
+    "report_assets_images": "{count} images supplémentaires sont placées dans le texte / en annexe"
   }
 }

@@ -1,8 +1,9 @@
-// 版块报告 — 附件 → 知识库收录；版块的「资料」视角（docs/contracts/reports.md §2 ingesting、§5）。
+// 版块报告 — 附件 → 知识库收录（**按需**，不再自动）；版块的「资料」视角（docs/contracts/reports.md §2、§5）。
 //
-// 不复制一套存储：报告上传的 PDF / HTML / PPTX / DOCX 复制一份进知识库存储目录后走
-// createDocFromFile（去重、章节提取、AI 导读全部复用）；asset.libraryDocId 记下结果，
-// 正文里用 `[embed:library:<slug>]` 引用，读者在右侧并排阅读面板里打开。
+// owner 2026-10-21：「不要把月报里的内容直接转到知识库里……会变得很乱」。所以附件留在报告里（ZoneReportAsset，
+// 报告页 / 帖子页里直接在预览面板打开），只有所有者点「分享到知识库」才走 ingestOneReportAsset：
+// 复制一份进知识库存储目录后走 createDocFromFile（去重、章节提取、AI 导读全部复用）；asset.libraryDocId 记下结果，
+// 正文里用 `[embed:library:<slug>]` 引用。ingestReportAssets（整批）只剩给脚本 / 将来的「全部分享」用。
 
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -62,6 +63,31 @@ export async function ingestReportAssets(reportId: string, uploaderId: string, l
     }
   }
   return out;
+}
+
+/** 按需把一个附件送进知识库（所有者点「分享到知识库」）。已收录的直接返回现有文档。 */
+export async function ingestOneReportAsset(assetId: string, uploaderId: string): Promise<{ ok: true; docId: string; slug: string; existing: boolean } | { ok: false; reason: 'not_found' | 'unsupported' | 'failed'; message?: string }> {
+  const a = await prisma.zoneReportAsset.findUnique({ where: { id: assetId }, select: { id: true, key: true, name: true, mimeType: true, sizeBytes: true, libraryDocId: true } });
+  if (!a) return { ok: false, reason: 'not_found' };
+  if (a.libraryDocId) {
+    const doc = await prisma.libraryDoc.findUnique({ where: { id: a.libraryDocId }, select: { id: true, slug: true, deletedAt: true } });
+    if (doc && !doc.deletedAt) return { ok: true, docId: doc.id, slug: doc.slug, existing: true };
+  }
+  const format = detectLibraryFormat(a.mimeType, a.name);
+  if (!format) return { ok: false, reason: 'unsupported' };
+  const src = zoneMediaAbsPath(a.key);
+  if (!src) return { ok: false, reason: 'not_found' };
+  try {
+    const buf = await fsp.readFile(src);
+    const key = newLibraryKey('original', path.extname(a.name).slice(1) || format);
+    await saveLibraryBuffer(key, buf);
+    const res = await createDocFromFile({ fileKey: key, format, filename: a.name, mimeType: a.mimeType || mimeFor(format), sizeBytes: a.sizeBytes || buf.length, uploaderId, docType: 'auto' });
+    await prisma.zoneReportAsset.update({ where: { id: a.id }, data: { libraryDocId: res.id } });
+    return { ok: true, docId: res.id, slug: res.slug, existing: res.existing };
+  } catch (e) {
+    const message = e instanceof IngestError ? `${e.code}: ${e.message}` : (e as Error).message;
+    return { ok: false, reason: 'failed', message };
+  }
 }
 
 function mimeFor(format: string): string {
