@@ -56,7 +56,8 @@
     "mega_zone_mine": "My boards",
     "mega_lab_zones": "{count, plural, one {# board} other {# boards}}",
     "mega_lab_labs": "Labs",
-    "mega_lab_labs_empty": "Labs to be filled in"
+    "mega_lab_labs_empty": "Labs to be filled in",
+    "tools": "Tools"
   },
   "home": {
     "trending": "Trending this week",
@@ -638,7 +639,9 @@
     "ce_err_clip_invalid": "This video can’t be trimmed — please upload it again",
     "ce_err_clip_in_progress": "Your previous clip is still being generated — try again in a moment",
     "ce_trim_poster_only_failed": "A clip couldn’t be generated from this video, so your card shows only the cover you chose.",
-    "ce_trim_decode_unknown": "This browser can’t preview the original, so it can’t be trimmed here — try another browser."
+    "ce_trim_decode_unknown": "This browser can’t preview the original, so it can’t be trimmed here — try another browser.",
+    "notif_type_report_ready": "Report generation",
+    "notif_hint_report_ready": "When a report you submitted in Tools → Chat → report finishes or fails"
   },
   "video": {
     "nav": "Geek Videos",
@@ -4783,15 +4786,15 @@
     "report_pick_folder": "Choose a folder",
     "report_pick_zip": "Choose a zip",
     "report_pick_files": "Choose files",
-    "report_bundle_hint": "Hand over the whole folder exported from WeLink / fetched with welink-cli: the chat record (.txt or welink-cli .json), the attachment manifest .csv and the downloaded images and files. If it contains a report.json produced by the skill it is imported as-is without calling the model. One upload; the server unpacks it with the same rules shown here.",
+    "report_bundle_hint": "Hand over the whole folder exported from WeLink / fetched with welink-cli: detection reads file contents, not names — welink-cli JSON (several files are merged) or a TXT export, the attachment manifest (csv or images.json), downloaded images and files, name lists. A report.json produced by the skill is imported as-is without calling the model. One upload; the server unpacks it with the same rules shown here.",
     "report_bundle_picked": "{count} files · {size}",
     "report_bundle_reading": "Reading the zip index…",
     "report_bundle_bad_zip": "This zip file cannot be read",
-    "report_bundle_no_chat": "No chat record (.txt / welink-cli .json) or report.json found",
+    "report_bundle_no_chat": "No chat record recognised: either welink-cli JSON (messages with msgId / serverSendTime) or a TXT export (lines starting with [YYYY-MM-DD HH:mm:ss] name (account), or #### date #### day headers). Detection reads the content, not the file name.",
     "report_bundle_too_large": "Total size exceeds {max}; split the upload or drop large files",
     "report_zipping": "Packing {count} files…",
     "report_detected_import": "report.json (import mode, no model call)",
-    "report_detected_pages": "{count} welink-cli JSON pages (will be merged)",
+    "report_detected_pages": "{count} welink-cli JSON files (merged, deduplicated by msgId)",
     "report_detected_chat": "Chat record",
     "report_detected_manifest": "Attachment manifest (needed for inline images; optional)",
     "report_detected_assets": "{images} images · {files} files",
@@ -4858,7 +4861,14 @@
     "report_kind_tag_weekly": "Weekly",
     "report_kind_tag_monthly": "Monthly",
     "report_kind_tag_custom": "Tech digest",
-    "report_post_native_note": "This is a report post: the body is rendered natively from the report data (timeline, source panel, originals). Text edited here is used only for the summary, search and fallback and does not change the report view; regenerate the report to change its content."
+    "report_post_native_note": "This is a report post: the body is rendered natively from the report data (timeline, source panel, originals). Text edited here is used only for the summary, search and fallback and does not change the report view; regenerate the report to change its content.",
+    "report_instructions": "Extra instructions (optional)",
+    "report_instructions_placeholder": "e.g. Focus on inference systems and chip interconnect; write each takeaway as advice for our company; skip non-work chatter; keep it terse.",
+    "report_instructions_append": "Append to the default guide (recommended)",
+    "report_instructions_override": "Replace the default guide (format and citation rules stay)",
+    "report_instructions_show_guide": "Show the default guide",
+    "report_instructions_hide_guide": "Hide the default guide",
+    "report_instructions_hint": "This text goes into every step's prompt (clustering / topics / recap / highlights). Field names, JSON shape and the \"cite only what is in the record\" rule are unaffected."
   },
   "translate": {
     "translate": "Translate",
@@ -4914,5 +4924,35 @@
     "save": "Save",
     "cancel": "Cancel",
     "close": "Close"
+  },
+  "tools": {
+    "title": "Tools",
+    "subtitle": "Standalone utilities: upload material, generate asynchronously, then export, share a page or post to a zone.",
+    "chat_report_title": "Chat → report",
+    "chat_report_desc": "Turn a WeLink group export plus its images and files into a daily / weekly / monthly report: export to Word / PDF, publish a share page with its own audience, or post it into a zone column.",
+    "chat_report_new": "New report",
+    "report_export": "Export",
+    "report_export_failed": "Export failed",
+    "report_export_pdf_unavailable": "LibreOffice is not installed on the server, so PDF export is unavailable: export Word and save as PDF locally.",
+    "report_open_page": "Open share page",
+    "report_share_page": "Share page",
+    "report_share_page_hint": "The report has its own page; decide here who can open it (public = any signed-in user; hidden = only you; audience = the people listed). A post shared into a zone follows that post's own visibility.",
+    "report_copy_link": "Copy link",
+    "report_link_copied": "Link copied",
+    "report_link_copy_failed": "Copy failed — copy the address bar instead",
+    "report_save_settings": "Save",
+    "report_settings_saved": "Saved",
+    "report_settings_failed": "Save failed",
+    "report_share_zone": "Share to a zone",
+    "report_share_zone_hint": "Publish as a post in the chosen zone (native report view: timeline, source panel, originals). Speakers matched by employee id can be ticked as co-authors.",
+    "report_target_zone": "Zone",
+    "report_pick_zone": "Pick a zone…",
+    "report_no_zones": "You have not joined any zone yet.",
+    "report_delete": "Delete report",
+    "report_delete_confirm": "Delete this report? A post already shared into a zone is kept.",
+    "report_delete_failed": "Delete failed",
+    "report_manage": "Manage",
+    "report_shared_in": "Shared in “{zone}”",
+    "report_instructions_used": "Extra instructions used ({mode})"
   }
 }

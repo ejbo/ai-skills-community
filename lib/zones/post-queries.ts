@@ -192,7 +192,7 @@ const ZONE_POST_DETAIL_SELECT = {
   revision: true,
   _count: { select: { revisions: true } },
   // 报告帖子（docs/contracts/reports.md §3a）：reportJson 只在详情里读，列表永远不碰。
-  report: { select: { id: true, status: true, reportJson: true, authorMatches: true } },
+  report: { select: { id: true, slug: true, status: true, reportJson: true, authorMatches: true } },
 } satisfies Prisma.ZonePostSelect;
 
 const PUBLISHED_WHERE = { status: 'published', deletedAt: null } satisfies Prisma.ZonePostWhereInput;

@@ -8,7 +8,13 @@
 
 import type { ParsedAttachment, ParsedChat, ParsedMessage, RosterEntry } from './schema';
 
-const HEAD_RE = /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s*(.+?)\s*[（(]([A-Za-z0-9_.-]+)[）)]\s*$/;
+// 两种 TXT 版式（都是 agent 从 welink-cli 分页 JSON 转出来的；reference/welink-format.md §1）：
+//   A1 `[YYYY-MM-DD HH:mm:ss] 姓名（账号）`
+//   A2 welink-monthly-report 的 sep_export.js：`#### YYYY-MM-DD ####` 日头 + `[HH:mm:ss] 姓名（账号）· 类型`
+const HEAD_RE = /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s*(.+?)\s*[（(]([A-Za-z0-9_.-]+)[）)](?:\s*[·•]\s*(\S+))?\s*$/;
+const HEAD_TIME_RE = /^\[(\d{2}:\d{2}:\d{2})\]\s*(.+?)\s*[（(]([A-Za-z0-9_.-]+)[）)](?:\s*[·•]\s*(\S+))?\s*$/;
+const DAY_RE = /^#{2,}\s*(\d{4}-\d{2}-\d{2})\s*#{2,}\s*$/;
+const TXT_TYPE: Record<string, string> = { 文本: 'TEXT_MSG', 图片: 'PICTURE_MSG', 图文: 'IMAGESPAN_MSG', 文件: 'FILE_MSG', 语音: 'VOICE_MSG', 视频: 'VIDEO_MSG', 卡片: 'CARD_MSG', 分享: 'SHAREING_MSG' };
 const UM_RE = /\/:um_begin\{([^}]*)\}\/:um_end/g;
 const PLACEHOLDER = '[图片/附件]';
 export const URL_RE = /https?:\/\/[^\s"'<>（）()，。；！？《》「」【】\\|}]+/g;
@@ -81,12 +87,23 @@ function parseTxt(text: string): RawMessage[] {
     const { lines: ls, ...rest } = c;
     out.push({ ...rest, content: ls.join('\n') });
   };
+  let day: string | null = null;
   for (const line of lines) {
-    const m = HEAD_RE.exec(line);
-    if (m) {
+    const dm = DAY_RE.exec(line);
+    if (dm) {
+      day = dm[1];
+      continue;
+    }
+    let m = HEAD_RE.exec(line);
+    let stamp = m?.[1] ?? null;
+    if (!m && day) {
+      m = HEAD_TIME_RE.exec(line);
+      if (m) stamp = `${day} ${m[1]}`;
+    }
+    if (m && stamp) {
       if (cur) finish(cur);
-      const d = parseLocalTime(m[1]);
-      cur = { msgId: null, ts: d ? d.getTime() : NaN, account: m[3].toLowerCase(), name: m[2].trim(), contentType: null, lines: [], content: '' };
+      const d = parseLocalTime(stamp);
+      cur = { msgId: null, ts: d ? d.getTime() : NaN, account: m[3].toLowerCase(), name: m[2].trim(), contentType: m[4] ? (TXT_TYPE[m[4]] ?? m[4]) : null, lines: [], content: '' };
       continue;
     }
     if (cur) cur.lines.push(line);

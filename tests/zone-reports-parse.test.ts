@@ -141,3 +141,37 @@ describe('digest + stats + bundles', () => {
     expect(bundle).toContain('- https://mobilesyrup.com/2026/09/23/bell-cohere');
   });
 });
+
+describe('parseChat · welink-monthly-report TXT layout (day headers + time-only lines + type suffix)', () => {
+  const TXT2 = `加研思想院（群 600916339024044374）2026 年 9 月消息记录
+共 4 条 · 导出时间 2026-10-01 10:00:00
+============================================================
+
+#### 2026-09-20 ####
+
+[07:08:22] 李思昊（l00974474）· 文本
+还有一个我们要区分jev和jev-like https://typesafe.ai/
+
+[07:09:00] 白东峰（b00580378）· 图片
+[图片/附件]
+
+#### 2026-09-21 ####
+
+[09:00:00] 周春华（z00885012）· 文本
+iPhone 18 存储颗粒不一样，已实锤
+
+[09:01:00] 周春华（z00885012）· 卡片
+{"cardContext":{"replyMsg":{"content":"同意"},"preMsg":{"sender":"l00974474","nameZH":"李思昊","content":"还有一个我们要区分jev和jev-like"}},"cardType":65}
+`;
+  it('reads the date from the day header and keeps the type suffix', () => {
+    const chat = parseChat(TXT2, { subject: 'G' });
+    expect(chat.messages.map((m) => [m.id, m.time, m.name, m.type])).toEqual([
+      ['m1', '2026-09-20 07:08:22', '李思昊', 'text'],
+      ['m2', '2026-09-20 07:09:00', '白东峰', 'image'],
+      ['m3', '2026-09-21 09:00:00', '周春华', 'text'],
+      ['m4', '2026-09-21 09:01:00', '周春华', 'reply'],
+    ]);
+    expect(chat.messages[3].replyTo?.id).toBe('m1');
+    expect(chat.messages[0].links[0]?.url).toBe('https://typesafe.ai/');
+  });
+});

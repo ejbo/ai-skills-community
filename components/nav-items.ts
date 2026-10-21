@@ -18,6 +18,7 @@ import {
   MessagesSquare,
   Sparkles,
   Vote,
+  Wrench,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -35,6 +36,8 @@ export const PRIMARY_NAV: NavItem[] = [
   { href: '/discussion', key: 'discussion', Icon: MessagesSquare },
   { href: '/zones', key: 'zones', Icon: Layers },
   { href: '/events', key: 'events', Icon: CalendarDays },
+  // 工具：多个独立工具挂在一个导航项下（目录在 lib/tools/catalog.ts，悬停面板列出它们）。
+  { href: '/tools', key: 'tools', Icon: Wrench },
 ];
 
 export const STASHED_NAV: NavItem[] = [

@@ -37,9 +37,9 @@ export function parseMessageIds(raw: string | string[] | undefined): string[] {
   return out;
 }
 
-export async function getReportMessages(zoneId: string, reportId: string, ids: string[], canSeeIdentity: boolean): Promise<{ subject: string; messages: ReportMessageView[] } | null> {
-  const row = await prisma.zoneReport.findFirst({
-    where: { id: reportId, zoneId },
+export async function getReportMessages(reportId: string, ids: string[], canSeeIdentity: boolean): Promise<{ subject: string; messages: ReportMessageView[] } | null> {
+  const row = await prisma.zoneReport.findUnique({
+    where: { id: reportId },
     select: { subject: true, messagesJson: true, authorMatches: true, assets: { select: { key: true, name: true } } },
   });
   if (!row) return null;

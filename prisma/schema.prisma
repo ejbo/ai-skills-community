@@ -1120,6 +1120,7 @@ enum NotificationType {
   coauthor // 有人把你加为某篇内容的合著者（发布时才通知）
   audience // 有人把你加入了某项内容的「指定成员可见」名单（内容对你可见时才通知）
   library_ready // 知识库：你收录的内容处理完成（或失败）—— 收录本身就是订阅，不走偏好开关
+  report_ready // 工具：你提交的「聊天记录 → 报告」生成完成（或失败）—— 站内 / 邮件各一个偏好开关
 }
 
 // One row per recipient. title/body/link are rendered at creation time so the
@@ -1451,6 +1452,9 @@ model NotificationPreference {
   emailAccessRequest  Boolean  @default(true)
   emailAccessDecision Boolean  @default(true)
   emailAnnouncement   Boolean  @default(false)
+  // 「聊天记录 → 报告」生成完成 / 失败（docs/contracts/reports.md §2c）
+  inAppReportReady    Boolean  @default(true)
+  emailReportReady    Boolean  @default(true)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
@@ -2820,13 +2824,22 @@ model ZonePostEditor {
 
 // 版块报告：聊天记录 → 结构化日报/周报/月报（docs/contracts/reports.md）。
 // 一行 = 一次生成任务 + 它的全部中间产物与结果；发布后 postId 指向生成的帖子。
+/// 「聊天记录 → 报告」工具的一次生成任务 + 结果（docs/contracts/reports.md）。表名沿用 ZoneReport，
+/// 但 2026-10-20 起**不再绑定版块**：`zoneId` 只在「分享到技术专区」之后才有（指向那篇帖子所在的版块）。
+/// 独立分享页 `/reports/<slug>` 的可见范围走通用 audience（`visibility` + ContentAudience kind 'report'）。
 model ZoneReport {
   id            String           @id @default(cuid())
-  zoneId        String
+  zoneId        String?
   createdById   String
   kind          ZoneReportKind   @default(monthly)
   title         String
   subject       String           @default("")
+  // 独立分享页的 URL（标题 slug，全站唯一；docs/contracts/slugs.md）与可见范围（audience.md）。
+  slug          String?          @unique
+  visibility    ContentVisibility @default(private)
+  // 用户的补充要求：append = 加在默认写作规范之后；override = 取代默认写作规范（输出格式与引用规则不变）。
+  instructions  String           @default("")
+  instructionMode String         @default("append")
   periodStart   DateTime?        @db.Date
   periodEnd     DateTime?        @db.Date
   status        ZoneReportStatus @default(queued)
@@ -2857,7 +2870,7 @@ model ZoneReport {
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
-  zone      Zone              @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  zone      Zone?             @relation(fields: [zoneId], references: [id], onDelete: SetNull)
   createdBy User              @relation("CreatedZoneReports", fields: [createdById], references: [id], onDelete: Cascade)
   post      ZonePost?         @relation(fields: [postId], references: [id], onDelete: SetNull)
   assets    ZoneReportAsset[]

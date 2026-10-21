@@ -1,22 +1,38 @@
-# 版块报告（聊天记录 → 日报/周报/月报）、帖子版本历史与同时编辑
+# 「聊天记录 → 报告」工具（日报/周报/月报）、报告分享页、帖子版本历史与同时编辑
 
-> 2026-10-20 新增。入口 `/zones/[slug]/reports/*`、`/zones/[slug]/posts/[postId]/history`；
-> 契约模块 `lib/zones/reports/*`、`lib/zones/post-revisions.ts`、`lib/zones/post-presence.ts`。
+> 2026-10-20 新增，同日第三轮改成**导航「工具」下的独立工具**（owner：「把这个打包成一个工具，而不是强绑定到技术专区里；
+> 原生适配技术专区这点不要改；我之后也会在工具这个导航栏里加入更多工具」）。
+> 入口 `/tools`（工具中心，目录 `lib/tools/catalog.ts`）→ `/tools/chat-report`（我的报告 / 新建 / 详情）；
+> 分享页 `/reports/[slug]`（+ `/messages` 看原文）；帖子版本历史 `/zones/[slug]/posts/[postId]/history`。
+> 契约模块 `lib/zones/reports/*`（目录名沿用）、`lib/zones/post-revisions.ts`、`lib/zones/post-presence.ts`。
 > 与独立 skill `chat-report`（opencode / deepseek 侧）共用同一份数据契约 `report.json v1`
 > （skill 里的 `schema/report.schema.json` ⇔ 站内 `lib/zones/reports/schema.ts`，改一处必须改另一处）。
 
 ## 0. 这是什么，为什么这么做
 
-Owner 的诉求：「我会生成这样的聊天记录，配合提及的图片和文件，生成月报/周报/日报；把它作为版块里的一个工具；
-文档自动录入知识库、在帖子侧边就能看；聊天里的人按工号匹配成作者并共同编辑，要避免冲突、能看到谁在同时改、有版本历史。」
+Owner 的诉求（三轮）：「我会生成这样的聊天记录，配合提及的图片和文件，生成月报/周报/日报」→「不要放在每个 zone 里，放到导航里的
+一个工具里；用户可以输入自己的 prompt 添加或覆盖指令；生成后可以导出 Word / PDF、分享到技术专区指定领域的帖子里、或单独生成一个可设置谁可读的页面；
+提交后异步生成，完成后提醒（站内 + 邮件开关）；失败记录在用户自己这里、可删除；文件识别不要依赖文件名」。
+
+一张表记住现在的形状：
+
+| 事情 | 在哪 | 谁能 |
+| --- | --- | --- |
+| 新建（上传整个目录 / zip，按内容识别；补充要求） | `/tools/chat-report/new` → `POST /api/tools/chat-report` | 任何登录用户（5 次 / 小时） |
+| 生成 | 后台流水线（`pipeline.ts`），页面轮询；完成 / 失败 → `notifyReportReady`（站内 + 邮件各一个偏好开关，默认开） | — |
+| 我的报告列表 / 详情 / 重试 / 删除 | `/tools/chat-report`，`/tools/chat-report/[id]` | 创建者（或站级 `zones` 管理员） |
+| 导出 Word / PDF | `GET …/export?format=docx\|pdf`（`export-docx.ts` / `export-pdf.ts`） | 能看分享页的人 |
+| 分享页 + 谁可读 | `/reports/[slug]`，`PATCH …/[id] { visibility, audienceUserIds }`（通用 audience，kind `report`） | 所有者改；读者按闸门 |
+| 分享到技术专区 | `POST …/[id]/publish { zoneSlug, columnId, visibility, coauthorUserIds… }` → `createZonePost`，帖子页原生渲染（§3a） | 所有者，且在目标版块 `canPost` |
 
 四条设计决定：
 
 1. **内容与呈现分离，模型只写小 JSON。** 旧流程让模型直接写带 HTML 的 JS 字面量（主题骨架写死、配图按「人 + 日期」匹配、无法溯源）。
    新流程：确定性代码做解析 / 统计 / 切片 / 校验 / 配图 / 渲染，模型分四步各输出一个小 JSON（聚类 → 逐主题 → 活动与花絮 → 要点），
    每步过 zod + 引用校验（消息 id 必须存在、url 必须出现在记录里、发言人账号必须在名单里）。这是 deepseek-v4-flash 这类模型也能稳定产出的前提。
-2. **报告 = 帖子。** 生成结果渲染成 Markdown 正文发布为普通 `ZonePost`（走 `createZonePost`，所有现成能力——栏目、可见性、评论、点赞、嵌入卡片、并排阅读——
-   零改动可用）；`report.json` 原样存在 `ZoneReport.reportJson`，随时可重渲染。没有「报告帖」这种新类型。
+2. **报告归用户，分享才落到版块。** `ZoneReport`（表名沿用）由创建者所有、`zoneId` 可空；「分享到技术专区」时走 `createZonePost`
+   发成普通 `ZonePost`（栏目、可见性、评论、点赞、合著全部现成）并把 `zoneId / postId` 写上，帖子页靠 `post.report` 原生渲染（§3a）。
+   `report.json` 原样存在 `ZoneReport.reportJson`，随时可重渲染 / 导出。没有「报告帖」这种新类型。
 3. **文档进知识库，不复制一套。** 聊天附带的 PDF / HTML / PPT / Word 走 `createDocFromFile`（去重、章节提取、AI 导读全部复用），
    正文里用 `[embed:library:<slug>]`，读者点卡片就在右侧并排阅读面板里打开（zones 已有）。
    「把知识库下放到版块」= 每个版块有自己的「资料」视角（`listZoneLibraryDocs`：本版块报告收录的文档），不是第二套存储。
@@ -61,19 +77,34 @@ queued ─parse（parse.ts: TXT / welink-cli JSON → messages；manifest CSV �
 
 用户手里的是一个目录（WeLink 导出 TXT + 图片附件清单 CSV + 已下载的图片目录，或 welink-cli 的分页 JSON + `wl_names/`），
 向导不再让他一个个挑：**选文件夹 / 选 zip / 多选文件 → 一个 zip、一次上传**（文件夹与多选在浏览器里用 JSZip 打包，图片 STORE、文本 DEFLATE；zip 原样上传；上限 = `MAX_ZONE_FILE_BYTES` 200 MB）。
-识别规则是**一份纯函数** `planReportBundle(files)`（只看路径与大小，不读内容、不碰 node API），向导和服务端解包都调它，所以向导里显示的识别结果就是流水线用的：
+识别规则是**一份纯函数** `planReportBundle(files)`，**按内容识别、不按文件名**（owner：「文件读取这里还要灵活一点，不要什么名字一定要保持一致」）：
+调用方给每个文本类文件读开头 8 KB（`head`），`sniffText` 判断它是 welink JSON（消息对象带 `msgId` + `serverSendTime`，页或数组，CLI 前缀文字也容忍）、
+TXT 记录（两种行头版式）、清单（表头含 文件名 + 外链/提取码/发送人，或 `[{fname,url}]`）、姓名表（`search_cli_person` / `{账号: 姓名}`）还是别的；
+没有 head 时才退回扩展名。向导（浏览器 `File.slice().text()` / JSZip）和服务端解包都调它，所以向导里显示的识别结果就是流水线用的：
 
-| 规则 | 结果 |
+| 规则（看内容） | 结果 |
 | --- | --- |
-| `report.json`（basename） | `importJson` → 导入模式，不调模型 |
-| 最大的 `.txt` | `source`；其余 txt 当附件 |
-| 没有 txt 时的 `.json`：1 个 → `source`；多个 → `sourcePages`（按 msgId 去重合并成一个数组） | 有 txt 时的 json 一律忽略（多半是 skill 的中间产物） |
-| `.csv`：名字含 清单/manifest/attach/image 的优先，否则第一个 | `manifest`；其余 csv 当附件 |
-| `names.json` / `wl_names/*.json` | `names` → `namesJson`（账号→姓名） |
+| report.json（`schemaVersion:1` + `themes`，或就叫 report.json） | `importJson` → 导入模式，不调模型 |
+| 所有 welink JSON（`page_001.txt` 里装着 JSON 也算） | `sources[]`，服务端**全部合并**、按 msgId 去重（先见先得）；此时 TXT 一律忽略 |
+| 没有 welink JSON 时：TXT 记录里最大的一份 | `sources[0]`；其余 TXT 当附件 |
+| 清单：内容认出来的优先，再按名字提示（清单/manifest/attach/image），再第一个 csv | `manifest`；其余 csv 当附件 |
+| `wl_names/*.json`、`names.json`、内容像 search person 输出的 json | `names` → `namesJson`（账号→姓名） |
 | png/jpg/gif/webp/avif | 附件 image；其它扩展名 → 附件 file |
-| `.DS_Store`、`__MACOSX/`、`work/`、点开头、0 字节、嵌套 zip、`report.html/md`、`digest.md` 等 skill 产物 | 忽略（向导列出原因） |
+| 认不出来的 json（如 `_downloads.json`）、`.DS_Store`、`__MACOSX/`、`work/`、点开头、0 字节、嵌套 zip、`report.html/md` 等 skill 产物 | 忽略（向导列出原因） |
 
 服务端 `unpackReportBundle` 在 `parsing` 状态下跑（stage「解包上传的文件夹 / zip」），落盘成普通 zone media（key 永远是 nanoid，zip 内路径从不进磁盘路径，无 zip-slip），建 `ZoneReportAsset`（同名只建一次，可重入），回写 `sourceKey/manifestKey/importKey/namesJson`；之后的流程与逐个上传完全一样。条目 ≤ 3000、附件 ≤ 300、单文件按 kind 的上限，超了跳过并记进日志。
+
+### 2b. 用户的补充要求（`instructions` / `instructionMode`，`prompts.ts#withInstructions`）
+
+向导里一段自由文本 + 两种模式：`append`（加在默认写法之后、优先于默认写法）/ `override`（取代默认写法里关于内容取舍、详略与文风的部分）。
+两种模式都插在每一步提示词的「## 输出格式」之前，并明说**字段名、JSON 形状、铁律与引用校验不变**——校验器照样会打回编造的 id / url。
+「查看默认写法」展示的是 `writing-guide.ts` 的摘要（给人看的），不是提示词本身。详情页能看到本次用的要求。
+
+### 2c. 异步 + 提醒
+
+提交即返回（`triggerZoneReport` fire-and-forget），详情页轮询。流水线终态（ready / failed，重试再终态时再发一次）调
+`notifyReportReady`（`lib/notifications.ts`）：`NotificationType.report_ready`，站内 `inAppReportReady` / 邮件 `emailReportReady` 两个偏好开关
+（设置 → 通知 → 报告生成，默认都开），邮件模板 `notifyReportReadyEmail`。提醒失败绝不影响状态。
 
 ## 3. 发布（`publishZoneReport`）
 
@@ -102,6 +133,20 @@ queued ─parse（parse.ts: TXT / welink-cli JSON → messages；manifest CSV �
 - 枚举显示文案走 i18n（`report_role_* / report_tag_* / report_conf_*`），存的值永远是模型词表里的中文。
 - 配色守 ui.md：chrome 全墨；颜色只出现在内容语义上（角色色标、`<mark>` 高亮、头像身份色）。
 
+### 3b. 分享页与谁可读（`/reports/[slug]`，`visibility.ts`）
+
+`ZoneReport.visibility ContentVisibility @default(private)` + `ContentAudience(kind 'report')`，照 audience.md 接入：编辑用 `VisibilityField`，
+保存 `PATCH /api/tools/chat-report/[id] { visibility, audienceUserIds }`（同一事务写列 + `replaceAudience`，事务后 `newlyGrantedAudience` → 通知）。
+**一个闸门** `canSeeReport(row, viewer, siteViewer)`：所有者 / 站级 `zones` 管理员总能看；`public` = 任何登录用户；`private`（隐藏）= 只有所有者；
+`audience` = 名单；另外**已分享的帖子对这个人可见 ⇒ 报告也可见**（帖子里的「看原文」靠它）。分享页、看原文页、导出、详情 API 都走它。
+slug = 标题 slug（`pickReportSlug`，kind `report`，全站唯一），`/reports/<id>` 与退休 slug 301 到它（`resolve.ts`）。
+
+### 3c. 导出（`export-docx.ts` / `export-pdf.ts`）
+
+Word 用 `docx` 包纯 JS 生成（文风同 skill 的 HTML：红标题 + 【】标签、要点编号、专题 → 宏观 / 时间线 / 红底启示、活动表、页脚三件套；
+图片从媒体库按 assetKey 读入，webp/avif Word 不认只留文件名）。PDF = soffice 把这份 docx 转一遍（和 office-preview 同一套调用），
+没装 LibreOffice 时 501，前端提示先导 Word 再本机另存为 PDF。
+
 ## 4. 版本历史与同时编辑（所有帖子，不只报告）
 
 - **快照**：`updateZonePost` 在 `contentChanged`（title / summary / bodyMd 任一变化）时，在同一事务里 `revision += 1` 并插入 `ZonePostRevision{number: revision}`。
@@ -125,13 +170,14 @@ queued ─parse（parse.ts: TXT / welink-cli JSON → messages；manifest CSV �
 
 | 动作 | 门 |
 | --- | --- |
-| 看报告列表 / 详情 | `access.canRead`；详情里的 `authorMatches` 过身份脱敏 |
-| 新建 / 重试 / 删除 / 发布 | `access.canPost`（发布为帖子再过 `createZonePost` 自己的门）；删除还要是创建者或 `canModerate` |
-| 上传聊天文件与附件 / 整包 zip | 复用 `/attachments/upload`（`canPost ∥ canModerate`） |
+| 新建 / 上传整包 | 登录即可（`/api/tools/chat-report/upload` 只收 `file` kind；媒体库 key 不可猜） |
+| 我的列表 | `createdById = 我` |
+| 详情 / 看原文 / 导出 | `canSeeReport`；详情里的 `authorMatches` / 名单过身份脱敏 |
+| 改标题 / 可见范围 / 重试 / 删除 / 分享到版块 | 所有者（创建者或站级 `zones`）；分享到版块还要在目标版块 `canPost ∥ canModerate`，帖子再过 `createZonePost` 自己的门 |
 | 报告模型配置 `/manage/zones/report-llm`、`/api/admin/zones/report-llm{,/test}` | 站级 `zones` 权限（`requirePermission` / `gateApi`），保存走 `logAdmin` |
 | 历史 | `canRead`；恢复 = `canEditZonePostContent` |
 | 在线编辑者心跳 | `canEditZonePostContent` |
-| 限流 | 新建报告 5 次 / 小时 / 人（LLM 成本）；心跳不限 |
+| 限流 | 新建报告 5 次 / 小时 / 人（LLM 成本）；上传 20 次 / 分钟；心跳不限 |
 
 ## 7. 文件清单
 
@@ -157,13 +203,19 @@ lib/zones/reports/
   library.ts       附件 → 知识库收录；listZoneLibraryDocs
 lib/zones/post-revisions.ts   快照 / 列表 / 恢复
 lib/zones/post-presence.ts    心跳 / 活跃编辑者
-app/api/zones/[slug]/reports/route.ts, [reportId]/route.ts, [reportId]/publish/route.ts, [reportId]/retry/route.ts
+  visibility.ts    canSeeReport / isReportOwner（一个闸门管所有读）
+  resolve.ts       /reports/[slug] 参数解析（slug / id / 退休 slug）
+  tool-api.ts      /api/tools/chat-report/* 共用的门
+  export-docx.ts / export-pdf.ts   Word（docx 包）/ PDF（soffice）
+  writing-guide.ts 向导里「查看默认写法」的文字
+lib/tools/catalog.ts   导航「工具」的工具目录（/tools 页与 NAV_MEGA 都读它）
+app/api/tools/chat-report/route.ts, upload/route.ts, [reportId]/route.ts, retry/route.ts, publish/route.ts, export/route.ts
+app/tools/page.tsx, chat-report/page.tsx, chat-report/new/page.tsx, chat-report/[reportId]/page.tsx
+app/reports/[slug]/page.tsx, messages/page.tsx
+components/reports/ReportWizard.tsx, ReportDetail.tsx, ReportList.tsx, ReportArticle.tsx, ReportMessages.tsx, report-bits.tsx
 app/api/admin/zones/report-llm/route.ts, test/route.ts；app/manage/zones/report-llm/page.tsx, ReportLlmCard.tsx
 app/api/zones/[slug]/posts/[postId]/editors/route.ts, revisions/route.ts, revisions/[revisionId]/route.ts
-app/zones/[slug]/reports/page.tsx, new/page.tsx, [reportId]/page.tsx, [reportId]/messages/page.tsx
-app/zones/_components/reports/ReportArticle.tsx, ReportMessages.tsx, report-bits.tsx（RichText / Speaker / SourceChips / Thumbs）
 app/zones/[slug]/posts/[postId]/history/page.tsx
-app/zones/_components/reports/*（ReportWizard / ReportProgress / ReportPublishPanel / ReportList）
 app/zones/_components/post/PostHistory.tsx, EditorsBand.tsx, StaleRevisionDialog.tsx
 tests/zone-reports-*.test.ts, tests/zone-post-revisions.test.ts
 ```
@@ -176,6 +228,10 @@ tests/zone-reports-*.test.ts, tests/zone-post-revisions.test.ts
 4. 发言人姓名以名单为准（账号查），模型写错名字不影响渲染。
 5. **报告正文的文风**（render-md.ts，与 skill 的 render.mjs 同一套）：内部技术汇报风——章节标题带【】标签、主线判断直接做引文、每个专题以「启示」收束；**没有**「一句话」之类的标签词、统计药丸、置信度徽章（用户评价那种"很 AI"）。HTML 版白底、华为红 `#E60012` 是唯一强调色。改结构先改 skill 的 `reference/report-structure.md`，两边保持同序。
 6. 整包上传的识别只看文件名：一个目录里放两份不同群的 TXT 会只取最大的那份——向导会把识别结果显示出来，让用户自己看。
+10. 版块里**没有**报告入口了（`PostFilters` 的「生成报告」按钮、`/zones/[slug]/reports/*`、`/api/zones/[slug]/reports/*` 都删了）——别加回去；
+    版块保留的只有 `post.report` 原生渲染和帖子版本历史 / 并发编辑。
+11. 识别看内容：`bundle.ts` 的 `sniffText` 是向导和服务端共用的唯一规则，改规则两边自动一致；skill 的 `parse-chat.mjs` 目录模式是同一套逻辑的 JS 版。
+9. TXT 有两种版式（`parse.ts` 顶部注释）：`[YYYY-MM-DD HH:mm:ss] 姓名（账号）`，以及 welink-monthly-report 的 `#### 日期 ####` + `[HH:mm:ss] 姓名（账号）· 类型`。两种都是 agent 从 welink-cli JSON 转的，JSON 更全（附件协议块 / 引用卡片），整包上传时 `*_msgs.json` 优先于 TXT（bundle.ts `MSGS_JSON_RE`），别的 json 名字不认——用户目录里 TXT 和 JSON 通常并存。给 agent 的拉取话术在 skill 的 `reference/welink-fetch.md`。
 8. `ReportArticle` 是客户端组件：只能 import `sections.ts` 这类纯模块，**不要** import `post-view.ts` / `messages.ts`（它们带 prisma）；类型用 `import type`。
 7. welink-cli 不能搬到服务端：它要 WeLink PC 客户端在本机运行 + 手机扫码（约 90 分钟有效）+ 下载附件要绕开公司代理。拉取永远在用户自己的电脑上做，站内只接收结果。
 5. 配图只认 `report.attachments[].file` 与 `ZoneReportAsset.name` 的文件名相等（大小写敏感）；清单里的文件名就是云盘下载的文件名。

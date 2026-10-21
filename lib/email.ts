@@ -251,6 +251,16 @@ export function notifyAnnouncementEmail(opts: {
   });
 }
 
+/** 「聊天记录 → 报告」生成完成 / 失败。`link` is absolute. */
+export function notifyReportReadyEmail(opts: { to: string; title: string; body: string; link: string }): void {
+  sendMailAsync({
+    to: opts.to,
+    subject: `【报告】${opts.title}`,
+    text: `${opts.title}\n\n${opts.body}\n\n打开报告：${opts.link}`,
+    html: `<p><strong>${esc(opts.title)}</strong></p>` + (opts.body ? `<p>${esc(opts.body)}</p>` : '') + `<p><a href="${opts.link}">打开报告 →</a></p>`,
+  });
+}
+
 /** Remind an attendee that an event they joined starts soon. `link` is absolute. */
 export function notifyEventReminderEmail(opts: {
   to: string;

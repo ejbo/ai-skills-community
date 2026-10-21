@@ -10,11 +10,11 @@ import { useEffect, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { FileBarChart2, PenLine, Search, X } from 'lucide-react';
+import { PenLine, Search, X } from 'lucide-react';
 import { Magnetic } from '@/components/motion';
 import { UNCATEGORIZED_COLUMN_PARAM, ZONE_POST_SORTS, parseZonePostSort, zoneHref } from '@/lib/zones/shared';
 import type { ZoneColumnView } from '@/lib/zones/types';
-import { BTN_PRIMARY, BTN_SECONDARY, INPUT_CLS, chipCls } from './ui';
+import { BTN_PRIMARY, INPUT_CLS, chipCls } from './ui';
 import { columnDotCls } from './zone-color';
 
 export function PostFilters({
@@ -150,12 +150,7 @@ export function PostFilters({
           </button>
         )}
         {canPost && (
-          <div className="ml-auto flex items-center gap-2">
-            {/* 从聊天记录生成报告（docs/contracts/reports.md）：和发布并列的第二个创作入口。 */}
-            <Link href={`${zoneHref(slug)}/reports`} className={BTN_SECONDARY} title={t('reports_subtitle')}>
-              <FileBarChart2 className="h-4 w-4" />
-              {t('reports_entry')}
-            </Link>
+          <div className="ml-auto">
             <Magnetic>
               <Link href={`${zoneHref(slug)}/posts/new`} className={BTN_PRIMARY}>
                 <PenLine className="h-4 w-4" />

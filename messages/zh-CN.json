@@ -56,7 +56,8 @@
     "mega_zone_mine": "我的版块",
     "mega_lab_zones": "{count} 个版块",
     "mega_lab_labs": "下设实验室",
-    "mega_lab_labs_empty": "实验室待补充"
+    "mega_lab_labs_empty": "实验室待补充",
+    "tools": "工具"
   },
   "home": {
     "trending": "本周趋势",
@@ -638,7 +639,9 @@
     "ce_err_clip_invalid": "这个视频无法剪辑，请重新上传",
     "ce_err_clip_in_progress": "上一个片段还在生成，请稍等片刻再试",
     "ce_trim_poster_only_failed": "这段视频暂时生成不了片段，名片上只显示你选的封面。",
-    "ce_trim_decode_unknown": "这个浏览器无法预览原视频，暂时不能在这里剪辑，可以换一个浏览器再试。"
+    "ce_trim_decode_unknown": "这个浏览器无法预览原视频，暂时不能在这里剪辑，可以换一个浏览器再试。",
+    "notif_type_report_ready": "报告生成",
+    "notif_hint_report_ready": "你在「工具 → 聊天记录 → 报告」提交的生成完成或失败时"
   },
   "video": {
     "nav": "极客视频",
@@ -4783,15 +4786,15 @@
     "report_pick_folder": "选择文件夹",
     "report_pick_zip": "选择 zip",
     "report_pick_files": "选择文件",
-    "report_bundle_hint": "把 WeLink 导出 / welink-cli 拉下来的整个目录交上来即可：聊天记录（.txt 或 welink-cli .json）、图片附件清单 .csv、已下载的图片与文件。目录里有 skill 产出的 report.json 就直接导入、不再调模型。一次上传、服务端解包，识别规则与这里显示的一致。",
+    "report_bundle_hint": "把 WeLink 导出 / welink-cli 拉下来的整个目录交上来即可：识别按文件内容、不看文件名——welink-cli 的 JSON（可多份，自动合并）或 TXT 记录、图片附件清单（csv 或 images.json）、已下载的图片与文件、姓名表。目录里有 skill 产出的 report.json 就直接导入、不再调模型。一次上传、服务端解包，识别规则与这里显示的一致。",
     "report_bundle_picked": "{count} 个文件 · {size}",
     "report_bundle_reading": "正在读取 zip 目录…",
     "report_bundle_bad_zip": "读不了这个 zip 文件",
-    "report_bundle_no_chat": "没有找到聊天记录（.txt / welink-cli .json）或 report.json",
+    "report_bundle_no_chat": "没有认出聊天记录：要么是 welink-cli 的 JSON（消息带 msgId / serverSendTime），要么是 TXT（每条以 [YYYY-MM-DD HH:mm:ss] 姓名（账号） 开头，或 #### 日期 #### 日头）。识别看内容不看文件名。",
     "report_bundle_too_large": "总大小超过 {max}，请分批或去掉大文件",
     "report_zipping": "正在打包 {count} 个文件…",
     "report_detected_import": "report.json（导入模式，不调模型）",
-    "report_detected_pages": "welink-cli 分页 JSON {count} 页（将合并）",
+    "report_detected_pages": "welink-cli JSON {count} 份（将按 msgId 合并去重）",
     "report_detected_chat": "聊天记录",
     "report_detected_manifest": "图片附件清单（图片随文的前提；没有也能生成）",
     "report_detected_assets": "图片 {images} · 文件 {files}",
@@ -4858,7 +4861,14 @@
     "report_kind_tag_weekly": "周报",
     "report_kind_tag_monthly": "月报",
     "report_kind_tag_custom": "技术动态",
-    "report_post_native_note": "这是报告帖子：正文由报告数据原生渲染（时间线、来源侧栏、看原文）。这里编辑的正文只用于摘要、搜索与回退，不会改变报告视图；要改内容请重新生成报告。"
+    "report_post_native_note": "这是报告帖子：正文由报告数据原生渲染（时间线、来源侧栏、看原文）。这里编辑的正文只用于摘要、搜索与回退，不会改变报告视图；要改内容请重新生成报告。",
+    "report_instructions": "补充要求（可选）",
+    "report_instructions_placeholder": "例如：重点关注推理系统与芯片互连；每个专题的启示写成对我司的建议；不要收录生活花絮；语气更简洁。",
+    "report_instructions_append": "追加到默认写法之后（推荐）",
+    "report_instructions_override": "取代默认写法（只保留格式与引用规则）",
+    "report_instructions_show_guide": "查看默认写法",
+    "report_instructions_hide_guide": "收起默认写法",
+    "report_instructions_hint": "这段话会进每一步提示词（聚类 / 专题 / 花絮 / 要点）。字段、JSON 形状与「只引用记录里的内容」的规则不受影响。"
   },
   "translate": {
     "translate": "翻译",
@@ -4914,5 +4924,35 @@
     "save": "保存",
     "cancel": "取消",
     "close": "关闭"
+  },
+  "tools": {
+    "title": "工具",
+    "subtitle": "独立于各个板块的小工具：上传资料、异步生成，结果可以导出、分享页面或发到技术专区。",
+    "chat_report_title": "聊天记录 → 报告",
+    "chat_report_desc": "把 WeLink 群聊记录和配套图片、文件整理成日报 / 周报 / 月报：可导出 Word / PDF，生成独立分享页并设置谁可读，或分享到技术专区的指定栏目。",
+    "chat_report_new": "新建报告",
+    "report_export": "导出",
+    "report_export_failed": "导出失败",
+    "report_export_pdf_unavailable": "服务器没有安装 LibreOffice，暂时无法直接导出 PDF：先导出 Word，在本机另存为 PDF。",
+    "report_open_page": "打开分享页",
+    "report_share_page": "分享页",
+    "report_share_page_hint": "报告有一个独立页面；在这里决定谁能打开它（公开 = 所有登录用户；隐藏 = 只有你；指定成员 = 名单上的人）。已分享到技术专区的帖子按帖子自己的可见范围。",
+    "report_copy_link": "复制链接",
+    "report_link_copied": "链接已复制",
+    "report_link_copy_failed": "复制失败，请手动复制地址栏",
+    "report_save_settings": "保存",
+    "report_settings_saved": "已保存",
+    "report_settings_failed": "保存失败",
+    "report_share_zone": "分享到技术专区",
+    "report_share_zone_hint": "发成所选版块的一篇帖子（原生报告视图：时间线、来源侧栏、看原文）。群里按工号匹配到的发言人可勾为合著者。",
+    "report_target_zone": "版块",
+    "report_pick_zone": "选择版块…",
+    "report_no_zones": "你还没有加入任何版块。",
+    "report_delete": "删除报告",
+    "report_delete_confirm": "删除这份报告？已分享到技术专区的帖子会保留。",
+    "report_delete_failed": "删除失败",
+    "report_manage": "管理",
+    "report_shared_in": "已分享到「{zone}」",
+    "report_instructions_used": "本次使用的补充要求（{mode}）"
   }
 }

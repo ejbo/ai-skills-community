@@ -15,6 +15,7 @@ export { REPORT_SECTION_IDS, reportHeadings } from './sections';
 
 export interface PostReportRow {
   id: string;
+  slug: string | null;
   status: string;
   reportJson: unknown;
   authorMatches: unknown;
@@ -40,7 +41,7 @@ export async function loadZonePostReportView(row: PostReportRow | null | undefin
   }
   const assetUrls: Record<string, string> = {};
   for (const a of report.attachments) if (a.assetKey) assetUrls[a.id] = zoneMediaPublicUrl(a.assetKey);
-  return { id: row.id, report, speakers, librarySlugs: await librarySlugsByName(row.id), assetUrls };
+  return { id: row.id, slug: row.slug, report, speakers, librarySlugs: await librarySlugsByName(row.id), assetUrls };
 }
 
 /** 附件文件名 → 知识库 slug（只认未删除的文档）。和 library.ts 的 librarySlugsForReport 同一条查询，

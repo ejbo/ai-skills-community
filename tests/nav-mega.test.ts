@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { TOOLS } from '@/lib/tools/catalog';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { NAV_MEGA, labHref } from '@/components/nav-mega-items';
@@ -61,11 +62,20 @@ describe('NAV_MEGA is a small curated menu', () => {
     for (const href of ['/skills', '/library', '/events']) {
       expect(NAV_MEGA[href], `${href} must have no hover panel`).toBeUndefined();
     }
-    expect(Object.keys(NAV_MEGA).sort()).toEqual(['/discussion', '/videos', '/zones']);
+    // + /tools (2026-10-20): several independent tools under one nav link — the panel lists the tools.
+    expect(Object.keys(NAV_MEGA).sort()).toEqual(['/discussion', '/tools', '/videos', '/zones']);
+  });
+
+  it('the 工具 panel mirrors lib/tools/catalog.ts one-to-one', () => {
+    const menu = NAV_MEGA['/tools'];
+    expect(menu?.kind).toBe('links');
+    const hrefs = menu?.columns.flatMap((c) => c.links.map((l) => l.href)) ?? [];
+    expect(hrefs.sort()).toEqual(TOOLS.map((t) => t.href).sort());
   });
 
   it("stays small — a panel lists a section's real halves, not its filters", () => {
-    expect(allLinks().length).toBeLessThanOrEqual(8);
+    // 8 for the three original panels + the 工具 panel's entries (one per tool; the catalog grows).
+    expect(allLinks().length).toBeLessThanOrEqual(8 + TOOLS.length);
     for (const menu of Object.values(NAV_MEGA)) {
       expect(menu.columns.length).toBeLessThanOrEqual(1);
       for (const col of menu.columns) expect(col.links.length).toBeLessThanOrEqual(4);

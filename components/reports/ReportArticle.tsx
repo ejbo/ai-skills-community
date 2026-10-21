@@ -16,12 +16,15 @@ import { REPORT_SECTION_IDS } from '@/lib/zones/reports/sections';
 import type { Report, ReportAttachment, ReportTheme, ReportViewpoint } from '@/lib/zones/reports/schema';
 import type { PublicAuthor } from '@/lib/user-identity';
 import type { EmbedData, ZonePostReportView } from '@/lib/zones/types';
-import { BTN_GHOST, PILL_MONO } from '../ui';
+import { BTN_GHOST, PILL_MONO } from '@/app/zones/_components/ui';
 import { RichText, RoleChip, SourceChips, Speaker, Thumbs, useReportLabels, type SourceRef, type ThumbItem } from './report-bits';
 
 const RES_KEY: Record<string, string> = { paper: '论文', repo: '代码', article: '文章', internal: '内部', video: '视频', doc: '文档', other: '链接' };
 
-export function ReportArticle({ zoneSlug, view, embeds }: { zoneSlug: string; view: ZonePostReportView; embeds: Record<string, EmbedData> }) {
+/**
+ * @param originalsHref 「看原文」页的路径（不带 query），如 `/reports/<slug>/messages`；dock 以 page 目标装它。
+ */
+export function ReportArticle({ originalsHref, view, embeds }: { originalsHref: string; view: ZonePostReportView; embeds: Record<string, EmbedData> }) {
   const t = useTranslations('zones');
   const labels = useReportLabels();
   const preview = usePreview();
@@ -44,7 +47,7 @@ export function ReportArticle({ zoneSlug, view, embeds }: { zoneSlug: string; vi
   };
   const openOriginal = (msgRefs: string[], title: string) => {
     if (!msgRefs.length) return;
-    preview.open({ kind: 'page', ref: `/zones/${encodeURIComponent(zoneSlug)}/reports/${encodeURIComponent(view.id)}/messages?ids=${msgRefs.join(',')}`, title, via: 'pointer' });
+    preview.open({ kind: 'page', ref: `${originalsHref}?ids=${msgRefs.join(',')}`, title, via: 'pointer' });
   };
   const themeRef = (id?: string | null) =>
     id && themeNo.has(id) ? (

@@ -17,7 +17,7 @@ import { MAX_AUDIENCE, normalizeAudienceIds, type AudiencePick } from '@/lib/aud
  * `visibility ContentVisibility` column on its row + routing its own list/detail gate
  * (and its translation loader) through `isInAudience` / `audienceItemIds`.
  */
-export const AUDIENCE_KINDS = ['vote'] as const;
+export const AUDIENCE_KINDS = ['vote', 'report'] as const;
 export type AudienceKind = (typeof AUDIENCE_KINDS)[number];
 
 /** Is this user named on the item's list? (False for a signed-out viewer.) */

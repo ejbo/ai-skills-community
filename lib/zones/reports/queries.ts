@@ -1,4 +1,6 @@
-// 版块报告 — 视图、创建、删除、发布为帖子（docs/contracts/reports.md §3）。
+// 「聊天记录 → 报告」工具 — 视图、创建、可见范围、删除、分享到版块（docs/contracts/reports.md §3）。
+// 2026-10-20 起报告归创建者所有、不绑定版块：列表 = 我的；详情 / 分享页走 canSeeReport（visibility.ts）；
+// 「分享到技术专区」时才把 zoneId / postId 写上。
 // 列表 / 状态接口永远不 select messagesJson（可达数百 KB）；reportJson 只在详情与发布时读。
 
 import type { Prisma, ZoneReportKind, ZoneReportStatus } from '@prisma/client';
@@ -6,6 +8,10 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { AUTHOR_IDENTITY_SELECT, toPublicAuthor, type PublicAuthor } from '@/lib/user-identity';
 import type { ZoneAccessRow } from '@/lib/zones/access';
+import { loadAudience, replaceAudience } from '@/lib/audience';
+import { newlyGrantedAudience, type AudiencePick, type AudienceState, type ContentVisibility } from '@/lib/audience-shared';
+import { notifyAudienceGranted } from '@/lib/notifications';
+import { createWithSlug, freeTitleSlug, isSlugConflict } from '@/lib/slug-server';
 import { ZoneError } from '@/lib/zones/queries';
 import { createZonePost, type AttachmentInput, type ZonePostInput } from '@/lib/zones/post-queries';
 import { ZONE_LIMITS, ZONE_MEDIA_KEY_RE, ZONE_POST_VISIBILITIES, type ZonePostVisibilityValue } from '@/lib/zones/shared';
@@ -20,7 +26,12 @@ export const MAX_REPORT_ASSETS = 300;
 
 export interface ZoneReportView {
   id: string;
-  zoneId: string;
+  /** 分享到版块后才有。 */
+  zoneId: string | null;
+  slug: string | null;
+  visibility: ContentVisibility;
+  instructions: string;
+  instructionMode: 'append' | 'override';
   kind: ZoneReportKind;
   title: string;
   subject: string;
@@ -38,7 +49,7 @@ export interface ZoneReportView {
   updatedAt: string;
   createdBy: PublicAuthor;
   isMine: boolean;
-  post: { id: string; slug: string | null; title: string } | null;
+  post: { id: string; slug: string | null; title: string; zoneSlug: string; zoneName: string } | null;
 }
 
 export interface ZoneReportAssetView {
@@ -57,6 +68,8 @@ export interface ZoneReportDetailView extends ZoneReportView {
   authorMatches: AuthorMatchView[];
   assets: ZoneReportAssetView[];
   warnings: string[];
+  /** 指定成员可见的名单（只给所有者 / 管理员）。 */
+  audience: AudiencePick[];
 }
 
 const REPORT_LIST_SELECT = {
@@ -78,8 +91,12 @@ const REPORT_LIST_SELECT = {
   createdAt: true,
   updatedAt: true,
   createdById: true,
+  slug: true,
+  visibility: true,
+  instructions: true,
+  instructionMode: true,
   createdBy: AUTHOR_IDENTITY_SELECT,
-  post: { select: { id: true, slug: true, title: true, deletedAt: true } },
+  post: { select: { id: true, slug: true, title: true, deletedAt: true, zone: { select: { slug: true, name: true } } } },
   _count: { select: { assets: true } },
 } satisfies Prisma.ZoneReportSelect;
 
@@ -91,6 +108,10 @@ function toView(r: ReportListRow, viewerId: string | null, canSeeIdentity: boole
   return {
     id: r.id,
     zoneId: r.zoneId,
+    slug: r.slug,
+    visibility: r.visibility,
+    instructions: r.instructions,
+    instructionMode: r.instructionMode === 'override' ? 'override' : 'append',
     kind: r.kind,
     title: r.title,
     subject: r.subject,
@@ -108,18 +129,20 @@ function toView(r: ReportListRow, viewerId: string | null, canSeeIdentity: boole
     updatedAt: r.updatedAt.toISOString(),
     createdBy: toPublicAuthor(r.createdBy, canSeeIdentity),
     isMine: !!viewerId && viewerId === r.createdById,
-    post: r.post && !r.post.deletedAt ? { id: r.post.id, slug: r.post.slug, title: r.post.title } : null,
+    post: r.post && !r.post.deletedAt ? { id: r.post.id, slug: r.post.slug, title: r.post.title, zoneSlug: r.post.zone.slug, zoneName: r.post.zone.name } : null,
   };
 }
 
-export async function listZoneReports(zoneId: string, viewerId: string | null, canSeeIdentity: boolean, take = 50): Promise<ZoneReportView[]> {
-  const rows = await prisma.zoneReport.findMany({ where: { zoneId }, orderBy: { createdAt: 'desc' }, take: Math.min(200, take), select: REPORT_LIST_SELECT });
+/** 我创建的报告（工具页列表）。 */
+export async function listMyReports(viewerId: string, canSeeIdentity: boolean, take = 50): Promise<ZoneReportView[]> {
+  const rows = await prisma.zoneReport.findMany({ where: { createdById: viewerId }, orderBy: { createdAt: 'desc' }, take: Math.min(200, take), select: REPORT_LIST_SELECT });
   return rows.map((r) => toView(r, viewerId, canSeeIdentity));
 }
 
-export async function getZoneReportDetail(zoneId: string, reportId: string, viewerId: string | null, canSeeIdentity: boolean): Promise<ZoneReportDetailView | null> {
-  const r = await prisma.zoneReport.findFirst({
-    where: { id: reportId, zoneId },
+/** 详情（调用方先过 canSeeReport）。`withAudience` 只给所有者 / 管理员。 */
+export async function getReportDetail(reportId: string, viewerId: string | null, canSeeIdentity: boolean, opts: { withAudience?: boolean } = {}): Promise<ZoneReportDetailView | null> {
+  const r = await prisma.zoneReport.findUnique({
+    where: { id: reportId },
     select: {
       ...REPORT_LIST_SELECT,
       reportJson: true,
@@ -140,6 +163,7 @@ export async function getZoneReportDetail(zoneId: string, reportId: string, view
     authorMatches: await authorMatchViews(matches, canSeeIdentity),
     assets: r.assets.map((a) => ({ id: a.id, key: a.key, name: a.name, kind: a.kind, sizeBytes: a.sizeBytes, libraryDoc: a.libraryDocId ? (docById.get(a.libraryDocId) ?? null) : null, url: zoneMediaPublicUrl(a.key) })),
     warnings: Array.isArray(warnings) ? warnings.slice(0, 50) : [],
+    audience: opts.withAudience ? await loadAudience('report', r.id, canSeeIdentity) : [],
   };
 }
 
@@ -167,6 +191,9 @@ export const createReportInputSchema = z
     /** 一次上传的整个文件夹 / zip（`file/*.zip`）；流水线第一步解包（lib/zones/reports/bundle.ts 的规则）。 */
     bundleKey: z.string().regex(ZONE_MEDIA_KEY_RE).nullable().default(null),
     assets: z.array(reportAssetInputSchema).max(MAX_REPORT_ASSETS).default([]),
+    /** 用户的补充要求（进每一步提示词）；override = 取代默认写作规范。 */
+    instructions: z.string().trim().max(4000).default(''),
+    instructionMode: z.enum(['append', 'override']).default('append'),
   })
   .refine((v) => !!v.sourceKey || !!v.importKey || !!v.bundleKey, { message: 'source_required' });
 export type CreateReportInput = z.infer<typeof createReportInputSchema>;
@@ -179,19 +206,40 @@ async function assertOnDisk(keys: string[]): Promise<void> {
   }
 }
 
-export async function createZoneReport(zoneId: string, creatorId: string, input: CreateReportInput): Promise<{ id: string }> {
+export const REPORT_RESERVED_SLUGS = ['new'] as const;
+
+/** 独立分享页的 slug：标题 slug，全站唯一（退休的也不复用）。 */
+export function pickReportSlug(title: string, exceptId?: string): Promise<string> {
+  return freeTitleSlug({
+    kind: 'report',
+    title,
+    fallback: 'report',
+    reserved: REPORT_RESERVED_SLUGS,
+    takenUnder: (base) =>
+      prisma.zoneReport
+        .findMany({ where: { slug: { startsWith: base }, ...(exceptId ? { id: { not: exceptId } } : {}) }, select: { slug: true } })
+        .then((rows) => rows.map((r) => r.slug).filter((x): x is string => !!x)),
+  });
+}
+
+export async function createReport(creatorId: string, input: CreateReportInput): Promise<{ id: string }> {
   const keys = [input.sourceKey, input.manifestKey, input.importKey, input.bundleKey, ...input.assets.map((a) => a.key)].filter((k): k is string => !!k);
   if (new Set(keys).size !== keys.length) throw new ZoneError('attachments_invalid', 400);
   await assertOnDisk(keys);
   if (input.periodStart && input.periodEnd && input.periodStart > input.periodEnd) throw new ZoneError('invalid_input', 400);
   const title = input.title || (input.subject ? `${input.subject} · ${{ daily: '日报', weekly: '周报', monthly: '月报', custom: '报告' }[input.kind]}` : '报告');
-  const row = await prisma.zoneReport.create({
+  const row = await createWithSlug(
+    () => pickReportSlug(title),
+    (slug) =>
+      prisma.zoneReport.create({
     data: {
-      zoneId,
+      slug,
       createdById: creatorId,
       kind: input.kind,
       title,
       subject: input.subject,
+      instructions: input.instructions,
+      instructionMode: input.instructionMode,
       periodStart: input.periodStart ? new Date(`${input.periodStart}T00:00:00Z`) : null,
       periodEnd: input.periodEnd ? new Date(`${input.periodEnd}T00:00:00Z`) : null,
       sourceKey: input.sourceKey,
@@ -204,9 +252,65 @@ export async function createZoneReport(zoneId: string, creatorId: string, input:
       assets: { create: input.assets.map((a) => ({ key: a.key, name: a.name.slice(0, 200), kind: a.kind, mimeType: a.mimeType, sizeBytes: a.sizeBytes })) },
     },
     select: { id: true },
-  });
+      }),
+  );
   triggerZoneReport(row.id);
   return row;
+}
+
+// ── 可见范围（独立分享页；docs/contracts/audience.md）────────────────────────
+
+export const reportSettingsInputSchema = z.object({
+  title: z.string().trim().min(1).max(ZONE_LIMITS.postTitleMax).optional(),
+  visibility: z.enum(['public', 'private', 'audience']).optional(),
+  audienceUserIds: z.array(z.string().min(1).max(64)).max(200).optional(),
+});
+export type ReportSettingsInput = z.infer<typeof reportSettingsInputSchema>;
+
+/** 改标题 / 可见范围 / 名单（所有者）。可见范围列与名单同一事务；事务后给新获准的人发通知（失败只记日志）。 */
+export async function updateReportSettings(reportId: string, actorId: string, input: ReportSettingsInput): Promise<void> {
+  const r = await prisma.zoneReport.findUnique({ where: { id: reportId }, select: { id: true, createdById: true, title: true, slug: true, visibility: true } });
+  if (!r) throw new ZoneError('not_found', 404);
+  // 报告没有草稿态：分享页随时可开（live 恒 true）。
+  const before: AudienceState = { live: true, visibility: r.visibility as ContentVisibility, audience: await loadAudienceIds(r.id) };
+  let slug = r.slug;
+  if (input.title && input.title !== r.title) {
+    try {
+      slug = await pickReportSlug(input.title, r.id);
+    } catch (e) {
+      if (!isSlugConflict(e)) throw e;
+    }
+  }
+  const after = await prisma.$transaction(async (tx) => {
+    await tx.zoneReport.update({
+      where: { id: r.id },
+      data: {
+        ...(input.title ? { title: input.title, slug } : {}),
+        ...(input.visibility ? { visibility: input.visibility } : {}),
+      },
+    });
+    const ids = input.audienceUserIds !== undefined ? (await replaceAudience(tx, 'report', r.id, input.audienceUserIds, { ownerId: r.createdById, addedById: actorId })).userIds : before.audience;
+    return { live: true, visibility: (input.visibility ?? before.visibility) as ContentVisibility, audience: ids } satisfies AudienceState;
+  });
+  const granted = newlyGrantedAudience(before, after);
+  if (granted.length) {
+    try {
+      const actor = await prisma.user.findUnique({ where: { id: actorId }, select: { displayName: true, handle: true } });
+      await notifyAudienceGranted({ recipientIds: granted, actorId, actorName: actor?.displayName?.trim() || actor?.handle || '', what: '报告', title: input.title ?? r.title, link: reportHref({ id: r.id, slug }) });
+    } catch (e) {
+      console.error('[report] audience notify failed', e);
+    }
+  }
+}
+
+/** 独立分享页的路径（标题 slug，老行没有 slug 时退回 id）。 */
+export function reportHref(r: { id: string; slug: string | null }): string {
+  return `/reports/${encodeURIComponent(r.slug ?? r.id)}`;
+}
+
+async function loadAudienceIds(reportId: string): Promise<string[]> {
+  const rows = await prisma.contentAudience.findMany({ where: { kind: 'report', itemId: reportId }, select: { userId: true } });
+  return rows.map((x) => x.userId);
 }
 
 /** 失败 / 中断的重试：从失败的那一步继续（中间产物在行上）。 */
@@ -243,8 +347,8 @@ export async function publishZoneReport(
   input: PublishReportInput,
   opts: { canModerate: boolean },
 ): Promise<{ id: string; slug: string | null }> {
-  const r = await prisma.zoneReport.findFirst({
-    where: { id: reportId, zoneId: zone.id },
+  const r = await prisma.zoneReport.findUnique({
+    where: { id: reportId },
     select: { id: true, status: true, heartbeatAt: true, title: true, reportJson: true, authorMatches: true, postId: true, assets: { select: { key: true, name: true, kind: true, mimeType: true, sizeBytes: true } } },
   });
   if (!r) throw new ZoneError('not_found', 404);
@@ -275,6 +379,7 @@ export async function publishZoneReport(
     regenerateAccessCode: false,
   };
   const post = await createZonePost(zone, actorId, postInput, { canModerate: opts.canModerate });
-  await prisma.zoneReport.update({ where: { id: r.id }, data: { postId: post.id } });
+  // 分享到哪个版块，报告就归到哪个版块（帖子页靠 post.report 原生渲染）。
+  await prisma.zoneReport.update({ where: { id: r.id }, data: { postId: post.id, zoneId: zone.id } });
   return post;
 }

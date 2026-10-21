@@ -56,7 +56,8 @@
     "mega_zone_mine": "Mes espaces",
     "mega_lab_zones": "{count, plural, one {# espace} other {# espaces}}",
     "mega_lab_labs": "Laboratoires",
-    "mega_lab_labs_empty": "Laboratoires à compléter"
+    "mega_lab_labs_empty": "Laboratoires à compléter",
+    "tools": "Outils"
   },
   "home": {
     "trending": "Tendances de la semaine",
@@ -638,7 +639,9 @@
     "ce_err_clip_invalid": "Impossible de découper cette vidéo — importez-la à nouveau",
     "ce_err_clip_in_progress": "Votre extrait précédent est encore en cours de création — réessayez dans un instant",
     "ce_trim_poster_only_failed": "Impossible de créer un extrait à partir de cette vidéo : la carte n’affiche que la couverture choisie.",
-    "ce_trim_decode_unknown": "Ce navigateur ne peut pas afficher l’original : impossible de le découper ici — essayez un autre navigateur."
+    "ce_trim_decode_unknown": "Ce navigateur ne peut pas afficher l’original : impossible de le découper ici — essayez un autre navigateur.",
+    "notif_type_report_ready": "Génération de rapport",
+    "notif_hint_report_ready": "Quand un rapport soumis dans Outils → Discussion → rapport est terminé ou a échoué"
   },
   "video": {
     "nav": "Vidéos geek",
@@ -4783,15 +4786,15 @@
     "report_pick_folder": "Choisir un dossier",
     "report_pick_zip": "Choisir un zip",
     "report_pick_files": "Choisir des fichiers",
-    "report_bundle_hint": "Déposez le dossier entier exporté depuis WeLink / récupéré avec welink-cli : la discussion (.txt ou .json welink-cli), le manifeste des pièces jointes .csv et les images et fichiers téléchargés. S'il contient un report.json produit par le skill, il est importé tel quel sans appeler le modèle. Un seul envoi ; le serveur le décompresse avec les règles affichées ici.",
+    "report_bundle_hint": "Déposez le dossier entier exporté depuis WeLink / récupéré avec welink-cli : la détection lit le contenu des fichiers, pas leurs noms — JSON welink-cli (plusieurs fichiers sont fusionnés) ou export TXT, manifeste des pièces jointes (csv ou images.json), images et fichiers téléchargés, listes de noms. Un report.json produit par le skill est importé tel quel sans appeler le modèle. Un seul envoi ; le serveur le décompresse avec les règles affichées ici.",
     "report_bundle_picked": "{count} fichiers · {size}",
     "report_bundle_reading": "Lecture de l'index du zip…",
     "report_bundle_bad_zip": "Impossible de lire ce fichier zip",
-    "report_bundle_no_chat": "Aucune discussion (.txt / .json welink-cli) ni report.json trouvé",
+    "report_bundle_no_chat": "Aucune discussion reconnue : soit du JSON welink-cli (messages avec msgId / serverSendTime), soit un export TXT (lignes commençant par [AAAA-MM-JJ HH:mm:ss] nom (compte), ou en-têtes #### date ####). La détection lit le contenu, pas le nom du fichier.",
     "report_bundle_too_large": "La taille totale dépasse {max} ; divisez l'envoi ou retirez les gros fichiers",
     "report_zipping": "Compression de {count} fichiers…",
     "report_detected_import": "report.json (mode import, sans appel au modèle)",
-    "report_detected_pages": "{count} pages JSON welink-cli (seront fusionnées)",
+    "report_detected_pages": "{count} fichiers JSON welink-cli (fusionnés, dédupliqués par msgId)",
     "report_detected_chat": "Discussion",
     "report_detected_manifest": "Manifeste des pièces jointes (requis pour les images en ligne ; facultatif)",
     "report_detected_assets": "{images} images · {files} fichiers",
@@ -4858,7 +4861,14 @@
     "report_kind_tag_weekly": "Hebdomadaire",
     "report_kind_tag_monthly": "Mensuel",
     "report_kind_tag_custom": "Veille technique",
-    "report_post_native_note": "Ce billet est un rapport : le corps est rendu nativement depuis les données du rapport (chronologie, panneau des sources, originaux). Le texte modifié ici ne sert qu'au résumé, à la recherche et au repli ; régénérez le rapport pour en changer le contenu."
+    "report_post_native_note": "Ce billet est un rapport : le corps est rendu nativement depuis les données du rapport (chronologie, panneau des sources, originaux). Le texte modifié ici ne sert qu'au résumé, à la recherche et au repli ; régénérez le rapport pour en changer le contenu.",
+    "report_instructions": "Consignes supplémentaires (facultatif)",
+    "report_instructions_placeholder": "ex. : se concentrer sur les systèmes d'inférence et l'interconnexion des puces ; formuler chaque enseignement comme un conseil pour notre entreprise ; ignorer les discussions hors travail ; rester concis.",
+    "report_instructions_append": "Ajouter au guide par défaut (recommandé)",
+    "report_instructions_override": "Remplacer le guide par défaut (format et règles de citation conservés)",
+    "report_instructions_show_guide": "Afficher le guide par défaut",
+    "report_instructions_hide_guide": "Masquer le guide par défaut",
+    "report_instructions_hint": "Ce texte est injecté dans chaque étape (regroupement / thèmes / recap / points clés). Les champs, la forme JSON et la règle « ne citer que ce qui est dans l'enregistrement » restent inchangés."
   },
   "translate": {
     "translate": "Traduire",
@@ -4914,5 +4924,35 @@
     "save": "Enregistrer",
     "cancel": "Annuler",
     "close": "Fermer"
+  },
+  "tools": {
+    "title": "Outils",
+    "subtitle": "Petits outils indépendants des sections : déposez vos fichiers, générez en arrière-plan, puis exportez, partagez une page ou publiez dans une zone.",
+    "chat_report_title": "Discussion → rapport",
+    "chat_report_desc": "Transformez un export de groupe WeLink et ses images / fichiers en rapport quotidien, hebdomadaire ou mensuel : export Word / PDF, page de partage avec audience, ou publication dans une rubrique de zone.",
+    "chat_report_new": "Nouveau rapport",
+    "report_export": "Exporter",
+    "report_export_failed": "Échec de l'export",
+    "report_export_pdf_unavailable": "LibreOffice n'est pas installé sur le serveur : exportez en Word puis enregistrez en PDF localement.",
+    "report_open_page": "Ouvrir la page de partage",
+    "report_share_page": "Page de partage",
+    "report_share_page_hint": "Le rapport a sa propre page ; choisissez ici qui peut l'ouvrir (public = tout utilisateur connecté ; masqué = vous seul ; audience = les personnes listées). Un billet partagé dans une zone suit la visibilité de ce billet.",
+    "report_copy_link": "Copier le lien",
+    "report_link_copied": "Lien copié",
+    "report_link_copy_failed": "Échec de la copie — copiez la barre d'adresse",
+    "report_save_settings": "Enregistrer",
+    "report_settings_saved": "Enregistré",
+    "report_settings_failed": "Échec de l'enregistrement",
+    "report_share_zone": "Partager dans une zone",
+    "report_share_zone_hint": "Publier comme billet dans la zone choisie (vue native : chronologie, panneau des sources, originaux). Les intervenants reconnus par matricule peuvent être cochés comme co-auteurs.",
+    "report_target_zone": "Zone",
+    "report_pick_zone": "Choisir une zone…",
+    "report_no_zones": "Vous n'avez rejoint aucune zone.",
+    "report_delete": "Supprimer le rapport",
+    "report_delete_confirm": "Supprimer ce rapport ? Un billet déjà partagé dans une zone est conservé.",
+    "report_delete_failed": "Échec de la suppression",
+    "report_manage": "Gérer",
+    "report_shared_in": "Partagé dans « {zone} »",
+    "report_instructions_used": "Consignes utilisées ({mode})"
   }
 }

@@ -10,7 +10,7 @@ import { allocateSlug, decodeSlugParam, looksLikeCuid, titleSlug } from '@/lib/s
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
-export type SlugKind = 'library_doc' | 'video' | 'wiki_page' | 'vote' | 'event' | 'zone_post' | 'topic' | 'feedback' | 'announcement';
+export type SlugKind = 'library_doc' | 'video' | 'wiki_page' | 'vote' | 'event' | 'zone_post' | 'topic' | 'feedback' | 'announcement' | 'report';
 
 /**
  * The free title slug. `takenUnder(base)` returns every live slug that starts

@@ -16,7 +16,7 @@ import { withBasePath } from '@/lib/base-path';
 import type { PublicAuthor } from '@/lib/user-identity';
 import { embedKey, hostnameOf } from '@/lib/zones/shared';
 import type { EmbedData } from '@/lib/zones/types';
-import { BodyImageLightbox, type BodyImage } from '../post/BodyImageLightbox';
+import { BodyImageLightbox, type BodyImage } from '@/app/zones/_components/post/BodyImageLightbox';
 
 /** `**粗体**` → 高亮；`` `code` `` → code。其余纯文本。 */
 export function RichText({ text, className = '' }: { text: string; className?: string }) {
