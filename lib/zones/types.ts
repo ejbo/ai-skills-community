@@ -492,6 +492,8 @@ export interface ZoneHubFacets {
 /** 报告帖子原生渲染需要的一切（随帖子详情一次下发）。 */
 export interface ZonePostReportView {
   id: string;
+  /** 独立分享页的 slug（`/reports/<slug>`；老行为 null → 用 id）。 */
+  slug: string | null;
   report: Report;
   /** 发言人账号（小写）→ 站内用户（工号匹配上的才有）；头像 / 悬停名片用。 */
   speakers: Record<string, PublicAuthor>;

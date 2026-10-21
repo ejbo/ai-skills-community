@@ -19,6 +19,7 @@ import {
   notifyTopicReplyEmail,
   notifyAnnouncementEmail,
   notifyEventReminderEmail,
+  notifyReportReadyEmail,
   notifyZoneReplyEmail,
 } from '@/lib/email';
 
@@ -33,6 +34,8 @@ const DEFAULT_PREF = {
   emailAccessRequest: true,
   emailAccessDecision: true,
   emailAnnouncement: false,
+  inAppReportReady: true,
+  emailReportReady: true,
 };
 type Pref = typeof DEFAULT_PREF;
 
@@ -541,6 +544,39 @@ export async function notifyLibraryIngested(docId: string): Promise<void> {
     });
   } catch (e) {
     console.error('[notify] library ingested failed:', e);
+  }
+}
+
+// ─── 「聊天记录 → 报告」生成完成 ──────────────────────────────────────────
+
+/**
+ * The report a member submitted has settled: ready or failed. Fires once from the
+ * pipeline's terminal step (a retry fires again when IT settles). Gated by the
+ * user's NotificationPreference — in-app and email are separate switches
+ * (设置 → 通知 → 报告生成), both on by default: the member closed the tab and is
+ * waiting for exactly this.
+ */
+export async function notifyReportReady(reportId: string): Promise<void> {
+  try {
+    const r = await prisma.zoneReport.findUnique({
+      where: { id: reportId },
+      select: { id: true, slug: true, title: true, status: true, error: true, createdBy: { select: { id: true, email: true } } },
+    });
+    if (!r) return;
+    const failed = r.status === 'failed';
+    const name = truncate(r.title, 40);
+    const title = failed ? `《${name}》报告生成失败` : `《${name}》报告已生成`;
+    const body = failed ? truncate(r.error ?? '', 200) || null : '可以预览、导出 Word / PDF，或分享到技术专区';
+    const link = `/tools/chat-report/${r.id}`;
+    const pref = await getPref(r.createdBy.id);
+    if (pref.inAppReportReady) {
+      await createInApp({ recipientId: r.createdBy.id, actorId: null, type: 'report_ready', title, body, link });
+    }
+    if (pref.emailReportReady && r.createdBy.email) {
+      notifyReportReadyEmail({ to: r.createdBy.email, title, body: body ?? '', link: appUrl(link) });
+    }
+  } catch (e) {
+    console.error('[notify] report ready failed:', e);
   }
 }
 

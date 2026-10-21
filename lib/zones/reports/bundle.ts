@@ -1,55 +1,98 @@
-// 版块报告 — 「一次上传整个文件夹 / zip」的文件识别规则（docs/contracts/reports.md §2a）。
+// 「聊天记录 → 报告」— 「一次上传整个文件夹 / zip」的文件识别规则（docs/contracts/reports.md §2a）。
 //
 // 用户从 WeLink 导出 / 用 welink-cli 拉下来的东西通常是一个目录：
-//   加研思想院_9月/
-//     加研思想院_300.txt                 ← 聊天记录（WeLink 导出 TXT）
-//     或 page1.json page2.json …          ← welink-cli 分页 JSON（合并后再解析）
-//     加研思想院_9月_图片附件清单.csv       ← 附件清单（可选，图片随文的前提）
-//     加研思想院_9月_图片附件/ *.png *.pdf  ← 已下载的图片 / 文件
-//     wl_names/<账号>.json 或 names.json   ← 账号→姓名（welink-cli 输入才需要）
+//   加研思想院_0920-1015/
+//     加研思想院_300.txt 或 page_001.txt 或 welink-cli.json  ← 聊天记录（welink-cli 页 / 合并数组 / 两种 TXT 版式）
+//     加研思想院_图片附件清单.csv 或 images.json             ← 附件清单（可选，图片随文的前提）
+//     加研思想院_图片附件/ *.png *.pdf                      ← 已下载的图片 / 文件
+//     wl_names/<账号>.json 或 names.json                   ← 账号→姓名（welink-cli 输入才需要）
 //     report.json（skill 产物，有它就走导入模式）
-// 本文件只做「按文件名 / 大小分类」，不读内容、不碰 node API，所以向导（浏览器）和
-// 流水线（服务端解 zip）用的是同一份规则——用户在向导里看到的识别结果就是服务端的结果。
+//
+// **按内容识别，不按文件名**（owner 2026-10-20：「文件读取这里还要灵活一点，不要什么名字一定要保持一致」）：
+// 每个文本类文件带着开头几 KB（`head`）进来，`sniffText` 判断它是 welink JSON（页 / 数组）、TXT 记录、清单、
+// 姓名表还是别的；扩展名只做兜底（没有 head 时）。所有 welink JSON 候选都会被合并（按 msgId 去重）。
+// 本文件不碰 node API：向导（浏览器）和流水线（服务端解 zip）用同一份规则，向导显示的识别结果就是服务端的结果。
 
 export interface BundleFile {
   /** zip / 文件夹内的相对路径（正斜杠）。 */
   path: string;
   size: number;
+  /** 文本类文件的开头（≤ HEAD_BYTES），由调用方读；没有就只按扩展名判断。 */
+  head?: string;
 }
 
+export type TextKind = 'welink_json' | 'welink_txt' | 'manifest' | 'names' | 'report_json' | 'other';
+
 export interface BundlePlan<T extends BundleFile = BundleFile> {
-  /** 聊天记录：TXT，或单个 welink-cli JSON。 */
-  source: T | null;
-  /** welink-cli 分页 JSON（≥ 2 个时按 msgId 去重合并成一个数组）。 */
-  sourcePages: T[];
+  /** 聊天记录：welink JSON（可多份，服务端合并）优先；否则一份 TXT。 */
+  sources: { file: T; kind: 'welink_json' | 'welink_txt' }[];
   manifest: T | null;
   importJson: T | null;
-  /** names.json / wl_names/*.json。 */
+  /** names.json / wl_names/*.json / 内容像 search person 输出的 json。 */
   names: T[];
   assets: { file: T; kind: 'image' | 'file' }[];
   /** 跳过的文件与原因（向导展示给用户）。 */
   ignored: { file: T; reason: string }[];
 }
 
+/** 调用方读 head 时取这么多字节就够判断了。 */
+export const HEAD_BYTES = 8 * 1024;
+/** 超过这个大小的文本文件不读 head（向导里是浏览器内存；服务端也没必要）。 */
+export const MAX_SNIFF_BYTES = 200 * 1024 * 1024;
+
 export const BUNDLE_IMAGE_RE = /\.(png|jpe?g|gif|webp|avif)$/i;
+const TEXT_EXT_RE = /\.(txt|json|csv|log|md)$/i;
 const SKIP_DIR_RE = /(^|\/)(__MACOSX|\.git|node_modules|work)(\/|$)/;
 const SKIP_NAME = new Set(['.ds_store', 'thumbs.db', 'desktop.ini']);
 const SKILL_OUTPUT_NAMES = new Set(['report.html', 'report.md', 'digest.md', 'stats.json', 'links.json', 'messages.json', 'themes.json', 'overview.json', 'recap.json']);
 const MANIFEST_HINT_RE = /清单|manifest|attach|image|图片/i;
-/** welink-monthly-report 契约的合并消息 JSON（`*_msgs.json`）：比 TXT 全（附件协议块 / 引用卡片都在），有它就优先。 */
-const MSGS_JSON_RE = /_msgs\.json$/i;
+const TXT_HEAD_RE = /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*\S/m;
+const TXT_DAY_RE = /^#{2,}\s*\d{4}-\d{2}-\d{2}\s*#{2,}\s*$/m;
+const TXT_TIME_RE = /^\[\d{2}:\d{2}:\d{2}\]\s*\S/m;
 
 export function bundleBasename(path: string): string {
   const i = path.lastIndexOf('/');
   return i >= 0 ? path.slice(i + 1) : path;
 }
 
+/** 文本类扩展名（会被读 head 的那些）。 */
+export function isTextLike(path: string): boolean {
+  const base = bundleBasename(path);
+  return TEXT_EXT_RE.test(base) || !base.includes('.');
+}
+
+/**
+ * 看开头几 KB 判断一个文本文件是什么。welink JSON 的特征是消息对象里的 msgId + serverSendTime
+ * （页：respData.chatInfo；数组：[{msgId…}]）；清单看表头 / fname+url；姓名表看 search_cli_person 或
+ * 纯 {账号: 姓名}；TXT 记录看两种版式的行头。
+ */
+export function sniffText(head: string, path = ''): TextKind {
+  let t = head.replace(/^\uFEFF/, '').replace(/\u001b\[[0-9;]*m/g, '').trimStart();
+  const base = bundleBasename(path).toLowerCase();
+  if (!t) return 'other';
+  // welink-cli 的输出常带一两行 CLI 文字再接 JSON：JSON 开头在前 200 字符内就从那里看
+  const j = t.search(/[[{]\s*["{[]/); // `{"` / `[{` / `[[`：JSON 的开头，`[2026-09-20 …]` 这种 TXT 行头不算
+  if (j > 0 && j < 200) t = t.slice(j);
+  if (base === 'report.json' || (t.startsWith('{') && /"schemaVersion"\s*:\s*1/.test(t) && /"themes"/.test(t))) return 'report_json';
+  if (t.startsWith('{') || t.startsWith('[')) {
+    if (/"search_cli_person"/.test(t)) return 'names';
+    if (/"msgId"\s*:/.test(t) && /"serverSendTime"\s*:/.test(t)) return 'welink_json';
+    if (/"chatInfo"\s*:/.test(t)) return 'welink_json';
+    if (t.startsWith('[') && /"fname"\s*:/.test(t) && /"url"\s*:/.test(t)) return 'manifest';
+    if (base === 'names.json' || (t.startsWith('{') && /^\{\s*"[a-z]\d{6,10}"\s*:\s*"/i.test(t))) return 'names';
+    return 'other';
+  }
+  if (TXT_HEAD_RE.test(t) || (TXT_DAY_RE.test(t) && TXT_TIME_RE.test(t))) return 'welink_txt';
+  const firstLine = t.split(/\r?\n/, 1)[0] ?? '';
+  if (/文件名/.test(firstLine) && /(外链|提取码|发送人)/.test(firstLine)) return 'manifest';
+  return 'other';
+}
+
 /** 把一组文件按角色分类；输入顺序无关，结果是确定性的。 */
 export function planReportBundle<T extends BundleFile>(files: T[]): BundlePlan<T> {
-  const plan: BundlePlan<T> = { source: null, sourcePages: [], manifest: null, importJson: null, names: [], assets: [], ignored: [] };
+  const plan: BundlePlan<T> = { sources: [], manifest: null, importJson: null, names: [], assets: [], ignored: [] };
+  const csvCandidates: T[] = [];
   const txts: T[] = [];
-  const jsons: T[] = [];
-  const csvs: T[] = [];
   const rest: T[] = [];
 
   for (const f of [...files].sort((a, b) => a.path.localeCompare(b.path))) {
@@ -68,11 +111,51 @@ export function planReportBundle<T extends BundleFile>(files: T[]): BundlePlan<T
       plan.ignored.push({ file: f, reason: 'nested_zip' });
       continue;
     }
-    if (lower === 'report.json') {
-      if (!plan.importJson || f.size > plan.importJson.size) plan.importJson = f;
+    if (/(^|\/)wl_names\//i.test(path) && lower.endsWith('.json')) {
+      plan.names.push(f);
       continue;
     }
-    if (lower === 'names.json' || (/(^|\/)wl_names\//i.test(path) && lower.endsWith('.json'))) {
+    // 文本类：按内容
+    if (isTextLike(path) && f.head !== undefined) {
+      const kind = sniffText(f.head, path);
+      if (kind === 'report_json') {
+        if (!plan.importJson || f.size > plan.importJson.size) plan.importJson = f;
+        continue;
+      }
+      if (kind === 'welink_json') {
+        plan.sources.push({ file: f, kind });
+        continue;
+      }
+      if (kind === 'welink_txt') {
+        txts.push(f);
+        continue;
+      }
+      if (kind === 'names') {
+        plan.names.push(f);
+        continue;
+      }
+      if (kind === 'manifest') {
+        csvCandidates.push(f);
+        continue;
+      }
+      // 内容认不出来的文本：skill 的中间产物直接忽略；csv 还可能是清单（表头不标准）；其余当附件文件
+      if (SKILL_OUTPUT_NAMES.has(lower) || lower.endsWith('.json')) {
+        plan.ignored.push({ file: f, reason: 'unrecognized_json' });
+        continue;
+      }
+      if (lower.endsWith('.csv')) {
+        csvCandidates.push(f);
+        continue;
+      }
+      rest.push(f);
+      continue;
+    }
+    // 没有 head（调用方没读）：退回扩展名规则
+    if (lower === 'report.json') {
+      plan.importJson = f;
+      continue;
+    }
+    if (lower === 'names.json') {
       plan.names.push(f);
       continue;
     }
@@ -81,42 +164,36 @@ export function planReportBundle<T extends BundleFile>(files: T[]): BundlePlan<T
       continue;
     }
     if (lower.endsWith('.txt')) txts.push(f);
-    else if (lower.endsWith('.json')) jsons.push(f);
-    else if (lower.endsWith('.csv')) csvs.push(f);
+    else if (lower.endsWith('.json')) plan.sources.push({ file: f, kind: 'welink_json' });
+    else if (lower.endsWith('.csv')) csvCandidates.push(f);
     else rest.push(f);
   }
 
-  // 聊天记录：`*_msgs.json` 最优先（welink-cli 合并产物，信息最全）；其次最大的 TXT；都没有时把 JSON 当 welink-cli 页
-  const msgsJson = jsons.filter((f) => MSGS_JSON_RE.test(bundleBasename(f.path))).sort((a, b) => b.size - a.size)[0];
-  if (msgsJson) {
-    plan.source = msgsJson;
-    for (const f of jsons) if (f !== msgsJson) plan.ignored.push({ file: f, reason: 'json_with_msgs' });
-    for (const f of txts) plan.ignored.push({ file: f, reason: 'txt_with_msgs' });
+  // 记录：有 JSON 就全用 JSON（服务端合并去重）；否则最大的 TXT；其余 TXT 当附件
+  if (plan.sources.length) {
+    for (const f of txts) plan.ignored.push({ file: f, reason: 'txt_with_json' });
   } else if (txts.length) {
     txts.sort((a, b) => b.size - a.size);
-    plan.source = txts[0];
+    plan.sources.push({ file: txts[0], kind: 'welink_txt' });
     for (const f of txts.slice(1)) plan.assets.push({ file: f, kind: 'file' });
-    for (const f of jsons) plan.ignored.push({ file: f, reason: 'json_with_txt' });
-  } else if (jsons.length === 1) {
-    plan.source = jsons[0];
-  } else if (jsons.length > 1) {
-    plan.sourcePages = jsons;
   }
 
-  // 清单：名字像清单的优先，否则第一个 CSV；其余 CSV 当附件
-  if (csvs.length) {
-    const hinted = csvs.find((f) => MANIFEST_HINT_RE.test(bundleBasename(f.path)));
-    plan.manifest = hinted ?? csvs[0];
-    for (const f of csvs) if (f !== plan.manifest) plan.assets.push({ file: f, kind: 'file' });
+  // 清单：内容认出来的优先（csvCandidates 里 sniff 为 manifest 的），再按名字提示，再第一个；其余 csv 当附件
+  if (csvCandidates.length) {
+    const byContent = csvCandidates.find((f) => f.head !== undefined && sniffText(f.head, f.path) === 'manifest');
+    const hinted = csvCandidates.find((f) => MANIFEST_HINT_RE.test(bundleBasename(f.path)));
+    plan.manifest = byContent ?? hinted ?? csvCandidates[0];
+    for (const f of csvCandidates) if (f !== plan.manifest) plan.assets.push({ file: f, kind: 'file' });
   }
 
   for (const f of rest) plan.assets.push({ file: f, kind: BUNDLE_IMAGE_RE.test(f.path) ? 'image' : 'file' });
   plan.assets.sort((a, b) => a.file.path.localeCompare(b.file.path));
+  plan.sources.sort((a, b) => a.file.path.localeCompare(b.file.path));
   return plan;
 }
 
 export function bundleHasChat(plan: BundlePlan): boolean {
-  return !!plan.source || plan.sourcePages.length > 0 || !!plan.importJson;
+  return plan.sources.length > 0 || !!plan.importJson;
 }
 
 function stripAnsi(text: string): string {
@@ -125,10 +202,11 @@ function stripAnsi(text: string): string {
 }
 
 function jsonBody(text: string): unknown {
-  const t = stripAnsi(text);
-  const a = t.indexOf('{');
-  const b = t.lastIndexOf('}');
-  if (a < 0 || b < a) return null;
+  const t = stripAnsi(text).replace(/^\uFEFF/, '');
+  const a = Math.min(...[t.indexOf('{'), t.indexOf('[')].filter((i) => i >= 0));
+  if (!Number.isFinite(a)) return null;
+  const b = Math.max(t.lastIndexOf('}'), t.lastIndexOf(']'));
+  if (b < a) return null;
   try {
     return JSON.parse(t.slice(a, b + 1)) as unknown;
   } catch {
@@ -136,14 +214,15 @@ function jsonBody(text: string): unknown {
   }
 }
 
-/** welink-cli 分页输出 → 一个按 msgId 去重的消息数组（JSON 字符串），交给 parseChat。 */
+/** 所有 welink JSON 候选（页 / 合并数组，混着也行）→ 一个按 msgId 去重的消息数组（JSON 字符串）。 */
 export function mergeWelinkPages(texts: string[]): string {
   const seen = new Map<string, unknown>();
   for (const text of texts) {
     const o = jsonBody(text) as { respData?: { chatInfo?: unknown[] }; chatInfo?: unknown[] } | unknown[] | null;
     const list: unknown[] = Array.isArray(o) ? o : (o?.respData?.chatInfo ?? o?.chatInfo ?? []);
     for (const m of list) {
-      const id = String((m as { msgId?: unknown })?.msgId ?? seen.size);
+      if (!m || typeof m !== 'object') continue;
+      const id = String((m as { msgId?: unknown }).msgId ?? `_${seen.size}`);
       if (!seen.has(id)) seen.set(id, m);
     }
   }
@@ -157,14 +236,15 @@ export function namesFromBundle(entries: { path: string; text: string }[]): Reco
     const base = bundleBasename(e.path).toLowerCase();
     const o = jsonBody(e.text);
     if (!o || typeof o !== 'object') continue;
-    if (base === 'names.json') {
-      for (const [k, v] of Object.entries(o as Record<string, unknown>)) if (typeof v === 'string') out[k.toLowerCase()] = v;
+    const people = (o as { search_cli_person?: { data?: unknown[] } }).search_cli_person?.data;
+    if (Array.isArray(people)) {
+      const acc = base.replace(/\.json$/, '');
+      const arr = people as { w3account?: unknown; chineseName?: unknown }[];
+      const hit = arr.find((x) => String(x.w3account ?? '').toLowerCase() === acc) ?? arr[0];
+      if (hit && typeof hit.chineseName === 'string') out[String(hit.w3account ?? acc).toLowerCase()] = hit.chineseName;
       continue;
     }
-    const acc = base.replace(/\.json$/, '');
-    const arr = ((o as { search_cli_person?: { data?: unknown[] } }).search_cli_person?.data ?? []) as { w3account?: unknown; chineseName?: unknown }[];
-    const hit = arr.find((x) => String(x.w3account ?? '').toLowerCase() === acc) ?? arr[0];
-    if (hit && typeof hit.chineseName === 'string') out[acc] = hit.chineseName;
+    if (!Array.isArray(o)) for (const [k, v] of Object.entries(o as Record<string, unknown>)) if (typeof v === 'string') out[k.toLowerCase()] = v;
   }
   return out;
 }

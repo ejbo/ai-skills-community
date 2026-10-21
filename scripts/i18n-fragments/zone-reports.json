@@ -431,9 +431,9 @@
       "fr": "Choisir des fichiers"
     },
     "report_bundle_hint": {
-      "zh-CN": "把 WeLink 导出 / welink-cli 拉下来的整个目录交上来即可：聊天记录（.txt 或 welink-cli .json）、图片附件清单 .csv、已下载的图片与文件。目录里有 skill 产出的 report.json 就直接导入、不再调模型。一次上传、服务端解包，识别规则与这里显示的一致。",
-      "en": "Hand over the whole folder exported from WeLink / fetched with welink-cli: the chat record (.txt or welink-cli .json), the attachment manifest .csv and the downloaded images and files. If it contains a report.json produced by the skill it is imported as-is without calling the model. One upload; the server unpacks it with the same rules shown here.",
-      "fr": "Déposez le dossier entier exporté depuis WeLink / récupéré avec welink-cli : la discussion (.txt ou .json welink-cli), le manifeste des pièces jointes .csv et les images et fichiers téléchargés. S'il contient un report.json produit par le skill, il est importé tel quel sans appeler le modèle. Un seul envoi ; le serveur le décompresse avec les règles affichées ici."
+      "zh-CN": "把 WeLink 导出 / welink-cli 拉下来的整个目录交上来即可：识别按文件内容、不看文件名——welink-cli 的 JSON（可多份，自动合并）或 TXT 记录、图片附件清单（csv 或 images.json）、已下载的图片与文件、姓名表。目录里有 skill 产出的 report.json 就直接导入、不再调模型。一次上传、服务端解包，识别规则与这里显示的一致。",
+      "en": "Hand over the whole folder exported from WeLink / fetched with welink-cli: detection reads file contents, not names — welink-cli JSON (several files are merged) or a TXT export, the attachment manifest (csv or images.json), downloaded images and files, name lists. A report.json produced by the skill is imported as-is without calling the model. One upload; the server unpacks it with the same rules shown here.",
+      "fr": "Déposez le dossier entier exporté depuis WeLink / récupéré avec welink-cli : la détection lit le contenu des fichiers, pas leurs noms — JSON welink-cli (plusieurs fichiers sont fusionnés) ou export TXT, manifeste des pièces jointes (csv ou images.json), images et fichiers téléchargés, listes de noms. Un report.json produit par le skill est importé tel quel sans appeler le modèle. Un seul envoi ; le serveur le décompresse avec les règles affichées ici."
     },
     "report_bundle_picked": {
       "zh-CN": "{count} 个文件 · {size}",
@@ -451,9 +451,9 @@
       "fr": "Impossible de lire ce fichier zip"
     },
     "report_bundle_no_chat": {
-      "zh-CN": "没有找到聊天记录（.txt / welink-cli .json）或 report.json",
-      "en": "No chat record (.txt / welink-cli .json) or report.json found",
-      "fr": "Aucune discussion (.txt / .json welink-cli) ni report.json trouvé"
+      "zh-CN": "没有认出聊天记录：要么是 welink-cli 的 JSON（消息带 msgId / serverSendTime），要么是 TXT（每条以 [YYYY-MM-DD HH:mm:ss] 姓名（账号） 开头，或 #### 日期 #### 日头）。识别看内容不看文件名。",
+      "en": "No chat record recognised: either welink-cli JSON (messages with msgId / serverSendTime) or a TXT export (lines starting with [YYYY-MM-DD HH:mm:ss] name (account), or #### date #### day headers). Detection reads the content, not the file name.",
+      "fr": "Aucune discussion reconnue : soit du JSON welink-cli (messages avec msgId / serverSendTime), soit un export TXT (lignes commençant par [AAAA-MM-JJ HH:mm:ss] nom (compte), ou en-têtes #### date ####). La détection lit le contenu, pas le nom du fichier."
     },
     "report_bundle_too_large": {
       "zh-CN": "总大小超过 {max}，请分批或去掉大文件",
@@ -471,9 +471,9 @@
       "fr": "report.json (mode import, sans appel au modèle)"
     },
     "report_detected_pages": {
-      "zh-CN": "welink-cli 分页 JSON {count} 页（将合并）",
-      "en": "{count} welink-cli JSON pages (will be merged)",
-      "fr": "{count} pages JSON welink-cli (seront fusionnées)"
+      "zh-CN": "welink-cli JSON {count} 份（将按 msgId 合并去重）",
+      "en": "{count} welink-cli JSON files (merged, deduplicated by msgId)",
+      "fr": "{count} fichiers JSON welink-cli (fusionnés, dédupliqués par msgId)"
     },
     "report_detected_chat": {
       "zh-CN": "聊天记录",
@@ -809,6 +809,41 @@
       "zh-CN": "这是报告帖子：正文由报告数据原生渲染（时间线、来源侧栏、看原文）。这里编辑的正文只用于摘要、搜索与回退，不会改变报告视图；要改内容请重新生成报告。",
       "en": "This is a report post: the body is rendered natively from the report data (timeline, source panel, originals). Text edited here is used only for the summary, search and fallback and does not change the report view; regenerate the report to change its content.",
       "fr": "Ce billet est un rapport : le corps est rendu nativement depuis les données du rapport (chronologie, panneau des sources, originaux). Le texte modifié ici ne sert qu'au résumé, à la recherche et au repli ; régénérez le rapport pour en changer le contenu."
+    },
+    "report_instructions": {
+      "zh-CN": "补充要求（可选）",
+      "en": "Extra instructions (optional)",
+      "fr": "Consignes supplémentaires (facultatif)"
+    },
+    "report_instructions_placeholder": {
+      "zh-CN": "例如：重点关注推理系统与芯片互连；每个专题的启示写成对我司的建议；不要收录生活花絮；语气更简洁。",
+      "en": "e.g. Focus on inference systems and chip interconnect; write each takeaway as advice for our company; skip non-work chatter; keep it terse.",
+      "fr": "ex. : se concentrer sur les systèmes d'inférence et l'interconnexion des puces ; formuler chaque enseignement comme un conseil pour notre entreprise ; ignorer les discussions hors travail ; rester concis."
+    },
+    "report_instructions_append": {
+      "zh-CN": "追加到默认写法之后（推荐）",
+      "en": "Append to the default guide (recommended)",
+      "fr": "Ajouter au guide par défaut (recommandé)"
+    },
+    "report_instructions_override": {
+      "zh-CN": "取代默认写法（只保留格式与引用规则）",
+      "en": "Replace the default guide (format and citation rules stay)",
+      "fr": "Remplacer le guide par défaut (format et règles de citation conservés)"
+    },
+    "report_instructions_show_guide": {
+      "zh-CN": "查看默认写法",
+      "en": "Show the default guide",
+      "fr": "Afficher le guide par défaut"
+    },
+    "report_instructions_hide_guide": {
+      "zh-CN": "收起默认写法",
+      "en": "Hide the default guide",
+      "fr": "Masquer le guide par défaut"
+    },
+    "report_instructions_hint": {
+      "zh-CN": "这段话会进每一步提示词（聚类 / 专题 / 花絮 / 要点）。字段、JSON 形状与「只引用记录里的内容」的规则不受影响。",
+      "en": "This text goes into every step's prompt (clustering / topics / recap / highlights). Field names, JSON shape and the \"cite only what is in the record\" rule are unaffected.",
+      "fr": "Ce texte est injecté dans chaque étape (regroupement / thèmes / recap / points clés). Les champs, la forme JSON et la règle « ne citer que ce qui est dans l'enregistrement » restent inchangés."
     }
   },
   "api_errors": {
@@ -841,6 +876,167 @@
       "zh-CN": "请上传聊天记录或 report.json",
       "en": "Upload a chat export or a report.json",
       "fr": "Importez une discussion ou un report.json"
+    }
+  },
+  "tools": {
+    "title": {
+      "zh-CN": "工具",
+      "en": "Tools",
+      "fr": "Outils"
+    },
+    "subtitle": {
+      "zh-CN": "独立于各个板块的小工具：上传资料、异步生成，结果可以导出、分享页面或发到技术专区。",
+      "en": "Standalone utilities: upload material, generate asynchronously, then export, share a page or post to a zone.",
+      "fr": "Petits outils indépendants des sections : déposez vos fichiers, générez en arrière-plan, puis exportez, partagez une page ou publiez dans une zone."
+    },
+    "chat_report_title": {
+      "zh-CN": "聊天记录 → 报告",
+      "en": "Chat → report",
+      "fr": "Discussion → rapport"
+    },
+    "chat_report_desc": {
+      "zh-CN": "把 WeLink 群聊记录和配套图片、文件整理成日报 / 周报 / 月报：可导出 Word / PDF，生成独立分享页并设置谁可读，或分享到技术专区的指定栏目。",
+      "en": "Turn a WeLink group export plus its images and files into a daily / weekly / monthly report: export to Word / PDF, publish a share page with its own audience, or post it into a zone column.",
+      "fr": "Transformez un export de groupe WeLink et ses images / fichiers en rapport quotidien, hebdomadaire ou mensuel : export Word / PDF, page de partage avec audience, ou publication dans une rubrique de zone."
+    },
+    "chat_report_new": {
+      "zh-CN": "新建报告",
+      "en": "New report",
+      "fr": "Nouveau rapport"
+    },
+    "report_export": {
+      "zh-CN": "导出",
+      "en": "Export",
+      "fr": "Exporter"
+    },
+    "report_export_failed": {
+      "zh-CN": "导出失败",
+      "en": "Export failed",
+      "fr": "Échec de l'export"
+    },
+    "report_export_pdf_unavailable": {
+      "zh-CN": "服务器没有安装 LibreOffice，暂时无法直接导出 PDF：先导出 Word，在本机另存为 PDF。",
+      "en": "LibreOffice is not installed on the server, so PDF export is unavailable: export Word and save as PDF locally.",
+      "fr": "LibreOffice n'est pas installé sur le serveur : exportez en Word puis enregistrez en PDF localement."
+    },
+    "report_open_page": {
+      "zh-CN": "打开分享页",
+      "en": "Open share page",
+      "fr": "Ouvrir la page de partage"
+    },
+    "report_share_page": {
+      "zh-CN": "分享页",
+      "en": "Share page",
+      "fr": "Page de partage"
+    },
+    "report_share_page_hint": {
+      "zh-CN": "报告有一个独立页面；在这里决定谁能打开它（公开 = 所有登录用户；隐藏 = 只有你；指定成员 = 名单上的人）。已分享到技术专区的帖子按帖子自己的可见范围。",
+      "en": "The report has its own page; decide here who can open it (public = any signed-in user; hidden = only you; audience = the people listed). A post shared into a zone follows that post's own visibility.",
+      "fr": "Le rapport a sa propre page ; choisissez ici qui peut l'ouvrir (public = tout utilisateur connecté ; masqué = vous seul ; audience = les personnes listées). Un billet partagé dans une zone suit la visibilité de ce billet."
+    },
+    "report_copy_link": {
+      "zh-CN": "复制链接",
+      "en": "Copy link",
+      "fr": "Copier le lien"
+    },
+    "report_link_copied": {
+      "zh-CN": "链接已复制",
+      "en": "Link copied",
+      "fr": "Lien copié"
+    },
+    "report_link_copy_failed": {
+      "zh-CN": "复制失败，请手动复制地址栏",
+      "en": "Copy failed — copy the address bar instead",
+      "fr": "Échec de la copie — copiez la barre d'adresse"
+    },
+    "report_save_settings": {
+      "zh-CN": "保存",
+      "en": "Save",
+      "fr": "Enregistrer"
+    },
+    "report_settings_saved": {
+      "zh-CN": "已保存",
+      "en": "Saved",
+      "fr": "Enregistré"
+    },
+    "report_settings_failed": {
+      "zh-CN": "保存失败",
+      "en": "Save failed",
+      "fr": "Échec de l'enregistrement"
+    },
+    "report_share_zone": {
+      "zh-CN": "分享到技术专区",
+      "en": "Share to a zone",
+      "fr": "Partager dans une zone"
+    },
+    "report_share_zone_hint": {
+      "zh-CN": "发成所选版块的一篇帖子（原生报告视图：时间线、来源侧栏、看原文）。群里按工号匹配到的发言人可勾为合著者。",
+      "en": "Publish as a post in the chosen zone (native report view: timeline, source panel, originals). Speakers matched by employee id can be ticked as co-authors.",
+      "fr": "Publier comme billet dans la zone choisie (vue native : chronologie, panneau des sources, originaux). Les intervenants reconnus par matricule peuvent être cochés comme co-auteurs."
+    },
+    "report_target_zone": {
+      "zh-CN": "版块",
+      "en": "Zone",
+      "fr": "Zone"
+    },
+    "report_pick_zone": {
+      "zh-CN": "选择版块…",
+      "en": "Pick a zone…",
+      "fr": "Choisir une zone…"
+    },
+    "report_no_zones": {
+      "zh-CN": "你还没有加入任何版块。",
+      "en": "You have not joined any zone yet.",
+      "fr": "Vous n'avez rejoint aucune zone."
+    },
+    "report_delete": {
+      "zh-CN": "删除报告",
+      "en": "Delete report",
+      "fr": "Supprimer le rapport"
+    },
+    "report_delete_confirm": {
+      "zh-CN": "删除这份报告？已分享到技术专区的帖子会保留。",
+      "en": "Delete this report? A post already shared into a zone is kept.",
+      "fr": "Supprimer ce rapport ? Un billet déjà partagé dans une zone est conservé."
+    },
+    "report_delete_failed": {
+      "zh-CN": "删除失败",
+      "en": "Delete failed",
+      "fr": "Échec de la suppression"
+    },
+    "report_manage": {
+      "zh-CN": "管理",
+      "en": "Manage",
+      "fr": "Gérer"
+    },
+    "report_shared_in": {
+      "zh-CN": "已分享到「{zone}」",
+      "en": "Shared in “{zone}”",
+      "fr": "Partagé dans « {zone} »"
+    },
+    "report_instructions_used": {
+      "zh-CN": "本次使用的补充要求（{mode}）",
+      "en": "Extra instructions used ({mode})",
+      "fr": "Consignes utilisées ({mode})"
+    }
+  },
+  "nav": {
+    "tools": {
+      "zh-CN": "工具",
+      "en": "Tools",
+      "fr": "Outils"
+    }
+  },
+  "settings": {
+    "notif_type_report_ready": {
+      "zh-CN": "报告生成",
+      "en": "Report generation",
+      "fr": "Génération de rapport"
+    },
+    "notif_hint_report_ready": {
+      "zh-CN": "你在「工具 → 聊天记录 → 报告」提交的生成完成或失败时",
+      "en": "When a report you submitted in Tools → Chat → report finishes or fails",
+      "fr": "Quand un rapport soumis dans Outils → Discussion → rapport est terminé ou a échoué"
     }
   }
 }

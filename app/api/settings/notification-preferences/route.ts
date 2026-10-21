@@ -15,6 +15,8 @@ const schema = z.object({
   emailAccessRequest: z.boolean().optional(),
   emailAccessDecision: z.boolean().optional(),
   emailAnnouncement: z.boolean().optional(),
+  inAppReportReady: z.boolean().optional(),
+  emailReportReady: z.boolean().optional(),
 });
 
 export async function GET() {

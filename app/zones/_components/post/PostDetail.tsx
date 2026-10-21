@@ -44,7 +44,7 @@ import { PostHeader } from './PostHeader';
 import { PostRail } from './PostRail';
 import { PostUnlock } from './PostUnlock';
 import { RelatedPosts } from './RelatedPosts';
-import { ReportArticle } from '../reports/ReportArticle';
+import { ReportArticle } from '@/components/reports/ReportArticle';
 import { useLikeBookmark } from './useLikeBookmark';
 import { zonePostEditHref } from '@/lib/zones/shared';
 
@@ -138,7 +138,7 @@ export function PostDetail({
           {post.report ? (
             // 报告帖子（docs/contracts/reports.md §3a）：原生渲染 reportJson；bodyMd 只做摘要 / 搜索 / 回退。
             // 站内翻译作用于 Markdown 正文，对原生视图无意义，这里不给翻译入口。
-            <ReportArticle zoneSlug={zone.slug} view={post.report} embeds={post.embeds} />
+            <ReportArticle originalsHref={`/reports/${encodeURIComponent(post.report.slug ?? post.report.id)}/messages`} view={post.report} embeds={post.embeds} />
           ) : (
             <>
               {/* One slot: 「译自… · 显示原文」 while translated, else 翻译 / 翻译中… / 显示译文. */}

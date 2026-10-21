@@ -15,6 +15,8 @@ const DEFAULTS: PrefValues = {
   emailAccessRequest: true,
   emailAccessDecision: true,
   emailAnnouncement: false,
+  inAppReportReady: true,
+  emailReportReady: true,
 };
 
 export default async function NotificationSettingsPage() {
@@ -33,6 +35,8 @@ export default async function NotificationSettingsPage() {
         emailAccessRequest: pref.emailAccessRequest,
         emailAccessDecision: pref.emailAccessDecision,
         emailAnnouncement: pref.emailAnnouncement,
+        inAppReportReady: pref.inAppReportReady,
+        emailReportReady: pref.emailReportReady,
       }
     : DEFAULTS;
 

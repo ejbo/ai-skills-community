@@ -14,6 +14,8 @@ export interface PrefValues {
   emailAccessRequest: boolean;
   emailAccessDecision: boolean;
   emailAnnouncement: boolean;
+  inAppReportReady: boolean;
+  emailReportReady: boolean;
 }
 
 // One row per notification category; each has an in-app key and an email key.
@@ -41,6 +43,12 @@ const ROWS: { labelKey: string; hintKey: string; inApp: keyof PrefValues; email:
     hintKey: 'notif_hint_announcement',
     inApp: 'inAppAnnouncement',
     email: 'emailAnnouncement',
+  },
+  {
+    labelKey: 'notif_type_report_ready',
+    hintKey: 'notif_hint_report_ready',
+    inApp: 'inAppReportReady',
+    email: 'emailReportReady',
   },
 ];
 

@@ -17,7 +17,8 @@ import { ingestReportAssets } from './library';
 import { callJson, ReportLlmError } from './llm';
 import { parseChat, parseManifest } from './parse';
 import { unpackReportBundle } from './unpack';
-import { clusterPrompt, mergeClustersPrompt, overviewPrompt, recapPrompt, themePrompt } from './prompts';
+import { notifyReportReady } from '@/lib/notifications';
+import { clusterPrompt, mergeClustersPrompt, overviewPrompt, recapPrompt, themePrompt, type ReportInstructions } from './prompts';
 import {
   clusterSchema,
   indexChat,
@@ -113,6 +114,8 @@ export async function runZoneReport(id: string): Promise<boolean> {
     importKey: true,
     bundleKey: true,
     namesJson: true,
+    instructions: true,
+    instructionMode: true,
     messagesJson: true,
     clusterJson: true,
     reportJson: true,
@@ -128,6 +131,7 @@ export async function runZoneReport(id: string): Promise<boolean> {
   const from = row.periodStart ? row.periodStart.toISOString().slice(0, 10) : undefined;
   const to = row.periodEnd ? row.periodEnd.toISOString().slice(0, 10) : undefined;
   let assetKeys = new Map(row.assets.map((a) => [a.name, a.key]));
+  const ins: ReportInstructions | null = row.instructions.trim() ? { text: row.instructions, mode: row.instructionMode === 'override' ? 'override' : 'append' } : null;
   let modelName: string | null = null;
   try {
     modelName = (await getReportProvider()).model;
@@ -166,6 +170,7 @@ export async function runZoneReport(id: string): Promise<boolean> {
       await setStage(id, 'ingesting', '收录附件到知识库', 80, { reportJson: report as unknown as Prisma.InputJsonValue, authorMatches: matches as unknown as Prisma.InputJsonValue, title: report.title, subject: report.subject });
       await ingestReportAssets(id, row.createdById, note);
       await setStage(id, 'ready', '完成', 100, { model: report.generator?.model ?? modelName, error: null });
+      await notifyReportReady(id); // 提醒失败绝不影响状态（notifications.ts 自己吞错）
       return true;
     }
 
@@ -197,14 +202,14 @@ export async function runZoneReport(id: string): Promise<boolean> {
       await save('clustering', '模型归类主题', 15);
       const { parts } = buildDigest(chat, stats);
       if (parts.length === 1) {
-        const r = await callJson({ step: '聚类', prompt: clusterPrompt(parts[0]), schema: clusterSchema, validate: (v) => validateCluster(v, chat!), maxTokens: 6000 });
+        const r = await callJson({ step: '聚类', prompt: clusterPrompt(parts[0], ins), schema: clusterSchema, validate: (v) => validateCluster(v, chat!), maxTokens: 6000 });
         state.cluster = r.value;
         state.warnings.push(...r.warnings);
       } else {
         const partial: string[] = [];
         for (let i = 0; i < parts.length; i++) {
           await save('clustering', `模型归类主题（第 ${i + 1}/${parts.length} 片）`, 15 + Math.round((i / parts.length) * 10));
-          const r = await callJson({ step: `聚类分片 ${i + 1}`, prompt: clusterPrompt(parts[i]), schema: clusterSchema, maxTokens: 6000 });
+          const r = await callJson({ step: `聚类分片 ${i + 1}`, prompt: clusterPrompt(parts[i], ins), schema: clusterSchema, maxTokens: 6000 });
           partial.push(JSON.stringify(r.value));
         }
         const merged = await callJson({ step: '聚类合并', prompt: mergeClustersPrompt(partial), schema: clusterSchema, validate: (v) => validateCluster(v, chat!), maxTokens: 8000 });
@@ -227,7 +232,7 @@ export async function runZoneReport(id: string): Promise<boolean> {
         const bundle = buildThemeBundle(chat!, t);
         const r = await callJson({
           step: `主题 ${t.id}`,
-          prompt: themePrompt(bundle),
+          prompt: themePrompt(bundle, ins),
           schema: themeSchema,
           validate: (v) => validateTheme(v, chat!, state.cluster, index),
           maxTokens: 8000,
@@ -245,7 +250,7 @@ export async function runZoneReport(id: string): Promise<boolean> {
       const rc = buildListBundle(chat, state.cluster.recap, '非科研 · 快速 Recap（花絮 / 终端 / 杂项）');
       if (ev || rc) {
         await save('summarizing', '整理活动与花絮', 72);
-        const r = await callJson({ step: '活动与花絮', prompt: recapPrompt(ev, rc), schema: recapSchema, validate: (v) => validateRecap(v, chat!, index), maxTokens: 6000 });
+        const r = await callJson({ step: '活动与花絮', prompt: recapPrompt(ev, rc, ins), schema: recapSchema, validate: (v) => validateRecap(v, chat!, index), maxTokens: 6000 });
         state.recap = r.value;
       } else {
         state.recap = { recap: null, events: [] };
@@ -259,7 +264,7 @@ export async function runZoneReport(id: string): Promise<boolean> {
       const outline = buildOutline(themes, state.recap);
       const r = await callJson({
         step: '要点',
-        prompt: overviewPrompt(outline),
+        prompt: overviewPrompt(outline, ins),
         schema: overviewSchema,
         validate: (v) => validateOverview(v, new Set(themes.map((t) => t.id))),
         maxTokens: 4000,
@@ -289,12 +294,14 @@ export async function runZoneReport(id: string): Promise<boolean> {
     // ── 5. 收录 ───────────────────────────────────────────────────────────
     await ingestReportAssets(id, row.createdById, note);
     await setStage(id, 'ready', `完成：${report.themes.length} 个主题 · ${report.themes.reduce((n, t) => n + t.viewpoints.length, 0)} 条观点${state.warnings.length ? ` · ${state.warnings.length} 条校验警告` : ''}`, 100, { error: null, model: modelName });
+    await notifyReportReady(id);
     return true;
   } catch (e) {
     const err = e as Error;
     const message = e instanceof ReportLlmError ? err.message : `${err.name === 'Error' ? '' : `${err.name}: `}${err.message}`;
     console.error('[zone-report] failed', id, message);
     await prisma.zoneReport.update({ where: { id }, data: { status: 'failed', error: message.slice(0, 2000), heartbeatAt: new Date() } }).catch(() => {});
+    await notifyReportReady(id);
     return false;
   }
 }

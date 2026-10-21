@@ -57,6 +57,17 @@ export type MegaMenu =
 
 /** Keyed by the PRIMARY_NAV href. A section with no entry has no hover panel. */
 export const NAV_MEGA: Record<string, MegaMenu> = {
+  // 工具：一个导航项下的若干独立工具（owner 2026-10-20：「之后也会在工具这个导航栏里加入更多工具」）。
+  // 目录是 lib/tools/catalog.ts；这里的链接必须和它一一对应。
+  '/tools': {
+    kind: 'links',
+    columns: [
+      {
+        links: [{ href: '/tools/chat-report', t: 'tools:chat_report_title' }],
+      },
+    ],
+  },
+
   // The section is named after the long-form board, so bare `/videos` is Geek
   // Videos. Shorts is the other half of the same nav link and has no other
   // entry point in the chrome — listing only the half the owner named would

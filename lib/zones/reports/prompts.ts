@@ -3,8 +3,30 @@
 
 export const REPORT_SYSTEM_PROMPT = '你是严谨的技术情报编辑。只输出一个 JSON 对象，不要任何解释文字，不要注释，不要尾逗号。';
 
-export function clusterPrompt(digest: string): string {
-  return `你是一名技术情报编辑。下面是一段群聊摘录（每行一条消息，行首 \`mN\` 是消息 id）。请把**有信息量的消息**归到 3–8 个「大主题」里，再把活动通知、非科研花絮、无信息量的分别挑出来。
+/** 用户在向导里填的补充要求（docs/contracts/reports.md §2b）。 */
+export interface ReportInstructions {
+  text: string;
+  /** append = 加在默认写法之后、优先于默认写法；override = 取代默认写法里关于取舍与文风的部分。 */
+  mode: 'append' | 'override';
+}
+
+/**
+ * 把用户要求插进提示词「## 输出格式」之前：两种模式都明确告诉模型——字段、JSON 形状、引用校验
+ * （msgRefs / sources 只能来自记录、不编造）永远不变，变的只是内容取舍与文风。
+ */
+export function withInstructions(prompt: string, ins?: ReportInstructions | null): string {
+  const text = ins?.text.trim();
+  if (!text) return prompt;
+  const block =
+    ins!.mode === 'override'
+      ? `## 用户的写作要求（取代上面关于内容取舍、详略与文风的说明）\n\n${text}\n\n> 字段名、JSON 形状、「铁律」与引用校验（msgRefs / sources / speaker 只能来自原始消息，不编造）仍然必须遵守。\n\n`
+      : `## 用户的补充要求（优先于上面的写法；字段、输出格式与铁律不变）\n\n${text}\n\n`;
+  const i = prompt.indexOf('## 输出格式');
+  return i >= 0 ? prompt.slice(0, i) + block + prompt.slice(i) : `${prompt}\n\n${block}`;
+}
+
+export function clusterPrompt(digest: string, ins?: ReportInstructions | null): string {
+  return withInstructions(`你是一名技术情报编辑。下面是一段群聊摘录（每行一条消息，行首 \`mN\` 是消息 id）。请把**有信息量的消息**归到 3–8 个「大主题」里，再把活动通知、非科研花絮、无信息量的分别挑出来。
 
 ## 规则（必须遵守）
 
@@ -21,7 +43,7 @@ export function clusterPrompt(digest: string): string {
 
 ## 聊天摘录
 
-${digest}`;
+${digest}`, ins);
 }
 
 export function mergeClustersPrompt(parts: string[]): string {
@@ -34,8 +56,8 @@ export function mergeClustersPrompt(parts: string[]): string {
 ${parts.map((p, i) => `## 第 ${i + 1} 份\n${p}`).join('\n\n')}`;
 }
 
-export function themePrompt(bundle: string): string {
-  return `你是一名技术情报编辑，正在为一份内部「技术动态报告」写其中一个主题。下面是这个主题的全部原始消息（全文、按时间）。请写出这个主题的结构化摘要。
+export function themePrompt(bundle: string, ins?: ReportInstructions | null): string {
+  return withInstructions(`你是一名技术情报编辑，正在为一份内部「技术动态报告」写其中一个主题。下面是这个主题的全部原始消息（全文、按时间）。请写出这个主题的结构化摘要。
 
 ## 写法
 
@@ -65,11 +87,11 @@ export function themePrompt(bundle: string): string {
 
 ## 主题原始消息
 
-${bundle}`;
+${bundle}`, ins);
 }
 
-export function recapPrompt(events: string | null, recap: string | null): string {
-  return `你是一名技术情报编辑。下面两段分别是群聊里的「活动通知」和「非科研花絮」消息。请整理成结构化 JSON。
+export function recapPrompt(events: string | null, recap: string | null, ins?: ReportInstructions | null): string {
+  return withInstructions(`你是一名技术情报编辑。下面两段分别是群聊里的「活动通知」和「非科研花絮」消息。请整理成结构化 JSON。
 
 ## events（活动与通知）
 每个活动一条：\`title\`（活动名，带期数/地点，≤ 60 字）、\`date\`（活动举办日期 \`YYYY-MM-DD\`；消息里只给了月日就按消息年份补全；完全没有日期写 null）、\`host\`（主办或群内发起人）、\`url\`（报名/详情链接，只能用消息里出现过的；没有写 null）、\`note\`（一句话：议题 / 要求 / 群内安排，≤ 80 字，可 null）、\`msgRefs\`（相关消息 id）。同一活动的多条消息（通知 + 报名讨论 + 求票）合并成一条。
@@ -87,11 +109,11 @@ export function recapPrompt(events: string | null, recap: string | null): string
 ${events ?? '（无）'}
 
 ## 非科研花絮消息
-${recap ?? '（无）'}`;
+${recap ?? '（无）'}`, ins);
 }
 
-export function overviewPrompt(summary: string): string {
-  return `你是一名技术情报主编。下面是本期报告各主题的提纲（已经写好）。请在此基础上写「本期要点」——这是读者打开报告看到的第一屏，要让忙碌的负责人 1 分钟内知道本期发生了什么、意味着什么、要做什么。
+export function overviewPrompt(summary: string, ins?: ReportInstructions | null): string {
+  return withInstructions(`你是一名技术情报主编。下面是本期报告各主题的提纲（已经写好）。请在此基础上写「本期要点」——这是读者打开报告看到的第一屏，要让忙碌的负责人 1 分钟内知道本期发生了什么、意味着什么、要做什么。
 
 ## 要写的四样
 
@@ -109,5 +131,5 @@ export function overviewPrompt(summary: string): string {
 {"headline":"……","highlights":[{"text":"……","themeId":"t1"}],"judgments":[{"text":"……","themeId":"t2","confidence":"high"}],"actions":[{"text":"……","owner":"周春华","ownerAccount":"z00885012","themeId":"t4","due":null}]}
 
 ## 各主题提纲
-${summary}`;
+${summary}`, ins);
 }
