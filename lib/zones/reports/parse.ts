@@ -15,7 +15,7 @@ import type { ParsedAttachment, ParsedChat, ParsedMessage, RosterEntry } from '.
 const DATE_PART = String.raw`\d{4}[-/.]\d{1,2}[-/.]\d{1,2}[ T]\d{1,2}:\d{2}(?::\d{2})?`;
 const TIME_PART = String.raw`\d{1,2}:\d{2}(?::\d{2})?`;
 const WHO_PART = String.raw`(.+?)\s*[（(]([A-Za-z0-9_.@-]+)[）)]`;
-const TYPE_PART = String.raw`(?:\s*[·•|]\s*(\S+))?`;
+const TYPE_PART = String.raw`(?:\s*(?:[·•|]\s*|<)([^<>\s]+)>?)?`; // `· 文本` / `| 文本` / `<文本>`
 const HEAD_RE = new RegExp(String.raw`^[\[【]?(${DATE_PART})[\]】]?\s*${WHO_PART}${TYPE_PART}\s*[:：]?\s*$`);
 const HEAD_WHO_FIRST_RE = new RegExp(String.raw`^${WHO_PART}\s+[\[【]?(${DATE_PART})[\]】]?${TYPE_PART}\s*[:：]?\s*$`);
 const HEAD_TIME_RE = new RegExp(String.raw`^[\[【]?(${TIME_PART})[\]】]?\s*${WHO_PART}${TYPE_PART}\s*[:：]?\s*$`);
