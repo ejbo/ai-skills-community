@@ -59,7 +59,7 @@ Owner 的诉求（三轮）：「我会生成这样的聊天记录，配合提�
 `triggerZoneReport(id)` 与知识库 `triggerIndexing` 同款：fire-and-forget，状态落在行上，页面轮询 `GET /api/zones/[slug]/reports/[id]`。
 
 ```
-queued ─parse（parse.ts: TXT / welink-cli JSON → messages；manifest CSV → 附件对消息；assets 对文件名）
+queued ─parse（parse.ts: 任何形状 JSON / TXT / CSV → messages，都认不出时 infer-format.ts 让模型推断行头格式；manifest CSV → 附件对消息；assets 对文件名）
      ─digest（digest.ts: 有信息量的消息一行一条 + stats + links）
      ─clustering（LLM ① → clusterSchema + 覆盖率校验；超 60k 字按天分片、逐片聚类再合并）
      ─summarizing（slice.ts 切 bundle → LLM ② 逐主题，并发 2，validateTheme 引用校验；LLM ③ 活动与花絮；outline → LLM ④ 要点）
@@ -73,26 +73,20 @@ queued ─parse（parse.ts: TXT / welink-cli JSON → messages；manifest CSV �
 - **导入模式**：上传 skill 产出的 `report.json`（`importKey`）则跳过 ①–④，只跑 validateReport + 附件匹配 + ingesting。opencode 侧生成、站内发布。
 - 模型永远不碰：发言人姓名（由账号查名单）、配图（邻域规则）、统计、链接表、未归类审计。
 
-### 2a. 整包上传（`bundleKey`，`lib/zones/reports/bundle.ts` + `unpack.ts`）
+### 2a. 整包上传（`bundleKey`，`lib/zones/reports/bundle.ts` + `unpack.ts` + `parse.ts#parseRawMessages` + `infer-format.ts`）
 
 用户手里的是一个目录（WeLink 导出 TXT + 图片附件清单 CSV + 已下载的图片目录，或 welink-cli 的分页 JSON + `wl_names/`），
 向导不再让他一个个挑：**选文件夹 / 选 zip / 多选文件 → 一个 zip、一次上传**（文件夹与多选在浏览器里用 JSZip 打包，图片 STORE、文本 DEFLATE；zip 原样上传；上限 = `MAX_ZONE_FILE_BYTES` 200 MB）。
-识别规则是**一份纯函数** `planReportBundle(files)`，**按内容识别、不按文件名**（owner：「文件读取这里还要灵活一点，不要什么名字一定要保持一致」）：
-调用方给每个文本类文件读开头 8 KB（`head`），`sniffText` 判断它是 welink JSON（消息对象带 `msgId` + `serverSendTime`，页或数组，CLI 前缀文字也容忍）、
-TXT 记录（两种行头版式）、清单（表头含 文件名 + 外链/提取码/发送人，或 `[{fname,url}]`）、姓名表（`search_cli_person` / `{账号: 姓名}`）还是别的；
-没有 head 时才退回扩展名。向导（浏览器 `File.slice().text()` / JSZip）和服务端解包都调它，所以向导里显示的识别结果就是流水线用的：
 
-| 规则（看内容） | 结果 |
-| --- | --- |
-| report.json（`schemaVersion:1` + `themes`，或就叫 report.json） | `importJson` → 导入模式，不调模型 |
-| 所有 welink JSON（`page_001.txt` 里装着 JSON 也算） | `sources[]`，服务端**全部合并**、按 msgId 去重（先见先得）；此时 TXT 一律忽略 |
-| 没有 welink JSON 时：TXT 记录里最大的一份 | `sources[0]`；其余 TXT 当附件 |
-| 清单：内容认出来的优先，再按名字提示（清单/manifest/attach/image），再第一个 csv | `manifest`；其余 csv 当附件 |
-| `wl_names/*.json`、`names.json`、内容像 search person 输出的 json | `names` → `namesJson`（账号→姓名） |
-| png/jpg/gif/webp/avif | 附件 image；其它扩展名 → 附件 file |
-| 认不出来的 json（如 `_downloads.json`）、`.DS_Store`、`__MACOSX/`、`work/`、点开头、0 字节、嵌套 zip、`report.html/md` 等 skill 产物 | 忽略（向导列出原因） |
+**原则（owner 2026-10-20 两轮）：按内容识别、不按文件名；而且不筛文件**——「为什么还要筛掉文件，如果别的文件能用就用别的啊，这里面不是也有 ai 介入吗？为什么对文件这么严格」。所以识别分三层：
 
-服务端 `unpackReportBundle` 在 `parsing` 状态下跑（stage「解包上传的文件夹 / zip」），落盘成普通 zone media（key 永远是 nanoid，zip 内路径从不进磁盘路径，无 zip-slip），建 `ZoneReportAsset`（同名只建一次，可重入），回写 `sourceKey/manifestKey/importKey/namesJson`；之后的流程与逐个上传完全一样。条目 ≤ 3000、附件 ≤ 300、单文件按 kind 的上限，超了跳过并记进日志。
+1. **`planReportBundle(files)`（纯函数，向导与服务端共用）只负责把"肯定不是记录"的挑出去**：report.json → `importJson`（导入模式）；清单（表头含 文件名 + 外链/提取码，或 `[{fname,url}]`）→ `manifest`；姓名表（`wl_names/*.json`、`search_cli_person`、`{账号: 姓名}`）→ `names`；图片 / 其它扩展名 → `assets`；`.DS_Store`、`__MACOSX/`、`work/`、点开头、0 字节、嵌套 zip、`report.html/md/digest.md/messages.json` 等 skill 产物 → `ignored`。**剩下每一个 json / txt / csv / log / md 都是 `sources[]` 候选**：开头像 welink JSON / TXT 行头 / CSV 记录的排前面（`sniffText`，`guess: false`），认不出的排后面（`guess: true`，向导显示"会逐个试这 N 个文件"）。只有目录里一个文本文件都没有时 `bundleHasChat` 才为 false。
+2. **服务端 `unpackReportBundle` 对每个候选真解析**（`parseRawMessages`：JSON → TXT → CSV 三个解析器都试，谁解析出带有效时间的消息多用谁）：解析为 JSON 的候选**全部合并**、按 msgId（没有就 时间:账号:内容前缀）去重——welink-cli 是分页的、`page_001.txt` 里装 JSON 也算；TXT / CSV 候选各自独立取最多的一份；最后 JSON 条数 ≥ 最佳 TXT 的 80% 就用 JSON（字段更全：附件协议块、引用卡片），否则用那份 TXT / CSV。选中的文本不再当附件。日志里记每个候选解析出多少条。**一个都解析不出也不在这里报错**：把最大的文本候选存成 `sourceKey`，交给第 3 层。
+3. **流水线 parse 阶段的模型兜底**（`infer-format.ts`）：确定性解析器一条都认不出时，把文件前 80 行给模型，让它写一个带命名分组 `(?<date>|?<time>) (?<name>) (?<account>)` 的行头正则（+ 可选日头正则），我们编译后在前 400 行里校验（≥ 8 行命中且时间能解析），通过就用它**确定性地**切分全文（`splitWithSpec`）→ `parseChat(text, { raw })`；不通过才抛 `describeUnparsed`（列出能认的形状 + 文件开头三行）。模型只看格式、不碰内容。
+
+`parseRawMessages` 认的形状（skill 的 `reference/welink-format.md` §1 同一张表）：JSON——页 / 数组 / 页数组 / 把消息数组藏在 `messages·data·items·list·records·result…` 下的任何 JSON（递归找），字段名宽（时间 `serverSendTime/sendTime/timestamp/ts/time/date/时间`，毫秒 / 秒 / ISO / 本地时间都行；账号 `sender/account/from/w3account/发送人`；内容 `content/text/msg/message/body/内容`…）；TXT——A1 `[日期 时间] 姓名（账号）`（括号 / 秒 / 分隔符都可变）、A2 日头 + `[时:分:秒] 姓名（账号）· 类型`（日头认 `####/====/----/【】/[]`）、A3 `姓名（账号） 日期 时间`；CSV——表头含「时间」+「内容」两列即可。
+
+服务端 `unpackReportBundle` 在 `parsing` 状态下跑（stage「解包上传的文件夹 / zip」），落盘成普通 zone media（key 永远是 nanoid，zip 内路径从不进磁盘路径，无 zip-slip），建 `ZoneReportAsset`（同名只建一次，可重入），回写 `sourceKey/manifestKey/importKey/namesJson`；之后的流程与逐个上传完全一样。条目 ≤ 3000、附件 ≤ 300、真解析的候选 ≤ 24 个 / 单个 ≤ 64 MB，超了跳过并记进日志。
 
 ### 2b. 用户的补充要求（`instructions` / `instructionMode`，`prompts.ts#withInstructions`）
 
@@ -184,7 +178,8 @@ Word 用 `docx` 包纯 JS 生成（文风同 skill 的 HTML：红标题 + 【】
 ```
 lib/zones/reports/
   schema.ts        zod：cluster / theme / recap / overview / report + validate*（引用校验，可独立测）
-  parse.ts         TXT / welink-cli JSON → messages；manifest CSV；表情码、卡片、um_begin 协议
+  parse.ts         任何形状 JSON / 三种 TXT 行头 / CSV 记录 → messages（parseRawMessages 挑最好的）；manifest CSV；表情码、卡片、um_begin 协议
+  infer-format.ts  确定性解析器都认不出时让模型推断行头正则，校验后确定性切分（模型只看格式）
   digest.ts        digest 文本 + stats + links（含按天分片）
   slice.ts         主题 bundle 文本
   prompts.ts       四段提示词（与 skill prompts/*.md 同文）
@@ -192,8 +187,8 @@ lib/zones/reports/
   assemble.ts      report.json 装配 + 邻域配图
   render-md.ts     report.json → 帖子 Markdown（含 embed 令牌）
   authors.ts       工号 → 用户匹配
-  bundle.ts        整包上传的识别规则（纯函数，向导与服务端共用）+ welink-cli 分页合并 + 姓名表
-  unpack.ts        zip → zone media + ZoneReportAsset + 回写 source/manifest/import/names
+  bundle.ts        整包上传的识别规则（纯函数，向导与服务端共用）：挑出清单 / 姓名表 / 产物，其余文本全是候选 + 姓名表
+  unpack.ts        zip → 每个候选真解析挑最好的 → zone media + ZoneReportAsset + 回写 source/manifest/import/names
   provider.ts      getReportProvider：ZoneReportSetting（沿用知识库 / 单独）→ LLMProvider，60 s 缓存
   pipeline.ts      状态机 + triggerZoneReport + retry + 导入模式 + 第 0 步解包
   sections.ts      原生视图的 section id + 目录（客户端 / 服务端共用，纯函数）
@@ -230,8 +225,9 @@ tests/zone-reports-*.test.ts, tests/zone-post-revisions.test.ts
 6. 整包上传的识别只看文件名：一个目录里放两份不同群的 TXT 会只取最大的那份——向导会把识别结果显示出来，让用户自己看。
 10. 版块里**没有**报告入口了（`PostFilters` 的「生成报告」按钮、`/zones/[slug]/reports/*`、`/api/zones/[slug]/reports/*` 都删了）——别加回去；
     版块保留的只有 `post.report` 原生渲染和帖子版本历史 / 并发编辑。
-11. 识别看内容：`bundle.ts` 的 `sniffText` 是向导和服务端共用的唯一规则，改规则两边自动一致；skill 的 `parse-chat.mjs` 目录模式是同一套逻辑的 JS 版。
-9. TXT 有两种版式（`parse.ts` 顶部注释）：`[YYYY-MM-DD HH:mm:ss] 姓名（账号）`，以及 welink-monthly-report 的 `#### 日期 ####` + `[HH:mm:ss] 姓名（账号）· 类型`。两种都是 agent 从 welink-cli JSON 转的，JSON 更全（附件协议块 / 引用卡片），整包上传时 `*_msgs.json` 优先于 TXT（bundle.ts `MSGS_JSON_RE`），别的 json 名字不认——用户目录里 TXT 和 JSON 通常并存。给 agent 的拉取话术在 skill 的 `reference/welink-fetch.md`。
+11. 识别看内容、不筛文件：`bundle.ts` 只挑出"肯定不是记录"的，其余文本全是候选，`unpack.ts` 真解析挑最好的，`infer-format.ts` 是最后的模型兜底；`sniffText` 只影响向导里的排序 / 显示，**不要再往它里面加"不像就丢"的规则**。skill 的 `parse-chat.mjs` 目录模式是同一套逻辑的 JS 版（没有模型兜底，报错时把文件开头打出来让 agent 自己转格式）。
+12. 2026-10-20 第三轮的教训：owner 上传的目录是 `*_msgs.json`（agent 自己整理的形状，不是 welink-cli 原样）+ `*_消息记录.txt`，旧规则因为 json 字段名不对就把它当"认不出的 json"丢了，txt 又因为行头少了秒而不认——两边都"像不像"判断、没有一个真去解析，于是报"没有解析到任何消息"。现在三层都是"能解析出消息就用"。
+9. TXT 有三种行头版式（`parse.ts` 顶部注释，括号 / 秒 / 分隔符都可变），都是 agent 从 welink-cli JSON 转的；JSON 更全（附件协议块 / 引用卡片），所以整包上传时解析出的 JSON 条数不少于最佳 TXT 的 80% 就优先 JSON——用户目录里 TXT 和 JSON 通常并存。给 agent 的拉取话术在 skill 的 `reference/welink-fetch.md`。
 8. `ReportArticle` 是客户端组件：只能 import `sections.ts` 这类纯模块，**不要** import `post-view.ts` / `messages.ts`（它们带 prisma）；类型用 `import type`。
 7. welink-cli 不能搬到服务端：它要 WeLink PC 客户端在本机运行 + 手机扫码（约 90 分钟有效）+ 下载附件要绕开公司代理。拉取永远在用户自己的电脑上做，站内只接收结果。
 5. 配图只认 `report.attachments[].file` 与 `ZoneReportAsset.name` 的文件名相等（大小写敏感）；清单里的文件名就是云盘下载的文件名。

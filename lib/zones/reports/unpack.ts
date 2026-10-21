@@ -9,11 +9,15 @@ import JSZip from 'jszip';
 import { prisma } from '@/lib/db';
 import { MAX_ZONE_FILE_BYTES, MAX_ZONE_IMAGE_BYTES } from '@/lib/zones/shared';
 import { newZoneMediaKey, saveZoneMediaBuffer, zoneMediaAbsPath, zoneMediaExtFor } from '@/lib/zones/storage';
-import { bundleBasename, bundleHasChat, HEAD_BYTES, isTextLike, MAX_SNIFF_BYTES, mergeWelinkPages, namesFromBundle, planReportBundle, type BundleFile } from './bundle';
+import { bundleBasename, bundleHasChat, HEAD_BYTES, isTextLike, MAX_SNIFF_BYTES, namesFromBundle, planReportBundle, type BundleFile } from './bundle';
+import { parseRawMessages, type RawMessage } from './parse';
 
 /** 一个 zip 最多处理这么多条目 / 这么多附件（和 createReport 的上限一致）。 */
 export const MAX_BUNDLE_ENTRIES = 3000;
 export const MAX_BUNDLE_ASSETS = 300;
+/** 最多真解析这么多个聊天记录候选 / 单个候选最大字节数（guess 候选可能是任何文本）。 */
+const MAX_SOURCE_TRIES = 24;
+const MAX_SOURCE_BYTES = 64 * 1024 * 1024;
 
 interface ZipFile extends BundleFile {
   entry: JSZip.JSZipObject;
@@ -56,38 +60,90 @@ export async function unpackReportBundle(reportId: string, bundleKey: string, no
   }
   const plan = planReportBundle(files);
   if (!bundleHasChat(plan)) {
-    const seen = files.filter((f) => isTextLike(f.path)).slice(0, 8).map((f) => bundleBasename(f.path)).join('、');
-    throw new Error(`压缩包里没有认出聊天记录：要么是 welink-cli 的 JSON（消息对象带 msgId / serverSendTime），要么是 TXT（每条以 "[YYYY-MM-DD HH:mm:ss] 姓名（账号）" 开头，或 "#### 日期 ####" 日头 + "[HH:mm:ss] 姓名（账号）"）。看到的文本文件：${seen || '无'}`);
+    const seen = files.filter((f) => !f.path.split('/').some((seg) => seg.startsWith('.') || seg === '__MACOSX')).slice(0, 12).map((f) => bundleBasename(f.path)).join('、');
+    throw new Error(`上传的文件夹里没有任何文本文件可以当聊天记录（json / txt / csv / log / md 一个都没有）。看到的文件：${seen || '无'}`);
   }
 
   const result: UnpackResult = { sourceKey: null, sourceName: null, manifestKey: null, importKey: null, names: {}, assets: [], skipped: [] };
   const read = (f: ZipFile) => f.entry.async('nodebuffer');
+  const usedAsSource = new Set<string>();
 
   if (plan.importJson) {
     const key = newZoneMediaKey('file', 'json');
     await saveZoneMediaBuffer(key, await read(plan.importJson), MAX_ZONE_FILE_BYTES);
     result.importKey = key;
     note(`解包：report.json（导入模式）`);
-  } else if (plan.sources.length && plan.sources[0].kind === 'welink_json') {
-    // 所有 welink JSON（页 / 合并数组）一起合并、按 msgId 去重
-    const texts: string[] = [];
-    for (const s of plan.sources) texts.push(textOf(await read(s.file)));
-    const merged = mergeWelinkPages(texts);
-    const count = (JSON.parse(merged) as unknown[]).length;
-    if (!count) throw new Error(`welink JSON 里没有消息（${plan.sources.map((s) => bundleBasename(s.file.path)).slice(0, 5).join('、')}）`);
-    const key = newZoneMediaKey('file', 'json');
-    await saveZoneMediaBuffer(key, Buffer.from(merged, 'utf8'), MAX_ZONE_FILE_BYTES);
-    result.sourceKey = key;
-    result.sourceName = plan.sources.length === 1 ? bundleBasename(plan.sources[0].file.path).slice(0, 200) : `${plan.sources.length} 份 welink-cli JSON（合并 ${count} 条）`;
-    note(`解包：合并 ${plan.sources.length} 份 welink-cli JSON → ${count} 条消息`);
-  } else if (plan.sources.length) {
-    const src = plan.sources[0].file;
-    const name = bundleBasename(src.path);
-    const key = newZoneMediaKey('file', 'txt');
-    await saveZoneMediaBuffer(key, await read(src), MAX_ZONE_FILE_BYTES);
-    result.sourceKey = key;
-    result.sourceName = name.slice(0, 200);
-    note(`解包：聊天记录 ${name}`);
+  } else {
+    // 候选逐个真解析（不看名字、不看开头像不像）：JSON 候选解析出来的合并去重（welink-cli 是分页的），
+    // TXT / CSV 各自独立；最后谁消息多用谁——JSON 字段更全，不少于最佳的 80% 就优先 JSON。
+    // 一个都解析不出时，也不在这里报错：把最大的文本候选存成 source，交给流水线让模型推断格式（pipeline.ts）。
+    const jsonRaw = new Map<string, RawMessage>();
+    const jsonFiles: string[] = [];
+    let bestText: { file: ZipFile; count: number; buf: Buffer } | null = null;
+    let largest: { file: ZipFile; buf: Buffer } | null = null;
+    const tried: string[] = [];
+    for (const s of plan.sources.slice(0, MAX_SOURCE_TRIES)) {
+      const name = bundleBasename(s.file.path);
+      const buf = await read(s.file);
+      if (buf.length === 0 || buf.length > MAX_SOURCE_BYTES) {
+        tried.push(`${name}（${buf.length === 0 ? '空' : '太大'}）`);
+        continue;
+      }
+      // 兜底候选：非 JSON 的文本优先（模型推断行头格式只对文本有意义），同类里取最大的
+      const rank = (p: string) => (p.toLowerCase().endsWith('.json') ? 0 : 1);
+      if (!largest || rank(s.file.path) > rank(largest.file.path) || (rank(s.file.path) === rank(largest.file.path) && buf.length > largest.buf.length)) largest = { file: s.file, buf };
+      let raw: RawMessage[] = [];
+      let kind = '';
+      try {
+        const r = parseRawMessages(textOf(buf));
+        raw = r.raw.filter((m) => Number.isFinite(m.ts));
+        kind = r.kind;
+      } catch {
+        raw = [];
+      }
+      if (!raw.length) {
+        tried.push(`${name}（0 条）`);
+        continue;
+      }
+      tried.push(`${name}（${raw.length} 条）`);
+      if (kind === 'welink-cli-json') {
+        for (const m of raw) {
+          const key = m.msgId ?? `${m.ts}:${m.account}:${m.content.slice(0, 40)}`;
+          if (!jsonRaw.has(key)) jsonRaw.set(key, m);
+        }
+        jsonFiles.push(s.file.path);
+      } else if (!bestText || raw.length > bestText.count) {
+        bestText = { file: s.file, count: raw.length, buf };
+      }
+    }
+    if (jsonRaw.size && (!bestText || jsonRaw.size >= bestText.count * 0.8)) {
+      const merged = [...jsonRaw.values()].sort((a, b) => a.ts - b.ts);
+      const key = newZoneMediaKey('file', 'json');
+      await saveZoneMediaBuffer(key, Buffer.from(JSON.stringify(merged), 'utf8'), MAX_ZONE_FILE_BYTES);
+      result.sourceKey = key;
+      result.sourceName = (jsonFiles.length === 1 ? bundleBasename(jsonFiles[0]) : `${jsonFiles.length} 份 JSON（合并 ${merged.length} 条）`).slice(0, 200);
+      for (const p of jsonFiles) usedAsSource.add(p);
+      note(`解包：聊天记录 ← ${jsonFiles.map((p) => bundleBasename(p)).slice(0, 4).join('、')}${jsonFiles.length > 4 ? '…' : ''} → ${merged.length} 条消息`);
+    } else if (bestText) {
+      const name = bundleBasename(bestText.file.path);
+      const key = newZoneMediaKey('file', /\.csv$/i.test(name) ? 'csv' : 'txt');
+      await saveZoneMediaBuffer(key, bestText.buf, MAX_ZONE_FILE_BYTES);
+      result.sourceKey = key;
+      result.sourceName = name.slice(0, 200);
+      usedAsSource.add(bestText.file.path);
+      note(`解包：聊天记录 ← ${name} → ${bestText.count} 条消息`);
+    } else if (largest) {
+      const name = bundleBasename(largest.file.path);
+      const key = newZoneMediaKey('file', /\.(json|csv)$/i.exec(name)?.[1].toLowerCase() ?? 'txt');
+      await saveZoneMediaBuffer(key, largest.buf, MAX_ZONE_FILE_BYTES);
+      result.sourceKey = key;
+      result.sourceName = name.slice(0, 200);
+      usedAsSource.add(largest.file.path);
+      note(`解包：没有解析器直接认出聊天记录（试过 ${tried.slice(0, 8).join('、')}），先用 ${name}，交给模型推断格式`);
+    } else {
+      throw new Error(`聊天记录候选都读不了：${tried.slice(0, 8).join('、') || '无'}`);
+    }
+    if (tried.length > 1) note(`解包：候选解析结果 ${tried.slice(0, 10).join('、')}${tried.length > 10 ? '…' : ''}`);
   }
 
   if (plan.manifest) {
@@ -108,6 +164,7 @@ export async function unpackReportBundle(reportId: string, bundleKey: string, no
   const existing = new Set((await prisma.zoneReportAsset.findMany({ where: { reportId }, select: { name: true } })).map((a) => a.name));
   let count = existing.size;
   for (const { file, kind } of plan.assets) {
+    if (usedAsSource.has(file.path)) continue; // 被当成聊天记录的文本不再当附件
     const name = bundleBasename(file.path).slice(0, 200);
     if (existing.has(name)) continue;
     if (count >= MAX_BUNDLE_ASSETS) {

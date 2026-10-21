@@ -4786,15 +4786,15 @@
     "report_pick_folder": "选择文件夹",
     "report_pick_zip": "选择 zip",
     "report_pick_files": "选择文件",
-    "report_bundle_hint": "把 WeLink 导出 / welink-cli 拉下来的整个目录交上来即可：识别按文件内容、不看文件名——welink-cli 的 JSON（可多份，自动合并）或 TXT 记录、图片附件清单（csv 或 images.json）、已下载的图片与文件、姓名表。目录里有 skill 产出的 report.json 就直接导入、不再调模型。一次上传、服务端解包，识别规则与这里显示的一致。",
+    "report_bundle_hint": "把 WeLink 导出 / welink-cli 拉下来的整个目录交上来即可，文件名随便叫：服务端会把每个 json / txt / csv 都真解析一遍，谁解析出消息多就用谁（welink-cli 的 JSON 多份自动合并；任何字段名的 JSON、几种 TXT 行头、带时间 / 内容列的 CSV 都认；都认不出再让模型看开头推断格式）。附件清单（csv 或 images.json）、已下载的图片与文件、姓名表自动找到；目录里有 skill 产出的 report.json 就直接导入、不再调模型。",
     "report_bundle_picked": "{count} 个文件 · {size}",
     "report_bundle_reading": "正在读取 zip 目录…",
     "report_bundle_bad_zip": "读不了这个 zip 文件",
-    "report_bundle_no_chat": "没有认出聊天记录：要么是 welink-cli 的 JSON（消息带 msgId / serverSendTime），要么是 TXT（每条以 [YYYY-MM-DD HH:mm:ss] 姓名（账号） 开头，或 #### 日期 #### 日头）。识别看内容不看文件名。",
+    "report_bundle_no_chat": "文件夹里没有任何文本文件（json / txt / csv / log / md），没东西可以当聊天记录。",
     "report_bundle_too_large": "总大小超过 {max}，请分批或去掉大文件",
     "report_zipping": "正在打包 {count} 个文件…",
     "report_detected_import": "report.json（导入模式，不调模型）",
-    "report_detected_pages": "welink-cli JSON {count} 份（将按 msgId 合并去重）",
+    "report_detected_pages": "聊天记录候选 {count} 份（服务端逐个解析，JSON 合并去重，谁消息多用谁）",
     "report_detected_chat": "聊天记录",
     "report_detected_manifest": "图片附件清单（图片随文的前提；没有也能生成）",
     "report_detected_assets": "图片 {images} · 文件 {files}",
@@ -4868,7 +4868,8 @@
     "report_instructions_override": "取代默认写法（只保留格式与引用规则）",
     "report_instructions_show_guide": "查看默认写法",
     "report_instructions_hide_guide": "收起默认写法",
-    "report_instructions_hint": "这段话会进每一步提示词（聚类 / 专题 / 花絮 / 要点）。字段、JSON 形状与「只引用记录里的内容」的规则不受影响。"
+    "report_instructions_hint": "这段话会进每一步提示词（聚类 / 专题 / 花絮 / 要点）。字段、JSON 形状与「只引用记录里的内容」的规则不受影响。",
+    "report_detected_guess": "没有一眼认出的聊天记录，会逐个试这 {count} 个文本文件；都认不出再让模型推断格式"
   },
   "translate": {
     "translate": "翻译",

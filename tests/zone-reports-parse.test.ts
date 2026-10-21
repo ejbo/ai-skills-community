@@ -1,7 +1,7 @@
 // 版块报告 — 聊天记录解析（lib/zones/reports/parse.ts）与摘录 / 统计（digest.ts）。
 // 钉住的契约：TXT 头行、表情码噪音、引用卡片定位、链接卡片、附件清单按时间对占位消息、名单。
 import { describe, expect, it } from 'vitest';
-import { parseChat, parseManifest, stripEmojiCodes, isNoiseText } from '@/lib/zones/reports/parse';
+import { parseChat, parseManifest, parseRawMessages, stripEmojiCodes, isNoiseText } from '@/lib/zones/reports/parse';
 import { buildDigest, buildThemeBundle, computeStats } from '@/lib/zones/reports/digest';
 
 const TXT = `WeLink 群 600916339024044374 聊天记录（共 8 条）
@@ -173,5 +173,67 @@ iPhone 18 存储颗粒不一样，已实锤
     ]);
     expect(chat.messages[3].replyTo?.id).toBe('m1');
     expect(chat.messages[0].links[0]?.url).toBe('https://typesafe.ai/');
+  });
+});
+
+// ── 宽松解析（owner 2026-10-20：「不行就直接用 txt 啊… 为什么对文件这么严格」）──────────────────────────
+// 任何形状的 JSON、三种 TXT 行头、CSV 记录都要能读；parseRawMessages 挑解析出消息最多的那个。
+describe('parseRawMessages · forgiving shapes', () => {
+  it('reads json whose message array is nested under any key and whose fields use other names', () => {
+    const json = JSON.stringify({
+      group: '加研思想院',
+      result: { total: 2, list: [
+        { id: 'x1', time: '2026-09-20 07:08:22', from: 'L00974474', name: '李思昊', text: '第一条' },
+        { id: 'x2', time: 1758330000, account: 'b00580378', senderName: '白东峰', message: '第二条', type: '文本' },
+      ] },
+    });
+    const { raw, kind } = parseRawMessages(json);
+    expect(kind).toBe('welink-cli-json');
+    expect(raw.map((m) => [m.msgId, m.account, m.name, m.content])).toEqual([
+      ['x1', 'l00974474', '李思昊', '第一条'],
+      ['x2', 'b00580378', '白东峰', '第二条'],
+    ]);
+    expect(raw.every((m) => Number.isFinite(m.ts))).toBe(true);
+  });
+
+  it('merges paged welink-cli output stored as an array of pages and dedupes by msgId', () => {
+    const pages = JSON.stringify([
+      { respData: { chatInfo: [{ msgId: '1', sender: 'a000001', serverSendTime: 1758000000000, content: 'a' }, { msgId: '2', sender: 'a000001', serverSendTime: 1758000001000, content: 'b' }] } },
+      { respData: { chatInfo: [{ msgId: '2', sender: 'a000001', serverSendTime: 1758000001000, content: 'b' }, { msgId: '3', sender: 'a000001', serverSendTime: 1758000002000, content: 'c' }] } },
+    ]);
+    expect(parseRawMessages(pages).raw.map((m) => m.msgId)).toEqual(['1', '2', '3']);
+  });
+
+  it('reads the three txt header shapes, with or without brackets / seconds, and loose day headers', () => {
+    const a1 = '[2026-09-20 07:08] 李思昊（l00974474）\n一\n【2026/9/20 07:09:10】白东峰(b00580378) · 图片\n二\n';
+    const a3 = '李思昊（l00974474） 2026-09-20 07:08:22\n一\n白东峰（b00580378） 2026-09-20 07:09:10：\n二\n';
+    const a2 = '==== 2026-09-20 ====\n07:08:22 李思昊（l00974474）\n一\n[07:09] 白东峰（b00580378）| 文本\n二\n';
+    for (const t of [a1, a3, a2]) {
+      const { raw, kind } = parseRawMessages(t);
+      expect(kind).toBe('welink-txt');
+      expect(raw.map((m) => [m.account, m.content])).toEqual([
+        ['l00974474', '一'],
+        ['b00580378', '二'],
+      ]);
+      expect(new Date(raw[0].ts).getDate()).toBe(20);
+    }
+  });
+
+  it('reads csv message records by header names (zh or en) and ignores a manifest csv', () => {
+    const csv = '﻿时间,发送人,姓名,类型,内容\n2026-09-20 07:08:22,l00974474,李思昊,文本,"第一条，带逗号"\n2026-09-20 07:09:10,b00580378,白东峰,图片,[图片/附件]\n';
+    const { raw, kind } = parseRawMessages(csv);
+    expect(kind).toBe('welink-csv');
+    expect(raw.map((m) => [m.account, m.contentType, m.content])).toEqual([
+      ['l00974474', 'TEXT_MSG', '第一条，带逗号'],
+      ['b00580378', 'PICTURE_MSG', '[图片/附件]'],
+    ]);
+    const manifest = '时间,发送人,姓名,类型,文件名,大小KB,外链,提取码,是否已下载\n2026-09-20 07:08,l00974474,李思昊,图片,a.png,12,https://x,abcd,是\n';
+    expect(parseRawMessages(manifest).raw.filter((m) => Number.isFinite(m.ts))).toHaveLength(0);
+  });
+
+  it('parseChat accepts pre-split messages (the LLM format fallback) and fails with the file head otherwise', () => {
+    const chat = parseChat('whatever', { raw: [{ msgId: null, ts: Date.UTC(2026, 8, 20, 0, 0, 0), account: 'l00974474', name: '李思昊', contentType: null, content: '一句话' }] });
+    expect(chat.messages).toHaveLength(1);
+    expect(() => parseChat('第一行是标题\n第二行\n')).toThrow(/没有解析到任何消息[\s\S]*「第一行是标题」/);
   });
 });

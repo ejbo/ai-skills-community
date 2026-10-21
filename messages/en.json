@@ -4786,15 +4786,15 @@
     "report_pick_folder": "Choose a folder",
     "report_pick_zip": "Choose a zip",
     "report_pick_files": "Choose files",
-    "report_bundle_hint": "Hand over the whole folder exported from WeLink / fetched with welink-cli: detection reads file contents, not names — welink-cli JSON (several files are merged) or a TXT export, the attachment manifest (csv or images.json), downloaded images and files, name lists. A report.json produced by the skill is imported as-is without calling the model. One upload; the server unpacks it with the same rules shown here.",
+    "report_bundle_hint": "Hand over the whole folder exported from WeLink / fetched with welink-cli; names do not matter: the server really parses every json / txt / csv and keeps whichever yields the most messages (several welink-cli JSON files are merged; JSON with any field names, several TXT header shapes and CSV with time / content columns are all read; if nothing parses the model infers the format from the file head). The attachment manifest (csv or images.json), downloaded images and files and name lists are found automatically; a report.json produced by the skill is imported as-is.",
     "report_bundle_picked": "{count} files · {size}",
     "report_bundle_reading": "Reading the zip index…",
     "report_bundle_bad_zip": "This zip file cannot be read",
-    "report_bundle_no_chat": "No chat record recognised: either welink-cli JSON (messages with msgId / serverSendTime) or a TXT export (lines starting with [YYYY-MM-DD HH:mm:ss] name (account), or #### date #### day headers). Detection reads the content, not the file name.",
+    "report_bundle_no_chat": "The folder has no text file at all (json / txt / csv / log / md), so nothing can serve as the chat record.",
     "report_bundle_too_large": "Total size exceeds {max}; split the upload or drop large files",
     "report_zipping": "Packing {count} files…",
     "report_detected_import": "report.json (import mode, no model call)",
-    "report_detected_pages": "{count} welink-cli JSON files (merged, deduplicated by msgId)",
+    "report_detected_pages": "{count} chat-record candidates (the server parses each one; JSON files are merged, the one with the most messages wins)",
     "report_detected_chat": "Chat record",
     "report_detected_manifest": "Attachment manifest (needed for inline images; optional)",
     "report_detected_assets": "{images} images · {files} files",
@@ -4868,7 +4868,8 @@
     "report_instructions_override": "Replace the default guide (format and citation rules stay)",
     "report_instructions_show_guide": "Show the default guide",
     "report_instructions_hide_guide": "Hide the default guide",
-    "report_instructions_hint": "This text goes into every step's prompt (clustering / topics / recap / highlights). Field names, JSON shape and the \"cite only what is in the record\" rule are unaffected."
+    "report_instructions_hint": "This text goes into every step's prompt (clustering / topics / recap / highlights). Field names, JSON shape and the \"cite only what is in the record\" rule are unaffected.",
+    "report_detected_guess": "No chat record recognised at a glance; these {count} text files will each be tried, and the model infers the format if none parses"
   },
   "translate": {
     "translate": "Translate",

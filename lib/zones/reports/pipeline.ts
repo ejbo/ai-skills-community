@@ -15,7 +15,8 @@ import { matchRosterToUsers } from './authors';
 import { buildDigest, buildListBundle, buildOutline, buildThemeBundle, computeStats } from './digest';
 import { ingestReportAssets } from './library';
 import { callJson, ReportLlmError } from './llm';
-import { parseChat, parseManifest } from './parse';
+import { inferLineFormat, splitWithSpec } from './infer-format';
+import { describeUnparsed, parseChat, parseManifest, parseRawMessages } from './parse';
 import { unpackReportBundle } from './unpack';
 import { notifyReportReady } from '@/lib/notifications';
 import { clusterPrompt, mergeClustersPrompt, overviewPrompt, recapPrompt, themePrompt, type ReportInstructions } from './prompts';
@@ -183,7 +184,18 @@ export async function runZoneReport(id: string): Promise<boolean> {
       const manifestText = await readKey(row.manifestKey);
       const manifest = manifestText ? parseManifest(manifestText) : null;
       const names = row.namesJson && typeof row.namesJson === 'object' && !Array.isArray(row.namesJson) ? (row.namesJson as Record<string, string>) : undefined;
-      chat = parseChat(text, { subject: row.subject || undefined, from, to, manifest, names, presentFiles: new Set(assetKeys.keys()), sourceName: row.sourceName ?? '' });
+      const parseOpts = { subject: row.subject || undefined, from, to, manifest, names, presentFiles: new Set(assetKeys.keys()), sourceName: row.sourceName ?? '' };
+      if (parseRawMessages(text).raw.some((m) => Number.isFinite(m.ts))) {
+        chat = parseChat(text, parseOpts);
+      } else {
+        // 确定性解析器一条都认不出：让模型看文件开头推断行头格式，再用它确定性地切分全文（infer-format.ts）
+        await setStage(id, 'parsing', '解析器没认出格式，让模型推断记录的行头格式', 6);
+        const spec = await inferLineFormat(text);
+        const raw = spec ? splitWithSpec(text, spec) : [];
+        if (!raw.length) throw new Error(describeUnparsed(text, row.sourceName ?? ''));
+        note(`模型推断的格式：${spec?.note ?? spec?.lineRegex ?? ''}（切出 ${raw.length} 条）`);
+        chat = parseChat(text, { ...parseOpts, raw });
+      }
       const matches = await matchRosterToUsers(chat.roster);
       await setStage(id, 'parsing', `解析完成：${chat.messages.length} 条消息，${chat.roster.length} 位发言人`, 10, {
         messagesJson: chat as unknown as Prisma.InputJsonValue,

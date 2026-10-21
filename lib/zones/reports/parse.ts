@@ -8,12 +8,18 @@
 
 import type { ParsedAttachment, ParsedChat, ParsedMessage, RosterEntry } from './schema';
 
-// 两种 TXT 版式（都是 agent 从 welink-cli 分页 JSON 转出来的；reference/welink-format.md §1）：
-//   A1 `[YYYY-MM-DD HH:mm:ss] 姓名（账号）`
-//   A2 welink-monthly-report 的 sep_export.js：`#### YYYY-MM-DD ####` 日头 + `[HH:mm:ss] 姓名（账号）· 类型`
-const HEAD_RE = /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s*(.+?)\s*[（(]([A-Za-z0-9_.-]+)[）)](?:\s*[·•]\s*(\S+))?\s*$/;
-const HEAD_TIME_RE = /^\[(\d{2}:\d{2}:\d{2})\]\s*(.+?)\s*[（(]([A-Za-z0-9_.-]+)[）)](?:\s*[·•]\s*(\S+))?\s*$/;
-const DAY_RE = /^#{2,}\s*(\d{4}-\d{2}-\d{2})\s*#{2,}\s*$/;
+// TXT 版式（都是 agent 从 welink-cli 分页 JSON 转出来的；reference/welink-format.md §1），尽量宽：
+//   A1 `[YYYY-MM-DD HH:mm:ss] 姓名（账号）`（方括号 / 【】/ 不带括号都行；秒可省；`-` `/` `.` 都认；`· 类型` 可选）
+//   A2 `#### YYYY-MM-DD ####` 日头（也认 ==== / ---- / 【】/ [] 包着的日期）+ `[HH:mm:ss] 姓名（账号）· 类型`
+//   A3 `姓名（账号） YYYY-MM-DD HH:mm:ss`（谁在前、时间在后）
+const DATE_PART = String.raw`\d{4}[-/.]\d{1,2}[-/.]\d{1,2}[ T]\d{1,2}:\d{2}(?::\d{2})?`;
+const TIME_PART = String.raw`\d{1,2}:\d{2}(?::\d{2})?`;
+const WHO_PART = String.raw`(.+?)\s*[（(]([A-Za-z0-9_.@-]+)[）)]`;
+const TYPE_PART = String.raw`(?:\s*[·•|]\s*(\S+))?`;
+const HEAD_RE = new RegExp(String.raw`^[\[【]?(${DATE_PART})[\]】]?\s*${WHO_PART}${TYPE_PART}\s*[:：]?\s*$`);
+const HEAD_WHO_FIRST_RE = new RegExp(String.raw`^${WHO_PART}\s+[\[【]?(${DATE_PART})[\]】]?${TYPE_PART}\s*[:：]?\s*$`);
+const HEAD_TIME_RE = new RegExp(String.raw`^[\[【]?(${TIME_PART})[\]】]?\s*${WHO_PART}${TYPE_PART}\s*[:：]?\s*$`);
+const DAY_RE = /^(?:#{2,}|={2,}|-{2,}|[[【])?\s*(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})(?:\s*星期[一二三四五六日天]|\s*周[一二三四五六日天])?\s*(?:#{2,}|={2,}|-{2,}|[\]】])?\s*$/;
 const TXT_TYPE: Record<string, string> = { 文本: 'TEXT_MSG', 图片: 'PICTURE_MSG', 图文: 'IMAGESPAN_MSG', 文件: 'FILE_MSG', 语音: 'VOICE_MSG', 视频: 'VIDEO_MSG', 卡片: 'CARD_MSG', 分享: 'SHAREING_MSG' };
 const UM_RE = /\/:um_begin\{([^}]*)\}\/:um_end/g;
 const PLACEHOLDER = '[图片/附件]';
@@ -28,9 +34,26 @@ export const fmtTime = (d: Date) => `${fmtDate(d)} ${pad2(d.getHours())}:${pad2(
 export const fmtMMDD = (d: Date) => `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
 export function parseLocalTime(s: string): Date | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(s.trim());
-  if (!m) return null;
-  return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] ?? 0));
+  const t = s.trim();
+  // 2026-09-20 07:08:22 / 2026-09-20T07:08 / 2026/09/20 07:08:22 / 2026-9-20 7:08
+  const m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/.exec(t);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] ?? 0));
+  // 纯数字：毫秒 / 秒时间戳
+  if (/^\d{12,13}$/.test(t)) return new Date(+t);
+  if (/^\d{9,10}$/.test(t)) return new Date(+t * 1000);
+  return null;
+}
+
+/** 任何像时间的值 → 毫秒（数字毫秒 / 秒、ISO、"YYYY-MM-DD HH:mm:ss"）；认不出 → NaN。 */
+export function anyTimeToMs(v: unknown): number {
+  if (typeof v === 'number' && Number.isFinite(v)) return v > 1e11 ? v : v > 1e8 ? v * 1000 : NaN;
+  if (typeof v === 'string') {
+    const d = parseLocalTime(v);
+    if (d) return d.getTime();
+    const iso = Date.parse(v);
+    return Number.isFinite(iso) ? iso : NaN;
+  }
+  return NaN;
 }
 
 export function extractUrls(text: string): string[] {
@@ -68,7 +91,7 @@ export function isNoiseText(text: string): boolean {
   return noAt.length <= 6 && ACK_RE.test(noAt);
 }
 
-interface RawMessage {
+export interface RawMessage {
   msgId: string | null;
   ts: number;
   account: string;
@@ -94,17 +117,22 @@ function parseTxt(text: string): RawMessage[] {
       day = dm[1];
       continue;
     }
-    let m = HEAD_RE.exec(line);
-    let stamp = m?.[1] ?? null;
-    if (!m && day) {
-      m = HEAD_TIME_RE.exec(line);
-      if (m) stamp = `${day} ${m[1]}`;
-    }
+    // 三种行头：[时间] 谁 / 谁 [时间] / （有日头时）[时:分:秒] 谁
+    let stamp: string | null = null;
+    let name = '';
+    let account = '';
+    let type: string | undefined;
+    let m = line.length <= 400 ? HEAD_RE.exec(line) : null;
+    if (m) [stamp, name, account, type] = [m[1], m[2], m[3], m[4]];
+    else if ((m = line.length <= 400 ? HEAD_WHO_FIRST_RE.exec(line) : null)) [name, account, stamp, type] = [m[1], m[2], m[3], m[4]];
+    else if (day && (m = line.length <= 400 ? HEAD_TIME_RE.exec(line) : null)) [stamp, name, account, type] = [`${day} ${m[1]}`, m[2], m[3], m[4]];
     if (m && stamp) {
-      if (cur) finish(cur);
       const d = parseLocalTime(stamp);
-      cur = { msgId: null, ts: d ? d.getTime() : NaN, account: m[3].toLowerCase(), name: m[2].trim(), contentType: m[4] ? (TXT_TYPE[m[4]] ?? m[4]) : null, lines: [], content: '' };
-      continue;
+      if (d) {
+        if (cur) finish(cur);
+        cur = { msgId: null, ts: d.getTime(), account: account.toLowerCase(), name: name.trim(), contentType: type ? (TXT_TYPE[type] ?? type) : null, lines: [], content: '' };
+        continue;
+      }
     }
     if (cur) cur.lines.push(line);
   }
@@ -112,26 +140,78 @@ function parseTxt(text: string): RawMessage[] {
   return out;
 }
 
+const pick = (m: Record<string, unknown>, keys: string[]): unknown => {
+  for (const k of keys) if (m[k] !== undefined && m[k] !== null && m[k] !== '') return m[k];
+  return undefined;
+};
+
+/**
+ * 一条消息对象 → RawMessage。字段名尽量宽：welink-cli 原样（msgId / sender / serverSendTime / contentType / content），
+ * 也认 agent 自己整理过的形状（time / account / name / type / text…）。认不出时间的条目后面会被过滤掉。
+ */
 function fromWelinkCli(m: Record<string, unknown>): RawMessage {
+  const ts = anyTimeToMs(pick(m, ['serverSendTime', 'sendTime', 'timestamp', 'ts', 'time', 'date', 'createdAt', 'created_at', '时间']));
+  const id = pick(m, ['msgId', 'messageId', 'messageID', 'id']);
+  const account = pick(m, ['sender', 'account', 'senderAccount', 'from', 'w3account', 'userId', '发送人', '账号']);
+  const name = pick(m, ['nameZH', 'senderName', 'name', 'displayName', 'nickname', '姓名', '发送人姓名']);
+  const content = pick(m, ['content', 'text', 'msg', 'message', 'body', '内容']);
   return {
-    msgId: m.msgId != null ? String(m.msgId) : null,
-    ts: Number(m.serverSendTime),
-    account: String(m.sender ?? '').toLowerCase(),
-    name: String(m.nameZH ?? m.senderName ?? ''),
-    contentType: m.contentType ?? null,
-    content: String(m.content ?? ''),
+    msgId: id != null ? String(id) : null,
+    ts,
+    account: String(account ?? '').toLowerCase(),
+    name: String(name ?? ''),
+    contentType: pick(m, ['contentType', 'type', 'msgType', '类型']) ?? null,
+    content: typeof content === 'string' ? content : content == null ? '' : JSON.stringify(content),
   };
 }
 
+/** 在任意 JSON 里找"消息数组"：顶层数组、respData.chatInfo、chatInfo、messages / data / items / list / records，或任何一个值是消息数组的键。 */
+function findMessageArray(o: unknown, depth = 0): Record<string, unknown>[] {
+  if (Array.isArray(o)) {
+    const objs = o.filter((x) => x && typeof x === 'object' && !Array.isArray(x)) as Record<string, unknown>[];
+    // 数组元素里有时间 + 内容字样的才算消息数组
+    const looks = objs.slice(0, 5).some((x) => pick(x, ['serverSendTime', 'sendTime', 'timestamp', 'ts', 'time', 'date', '时间']) !== undefined && pick(x, ['content', 'text', 'msg', 'message', 'body', '内容']) !== undefined);
+    if (looks) return objs;
+    // 分页数组：[{respData:{chatInfo}} , …] → 拼起来
+    if (depth < 3) {
+      const merged: Record<string, unknown>[] = [];
+      for (const x of objs) merged.push(...findMessageArray(x, depth + 1));
+      if (merged.length) return merged;
+    }
+    return [];
+  }
+  if (o && typeof o === 'object' && depth < 4) {
+    const obj = o as Record<string, unknown>;
+    for (const k of ['chatInfo', 'messages', 'data', 'items', 'list', 'records', 'msgs', 'result']) {
+      if (obj[k] !== undefined) {
+        const hit = findMessageArray(obj[k], depth + 1);
+        if (hit.length) return hit;
+      }
+    }
+    if (obj.respData !== undefined) {
+      const hit = findMessageArray(obj.respData, depth + 1);
+      if (hit.length) return hit;
+    }
+    for (const v of Object.values(obj)) {
+      if (v && typeof v === 'object') {
+        const hit = findMessageArray(v, depth + 1);
+        if (hit.length) return hit;
+      }
+    }
+  }
+  return [];
+}
+
 function parseJsonInput(text: string): RawMessage[] {
-  const o = JSON.parse(text) as unknown;
-  const list = Array.isArray(o)
-    ? o
-    : ((o as { respData?: { chatInfo?: unknown[] } })?.respData?.chatInfo ?? (o as { chatInfo?: unknown[] })?.chatInfo ?? []);
+  // 允许前面有几行 CLI 文字
+  const a = Math.min(...[text.indexOf('{'), text.indexOf('[')].filter((i) => i >= 0));
+  const b = Math.max(text.lastIndexOf('}'), text.lastIndexOf(']'));
+  const o = JSON.parse(text.slice(Number.isFinite(a) ? a : 0, b + 1)) as unknown;
   const seen = new Map<string, RawMessage>();
-  for (const item of list as Record<string, unknown>[]) {
+  for (const item of findMessageArray(o)) {
     const r = fromWelinkCli(item);
-    seen.set(r.msgId ?? `${r.ts}:${seen.size}`, r);
+    const key = r.msgId ?? `${r.ts}:${r.account}:${r.content.slice(0, 40)}`;
+    if (!seen.has(key)) seen.set(key, r);
   }
   return [...seen.values()];
 }
@@ -262,7 +342,7 @@ function splitCsv(line: string): string[] {
 
 /** 图片附件清单 CSV（welink-monthly-report 契约）或 *_images.json。 */
 export function parseManifest(text: string): ManifestRow[] {
-  const t = text.replace(/^﻿/, '').trim();
+  const t = text.replace(/^\uFEFF/, '').trim();
   if (t.startsWith('[')) {
     const arr = JSON.parse(t) as Record<string, unknown>[];
     return arr
@@ -305,6 +385,40 @@ export function parseManifest(text: string): ManifestRow[] {
     .filter((r) => r.file);
 }
 
+/**
+ * CSV 形式的消息记录（agent 自己导的表：时间 / 发送人 / 姓名 / 类型 / 内容 之类的表头，中英文都认）。
+ * 没有「时间 + 内容」两列就不算。
+ */
+function parseCsvRecords(text: string): RawMessage[] {
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) return [];
+  const header = splitCsv(lines[0]).map((h) => h.trim().toLowerCase());
+  const col = (...names: string[]) => header.findIndex((h) => names.some((n) => h === n || h.includes(n)));
+  const iTime = col('时间', 'time', 'date', 'sendtime', 'timestamp');
+  const iContent = col('内容', 'content', 'text', 'message', 'msg', 'body');
+  if (iTime < 0 || iContent < 0) return [];
+  const iAcc = col('账号', '发送人', 'sender', 'account', 'from', 'w3');
+  const iName = col('姓名', 'name', '昵称');
+  const iType = col('类型', 'type');
+  const iId = col('msgid', 'id');
+  const out: RawMessage[] = [];
+  for (const l of lines.slice(1)) {
+    const c = splitCsv(l);
+    const ts = anyTimeToMs(c[iTime]?.trim());
+    const content = c[iContent] ?? '';
+    if (!Number.isFinite(ts)) continue;
+    out.push({
+      msgId: iId >= 0 && c[iId] ? String(c[iId]) : null,
+      ts,
+      account: String(c[iAcc] ?? '').trim().toLowerCase(),
+      name: String(c[iName] ?? '').trim(),
+      contentType: iType >= 0 && c[iType] ? (TXT_TYPE[c[iType].trim()] ?? c[iType].trim()) : null,
+      content,
+    });
+  }
+  return out;
+}
+
 export interface ParseOptions {
   subject?: string;
   from?: string | null;
@@ -315,14 +429,40 @@ export interface ParseOptions {
   /** 已上传的文件名集合（用来标记 present）。 */
   presentFiles?: ReadonlySet<string> | null;
   sourceName?: string;
+  /** 已经切好的消息（模型推断格式的兜底路径）；给了就不再自己解析 text。 */
+  raw?: RawMessage[] | null;
+}
+
+/** 整条流水线的第一步：原文 → ParsedChat。抛错 = 解析不到任何消息。 */
+/** 用能用的那个解析器：JSON（任何形状）→ 行头 TXT → CSV 记录；谁解析出的消息多用谁。 */
+export function parseRawMessages(text: string): { raw: RawMessage[]; kind: 'welink-cli-json' | 'welink-txt' | 'welink-csv' } {
+  const trimmed = text.replace(/^\uFEFF/, '').replace(/\u001b\[[0-9;]*m/g, '').trimStart();
+  const tries: { raw: RawMessage[]; kind: 'welink-cli-json' | 'welink-txt' | 'welink-csv' }[] = [];
+  if (/^[^\n]{0,200}?[[{]/.test(trimmed)) {
+    try {
+      tries.push({ raw: parseJsonInput(trimmed), kind: 'welink-cli-json' });
+    } catch {
+      /* 不是 JSON，继续 */
+    }
+  }
+  tries.push({ raw: parseTxt(trimmed), kind: 'welink-txt' });
+  tries.push({ raw: parseCsvRecords(trimmed), kind: 'welink-csv' });
+  const good = (t: { raw: RawMessage[] }) => t.raw.filter((m) => Number.isFinite(m.ts)).length;
+  tries.sort((a, b) => good(b) - good(a));
+  return tries[0];
+}
+
+/** 解析失败时给人看的提示：说明认什么，附上文件开头几行。 */
+export function describeUnparsed(text: string, label = ''): string {
+  const headLines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((l) => l.trim()).slice(0, 3).map((l) => l.slice(0, 120));
+  return `没有解析到任何消息${label ? `（${label}）` : ''}。能认的：welink-cli 的 JSON（消息对象带时间 + 内容字段）、每条以「[日期 时间] 姓名（账号）」或「姓名（账号） 日期 时间」开头的 TXT（可带 #### 日期 #### 日头）、带「时间 / 发送人 / 内容」表头的 CSV。文件开头是：${headLines.map((l) => `「${l}」`).join(' ') || '（空）'}`;
 }
 
 /** 整条流水线的第一步：原文 → ParsedChat。抛错 = 解析不到任何消息。 */
 export function parseChat(text: string, opts: ParseOptions = {}): ParsedChat {
-  const trimmed = text.replace(/^﻿/, '').trimStart();
-  const isJson = trimmed.startsWith('[{') || trimmed.startsWith('{');
-  const raw = isJson ? parseJsonInput(trimmed) : parseTxt(trimmed);
-  if (!raw.length) throw new Error('没有解析到任何消息：TXT 每条消息应以 "[YYYY-MM-DD HH:mm:ss] 姓名（账号）" 开头，或提供 welink-cli 的 JSON');
+  const { raw, kind } = opts.raw ? { raw: opts.raw, kind: 'welink-txt' as const } : parseRawMessages(text);
+  const isJson = kind === 'welink-cli-json';
+  if (!raw.filter((m) => Number.isFinite(m.ts)).length) throw new Error(describeUnparsed(text, opts.sourceName));
   const nameMap = new Map(Object.entries(opts.names ?? {}).map(([k, v]) => [k.toLowerCase(), v]));
   raw.sort((a, b) => a.ts - b.ts);
   let messages = raw.filter((m) => Number.isFinite(m.ts)).map((m, i) => normalize(m, i, nameMap));
@@ -385,11 +525,11 @@ export function parseChat(text: string, opts: ParseOptions = {}): ParsedChat {
     rosterMap.set(m.account, r);
   }
   const roster = [...rosterMap.values()].sort((a, b) => b.count - a.count);
-  const subject = opts.subject?.trim() || guessSubject(trimmed) || '聊天记录';
+  const subject = opts.subject?.trim() || guessSubject(text.replace(/^\uFEFF/, '').trimStart()) || '聊天记录';
   return {
     schemaVersion: 1,
     subject,
-    source: { kind: isJson ? 'welink-cli-json' : 'welink-txt', file: opts.sourceName ?? '', parsedAt: new Date().toISOString() },
+    source: { kind: isJson ? 'welink-cli-json' : kind === 'welink-csv' ? 'welink-csv' : 'welink-txt', file: opts.sourceName ?? '', parsedAt: new Date().toISOString() },
     period: { start: messages[0].date, end: messages[messages.length - 1].date },
     roster,
     messages,

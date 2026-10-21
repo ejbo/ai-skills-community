@@ -21,11 +21,15 @@ export interface BundleFile {
   head?: string;
 }
 
-export type TextKind = 'welink_json' | 'welink_txt' | 'manifest' | 'names' | 'report_json' | 'other';
+export type TextKind = 'welink_json' | 'welink_txt' | 'welink_csv' | 'manifest' | 'names' | 'report_json' | 'other';
 
 export interface BundlePlan<T extends BundleFile = BundleFile> {
-  /** 聊天记录：welink JSON（可多份，服务端合并）优先；否则一份 TXT。 */
-  sources: { file: T; kind: 'welink_json' | 'welink_txt' }[];
+  /**
+   * 聊天记录候选：welink JSON（可多份，服务端合并）/ TXT / CSV 记录——服务端会逐个真解析，谁解析出的消息多用谁。
+   * 内容没认出来的 json / txt / csv / log / md 也排在后面（guess: true）：解析器认得就用，认不得再交给模型推断格式，
+   * 最后才报错——不因为名字 / 开头不像就把文件筛掉。
+   */
+  sources: { file: T; kind: 'welink_json' | 'welink_txt' | 'welink_csv'; guess?: boolean }[];
   manifest: T | null;
   importJson: T | null;
   /** names.json / wl_names/*.json / 内容像 search person 输出的 json。 */
@@ -46,9 +50,10 @@ const SKIP_DIR_RE = /(^|\/)(__MACOSX|\.git|node_modules|work)(\/|$)/;
 const SKIP_NAME = new Set(['.ds_store', 'thumbs.db', 'desktop.ini']);
 const SKILL_OUTPUT_NAMES = new Set(['report.html', 'report.md', 'digest.md', 'stats.json', 'links.json', 'messages.json', 'themes.json', 'overview.json', 'recap.json']);
 const MANIFEST_HINT_RE = /清单|manifest|attach|image|图片/i;
-const TXT_HEAD_RE = /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*\S/m;
-const TXT_DAY_RE = /^#{2,}\s*\d{4}-\d{2}-\d{2}\s*#{2,}\s*$/m;
-const TXT_TIME_RE = /^\[\d{2}:\d{2}:\d{2}\]\s*\S/m;
+// 行头：`[2026-09-20 07:08:22] 姓名（账号）`，括号 / 秒 / 分隔符都可省；或 `姓名（账号） 2026-09-20 07:08`
+const TXT_HEAD_RE = /^[[【]?\d{4}[-/.]\d{1,2}[-/.]\d{1,2}[ T]\d{1,2}:\d{2}(?::\d{2})?[\]】]?\s*[^,\n]{1,40}?[（(][A-Za-z0-9_.@-]+[)）]|^[^,\n]{1,40}?[（(][A-Za-z0-9_.@-]+[)）]\s+[[【]?\d{4}[-/.]\d{1,2}[-/.]\d{1,2}[ T]\d{1,2}:\d{2}/m;
+const TXT_DAY_RE = /^(?:#{2,}|={2,}|-{2,}|[[【])?\s*\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s*(?:#{2,}|={2,}|-{2,}|[\]】])?\s*$/m;
+const TXT_TIME_RE = /^[[【]?\d{1,2}:\d{2}(?::\d{2})?[\]】]?\s*\S/m;
 
 export function bundleBasename(path: string): string {
   const i = path.lastIndexOf('/');
@@ -82,9 +87,13 @@ export function sniffText(head: string, path = ''): TextKind {
     if (base === 'names.json' || (t.startsWith('{') && /^\{\s*"[a-z]\d{6,10}"\s*:\s*"/i.test(t))) return 'names';
     return 'other';
   }
-  if (TXT_HEAD_RE.test(t) || (TXT_DAY_RE.test(t) && TXT_TIME_RE.test(t))) return 'welink_txt';
+  // CSV 先看表头（第一行），再看 TXT 行头——CSV 的数据行也以时间开头
   const firstLine = t.split(/\r?\n/, 1)[0] ?? '';
-  if (/文件名/.test(firstLine) && /(外链|提取码|发送人)/.test(firstLine)) return 'manifest';
+  if (/,/.test(firstLine)) {
+    if (/文件名|fname/.test(firstLine) && /(外链|提取码|url|code)/.test(firstLine)) return 'manifest';
+    if (/(时间|time|date)/i.test(firstLine) && /(内容|content|text|message|msg|body)/i.test(firstLine)) return 'welink_csv';
+  }
+  if (TXT_HEAD_RE.test(t) || (TXT_DAY_RE.test(t) && TXT_TIME_RE.test(t))) return 'welink_txt';
   return 'other';
 }
 
@@ -92,7 +101,9 @@ export function sniffText(head: string, path = ''): TextKind {
 export function planReportBundle<T extends BundleFile>(files: T[]): BundlePlan<T> {
   const plan: BundlePlan<T> = { sources: [], manifest: null, importJson: null, names: [], assets: [], ignored: [] };
   const csvCandidates: T[] = [];
+  const csvRecords: T[] = [];
   const txts: T[] = [];
+  const guessJson: T[] = [];
   const rest: T[] = [];
 
   for (const f of [...files].sort((a, b) => a.path.localeCompare(b.path))) {
@@ -130,6 +141,10 @@ export function planReportBundle<T extends BundleFile>(files: T[]): BundlePlan<T
         txts.push(f);
         continue;
       }
+      if (kind === 'welink_csv') {
+        csvRecords.push(f);
+        continue;
+      }
       if (kind === 'names') {
         plan.names.push(f);
         continue;
@@ -138,9 +153,14 @@ export function planReportBundle<T extends BundleFile>(files: T[]): BundlePlan<T
         csvCandidates.push(f);
         continue;
       }
-      // 内容认不出来的文本：skill 的中间产物直接忽略；csv 还可能是清单（表头不标准）；其余当附件文件
-      if (SKILL_OUTPUT_NAMES.has(lower) || lower.endsWith('.json')) {
-        plan.ignored.push({ file: f, reason: 'unrecognized_json' });
+      // 内容认不出来的文本：skill 的中间产物直接忽略；其余 json 排进候选末尾（服务端真解析一遍，解析不出再丢）；
+      // csv 还可能是清单（表头不标准）；其余当附件文件、同时也是候选
+      if (SKILL_OUTPUT_NAMES.has(lower)) {
+        plan.ignored.push({ file: f, reason: 'skill_output' });
+        continue;
+      }
+      if (lower.endsWith('.json')) {
+        guessJson.push(f);
         continue;
       }
       if (lower.endsWith('.csv')) {
@@ -169,15 +189,6 @@ export function planReportBundle<T extends BundleFile>(files: T[]): BundlePlan<T
     else rest.push(f);
   }
 
-  // 记录：有 JSON 就全用 JSON（服务端合并去重）；否则最大的 TXT；其余 TXT 当附件
-  if (plan.sources.length) {
-    for (const f of txts) plan.ignored.push({ file: f, reason: 'txt_with_json' });
-  } else if (txts.length) {
-    txts.sort((a, b) => b.size - a.size);
-    plan.sources.push({ file: txts[0], kind: 'welink_txt' });
-    for (const f of txts.slice(1)) plan.assets.push({ file: f, kind: 'file' });
-  }
-
   // 清单：内容认出来的优先（csvCandidates 里 sniff 为 manifest 的），再按名字提示，再第一个；其余 csv 当附件
   if (csvCandidates.length) {
     const byContent = csvCandidates.find((f) => f.head !== undefined && sniffText(f.head, f.path) === 'manifest');
@@ -186,14 +197,29 @@ export function planReportBundle<T extends BundleFile>(files: T[]): BundlePlan<T
     for (const f of csvCandidates) if (f !== plan.manifest) plan.assets.push({ file: f, kind: 'file' });
   }
 
+  // 记录候选：认出来的在前——JSON 全部（服务端合并去重）、TXT 按大小、CSV 记录；
+  // 后面跟 guess：内容没认出的 json，以及每个 .txt / .log / .md / 非清单 csv——服务端逐个真解析，谁消息多用谁
+  txts.sort((a, b) => b.size - a.size);
+  for (const f of txts) plan.sources.push({ file: f, kind: 'welink_txt' });
+  for (const f of csvRecords) plan.sources.push({ file: f, kind: 'welink_csv' });
+  const bySize = (a: T, b: T) => b.size - a.size;
+  for (const f of [...guessJson].sort(bySize)) plan.sources.push({ file: f, kind: 'welink_json', guess: true });
+  for (const f of rest.filter((x) => /\.(txt|log|md)$/i.test(x.path) || !bundleBasename(x.path).includes('.')).sort(bySize)) plan.sources.push({ file: f, kind: 'welink_txt', guess: true });
+  for (const f of csvCandidates) if (f !== plan.manifest) plan.sources.push({ file: f, kind: 'welink_csv', guess: true });
+
   for (const f of rest) plan.assets.push({ file: f, kind: BUNDLE_IMAGE_RE.test(f.path) ? 'image' : 'file' });
   plan.assets.sort((a, b) => a.file.path.localeCompare(b.file.path));
-  plan.sources.sort((a, b) => a.file.path.localeCompare(b.file.path));
   return plan;
 }
 
+/** 有没有东西可以当聊天记录（含 guess 候选——它们会在服务端真解析）。 */
 export function bundleHasChat(plan: BundlePlan): boolean {
   return plan.sources.length > 0 || !!plan.importJson;
+}
+
+/** 内容认出来的聊天记录候选（向导展示用；guess 的另算）。 */
+export function sureSources<T extends BundleFile>(plan: BundlePlan<T>): BundlePlan<T>['sources'] {
+  return plan.sources.filter((s) => !s.guess);
 }
 
 function stripAnsi(text: string): string {

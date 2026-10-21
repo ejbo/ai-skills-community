@@ -4790,11 +4790,11 @@
     "report_bundle_picked": "{count} fichiers · {size}",
     "report_bundle_reading": "Lecture de l'index du zip…",
     "report_bundle_bad_zip": "Impossible de lire ce fichier zip",
-    "report_bundle_no_chat": "Aucune discussion reconnue : soit du JSON welink-cli (messages avec msgId / serverSendTime), soit un export TXT (lignes commençant par [AAAA-MM-JJ HH:mm:ss] nom (compte), ou en-têtes #### date ####). La détection lit le contenu, pas le nom du fichier.",
+    "report_bundle_no_chat": "Le dossier ne contient aucun fichier texte (json / txt / csv / log / md) : rien ne peut servir de journal de discussion.",
     "report_bundle_too_large": "La taille totale dépasse {max} ; divisez l'envoi ou retirez les gros fichiers",
     "report_zipping": "Compression de {count} fichiers…",
     "report_detected_import": "report.json (mode import, sans appel au modèle)",
-    "report_detected_pages": "{count} fichiers JSON welink-cli (fusionnés, dédupliqués par msgId)",
+    "report_detected_pages": "{count} fichiers candidats (le serveur analyse chacun ; les JSON sont fusionnés, celui qui donne le plus de messages est retenu)",
     "report_detected_chat": "Discussion",
     "report_detected_manifest": "Manifeste des pièces jointes (requis pour les images en ligne ; facultatif)",
     "report_detected_assets": "{images} images · {files} fichiers",
@@ -4868,7 +4868,8 @@
     "report_instructions_override": "Remplacer le guide par défaut (format et règles de citation conservés)",
     "report_instructions_show_guide": "Afficher le guide par défaut",
     "report_instructions_hide_guide": "Masquer le guide par défaut",
-    "report_instructions_hint": "Ce texte est injecté dans chaque étape (regroupement / thèmes / recap / points clés). Les champs, la forme JSON et la règle « ne citer que ce qui est dans l'enregistrement » restent inchangés."
+    "report_instructions_hint": "Ce texte est injecté dans chaque étape (regroupement / thèmes / recap / points clés). Les champs, la forme JSON et la règle « ne citer que ce qui est dans l'enregistrement » restent inchangés.",
+    "report_detected_guess": "Aucun journal reconnu d'emblée ; ces {count} fichiers texte seront essayés un par un, puis le modèle déduit le format si aucun ne passe"
   },
   "translate": {
     "translate": "Traduire",
