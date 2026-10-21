@@ -3325,7 +3325,9 @@
     "report_not_published": "Le rapport n'a pas encore été partagé dans une zone : aucune publication pour définir des co-auteurs",
     "report_asset_unsupported": "La bibliothèque ne prend pas ce type de fichier (PDF / EPUB / HTML / PPTX / DOCX seulement)",
     "report_asset_share_failed": "Partage vers la bibliothèque impossible",
-    "report_asset_not_found": "Pièce jointe introuvable"
+    "report_asset_not_found": "Pièce jointe introuvable",
+    "zone_report_slug_invalid": "Adresse invalide : lettres, chiffres et tirets seulement (le chinois est converti en pinyin)",
+    "zone_report_slug_taken": "Cette adresse est déjà utilisée par un autre rapport"
   },
   "stickers": {
     "title": "Mes mèmes",
@@ -4977,6 +4979,9 @@
     "report_asset_shared": "Partagé vers la bibliothèque (extraction en cours)",
     "report_asset_share_existing": "La bibliothèque avait déjà ce fichier ; lié",
     "report_asset_share_failed": "Partage vers la bibliothèque impossible",
-    "report_assets_images": "{count} images supplémentaires sont placées dans le texte / en annexe"
+    "report_assets_images": "{count} images supplémentaires sont placées dans le texte / en annexe",
+    "report_slug_label": "Adresse du lien",
+    "report_slug_placeholder": "Vide = générée depuis le titre (pinyin)",
+    "report_slug_hint": "Lettres, chiffres et tirets seulement ; le chinois est converti en pinyin. Les anciens liens continuent de fonctionner (redirection)."
   }
 }

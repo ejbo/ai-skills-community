@@ -3325,7 +3325,9 @@
     "report_not_published": "The report has not been shared into a zone yet, so there is no post to set co-authors on",
     "report_asset_unsupported": "The library does not ingest this file type (PDF / EPUB / HTML / PPTX / DOCX only)",
     "report_asset_share_failed": "Could not share to the library",
-    "report_asset_not_found": "Attachment not found"
+    "report_asset_not_found": "Attachment not found",
+    "zone_report_slug_invalid": "Invalid link address: letters, digits and hyphens only (Chinese is converted to pinyin)",
+    "zone_report_slug_taken": "This link address is already used by another report"
   },
   "stickers": {
     "title": "My stickers",
@@ -4977,6 +4979,9 @@
     "report_asset_shared": "Shared to the library (extracting in the background)",
     "report_asset_share_existing": "The library already had this file; linked",
     "report_asset_share_failed": "Could not share to the library",
-    "report_assets_images": "{count} more images are placed inline / in the appendix"
+    "report_assets_images": "{count} more images are placed inline / in the appendix",
+    "report_slug_label": "Link address",
+    "report_slug_placeholder": "Leave empty to generate from the title (pinyin)",
+    "report_slug_hint": "Letters, digits and hyphens only; Chinese is converted to pinyin. Old links keep working (they redirect)."
   }
 }

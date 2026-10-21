@@ -11,7 +11,8 @@ import type { ZoneAccessRow } from '@/lib/zones/access';
 import { loadAudience, replaceAudience } from '@/lib/audience';
 import { newlyGrantedAudience, type AudiencePick, type AudienceState, type ContentVisibility } from '@/lib/audience-shared';
 import { notifyAudienceGranted } from '@/lib/notifications';
-import { createWithSlug, freeTitleSlug, isSlugConflict } from '@/lib/slug-server';
+import { createWithSlug, freeTitleSlug, isSlugConflict, retireSlug } from '@/lib/slug-server';
+import { asciiTitleSlug } from '@/lib/slug-ascii';
 import { ZoneError } from '@/lib/zones/queries';
 import { createZonePost, updateZonePost, type AttachmentInput, type ZonePostInput } from '@/lib/zones/post-queries';
 import { ZONE_LIMITS, ZONE_MEDIA_KEY_RE, ZONE_POST_VISIBILITIES, type ZonePostVisibilityValue } from '@/lib/zones/shared';
@@ -231,11 +232,14 @@ async function assertOnDisk(keys: string[]): Promise<void> {
 
 export const REPORT_RESERVED_SLUGS = ['new'] as const;
 
-/** 独立分享页的 slug：标题 slug，全站唯一（退休的也不复用）。 */
-export function pickReportSlug(title: string, exceptId?: string): Promise<string> {
+/**
+ * 独立分享页的 slug：标题的 **拼音 / ASCII** slug（lib/slug-ascii.ts），全站唯一（退休的也不复用）。
+ * owner 2026-10-21：分享链接里不要百分号编码的中文。`wanted` 给了就用它（所有者手填的链接地址）。
+ */
+export function pickReportSlug(title: string, exceptId?: string, wanted?: string): Promise<string> {
   return freeTitleSlug({
     kind: 'report',
-    title,
+    title: wanted?.trim() || asciiTitleSlug(title) || 'report',
     fallback: 'report',
     reserved: REPORT_RESERVED_SLUGS,
     takenUnder: (base) =>
@@ -287,6 +291,8 @@ export const reportSettingsInputSchema = z.object({
   title: z.string().trim().min(1).max(ZONE_LIMITS.postTitleMax).optional(),
   visibility: z.enum(['public', 'private', 'audience']).optional(),
   audienceUserIds: z.array(z.string().min(1).max(64)).max(200).optional(),
+  /** 分享页的链接地址（/reports/<slug>）：所有者手填；'' = 按标题重新生成。服务端规范化成 ASCII slug。 */
+  slug: z.string().trim().max(120).optional(),
 });
 export type ReportSettingsInput = z.infer<typeof reportSettingsInputSchema>;
 
@@ -297,7 +303,15 @@ export async function updateReportSettings(reportId: string, actorId: string, in
   // 报告没有草稿态：分享页随时可开（live 恒 true）。
   const before: AudienceState = { live: true, visibility: r.visibility as ContentVisibility, audience: await loadAudienceIds(r.id) };
   let slug = r.slug;
-  if (input.title && input.title !== r.title) {
+  const title = input.title ?? r.title;
+  if (input.slug !== undefined) {
+    // 手填的链接地址：规范化成 ASCII slug；非法（规范化后为空）→ 400；被别人占着 → 409
+    const wanted = input.slug ? asciiTitleSlug(input.slug) : '';
+    if (input.slug && !wanted) throw new ZoneError('report_slug_invalid', 400);
+    const picked = await pickReportSlug(title, r.id, wanted || undefined);
+    if (wanted && picked !== wanted && wanted !== r.slug) throw new ZoneError('report_slug_taken', 409);
+    slug = wanted || picked;
+  } else if (input.title && input.title !== r.title) {
     try {
       slug = await pickReportSlug(input.title, r.id);
     } catch (e) {
@@ -308,10 +322,13 @@ export async function updateReportSettings(reportId: string, actorId: string, in
     await tx.zoneReport.update({
       where: { id: r.id },
       data: {
-        ...(input.title ? { title: input.title, slug } : {}),
+        ...(input.title ? { title: input.title } : {}),
+        ...(slug !== r.slug ? { slug } : {}),
         ...(input.visibility ? { visibility: input.visibility } : {}),
       },
     });
+    // 旧链接继续能用：换掉的 slug 退休成别名（resolveReportParam 认）
+    if (slug !== r.slug && r.slug) await retireSlug('report', r.slug, r.id, '', tx);
     const ids = input.audienceUserIds !== undefined ? (await replaceAudience(tx, 'report', r.id, input.audienceUserIds, { ownerId: r.createdById, addedById: actorId })).userIds : before.audience;
     return { live: true, visibility: (input.visibility ?? before.visibility) as ContentVisibility, audience: ids } satisfies AudienceState;
   });
