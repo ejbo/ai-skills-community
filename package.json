@@ -23,6 +23,7 @@
     "votes:backfill-previews": "tsx scripts/backfill-vote-previews.ts",
     "videos:backfill-subtitles": "tsx scripts/backfill-video-subtitles.ts",
     "slugs:backfill": "tsx scripts/backfill-title-slugs.ts",
+    "slugs:ascii": "tsx scripts/reslug-ascii.ts",
     "content:repair-glued-images": "tsx scripts/repair-glued-images.ts",
     "test": "vitest run",
     "test:watch": "vitest"

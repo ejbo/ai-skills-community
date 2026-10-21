@@ -169,7 +169,7 @@ slug = 标题 slug（`pickReportSlug`，kind `report`，全站唯一），`/repo
 **链接地址（2026-10-21）**：报告的 slug 用 `lib/slug-ascii.ts#asciiTitleSlug`——中文转无调拼音（pinyin-pro，服务端），其余同 `titleSlug`，
 所以 `/reports/jia-yan-si-xiang-yuan-2026-nian-9-yue-yue-bao` 粘到 WeLink / 微信里不会变成一串百分号（owner：「链接会变成编码……就算是英文也行」）。
 所有者可在分享页设置里手填「链接地址」（`PATCH { slug }`，服务端再规范化一次；空 = 按标题重新生成），换掉的旧 slug 退休成
-`SlugAlias(kind='report')`，老链接 301 到新地址。站内其他内容仍是保留中文的 `titleSlug`（slugs.md）——要不要全站换拼音是 owner 的决定。
+`SlugAlias(kind='report')`，老链接 301 到新地址。同日 owner 决定全站一起换（slugs.md「全站拼音 slug」）：`freeTitleSlug` 统一 ASCII 化，`pnpm slugs:ascii` 迁移已有数据。
 
 ### 3c. 导出（`export-docx.ts` / `export-pdf.ts`）
 

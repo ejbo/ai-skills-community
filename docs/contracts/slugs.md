@@ -1,7 +1,10 @@
 # 链接用标题命名（title slugs）
 
 Owner, 2026-10-07:「链接要能看出内容，不要 hash code；可以转英文标题，或者直接把中文放进链接也可以」+
-「投票、帖子等其他板块也都以标题命名链接」。决定：**Unicode 标题 slug**（中文原样保留），不依赖 LLM、确定性。
+「投票、帖子等其他板块也都以标题命名链接」。决定：**标题 slug**，不依赖 LLM、确定性。
+**2026-10-21 改：全站 slug 恒为 ASCII——中文转无调拼音**（`lib/slug-ascii.ts#asciiTitleSlug`，由 `freeTitleSlug` 统一套用）。
+owner：「分享出去的时候链接会变成编码，不显示中文……就算是英文也行」→「可以，一起变了」。带中文的 URL 粘进 WeLink / 微信就是一串
+`%E5…`；拼音链接可读可点。`titleSlug` 本身不变（仍保留 CJK，供校验 / 客户端预览用），只是不再直接当 slug。
 
 ## 一份算法：`lib/slug.ts`（纯函数，客户端可用）
 
@@ -56,10 +59,11 @@ SlugAlias 里退役的**一起避开——新条目永远抢不走旧链接）�
   slug（不写库就不知道第一条占了位），真跑时第二条是 `-2`。
 - 回填之前，老数据的链接就是 id，一切照常可用。
 
-## 例外：报告的分享页用拼音 slug（2026-10-21）
+## 全站拼音 slug（2026-10-21）
 
-`/reports/[slug]` 的 slug 由 `lib/slug-ascii.ts#asciiTitleSlug` 生成：中文 → 无调拼音音节（pinyin-pro），其余规则同 `titleSlug`，
-结果恒为 ASCII。原因是分享链接要粘进聊天工具——带中文的 URL 会被百分号编码成一长串。所有者还能手填链接地址
-（`PATCH /api/tools/chat-report/[id] { slug }`），旧 slug 走 `retireSlug('report', …)` 退休。其他内容类型未改；
-要全站切换，只需把 `titleSlug` 的调用方换成 `asciiTitleSlug`（它在没有中文时与 `titleSlug` 字节一致）。
-
+- 生成：`freeTitleSlug` 里 `asciiTitleSlug(title) || fallback`——所有 kind（活动 / 话题 / 反馈 / 公告 / 版块帖子 / 投票 / 知识库 / 视频 / 报告）一处生效；
+  Wiki 的自动地址和手填地址都过 `asciiTitleSlug`（手填中文也变拼音），编辑器里标题含中文时不预填、交给服务端。
+- 已有数据：`pnpm slugs:ascii [--dry]`（`scripts/reslug-ascii.ts`）把每个 kind 里仍含非 ASCII 的 slug 换成拼音，旧 slug 退休进 `SlugAlias`
+  （zone_post / wiki_page 带 zoneId scope），老链接 301。幂等，跑过一次之后再跑是 0。
+- 报告还多一个所有者手填的「链接地址」（`PATCH /api/tools/chat-report/[id] { slug }`，reports.md §3b）。
+- `encodeURIComponent` 的调用点全部保留：对 ASCII slug 是 no-op，对尚未迁移的老 slug 仍然正确。

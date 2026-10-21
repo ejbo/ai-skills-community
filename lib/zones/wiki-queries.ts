@@ -19,7 +19,8 @@ import type { ZoneSiteViewer } from './access';
 import { resolveEmbeds } from './embeds';
 import { ZoneError } from './queries';
 import { ZONE_LIMITS, collectEmbedRefs, extractHeadings, isValidWikiSlug } from './shared';
-import { decodeSlugParam, titleSlug } from '@/lib/slug';
+import { decodeSlugParam } from '@/lib/slug';
+import { asciiTitleSlug } from '@/lib/slug-ascii';
 import { resolveSlugAlias, retireSlug } from '@/lib/slug-server';
 import type { WikiPageView, WikiRevisionView, WikiTreeNode } from './types';
 
@@ -194,6 +195,13 @@ async function uniqueWikiSlug(zoneId: string, base: string, excludeId?: string):
   return `page-${randomSlugPart()}`;
 }
 
+/** 标题 → 本版块内空闲的拼音 / ASCII slug（scripts/reslug-ascii.ts 用；标题给不出可用 slug 时返回 ''）。 */
+export async function uniqueWikiSlugForTitle(zoneId: string, title: string, excludeId?: string): Promise<string> {
+  const base = asciiTitleSlug(title, WIKI_SLUG_MAX);
+  if (!base || !isValidWikiSlug(base)) return '';
+  return uniqueWikiSlug(zoneId, base, excludeId);
+}
+
 /**
  * Free `slug` for a page about to take it: a soft-deleted row that still holds
  * the original spelling (deleted before `deleteWikiPage` renamed on delete)
@@ -212,14 +220,15 @@ async function releaseDeletedSlug(tx: Prisma.TransactionClient, zoneId: string, 
 }
 
 function slugBaseFor(input: { slug?: string; title: string }): string {
-  const explicit = (input.slug ?? '').trim().toLowerCase();
-  if (explicit) {
-    if (!isValidWikiSlug(explicit)) throw new ZoneError('wiki_slug_invalid', 400);
+  // 手填的地址也过一遍 ASCII 化（中文 → 拼音），全站链接都不带中文（2026-10-21）
+  const explicit = asciiTitleSlug((input.slug ?? '').trim(), WIKI_SLUG_MAX);
+  if ((input.slug ?? '').trim()) {
+    if (!explicit || !isValidWikiSlug(explicit)) throw new ZoneError('wiki_slug_invalid', 400);
     return explicit;
   }
-  // The title IS the address (docs/contracts/slugs.md) — CJK included. Only a
+  // The title IS the address (docs/contracts/slugs.md) — Chinese as pinyin since 2026-10-21. Only a
   // title with no letters/digits at all (or one naming a route word) falls back.
-  const auto = titleSlug(input.title, WIKI_SLUG_MAX);
+  const auto = asciiTitleSlug(input.title, WIKI_SLUG_MAX);
   return auto && isValidWikiSlug(auto) ? auto : 'page';
 }
 
@@ -401,7 +410,7 @@ export async function backfillWikiSlugs(opts: { dry?: boolean } = {}): Promise<{
   let updated = 0;
   for (const row of rows) {
     if (!LEGACY_WIKI_SLUG_RE.test(row.slug)) continue;
-    const base = titleSlug(row.title, WIKI_SLUG_MAX);
+    const base = asciiTitleSlug(row.title, WIKI_SLUG_MAX);
     if (!base || !isValidWikiSlug(base)) continue;
     const next = await uniqueWikiSlug(row.zoneId, base, row.id);
     if (next === row.slug) continue;
