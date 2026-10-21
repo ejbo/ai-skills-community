@@ -267,6 +267,7 @@ tests/zone-reports-*.test.ts, tests/zone-post-revisions.test.ts
     版块保留的只有 `post.report` 原生渲染和帖子版本历史 / 并发编辑。
 11. 识别看内容、不筛文件：`bundle.ts` 只挑出"肯定不是记录"的，其余文本全是候选，`unpack.ts` 真解析挑最好的，`infer-format.ts` 是最后的模型兜底；`sniffText` 只影响向导里的排序 / 显示，**不要再往它里面加"不像就丢"的规则**。skill 的 `parse-chat.mjs` 目录模式是同一套逻辑的 JS 版（没有模型兜底，报错时把文件开头打出来让 agent 自己转格式）。
 13. 模型输出的形状问题不再是错（§2d）：新加一步模型调用时**必须**给 `callJson` 配 `coerce` 和 `onExhausted`，别再写"直接 safeParse、不过就 throw"；zod 的 `.max()` 是上限不是拒绝理由——coerce 里 `clip` 掉。要加字段：schema.ts、coerce.ts（别名 + 截断）、skill 的 validate.mjs / coerce.mjs 四处同改。
+15. `/reports/[slug]` 的动态段是**百分号编码**的（App Router 行为），而 `titleSlug` 保留中文，所以 `resolveReportParam` 必须先 `decodeSlugParam`——漏了就是中文标题的报告分享页 / 看原文全 404（2026-10-21）。任何新的 `[slug]` 页都照 `lib/title-slugs.ts` 的做法先解码。
 14. 「看原文」「知识库文档」、文件卡都靠 `usePreview()`（右侧 dock），而 PreviewProvider 只挂在 section layout 上：`/zones`、`/library`、`/discussion`，以及 2026-10-21 补的 `/reports`、`/tools`。新开一个会渲染 ReportArticle 的路由，**layout 必须挂 `<PreviewProvider mode="dock">`**，否则 `usePreview()` 是 no-op，按钮点了没有任何反应（分享页上「看原文」没东西就是这个）。
 12. 2026-10-20 第三轮的教训：owner 上传的目录是 `*_msgs.json`（agent 自己整理的形状，不是 welink-cli 原样）+ `*_消息记录.txt`，旧规则因为 json 字段名不对就把它当"认不出的 json"丢了，txt 又因为行头少了秒而不认——两边都"像不像"判断、没有一个真去解析，于是报"没有解析到任何消息"。现在三层都是"能解析出消息就用"。
 9. TXT 有三种行头版式（`parse.ts` 顶部注释，括号 / 秒 / 分隔符都可变），都是 agent 从 welink-cli JSON 转的；JSON 更全（附件协议块 / 引用卡片），所以整包上传时解析出的 JSON 条数不少于最佳 TXT 的 80% 就优先 JSON——用户目录里 TXT 和 JSON 通常并存。给 agent 的拉取话术在 skill 的 `reference/welink-fetch.md`。
