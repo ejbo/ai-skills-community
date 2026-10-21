@@ -90,6 +90,18 @@ queued ─parse（parse.ts: TXT / welink-cli JSON → messages；manifest CSV �
 未匹配的发言人保留在报告正文里（姓名 + 账号），只是不成为合著者；页面上列出「未匹配」让创建者知道。
 **隐私**：authorMatches 返回给页面前过 `toPublicAuthor(…, canSeeIdentity)`，手机/邮箱永远不出现。
 
+### 3a. 帖子页的原生渲染（`ReportArticle`，2026-10-20 第二轮）
+
+用户评价 Markdown / 纯 HTML 版"分不清主次、谁说的和说了什么混在一起、来源点不开"。所以报告帖子**不走 Markdown 正文**：
+
+- `getZonePostDetail` 多带 `post.report`（`lib/zones/reports/post-view.ts`：`reportJson` + 发言人账号→站内用户（工号匹配，`toPublicAuthor` 脱敏）+ 附件文件名→知识库 slug + 附件 id→媒体 URL），`headings` 改由 `reportHeadings(report)`（`sections.ts`）生成，右栏目录照常工作。
+- `PostDetail`：`post.report` 存在 ⇒ 渲染 `app/zones/_components/reports/ReportArticle.tsx`，否则照旧 Markdown。发布前的预览页（`ReportDetail`）用的是**同一个组件**，所见即所得。
+- `ReportArticle` 做 Markdown 做不到的事：要点卡（编号圆点 / ■ 判断 + 置信度 / 待办表，负责人是头像）；专题 = 宏观总结面板 → **观点时间线**（头像骑在线上、匹配上的带悬停名片；角色色标 提出=墨 / 质疑=琥珀 / 判断·结论=绿 / 进展=天蓝；`**…**` 高亮关键词；原话引用；配图缩略 → `BodyImageLightbox`；来源 chips → 右侧 dock 的 `link` 卡片（**预置 `data`，不发 /api/zones/embed**，外网链接内网机器本来也抓不到）；已收录文档 → dock 的 `library` 卡片；「看原文 N」→ dock 以 `page` 目标装 `/zones/[slug]/reports/[id]/messages?ids=m1,m2`）→ 待验证 → 资料 → 启示框；活动表、Recap、资源索引、数据概览（横条）、未随文附件。
+- `/zones/[slug]/reports/[reportId]/messages`（`lib/zones/reports/messages.ts`）：按 id 从 `messagesJson` 取原始消息（时间 / 发言人 / 原话 / 引用 / 链接卡片 / 图片），`canRead` 门；装在 iframe 里时 `holdNavBarHidden()` 藏掉导航栏。一次 ≤ 60 条。
+- **编辑**：报告帖子的 `bodyMd` 仍由 `renderReportMarkdown` 生成，只做摘要 / 搜索 / 回退；编辑器顶部有一条说明（`report_post_native_note`），改正文不会改报告视图——要改内容请重新生成。站内翻译对原生视图不适用（`TranslatableScope` disabled）。
+- 枚举显示文案走 i18n（`report_role_* / report_tag_* / report_conf_*`），存的值永远是模型词表里的中文。
+- 配色守 ui.md：chrome 全墨；颜色只出现在内容语义上（角色色标、`<mark>` 高亮、头像身份色）。
+
 ## 4. 版本历史与同时编辑（所有帖子，不只报告）
 
 - **快照**：`updateZonePost` 在 `contentChanged`（title / summary / bodyMd 任一变化）时，在同一事务里 `revision += 1` 并插入 `ZonePostRevision{number: revision}`。
@@ -138,6 +150,9 @@ lib/zones/reports/
   unpack.ts        zip → zone media + ZoneReportAsset + 回写 source/manifest/import/names
   provider.ts      getReportProvider：ZoneReportSetting（沿用知识库 / 单独）→ LLMProvider，60 s 缓存
   pipeline.ts      状态机 + triggerZoneReport + retry + 导入模式 + 第 0 步解包
+  sections.ts      原生视图的 section id + 目录（客户端 / 服务端共用，纯函数）
+  post-view.ts     post.report：reportJson + 发言人→用户 + 附件→知识库 slug / 媒体 URL
+  messages.ts      「看原文」：按 id 取原始消息
   queries.ts       视图、列表、创建、删除、publishZoneReport
   library.ts       附件 → 知识库收录；listZoneLibraryDocs
 lib/zones/post-revisions.ts   快照 / 列表 / 恢复
@@ -145,7 +160,8 @@ lib/zones/post-presence.ts    心跳 / 活跃编辑者
 app/api/zones/[slug]/reports/route.ts, [reportId]/route.ts, [reportId]/publish/route.ts, [reportId]/retry/route.ts
 app/api/admin/zones/report-llm/route.ts, test/route.ts；app/manage/zones/report-llm/page.tsx, ReportLlmCard.tsx
 app/api/zones/[slug]/posts/[postId]/editors/route.ts, revisions/route.ts, revisions/[revisionId]/route.ts
-app/zones/[slug]/reports/page.tsx, new/page.tsx, [reportId]/page.tsx
+app/zones/[slug]/reports/page.tsx, new/page.tsx, [reportId]/page.tsx, [reportId]/messages/page.tsx
+app/zones/_components/reports/ReportArticle.tsx, ReportMessages.tsx, report-bits.tsx（RichText / Speaker / SourceChips / Thumbs）
 app/zones/[slug]/posts/[postId]/history/page.tsx
 app/zones/_components/reports/*（ReportWizard / ReportProgress / ReportPublishPanel / ReportList）
 app/zones/_components/post/PostHistory.tsx, EditorsBand.tsx, StaleRevisionDialog.tsx
@@ -160,6 +176,7 @@ tests/zone-reports-*.test.ts, tests/zone-post-revisions.test.ts
 4. 发言人姓名以名单为准（账号查），模型写错名字不影响渲染。
 5. **报告正文的文风**（render-md.ts，与 skill 的 render.mjs 同一套）：内部技术汇报风——章节标题带【】标签、主线判断直接做引文、每个专题以「启示」收束；**没有**「一句话」之类的标签词、统计药丸、置信度徽章（用户评价那种"很 AI"）。HTML 版白底、华为红 `#E60012` 是唯一强调色。改结构先改 skill 的 `reference/report-structure.md`，两边保持同序。
 6. 整包上传的识别只看文件名：一个目录里放两份不同群的 TXT 会只取最大的那份——向导会把识别结果显示出来，让用户自己看。
+8. `ReportArticle` 是客户端组件：只能 import `sections.ts` 这类纯模块，**不要** import `post-view.ts` / `messages.ts`（它们带 prisma）；类型用 `import type`。
 7. welink-cli 不能搬到服务端：它要 WeLink PC 客户端在本机运行 + 手机扫码（约 90 分钟有效）+ 下载附件要绕开公司代理。拉取永远在用户自己的电脑上做，站内只接收结果。
 5. 配图只认 `report.attachments[].file` 与 `ZoneReportAsset.name` 的文件名相等（大小写敏感）；清单里的文件名就是云盘下载的文件名。
 6. 快照条件和 `editedAt` 完全一致（内容变化且已发布）；草稿自动保存不进历史，否则每次打字都是一版。

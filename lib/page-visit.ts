@@ -96,6 +96,7 @@ export const PAGE_NAMES: readonly PageNameEntry[] = [
   ['/zones/[slug]/reports', '版块报告'],
   ['/zones/[slug]/reports/new', '新建版块报告'],
   ['/zones/[slug]/reports/[reportId]', '版块报告详情'],
+  ['/zones/[slug]/reports/[reportId]/messages', '版块报告原始发言'],
   ['/zones/[slug]/wiki', '版块 Wiki'],
   ['/zones/[slug]/wiki/new', '新建 Wiki 页面'],
   ['/zones/[slug]/wiki/[pageSlug]', 'Wiki 页面'],

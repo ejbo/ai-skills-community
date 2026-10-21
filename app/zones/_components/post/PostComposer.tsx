@@ -606,6 +606,10 @@ export function PostComposer({
       <div className="py-8 xl:grid xl:grid-cols-[minmax(0,1fr)_280px] xl:gap-8">
         <div className={`mx-auto w-full ${ARTICLE_MEASURE_CLASS}`}>
           {post && <EditorsBand zoneSlug={zone.slug} postId={post.id} />}
+          {post?.report && (
+            // 报告帖子：正文由 reportJson 原生渲染，这里改的 Markdown 只影响摘要 / 搜索 / 回退（reports.md §3a）。
+            <p className="mb-6 rounded-xl border border-dashed border-zinc-400 px-4 py-3 text-xs text-zinc-600 dark:border-zinc-600 dark:text-zinc-400">{t('report_post_native_note')}</p>
+          )}
           {pending && (
             <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm dark:border-zinc-700 dark:bg-zinc-900">
               <span className="inline-flex items-center gap-2">

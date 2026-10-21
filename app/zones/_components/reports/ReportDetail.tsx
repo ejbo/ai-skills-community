@@ -17,14 +17,14 @@ import { usePreview } from '@/components/zones/preview/PreviewProvider';
 import { currentLoginHref } from '@/lib/auth/callback-path';
 import type { ZoneReportDetailView } from '@/lib/zones/reports/queries';
 import { zoneHref, zonePostEditHref, zonePostHref, type ZonePostVisibilityValue } from '@/lib/zones/shared';
-import type { ZoneColumnView } from '@/lib/zones/types';
+import type { ZoneColumnView, ZonePostReportView } from '@/lib/zones/types';
+import { ReportArticle } from './ReportArticle';
 import { RelTime } from '../RelTime';
 import { BTN_PRIMARY, BTN_SECONDARY, CARD_CLS, LABEL_CLS, PILL_MONO, SECTION_TITLE_CLS, SELECT_CLS } from '../ui';
 import { VisibilityPicker } from '../post/VisibilityPicker';
 
 const POLL_MS = 3000;
 const RUNNING = new Set(['queued', 'parsing', 'clustering', 'summarizing', 'assembling', 'ingesting']);
-const CONF: Record<string, string> = { high: '高', medium: '中', low: '低' };
 
 export function ReportDetail({
   zoneSlug,
@@ -116,6 +116,18 @@ export function ReportDetail({
   }
 
   const r = view.report;
+  // 预览用的就是帖子页那一套原生视图（ReportArticle），发布前后看到的是同一个东西。
+  const nativeView = useMemo<ZonePostReportView | null>(() => {
+    if (!r) return null;
+    const speakers: ZonePostReportView['speakers'] = {};
+    for (const m of view.authorMatches) if (m.user) speakers[m.account.toLowerCase()] = m.user;
+    const librarySlugs: Record<string, string> = {};
+    const urlByKey = new Map(view.assets.map((a) => [a.key, a.url]));
+    for (const a of view.assets) if (a.libraryDoc) librarySlugs[a.name] = a.libraryDoc.slug;
+    const assetUrls: Record<string, string> = {};
+    for (const a of r.attachments) if (a.assetKey && urlByKey.has(a.assetKey)) assetUrls[a.id] = urlByKey.get(a.assetKey)!;
+    return { id: view.id, report: r, speakers, librarySlugs, assetUrls };
+  }, [r, view.id, view.authorMatches, view.assets]);
 
   return (
     <div className="space-y-6">
@@ -175,42 +187,17 @@ export function ReportDetail({
         {running && <p className="mt-3 text-xs text-muted">{t('report_running_hint')}</p>}
       </section>
 
-      {r && (
-        <section className={`${CARD_CLS} p-5`}>
-          <h2 className={SECTION_TITLE_CLS}>{t('report_preview')}</h2>
-          <p className="mt-2 text-base font-medium">{r.summary.headline}</p>
-          <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm">
-            {r.summary.highlights.map((h, i) => (
-              <li key={i}>{h.text}</li>
-            ))}
-          </ol>
-          {r.summary.judgments.length > 0 && (
-            <ul className="mt-3 space-y-1 text-sm">
-              {r.summary.judgments.map((j, i) => (
-                <li key={i} className="flex gap-2">
-                  <span className={PILL_MONO}>{CONF[j.confidence] ?? j.confidence}</span>
-                  <span>{j.text}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="mt-4 grid gap-2 sm:grid-cols-2">
-            {r.themes.map((th, i) => (
-              <div key={th.id} className="rounded-xl border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800">
-                <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-xs text-muted">{String(i + 1).padStart(2, '0')}</span>
-                  <span className="font-medium">{th.title}</span>
-                  <span className="ml-auto font-mono text-xs text-muted">{t('report_theme_counts', { msgs: th.weight, views: th.viewpoints.length })}</span>
-                </div>
-                <p className="mt-1 text-xs text-muted">{th.tagline}</p>
-              </div>
-            ))}
+      {r && nativeView && (
+        <section className={`${CARD_CLS} p-5 sm:p-7`}>
+          <div className="mb-6 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className={SECTION_TITLE_CLS}>{t('report_preview')}</h2>
+            <p className="text-xs text-muted">
+              {t('report_preview_counts', { events: r.events.length, recap: r.recap?.items.length ?? 0, attachments: r.attachments.filter((a) => a.assetKey).length, unassigned: r.unassigned.length })}
+            </p>
           </div>
-          <p className="mt-3 text-xs text-muted">
-            {t('report_preview_counts', { events: r.events.length, recap: r.recap?.items.length ?? 0, attachments: r.attachments.filter((a) => a.assetKey).length, unassigned: r.unassigned.length })}
-          </p>
+          <ReportArticle zoneSlug={zoneSlug} view={nativeView} embeds={{}} />
           {view.warnings.length > 0 && (
-            <details className="mt-3 text-xs text-muted">
+            <details className="mt-6 text-xs text-muted">
               <summary className="cursor-pointer">{t('report_warnings', { count: view.warnings.length })}</summary>
               <ul className="mt-2 list-disc space-y-0.5 pl-5">
                 {view.warnings.map((w, i) => (

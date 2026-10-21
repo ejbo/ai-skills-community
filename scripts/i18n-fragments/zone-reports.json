@@ -499,6 +499,316 @@
       "zh-CN": "跳过 {count} 个",
       "en": "{count} skipped",
       "fr": "{count} ignorés"
+    },
+    "report_messages_title": {
+      "zh-CN": "原始发言",
+      "en": "Original messages",
+      "fr": "Messages d'origine"
+    },
+    "report_messages_hint": {
+      "zh-CN": "{found} / {requested} 条原始消息，按时间排序",
+      "en": "{found} of {requested} original messages, in time order",
+      "fr": "{found} sur {requested} messages d'origine, par ordre chronologique"
+    },
+    "report_messages_empty": {
+      "zh-CN": "没有找到对应的原始消息（报告可能已重新生成）",
+      "en": "No matching original messages (the report may have been regenerated)",
+      "fr": "Aucun message d'origine correspondant (le rapport a peut-être été régénéré)"
+    },
+    "report_messages_reply": {
+      "zh-CN": "回复 {name}",
+      "en": "Replying to {name}",
+      "fr": "En réponse à {name}"
+    },
+    "report_messages_missing_image": {
+      "zh-CN": "图片未上传：{file}",
+      "en": "Image not uploaded: {file}",
+      "fr": "Image non envoyée : {file}"
+    },
+    "report_sec_brief": {
+      "zh-CN": "本期要点",
+      "en": "Highlights",
+      "fr": "Points clés"
+    },
+    "report_sec_highlights": {
+      "zh-CN": "要点",
+      "en": "Key points",
+      "fr": "Points"
+    },
+    "report_sec_judgments": {
+      "zh-CN": "关键判断",
+      "en": "Key judgments",
+      "fr": "Jugements clés"
+    },
+    "report_sec_actions": {
+      "zh-CN": "待办与跟踪",
+      "en": "Actions & follow-ups",
+      "fr": "Actions et suivis"
+    },
+    "report_col_action": {
+      "zh-CN": "事项",
+      "en": "Item",
+      "fr": "Élément"
+    },
+    "report_col_owner": {
+      "zh-CN": "负责人",
+      "en": "Owner",
+      "fr": "Responsable"
+    },
+    "report_col_theme": {
+      "zh-CN": "专题",
+      "en": "Topic",
+      "fr": "Thème"
+    },
+    "report_col_due": {
+      "zh-CN": "时间",
+      "en": "When",
+      "fr": "Échéance"
+    },
+    "report_theme_label": {
+      "zh-CN": "专题 {n}",
+      "en": "Topic {n}",
+      "fr": "Thème {n}"
+    },
+    "report_theme_messages": {
+      "zh-CN": "{count} 条消息",
+      "en": "{count} messages",
+      "fr": "{count} messages"
+    },
+    "report_sec_timeline": {
+      "zh-CN": "观点时间线",
+      "en": "Timeline of views",
+      "fr": "Chronologie des points de vue"
+    },
+    "report_sec_insight": {
+      "zh-CN": "启示",
+      "en": "Takeaway",
+      "fr": "Enseignement"
+    },
+    "report_sec_open": {
+      "zh-CN": "待验证 · 待跟踪",
+      "en": "To verify · to follow",
+      "fr": "À vérifier · à suivre"
+    },
+    "report_sec_theme_resources": {
+      "zh-CN": "本专题资料",
+      "en": "Resources for this topic",
+      "fr": "Ressources de ce thème"
+    },
+    "report_sec_events": {
+      "zh-CN": "活动与通知",
+      "en": "Events & notices",
+      "fr": "Événements et annonces"
+    },
+    "report_col_date": {
+      "zh-CN": "日期",
+      "en": "Date",
+      "fr": "Date"
+    },
+    "report_col_event": {
+      "zh-CN": "活动",
+      "en": "Event",
+      "fr": "Événement"
+    },
+    "report_col_host": {
+      "zh-CN": "主办 / 发起",
+      "en": "Host",
+      "fr": "Organisateur"
+    },
+    "report_sec_resources": {
+      "zh-CN": "资源索引",
+      "en": "Resource index",
+      "fr": "Index des ressources"
+    },
+    "report_sec_stats": {
+      "zh-CN": "数据概览",
+      "en": "At a glance",
+      "fr": "En chiffres"
+    },
+    "report_sec_appendix": {
+      "zh-CN": "未随文的图片与文件",
+      "en": "Images & files not placed inline",
+      "fr": "Images et fichiers non placés"
+    },
+    "report_sources": {
+      "zh-CN": "来源",
+      "en": "Sources",
+      "fr": "Sources"
+    },
+    "report_view_original": {
+      "zh-CN": "看原文 {count}",
+      "en": "Original ({count})",
+      "fr": "Original ({count})"
+    },
+    "report_confidence": {
+      "zh-CN": "置信度 {level}",
+      "en": "Confidence {level}",
+      "fr": "Confiance {level}"
+    },
+    "report_conf_high": {
+      "zh-CN": "高",
+      "en": "high",
+      "fr": "élevée"
+    },
+    "report_conf_medium": {
+      "zh-CN": "中",
+      "en": "medium",
+      "fr": "moyenne"
+    },
+    "report_conf_low": {
+      "zh-CN": "低",
+      "en": "low",
+      "fr": "faible"
+    },
+    "report_role_propose": {
+      "zh-CN": "提出",
+      "en": "raises",
+      "fr": "soulève"
+    },
+    "report_role_respond": {
+      "zh-CN": "回应",
+      "en": "responds",
+      "fr": "répond"
+    },
+    "report_role_challenge": {
+      "zh-CN": "质疑",
+      "en": "challenges",
+      "fr": "conteste"
+    },
+    "report_role_add": {
+      "zh-CN": "补充",
+      "en": "adds",
+      "fr": "complète"
+    },
+    "report_role_judge": {
+      "zh-CN": "判断",
+      "en": "judges",
+      "fr": "juge"
+    },
+    "report_role_progress": {
+      "zh-CN": "进展",
+      "en": "progress",
+      "fr": "avancée"
+    },
+    "report_role_conclude": {
+      "zh-CN": "结论",
+      "en": "concludes",
+      "fr": "conclut"
+    },
+    "report_role_notice": {
+      "zh-CN": "通知",
+      "en": "notice",
+      "fr": "annonce"
+    },
+    "report_tag_consensus": {
+      "zh-CN": "共识",
+      "en": "Consensus",
+      "fr": "Consensus"
+    },
+    "report_tag_divergence": {
+      "zh-CN": "分歧",
+      "en": "Divergence",
+      "fr": "Divergence"
+    },
+    "report_tag_judgment": {
+      "zh-CN": "判断",
+      "en": "Judgment",
+      "fr": "Jugement"
+    },
+    "report_tag_landscape": {
+      "zh-CN": "格局",
+      "en": "Landscape",
+      "fr": "Paysage"
+    },
+    "report_tag_leverage": {
+      "zh-CN": "杠杆",
+      "en": "Leverage",
+      "fr": "Levier"
+    },
+    "report_tag_risk": {
+      "zh-CN": "风险",
+      "en": "Risk",
+      "fr": "Risque"
+    },
+    "report_tag_progress": {
+      "zh-CN": "进展",
+      "en": "Progress",
+      "fr": "Avancée"
+    },
+    "report_stat_messages": {
+      "zh-CN": "消息",
+      "en": "Messages",
+      "fr": "Messages"
+    },
+    "report_stat_substantive": {
+      "zh-CN": "有信息量",
+      "en": "Substantive",
+      "fr": "Substantiels"
+    },
+    "report_stat_speakers": {
+      "zh-CN": "发言人",
+      "en": "Speakers",
+      "fr": "Intervenants"
+    },
+    "report_stat_links": {
+      "zh-CN": "链接",
+      "en": "Links",
+      "fr": "Liens"
+    },
+    "report_stat_attachments": {
+      "zh-CN": "图片/附件",
+      "en": "Images / files",
+      "fr": "Images / fichiers"
+    },
+    "report_stat_active_days": {
+      "zh-CN": "活跃天数",
+      "en": "Active days",
+      "fr": "Jours actifs"
+    },
+    "report_stat_peak": {
+      "zh-CN": "峰值日",
+      "en": "Peak day",
+      "fr": "Jour de pointe"
+    },
+    "report_stat_top_speakers": {
+      "zh-CN": "发言人 Top",
+      "en": "Top speakers",
+      "fr": "Intervenants les plus actifs"
+    },
+    "report_stat_by_day": {
+      "zh-CN": "按日活跃度",
+      "en": "Activity by day",
+      "fr": "Activité par jour"
+    },
+    "report_missing_file": {
+      "zh-CN": "缺失：{file}",
+      "en": "Missing: {file}",
+      "fr": "Manquant : {file}"
+    },
+    "report_kind_tag_daily": {
+      "zh-CN": "日报",
+      "en": "Daily",
+      "fr": "Quotidien"
+    },
+    "report_kind_tag_weekly": {
+      "zh-CN": "周报",
+      "en": "Weekly",
+      "fr": "Hebdomadaire"
+    },
+    "report_kind_tag_monthly": {
+      "zh-CN": "月报",
+      "en": "Monthly",
+      "fr": "Mensuel"
+    },
+    "report_kind_tag_custom": {
+      "zh-CN": "技术动态",
+      "en": "Tech digest",
+      "fr": "Veille technique"
+    },
+    "report_post_native_note": {
+      "zh-CN": "这是报告帖子：正文由报告数据原生渲染（时间线、来源侧栏、看原文）。这里编辑的正文只用于摘要、搜索与回退，不会改变报告视图；要改内容请重新生成报告。",
+      "en": "This is a report post: the body is rendered natively from the report data (timeline, source panel, originals). Text edited here is used only for the summary, search and fallback and does not change the report view; regenerate the report to change its content.",
+      "fr": "Ce billet est un rapport : le corps est rendu nativement depuis les données du rapport (chronologie, panneau des sources, originaux). Le texte modifié ici ne sert qu'au résumé, à la recherche et au repli ; régénérez le rapport pour en changer le contenu."
     }
   },
   "api_errors": {

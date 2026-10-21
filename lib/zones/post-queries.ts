@@ -44,6 +44,8 @@ import {
 import { initialCoverFraming, nextCoverFraming, parseCoverFramingInput, zonePostCoverFraming } from './post-cover';
 import { coverAspectSchema, coverPosSchema } from './post-cover-schema';
 import { autoPostSummary, nextPostSummary } from './post-summary';
+import { loadZonePostReportView } from './reports/post-view';
+import { reportHeadings } from './reports/sections';
 import { readableZoneWhere, zoneOrgTree } from './queries';
 import { createWithSlug, isSlugConflict } from '@/lib/slug-server';
 import { pickZonePostSlug } from '@/lib/title-slugs';
@@ -189,6 +191,8 @@ const ZONE_POST_DETAIL_SELECT = {
   // 版本历史（docs/contracts/reports.md §4）：编辑器带着 revision 保存，页头显示「历史 (n)」。
   revision: true,
   _count: { select: { revisions: true } },
+  // 报告帖子（docs/contracts/reports.md §3a）：reportJson 只在详情里读，列表永远不碰。
+  report: { select: { id: true, status: true, reportJson: true, authorMatches: true } },
 } satisfies Prisma.ZonePostSelect;
 
 const PUBLISHED_WHERE = { status: 'published', deletedAt: null } satisfies Prisma.ZonePostWhereInput;
@@ -550,12 +554,13 @@ export async function getZonePostDetail(
   const privileged = decision === 'privileged';
   const restricted = row.visibility === 'restricted';
 
-  const [sets, embeds, designatedViewers] = await Promise.all([
+  const [sets, embeds, designatedViewers, report] = await Promise.all([
     viewerPostSets(viewer.id, [row.id]),
     locked
       ? Promise.resolve<Record<string, EmbedData>>({})
       : resolveEmbeds(collectEmbedRefs(row.bodyMd), { viewer, session: opts.session ?? null, locale: opts.locale }),
     privileged && restricted ? listDesignatedViewers(row.id, viewer.canSeeIdentity) : Promise.resolve<PublicAuthor[]>([]),
+    locked ? Promise.resolve(null) : loadZonePostReportView(row.report, viewer.canSeeIdentity),
   ]);
   const card = toZonePostCardView(row, {
     viewerId: viewer.id,
@@ -569,8 +574,9 @@ export async function getZonePostDetail(
     designatedViewers,
     accessCode: privileged && restricted ? (row.accessCode ?? null) : null,
     attachments: locked ? [] : row.attachments.map(toAttachmentView),
-    headings: locked ? [] : extractHeadings(row.bodyMd),
+    headings: locked ? [] : report ? reportHeadings(report.report) : extractHeadings(row.bodyMd),
     embeds,
+    report,
     revision: row.revision,
     revisionCount: row._count.revisions,
   };

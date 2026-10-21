@@ -44,6 +44,7 @@ import { PostHeader } from './PostHeader';
 import { PostRail } from './PostRail';
 import { PostUnlock } from './PostUnlock';
 import { RelatedPosts } from './RelatedPosts';
+import { ReportArticle } from '../reports/ReportArticle';
 import { useLikeBookmark } from './useLikeBookmark';
 import { zonePostEditHref } from '@/lib/zones/shared';
 
@@ -108,7 +109,7 @@ export function PostDetail({
       kind="zone_post"
       id={post.id}
       fields={{ title: post.title, summary: post.summary, body: post.bodyMd }}
-      disabled={post.status === 'draft'}
+      disabled={post.status === 'draft' || !!post.report}
     >
     <div className={grid} data-post-band={band}>
       <article ref={articleRef} className={`min-w-0 ${ARTICLE_MEASURE_CLASS}`}>
@@ -134,13 +135,21 @@ export function PostDetail({
         <PostHeader post={post} zone={zone} leadRoles={leadRoles} titleRef={titleRef} canEdit={canEdit} />
 
         <div className={`mt-8 ${HEADING_SCROLL_MARGIN}`}>
-          {/* One slot: 「译自… · 显示原文」 while translated, else 翻译 / 翻译中… / 显示译文. */}
-          <TranslateNote />
-          <TranslateControl className="mb-3" />
-          {post.bodyMd.trim() ? (
-            <PostBody post={post} />
+          {post.report ? (
+            // 报告帖子（docs/contracts/reports.md §3a）：原生渲染 reportJson；bodyMd 只做摘要 / 搜索 / 回退。
+            // 站内翻译作用于 Markdown 正文，对原生视图无意义，这里不给翻译入口。
+            <ReportArticle zoneSlug={zone.slug} view={post.report} embeds={post.embeds} />
           ) : (
-            <p className="text-sm text-muted">{t('post_body_empty')}</p>
+            <>
+              {/* One slot: 「译自… · 显示原文」 while translated, else 翻译 / 翻译中… / 显示译文. */}
+              <TranslateNote />
+              <TranslateControl className="mb-3" />
+              {post.bodyMd.trim() ? (
+                <PostBody post={post} />
+              ) : (
+                <p className="text-sm text-muted">{t('post_body_empty')}</p>
+              )}
+            </>
           )}
         </div>
 

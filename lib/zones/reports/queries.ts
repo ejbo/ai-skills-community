@@ -9,7 +9,7 @@ import type { ZoneAccessRow } from '@/lib/zones/access';
 import { ZoneError } from '@/lib/zones/queries';
 import { createZonePost, type AttachmentInput, type ZonePostInput } from '@/lib/zones/post-queries';
 import { ZONE_LIMITS, ZONE_MEDIA_KEY_RE, ZONE_POST_VISIBILITIES, type ZonePostVisibilityValue } from '@/lib/zones/shared';
-import { statZoneMediaAsync } from '@/lib/zones/storage';
+import { statZoneMediaAsync, zoneMediaPublicUrl } from '@/lib/zones/storage';
 import { authorMatchViews, type AuthorMatchRow, type AuthorMatchView } from './authors';
 import { librarySlugsForReport } from './library';
 import { effectiveStatus, triggerZoneReport } from './pipeline';
@@ -48,6 +48,8 @@ export interface ZoneReportAssetView {
   kind: string;
   sizeBytes: number;
   libraryDoc: { id: string; slug: string; title: string } | null;
+  /** 根相对 `/api/zones/media/<key>`（渲染时 withBasePath）。 */
+  url: string;
 }
 
 export interface ZoneReportDetailView extends ZoneReportView {
@@ -136,7 +138,7 @@ export async function getZoneReportDetail(zoneId: string, reportId: string, view
     ...toView(r, viewerId, canSeeIdentity),
     report: r.status === 'ready' ? ((r.reportJson as unknown as Report | null) ?? null) : null,
     authorMatches: await authorMatchViews(matches, canSeeIdentity),
-    assets: r.assets.map((a) => ({ id: a.id, key: a.key, name: a.name, kind: a.kind, sizeBytes: a.sizeBytes, libraryDoc: a.libraryDocId ? (docById.get(a.libraryDocId) ?? null) : null })),
+    assets: r.assets.map((a) => ({ id: a.id, key: a.key, name: a.name, kind: a.kind, sizeBytes: a.sizeBytes, libraryDoc: a.libraryDocId ? (docById.get(a.libraryDocId) ?? null) : null, url: zoneMediaPublicUrl(a.key) })),
     warnings: Array.isArray(warnings) ? warnings.slice(0, 50) : [],
   };
 }
