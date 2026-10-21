@@ -55,3 +55,11 @@ SlugAlias 里退役的**一起避开——新条目永远抢不走旧链接）�
   slug 被**替换**，旧的进 SlugAlias，已分享的链接 308 到新地址。dry 模式下同一作用域里两条同名会显示同一个
   slug（不写库就不知道第一条占了位），真跑时第二条是 `-2`。
 - 回填之前，老数据的链接就是 id，一切照常可用。
+
+## 例外：报告的分享页用拼音 slug（2026-10-21）
+
+`/reports/[slug]` 的 slug 由 `lib/slug-ascii.ts#asciiTitleSlug` 生成：中文 → 无调拼音音节（pinyin-pro），其余规则同 `titleSlug`，
+结果恒为 ASCII。原因是分享链接要粘进聊天工具——带中文的 URL 会被百分号编码成一长串。所有者还能手填链接地址
+（`PATCH /api/tools/chat-report/[id] { slug }`），旧 slug 走 `retireSlug('report', …)` 退休。其他内容类型未改；
+要全站切换，只需把 `titleSlug` 的调用方换成 `asciiTitleSlug`（它在没有中文时与 `titleSlug` 字节一致）。
+

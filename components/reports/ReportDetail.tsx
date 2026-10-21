@@ -59,6 +59,9 @@ export function ReportDetail({
   const [visibility, setVisibility] = useState<ContentVisibility>(initial.visibility);
   const [audience, setAudience] = useState<AudiencePick[]>(initial.audience);
   const [title, setTitle] = useState(initial.title);
+  // 分享页链接地址（/reports/<slug>）：所有者可改；空着保存 = 按标题重新生成拼音 slug
+  const [slugInput, setSlugInput] = useState(initial.slug ?? '');
+  const [slugDirty, setSlugDirty] = useState(false);
 
   // 分享到技术专区
   const [zones, setZones] = useState<ZoneCardView[] | null>(null);
@@ -169,14 +172,18 @@ export function ReportDetail({
       const res = await fetch(url, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ title: title.trim() || undefined, visibility, audienceUserIds: audience.map((a) => a.userId) }),
+        body: JSON.stringify({ title: title.trim() || undefined, visibility, audienceUserIds: audience.map((a) => a.userId), ...(slugDirty ? { slug: slugInput.trim() } : {}) }),
       });
       if (res.status === 401) return router.push(currentLoginHref());
       const data = (await res.json().catch(() => ({}))) as { reason?: string };
       if (!res.ok) return pushToast('error', data.reason ?? tt('report_settings_failed'));
       pushToast('success', tt('report_settings_saved'));
       const fresh = await fetch(url).then((x) => x.json()).catch(() => null);
-      if (fresh?.report) setView(fresh.report);
+      if (fresh?.report) {
+        setView(fresh.report);
+        setSlugInput(fresh.report.slug ?? '');
+        setSlugDirty(false);
+      }
     } finally {
       setBusy(null);
     }
@@ -393,6 +400,27 @@ export function ReportDetail({
           </div>
           <div className="mt-4">
             <VisibilityField visibility={visibility} onVisibilityChange={setVisibility} audience={audience} onAudienceChange={setAudience} selfHandle={currentUser.handle} />
+          </div>
+          <div className="mt-4">
+            <label className={LABEL_CLS} htmlFor="report-slug">
+              {tt('report_slug_label')}
+            </label>
+            <div className="flex items-center gap-0 overflow-hidden rounded-lg border border-zinc-300 focus-within:border-zinc-900 dark:border-zinc-700 dark:focus-within:border-zinc-100">
+              <span className="shrink-0 border-r border-zinc-200 bg-zinc-50 px-3 py-2 font-mono text-xs text-muted dark:border-zinc-800 dark:bg-zinc-900">/reports/</span>
+              <input
+                id="report-slug"
+                value={slugInput}
+                onChange={(e) => {
+                  setSlugInput(e.target.value);
+                  setSlugDirty(true);
+                }}
+                className="min-w-0 flex-1 bg-transparent px-3 py-2 font-mono text-xs outline-none"
+                maxLength={120}
+                placeholder={tt('report_slug_placeholder')}
+                spellCheck={false}
+              />
+            </div>
+            <p className="mt-1 text-[11px] text-muted">{tt('report_slug_hint')}</p>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <code className="min-w-0 flex-1 truncate rounded-lg bg-zinc-50 px-3 py-2 font-mono text-xs dark:bg-zinc-900">{pageHref}</code>

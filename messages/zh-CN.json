@@ -3325,7 +3325,9 @@
     "report_not_published": "报告还没有分享到版块，没有帖子可以设置合著者",
     "report_asset_unsupported": "这种文件类型知识库不收录（只收 PDF / EPUB / HTML / PPTX / DOCX）",
     "report_asset_share_failed": "分享到知识库失败",
-    "report_asset_not_found": "附件不存在"
+    "report_asset_not_found": "附件不存在",
+    "zone_report_slug_invalid": "链接地址不合法：只能用字母、数字、连字符（中文会自动转成拼音）",
+    "zone_report_slug_taken": "这个链接地址已被另一份报告占用，换一个"
   },
   "stickers": {
     "title": "我的表情包",
@@ -4977,6 +4979,9 @@
     "report_asset_shared": "已分享到知识库（后台提取中，稍后可读）",
     "report_asset_share_existing": "知识库里已有同一份文件，已关联",
     "report_asset_share_failed": "分享到知识库失败",
-    "report_assets_images": "另有 {count} 张图片随文 / 在附录里"
+    "report_assets_images": "另有 {count} 张图片随文 / 在附录里",
+    "report_slug_label": "链接地址",
+    "report_slug_placeholder": "留空 = 按标题自动生成拼音",
+    "report_slug_hint": "只能用字母、数字、连字符；填中文会自动转成拼音。改了以后旧链接仍然能打开（自动跳转）。"
   }
 }

@@ -166,6 +166,11 @@ skill 侧同一份逻辑：`scripts/coerce.mjs`（由 coerce.ts `tsc` 转出，�
 `audience` = 名单；另外**已分享的帖子对这个人可见 ⇒ 报告也可见**（帖子里的「看原文」靠它）。分享页、看原文页、导出、详情 API 都走它。
 slug = 标题 slug（`pickReportSlug`，kind `report`，全站唯一），`/reports/<id>` 与退休 slug 301 到它（`resolve.ts`）。
 
+**链接地址（2026-10-21）**：报告的 slug 用 `lib/slug-ascii.ts#asciiTitleSlug`——中文转无调拼音（pinyin-pro，服务端），其余同 `titleSlug`，
+所以 `/reports/jia-yan-si-xiang-yuan-2026-nian-9-yue-yue-bao` 粘到 WeLink / 微信里不会变成一串百分号（owner：「链接会变成编码……就算是英文也行」）。
+所有者可在分享页设置里手填「链接地址」（`PATCH { slug }`，服务端再规范化一次；空 = 按标题重新生成），换掉的旧 slug 退休成
+`SlugAlias(kind='report')`，老链接 301 到新地址。站内其他内容仍是保留中文的 `titleSlug`（slugs.md）——要不要全站换拼音是 owner 的决定。
+
 ### 3c. 导出（`export-docx.ts` / `export-pdf.ts`）
 
 Word 用 `docx` 包纯 JS 生成（文风同 skill 的 HTML：红标题 + 【】标签、要点编号、专题 → 宏观 / 时间线 / 红底启示、活动表、页脚三件套；
