@@ -65,6 +65,8 @@ import { insertContentEmbed, removeContentEmbeds } from '@/components/zones/embe
 import { attachmentPreviewRef } from '@/components/zones/attachments/AttachmentCard';
 import { ComposerTopBar } from './ComposerTopBar';
 import { ComposerSettingsSheet } from './ComposerSettingsSheet';
+import { EditorsBand } from './EditorsBand';
+import { StaleRevisionDialog, type StaleInfo } from './StaleRevisionDialog';
 import { composerBodyStats } from './composer-stats';
 import { measureImageFile } from './measure-image';
 import type { CoauthorPick } from './CoauthorPicker';
@@ -270,6 +272,10 @@ export function PostComposer({
   // and never restored — it only ever comes back from the server.
   const [accessCode, setAccessCode] = useState<string | null>(post?.accessCode ?? null);
   const [regenerateCode, setRegenerateCode] = useState(false);
+  // 乐观并发（docs/contracts/reports.md §4）：打开时的内容版本号随每次保存带回；撞上别人的
+  // 新版本时服务端 409，这里弹 StaleRevisionDialog，什么都不覆盖。
+  const [baseRevision, setBaseRevision] = useState<number>(post?.revision ?? 0);
+  const [stale, setStale] = useState<(StaleInfo & { status: 'draft' | 'published' }) | null>(null);
   const restoreChecked = useRef(false);
   const editorRef = useRef<Editor | null>(null);
   const titleRef = useRef<HTMLTextAreaElement>(null);
@@ -418,6 +424,7 @@ export function PostComposer({
       visibility: draft.visibility,
       designatedUserIds: restricted ? draft.designated.map((d) => d.userId) : [],
       regenerateAccessCode: restricted && regenerateCode,
+      ...(post ? { baseRevision } : {}),
     };
     try {
       const res = await fetch(
@@ -429,7 +436,18 @@ export function PostComposer({
         router.push(currentLoginHref());
         return false;
       }
-      const data = (await res.json().catch(() => ({}))) as { id?: string; reason?: string; error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        id?: string;
+        reason?: string;
+        error?: string;
+        revision?: number;
+        editedAt?: string;
+        editedBy?: StaleInfo['editedBy'];
+      };
+      if (res.status === 409 && data.error === 'stale_revision') {
+        setStale({ revision: data.revision ?? baseRevision + 1, editedAt: data.editedAt ?? new Date().toISOString(), editedBy: data.editedBy ?? null, status });
+        return false;
+      }
       if (!res.ok) {
         pushToast('error', data.reason ?? t('composer_save_failed'));
         return false;
@@ -468,6 +486,7 @@ export function PostComposer({
             if (d) byKey.set(d.key, d);
           }
           setAccessCode(saved.accessCode ?? null);
+          setBaseRevision(saved.revision);
           setDraft((d) => ({
             ...d,
             attachments: d.attachments.map((a) => byKey.get(a.key) ?? a),
@@ -563,8 +582,34 @@ export function PostComposer({
         disabled={disabled}
       />
 
+      {stale && (
+        <StaleRevisionDialog
+          info={stale}
+          historyHref={`${zoneHref(zone.slug)}/posts/${encodeURIComponent(post?.id ?? '')}/history`}
+          onClose={() => setStale(null)}
+          onReload={() => {
+            // 本地草稿已由自动保存留在 localStorage；刷新后编辑器会提议恢复。
+            setStale(null);
+            window.location.reload();
+          }}
+          onOverwrite={() => {
+            const next = stale.revision;
+            const status = stale.status;
+            setStale(null);
+            setBaseRevision(next);
+            // 以最新版本号重发：被覆盖的内容仍在版本历史里。
+            setTimeout(() => void submit(status), 0);
+          }}
+        />
+      )}
+
       <div className="py-8 xl:grid xl:grid-cols-[minmax(0,1fr)_280px] xl:gap-8">
         <div className={`mx-auto w-full ${ARTICLE_MEASURE_CLASS}`}>
+          {post && <EditorsBand zoneSlug={zone.slug} postId={post.id} />}
+          {post?.report && (
+            // 报告帖子：正文由 reportJson 原生渲染，这里改的 Markdown 只影响摘要 / 搜索 / 回退（reports.md §3a）。
+            <p className="mb-6 rounded-xl border border-dashed border-zinc-400 px-4 py-3 text-xs text-zinc-600 dark:border-zinc-600 dark:text-zinc-400">{t('report_post_native_note')}</p>
+          )}
           {pending && (
             <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm dark:border-zinc-700 dark:bg-zinc-900">
               <span className="inline-flex items-center gap-2">

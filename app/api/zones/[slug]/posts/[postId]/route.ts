@@ -11,6 +11,7 @@ import { zoneContext } from '@/lib/zones/access';
 import { ZoneError } from '@/lib/zones/queries';
 import {
   MAX_DESIGNATED_VIEWERS,
+  StaleRevisionError,
   canEditZonePostContent,
   getZonePostDetail,
   setZonePostFlags,
@@ -18,6 +19,7 @@ import {
   updateZonePost,
   type ZonePostInput,
 } from '@/lib/zones/post-queries';
+import { AUTHOR_IDENTITY_SELECT, toPublicAuthorOrNull } from '@/lib/user-identity';
 import { coverAspectSchema, coverPosSchema } from '@/lib/zones/post-cover-schema';
 import {
   MAX_ATTACHMENT_ROWS_PER_POST,
@@ -114,8 +116,10 @@ const patchSchema = z
     regenerateAccessCode: z.boolean().optional(),
     pinned: z.boolean().optional(),
     locked: z.boolean().optional(),
+    // 乐观并发（docs/contracts/reports.md §4）：编辑器打开时的 revision；不等 ⇒ 409 stale_revision。
+    baseRevision: z.number().int().min(0).optional(),
   })
-  .refine((v) => Object.values(v).some((x) => x !== undefined), { message: 'empty_patch' });
+  .refine((v) => Object.entries(v).some(([k, x]) => k !== 'baseRevision' && x !== undefined), { message: 'empty_patch' });
 
 const POST_ROW_SELECT = {
   id: true,
@@ -190,7 +194,7 @@ export async function PATCH(req: Request, { params }: { params: { slug: string; 
     canRead: ctx.access.canRead,
     canModerate: ctx.access.canModerate,
   });
-  const { pinned, locked, ...content } = parsed.data;
+  const { pinned, locked, baseRevision, ...content } = parsed.data;
 
   const editsContent = Object.values(content).some((x) => x !== undefined);
   const moderates = pinned !== undefined || locked !== undefined;
@@ -283,7 +287,7 @@ export async function PATCH(req: Request, { params }: { params: { slug: string; 
 
   try {
     if (editsContent) {
-      await updateZonePost(post.id, patch, { canModerate: ctx.access.canModerate, actorId: uid });
+      await updateZonePost(post.id, patch, { canModerate: ctx.access.canModerate, actorId: uid, baseRevision });
     }
     if (moderates) {
       await setZonePostFlags(post.id, {
@@ -292,6 +296,23 @@ export async function PATCH(req: Request, { params }: { params: { slug: string; 
       });
     }
   } catch (e) {
+    if (e instanceof StaleRevisionError) {
+      // 别人在你打开之后保存过：告诉编辑器是谁、什么时候，什么都不写。
+      const latest = await prisma.zonePost.findUnique({
+        where: { id: post.id },
+        select: { revision: true, editedAt: true, updatedAt: true, editedBy: AUTHOR_IDENTITY_SELECT },
+      });
+      return NextResponse.json(
+        {
+          error: 'stale_revision',
+          reason: await apiReason('zone_stale_revision'),
+          revision: latest?.revision ?? e.revision,
+          editedAt: (latest?.editedAt ?? latest?.updatedAt ?? new Date()).toISOString(),
+          editedBy: toPublicAuthorOrNull(latest?.editedBy, ctx.access.canSeeIdentity),
+        },
+        { status: 409 },
+      );
+    }
     const res = await zoneErrorResponse(e);
     if (res) return res;
     throw e;

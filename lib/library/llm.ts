@@ -11,7 +11,8 @@ import { llmFetch } from '@/lib/llm/egress';
 
 const CACHE_MS = 60_000;
 
-interface SettingRow {
+/** The admin-editable LLM fields — LibrarySetting and ZoneReportSetting share this shape. */
+export interface LlmSettingRow {
   llmProvider: string | null;
   llmBaseUrl: string | null;
   llmApiKey: string | null;
@@ -26,7 +27,7 @@ export function bustLibraryLlmCache(): void {
   cache = null;
 }
 
-async function loadSetting(): Promise<SettingRow | null> {
+async function loadSetting(): Promise<LlmSettingRow | null> {
   try {
     return await prisma.librarySetting.findUnique({
       where: { id: 'default' },
@@ -44,7 +45,8 @@ async function loadSetting(): Promise<SettingRow | null> {
   }
 }
 
-function buildOverride(s: SettingRow): LLMProvider | null {
+/** A provider from an admin row, or null when the row is incomplete (caller falls back). */
+export function buildLlmOverride(s: LlmSettingRow): LLMProvider | null {
   const baseUrl = s.llmBaseUrl?.trim();
   const model = s.llmModel?.trim();
   const apiKey = s.llmApiKey?.trim() || undefined;
@@ -75,7 +77,7 @@ export async function getLibraryProvider(): Promise<{ provider: LLMProvider; mod
     return { provider: cache.provider, model: cache.model };
   }
   const setting = await loadSetting();
-  const override = setting ? buildOverride(setting) : null;
+  const override = setting ? buildLlmOverride(setting) : null;
   const resolved = override
     ? { provider: override, model: setting?.llmModel?.trim() || null }
     : { provider: getProvider(), model: null };

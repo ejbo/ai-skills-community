@@ -6,6 +6,7 @@
 import type { ZoneSidebarLayout } from './sidebar';
 import type { CoverAspect } from '@/lib/media/cover-pos';
 import type { PublicAuthor } from '@/lib/user-identity';
+import type { Report } from './reports/schema';
 import type { ZoneAccess, ZonePermissionKey } from './permissions';
 import type {
   EmbedKind,
@@ -195,6 +196,35 @@ export interface ZonePostDetailView extends ZonePostCardView {
    * past the per-render live-fetch budget has NO entry (the card fetches it).
    */
   embeds: Record<string, EmbedData>;
+  /** 内容版本号（docs/contracts/reports.md §4）；编辑器把它作为 baseRevision 带回。 */
+  /**
+   * 版块报告帖子（docs/contracts/reports.md §3a）：帖子由 ZoneReport.reportJson 原生渲染
+   * （ReportArticle），bodyMd 只做摘要 / 搜索 / 回退。null = 普通帖子。
+   */
+  report: ZonePostReportView | null;
+  revision: number;
+  /** 已存快照数（页头「历史 (n)」）。 */
+  revisionCount: number;
+}
+
+export interface ZonePostRevisionView {
+  id: string;
+  number: number;
+  title: string;
+  note: string;
+  createdAt: string;
+  editor: PublicAuthor;
+  /** 字数（bodyMd.length），列表里显示增减用。 */
+  size: number;
+  /** Only when a single revision is fetched. */
+  bodyMd?: string;
+  summary?: string;
+}
+
+export interface ZonePostEditorView {
+  user: PublicAuthor;
+  startedAt: string;
+  lastSeenAt: string;
 }
 
 export interface ZoneCommentView {
@@ -457,4 +487,16 @@ export interface ZoneFeedResult {
 export interface ZoneHubFacets {
   org: OrgLabNode[];
   columns: { name: string; postCount: number }[];
+}
+
+/** 报告帖子原生渲染需要的一切（随帖子详情一次下发）。 */
+export interface ZonePostReportView {
+  id: string;
+  report: Report;
+  /** 发言人账号（小写）→ 站内用户（工号匹配上的才有）；头像 / 悬停名片用。 */
+  speakers: Record<string, PublicAuthor>;
+  /** 附件文件名 → 知识库 slug（已收录的文档走 library 卡片）。 */
+  librarySlugs: Record<string, string>;
+  /** report.attachments[].id → 根相对 `/api/zones/media/<key>`（渲染时 withBasePath）；没上传的不在表里。 */
+  assetUrls: Record<string, string>;
 }

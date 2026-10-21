@@ -51,6 +51,8 @@ const db = vi.hoisted(() => {
       updateMany: vi.fn(async () => ({ count: state.flipCount })),
     },
     zonePostAuthor: { deleteMany: vi.fn(async () => ({ count: 0 })), createMany: vi.fn(async () => ({ count: 0 })) },
+    // 版本快照（docs/contracts/reports.md §4）：已发布帖子的内容变化写一条。
+    zonePostRevision: { create: vi.fn(async () => ({})) },
     zonePostViewer: { createMany: vi.fn(async () => ({ count: 0 })), deleteMany: vi.fn(async () => ({ count: 0 })) },
     zonePostAttachment: { deleteMany: vi.fn(async () => ({ count: 0 })), updateMany: vi.fn(async () => ({ count: 0 })), create: vi.fn(async () => ({})) },
     zone: { update: vi.fn(async () => ({})), updateMany: vi.fn(async () => ({ count: 1 })) },
@@ -163,6 +165,7 @@ function existingPost(over: Record<string, unknown> = {}) {
     status: 'published',
     publishedAt: new Date('2026-09-01T00:00:00Z'),
     deletedAt: null,
+    revision: 0,
     coauthors: [] as { userId: string }[],
     zone: { ...ZONE },
     attachments: [] as unknown[],

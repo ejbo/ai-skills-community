@@ -1,0 +1,846 @@
+{
+  "zones": {
+    "reports_title": {
+      "zh-CN": "报告",
+      "en": "Reports",
+      "fr": "Rapports"
+    },
+    "reports_subtitle": {
+      "zh-CN": "把聊天记录（WeLink 导出）和配套图片、文件整理成日报 / 周报 / 月报，发布为帖子",
+      "en": "Turn chat exports (WeLink) plus their images and files into a daily / weekly / monthly report and publish it as a post",
+      "fr": "Transformez un export de discussion (WeLink) et ses images / fichiers en rapport quotidien, hebdomadaire ou mensuel, puis publiez-le"
+    },
+    "reports_entry": {
+      "zh-CN": "生成报告",
+      "en": "Generate report",
+      "fr": "Générer un rapport"
+    },
+    "reports_new": {
+      "zh-CN": "新建报告",
+      "en": "New report",
+      "fr": "Nouveau rapport"
+    },
+    "reports_new_subtitle": {
+      "zh-CN": "上传聊天记录后，模型会先归类主题、再逐主题概括、最后写出本期要点；图片按消息邻近关系自动随文，PDF / HTML / PPT / Word 会收录进知识库。",
+      "en": "After you upload the chat export, the model clusters themes, summarizes each one, then writes the key takeaways; images follow the messages they were sent with, and PDF / HTML / PPT / Word files are added to the library.",
+      "fr": "Après l'import de la discussion, le modèle regroupe les thèmes, résume chacun puis rédige l'essentiel ; les images suivent leurs messages et les fichiers PDF / HTML / PPT / Word sont ajoutés à la bibliothèque."
+    },
+    "reports_empty": {
+      "zh-CN": "还没有报告。点「新建报告」上传一份聊天记录试试。",
+      "en": "No reports yet. Click “New report” and upload a chat export.",
+      "fr": "Aucun rapport pour l'instant. Cliquez sur « Nouveau rapport » et importez une discussion."
+    },
+    "reports_library_title": {
+      "zh-CN": "本版块资料",
+      "en": "Zone library",
+      "fr": "Documents du groupe"
+    },
+    "reports_library_empty": {
+      "zh-CN": "报告里收录的 PDF / 文档会出现在这里，点开在右侧阅读。",
+      "en": "PDFs and documents collected by reports show up here; open them in the side panel.",
+      "fr": "Les PDF et documents collectés par les rapports apparaissent ici ; ouvrez-les dans le panneau latéral."
+    },
+    "report_mode_chat": {
+      "zh-CN": "从聊天记录生成",
+      "en": "From a chat export",
+      "fr": "Depuis une discussion"
+    },
+    "report_mode_import": {
+      "zh-CN": "导入 report.json",
+      "en": "Import report.json",
+      "fr": "Importer report.json"
+    },
+    "report_mode_chat_hint": {
+      "zh-CN": "WeLink 导出的 TXT（每条消息以「[时间] 姓名（账号）」开头）或 welink-cli 的 JSON。图片只有配上「图片附件清单」才能随文，否则进附录。",
+      "en": "A WeLink TXT export (each message starts with “[time] name (account)”) or welink-cli JSON. Images only follow the text when an attachment manifest is provided; otherwise they go to the appendix.",
+      "fr": "Export TXT WeLink (chaque message commence par « [heure] nom (compte) ») ou JSON welink-cli. Les images ne suivent le texte qu'avec un manifeste de pièces jointes ; sinon elles vont en annexe."
+    },
+    "report_mode_import_hint": {
+      "zh-CN": "上传 chat-report skill 在本地生成的 report.json（不再调用模型），图片 / 文件按文件名对上。",
+      "en": "Upload the report.json produced locally by the chat-report skill (no model call); images and files are matched by file name.",
+      "fr": "Importez le report.json produit localement par le skill chat-report (sans appel au modèle) ; images et fichiers sont associés par nom."
+    },
+    "report_chat_file": {
+      "zh-CN": "聊天记录",
+      "en": "Chat export",
+      "fr": "Export de discussion"
+    },
+    "report_chat_file_hint": {
+      "zh-CN": "TXT 或 JSON，必填。",
+      "en": "TXT or JSON, required.",
+      "fr": "TXT ou JSON, obligatoire."
+    },
+    "report_manifest_file": {
+      "zh-CN": "图片附件清单（可选）",
+      "en": "Attachment manifest (optional)",
+      "fr": "Manifeste des pièces jointes (facultatif)"
+    },
+    "report_manifest_file_hint": {
+      "zh-CN": "welink-monthly-report 导出的「…_图片附件清单.csv」：时间、发送人、文件名——用来把图片对到消息。",
+      "en": "The “…_图片附件清单.csv” exported by welink-monthly-report (time, sender, file name) — used to match images to messages.",
+      "fr": "Le « …_图片附件清单.csv » exporté par welink-monthly-report (heure, expéditeur, nom de fichier) pour associer les images aux messages."
+    },
+    "report_import_file": {
+      "zh-CN": "report.json",
+      "en": "report.json",
+      "fr": "report.json"
+    },
+    "report_import_file_hint": {
+      "zh-CN": "必须符合 chat-report 的 report.json v1 契约。",
+      "en": "Must follow the chat-report report.json v1 contract.",
+      "fr": "Doit respecter le contrat report.json v1 de chat-report."
+    },
+    "report_pick_file": {
+      "zh-CN": "选择文件…",
+      "en": "Choose a file…",
+      "fr": "Choisir un fichier…"
+    },
+    "report_assets": {
+      "zh-CN": "图片与文件",
+      "en": "Images & files",
+      "fr": "Images et fichiers"
+    },
+    "report_assets_pick": {
+      "zh-CN": "添加文件",
+      "en": "Add files",
+      "fr": "Ajouter des fichiers"
+    },
+    "report_assets_count": {
+      "zh-CN": "已选 {count} 个",
+      "en": "{count} selected",
+      "fr": "{count} sélectionné(s)"
+    },
+    "report_assets_clear": {
+      "zh-CN": "清空",
+      "en": "Clear",
+      "fr": "Vider"
+    },
+    "report_assets_hint": {
+      "zh-CN": "聊天里发过的图片（文件名需与清单一致）和 PDF / HTML / PPT / Word；文档会自动收录进知识库并以卡片嵌入正文。",
+      "en": "Images sent in the chat (file names must match the manifest) and PDF / HTML / PPT / Word files; documents are added to the library and embedded as cards.",
+      "fr": "Images envoyées dans la discussion (noms identiques au manifeste) et fichiers PDF / HTML / PPT / Word ; les documents sont ajoutés à la bibliothèque et intégrés sous forme de cartes."
+    },
+    "report_kind": {
+      "zh-CN": "类型",
+      "en": "Type",
+      "fr": "Type"
+    },
+    "report_kind_daily": {
+      "zh-CN": "日报",
+      "en": "Daily",
+      "fr": "Quotidien"
+    },
+    "report_kind_weekly": {
+      "zh-CN": "周报",
+      "en": "Weekly",
+      "fr": "Hebdomadaire"
+    },
+    "report_kind_monthly": {
+      "zh-CN": "月报",
+      "en": "Monthly",
+      "fr": "Mensuel"
+    },
+    "report_kind_custom": {
+      "zh-CN": "自定义区间",
+      "en": "Custom range",
+      "fr": "Période personnalisée"
+    },
+    "report_subject": {
+      "zh-CN": "对象（群名）",
+      "en": "Subject (group name)",
+      "fr": "Sujet (nom du groupe)"
+    },
+    "report_period_from": {
+      "zh-CN": "起始日期",
+      "en": "From",
+      "fr": "Du"
+    },
+    "report_period_to": {
+      "zh-CN": "截止日期",
+      "en": "To",
+      "fr": "Au"
+    },
+    "report_title": {
+      "zh-CN": "标题",
+      "en": "Title",
+      "fr": "Titre"
+    },
+    "report_title_placeholder": {
+      "zh-CN": "留空则自动命名，如「加研思想院 · 2026 年 9 月月报」",
+      "en": "Leave blank to auto-name, e.g. “Group · September 2026 monthly”",
+      "fr": "Laisser vide pour un titre automatique"
+    },
+    "report_period_hint": {
+      "zh-CN": "起止日期留空则取记录里的全部消息；填了按本地日期做闭区间过滤。",
+      "en": "Leave the dates blank to use every message in the export; otherwise messages are filtered by local date (inclusive).",
+      "fr": "Dates vides = tous les messages ; sinon filtrage par date locale (bornes incluses)."
+    },
+    "report_period_invalid": {
+      "zh-CN": "起始日期不能晚于截止日期",
+      "en": "The start date cannot be after the end date",
+      "fr": "La date de début ne peut pas dépasser la date de fin"
+    },
+    "report_uploading": {
+      "zh-CN": "上传 {name}…",
+      "en": "Uploading {name}…",
+      "fr": "Envoi de {name}…"
+    },
+    "report_creating": {
+      "zh-CN": "创建任务…",
+      "en": "Creating the job…",
+      "fr": "Création de la tâche…"
+    },
+    "report_create_failed": {
+      "zh-CN": "创建失败，请重试",
+      "en": "Could not create the report",
+      "fr": "Impossible de créer le rapport"
+    },
+    "report_start": {
+      "zh-CN": "开始生成",
+      "en": "Start",
+      "fr": "Lancer"
+    },
+    "report_open_post": {
+      "zh-CN": "查看帖子",
+      "en": "Open post",
+      "fr": "Voir le billet"
+    },
+    "report_status_queued": {
+      "zh-CN": "排队中",
+      "en": "Queued",
+      "fr": "En attente"
+    },
+    "report_status_parsing": {
+      "zh-CN": "解析中",
+      "en": "Parsing",
+      "fr": "Analyse"
+    },
+    "report_status_clustering": {
+      "zh-CN": "归类主题",
+      "en": "Clustering",
+      "fr": "Regroupement"
+    },
+    "report_status_summarizing": {
+      "zh-CN": "撰写摘要",
+      "en": "Summarizing",
+      "fr": "Résumé"
+    },
+    "report_status_assembling": {
+      "zh-CN": "装配报告",
+      "en": "Assembling",
+      "fr": "Assemblage"
+    },
+    "report_status_ingesting": {
+      "zh-CN": "收录附件",
+      "en": "Ingesting files",
+      "fr": "Collecte des fichiers"
+    },
+    "report_status_ready": {
+      "zh-CN": "已完成",
+      "en": "Ready",
+      "fr": "Prêt"
+    },
+    "report_status_failed": {
+      "zh-CN": "失败",
+      "en": "Failed",
+      "fr": "Échec"
+    },
+    "report_failed_generic": {
+      "zh-CN": "生成失败",
+      "en": "Generation failed",
+      "fr": "La génération a échoué"
+    },
+    "report_retry": {
+      "zh-CN": "重试",
+      "en": "Retry",
+      "fr": "Réessayer"
+    },
+    "report_retry_failed": {
+      "zh-CN": "重试失败",
+      "en": "Retry failed",
+      "fr": "Échec de la nouvelle tentative"
+    },
+    "report_running_hint": {
+      "zh-CN": "生成在后台进行，可以离开这个页面，稍后从「报告」列表回来。",
+      "en": "Generation runs in the background — you can leave and come back from the Reports list.",
+      "fr": "La génération se fait en arrière-plan : vous pouvez quitter et revenir par la liste des rapports."
+    },
+    "report_preview": {
+      "zh-CN": "预览",
+      "en": "Preview",
+      "fr": "Aperçu"
+    },
+    "report_theme_counts": {
+      "zh-CN": "{msgs} 条消息 · {views} 条观点",
+      "en": "{msgs} msgs · {views} viewpoints",
+      "fr": "{msgs} msgs · {views} points de vue"
+    },
+    "report_preview_counts": {
+      "zh-CN": "活动 {events} · 花絮 {recap} · 随文图片 / 文件 {attachments} · 未归类消息 {unassigned}",
+      "en": "Events {events} · Recap {recap} · Attached images / files {attachments} · Unassigned messages {unassigned}",
+      "fr": "Événements {events} · Divers {recap} · Images / fichiers joints {attachments} · Messages non classés {unassigned}"
+    },
+    "report_warnings": {
+      "zh-CN": "{count} 条校验警告",
+      "en": "{count} validation warnings",
+      "fr": "{count} avertissements"
+    },
+    "report_library_docs": {
+      "zh-CN": "已收录进知识库",
+      "en": "Added to the library",
+      "fr": "Ajouté à la bibliothèque"
+    },
+    "report_authors": {
+      "zh-CN": "发言人 → 站内用户（合著者）",
+      "en": "Speakers → members (co-authors)",
+      "fr": "Intervenants → membres (co-auteurs)"
+    },
+    "report_authors_hint": {
+      "zh-CN": "按工号匹配到站内用户的发言人默认勾选为合著者，他们可以直接编辑这篇帖子；没登录过的人保留姓名，不成为合著者。",
+      "en": "Speakers matched by employee id are pre-selected as co-authors and can edit the post directly; people who never signed in keep their name but are not co-authors.",
+      "fr": "Les intervenants reconnus par matricule sont présélectionnés comme co-auteurs et peuvent modifier le billet ; les autres gardent leur nom sans être co-auteurs."
+    },
+    "report_author_self": {
+      "zh-CN": "你",
+      "en": "you",
+      "fr": "vous"
+    },
+    "report_authors_unmatched": {
+      "zh-CN": "未匹配到用户：",
+      "en": "Not matched to a member: ",
+      "fr": "Sans membre correspondant : "
+    },
+    "report_publish": {
+      "zh-CN": "发布为帖子",
+      "en": "Publish as a post",
+      "fr": "Publier comme billet"
+    },
+    "report_include_stats": {
+      "zh-CN": "正文末尾附上数据概览（消息数 / 发言 Top / 峰值）",
+      "en": "Append the data overview (message counts / top speakers / peak day)",
+      "fr": "Ajouter l'aperçu des données (messages / principaux intervenants / pic)"
+    },
+    "report_publish_draft": {
+      "zh-CN": "保存为草稿并编辑",
+      "en": "Save as draft & edit",
+      "fr": "Enregistrer en brouillon et modifier"
+    },
+    "report_publish_now": {
+      "zh-CN": "直接发布",
+      "en": "Publish now",
+      "fr": "Publier maintenant"
+    },
+    "report_publish_failed": {
+      "zh-CN": "发布失败，请重试",
+      "en": "Could not publish",
+      "fr": "Échec de la publication"
+    },
+    "post_history_link": {
+      "zh-CN": "历史 ({count})",
+      "en": "History ({count})",
+      "fr": "Historique ({count})"
+    },
+    "post_history_subtitle": {
+      "zh-CN": "{title} · {count} 个版本",
+      "en": "{title} · {count} versions",
+      "fr": "{title} · {count} versions"
+    },
+    "post_history_empty": {
+      "zh-CN": "还没有版本记录：帖子发布后的第一次编辑会同时保存发布时的版本和修改后的版本。",
+      "en": "No versions yet: the first edit after publishing saves both the published version and the edited one.",
+      "fr": "Aucune version pour l'instant : la première modification après publication enregistre la version publiée et la version modifiée."
+    },
+    "post_back_to_post": {
+      "zh-CN": "返回帖子",
+      "en": "Back to post",
+      "fr": "Retour au billet"
+    },
+    "post_restore_confirm": {
+      "zh-CN": "将帖子恢复到第 {n} 版？这会创建一个新版本，不会覆盖历史。",
+      "en": "Restore the post to version {n}? This creates a new version; history is never overwritten.",
+      "fr": "Restaurer la version {n} ? Une nouvelle version sera créée, l'historique n'est jamais écrasé."
+    },
+    "editors_since": {
+      "zh-CN": "也在编辑 · 开始于",
+      "en": "is also editing · since",
+      "fr": "modifie aussi · depuis"
+    },
+    "editors_hint": {
+      "zh-CN": "保存时如果对方已先保存，你会看到提示并可选择处理方式。",
+      "en": "If they save first, you will be told and can choose what to do.",
+      "fr": "S'ils enregistrent avant vous, vous serez prévenu et pourrez choisir."
+    },
+    "stale_title": {
+      "zh-CN": "这篇帖子有了新版本",
+      "en": "This post has a newer version",
+      "fr": "Ce billet a une version plus récente"
+    },
+    "stale_body": {
+      "zh-CN": "{who} 在你打开编辑器之后保存过：",
+      "en": "{who} saved after you opened the editor:",
+      "fr": "{who} a enregistré après l'ouverture de votre éditeur :"
+    },
+    "stale_someone": {
+      "zh-CN": "另一位编辑者",
+      "en": "Another editor",
+      "fr": "Un autre rédacteur"
+    },
+    "stale_hint": {
+      "zh-CN": "你的内容还没有写入。「覆盖」会用你的版本替换对方的版本——对方的内容仍保存在版本历史里，可以恢复。",
+      "en": "Nothing of yours has been written yet. “Overwrite” replaces their version with yours — theirs stays in the version history and can be restored.",
+      "fr": "Rien n'a encore été écrit. « Écraser » remplace leur version par la vôtre ; la leur reste dans l'historique et peut être restaurée."
+    },
+    "stale_view_latest": {
+      "zh-CN": "查看最新版本",
+      "en": "View latest",
+      "fr": "Voir la dernière"
+    },
+    "stale_reload": {
+      "zh-CN": "在最新版本上重做",
+      "en": "Reload latest",
+      "fr": "Repartir de la dernière"
+    },
+    "stale_overwrite": {
+      "zh-CN": "仍用我的版本覆盖",
+      "en": "Overwrite with mine",
+      "fr": "Écraser avec la mienne"
+    },
+    "post_live_editing": {
+      "zh-CN": "{names} 正在编辑",
+      "en": "{names} editing now",
+      "fr": "{names} en cours de modification"
+    },
+    "report_bundle": {
+      "zh-CN": "资料",
+      "en": "Source files",
+      "fr": "Fichiers source"
+    },
+    "report_pick_folder": {
+      "zh-CN": "选择文件夹",
+      "en": "Choose a folder",
+      "fr": "Choisir un dossier"
+    },
+    "report_pick_zip": {
+      "zh-CN": "选择 zip",
+      "en": "Choose a zip",
+      "fr": "Choisir un zip"
+    },
+    "report_pick_files": {
+      "zh-CN": "选择文件",
+      "en": "Choose files",
+      "fr": "Choisir des fichiers"
+    },
+    "report_bundle_hint": {
+      "zh-CN": "把 WeLink 导出 / welink-cli 拉下来的整个目录交上来即可：聊天记录（.txt 或 welink-cli .json）、图片附件清单 .csv、已下载的图片与文件。目录里有 skill 产出的 report.json 就直接导入、不再调模型。一次上传、服务端解包，识别规则与这里显示的一致。",
+      "en": "Hand over the whole folder exported from WeLink / fetched with welink-cli: the chat record (.txt or welink-cli .json), the attachment manifest .csv and the downloaded images and files. If it contains a report.json produced by the skill it is imported as-is without calling the model. One upload; the server unpacks it with the same rules shown here.",
+      "fr": "Déposez le dossier entier exporté depuis WeLink / récupéré avec welink-cli : la discussion (.txt ou .json welink-cli), le manifeste des pièces jointes .csv et les images et fichiers téléchargés. S'il contient un report.json produit par le skill, il est importé tel quel sans appeler le modèle. Un seul envoi ; le serveur le décompresse avec les règles affichées ici."
+    },
+    "report_bundle_picked": {
+      "zh-CN": "{count} 个文件 · {size}",
+      "en": "{count} files · {size}",
+      "fr": "{count} fichiers · {size}"
+    },
+    "report_bundle_reading": {
+      "zh-CN": "正在读取 zip 目录…",
+      "en": "Reading the zip index…",
+      "fr": "Lecture de l'index du zip…"
+    },
+    "report_bundle_bad_zip": {
+      "zh-CN": "读不了这个 zip 文件",
+      "en": "This zip file cannot be read",
+      "fr": "Impossible de lire ce fichier zip"
+    },
+    "report_bundle_no_chat": {
+      "zh-CN": "没有找到聊天记录（.txt / welink-cli .json）或 report.json",
+      "en": "No chat record (.txt / welink-cli .json) or report.json found",
+      "fr": "Aucune discussion (.txt / .json welink-cli) ni report.json trouvé"
+    },
+    "report_bundle_too_large": {
+      "zh-CN": "总大小超过 {max}，请分批或去掉大文件",
+      "en": "Total size exceeds {max}; split the upload or drop large files",
+      "fr": "La taille totale dépasse {max} ; divisez l'envoi ou retirez les gros fichiers"
+    },
+    "report_zipping": {
+      "zh-CN": "正在打包 {count} 个文件…",
+      "en": "Packing {count} files…",
+      "fr": "Compression de {count} fichiers…"
+    },
+    "report_detected_import": {
+      "zh-CN": "report.json（导入模式，不调模型）",
+      "en": "report.json (import mode, no model call)",
+      "fr": "report.json (mode import, sans appel au modèle)"
+    },
+    "report_detected_pages": {
+      "zh-CN": "welink-cli 分页 JSON {count} 页（将合并）",
+      "en": "{count} welink-cli JSON pages (will be merged)",
+      "fr": "{count} pages JSON welink-cli (seront fusionnées)"
+    },
+    "report_detected_chat": {
+      "zh-CN": "聊天记录",
+      "en": "Chat record",
+      "fr": "Discussion"
+    },
+    "report_detected_manifest": {
+      "zh-CN": "图片附件清单（图片随文的前提；没有也能生成）",
+      "en": "Attachment manifest (needed for inline images; optional)",
+      "fr": "Manifeste des pièces jointes (requis pour les images en ligne ; facultatif)"
+    },
+    "report_detected_assets": {
+      "zh-CN": "图片 {images} · 文件 {files}",
+      "en": "{images} images · {files} files",
+      "fr": "{images} images · {files} fichiers"
+    },
+    "report_detected_names": {
+      "zh-CN": "姓名表 {count} 份",
+      "en": "{count} name lists",
+      "fr": "{count} listes de noms"
+    },
+    "report_detected_skipped": {
+      "zh-CN": "跳过 {count} 个",
+      "en": "{count} skipped",
+      "fr": "{count} ignorés"
+    },
+    "report_messages_title": {
+      "zh-CN": "原始发言",
+      "en": "Original messages",
+      "fr": "Messages d'origine"
+    },
+    "report_messages_hint": {
+      "zh-CN": "{found} / {requested} 条原始消息，按时间排序",
+      "en": "{found} of {requested} original messages, in time order",
+      "fr": "{found} sur {requested} messages d'origine, par ordre chronologique"
+    },
+    "report_messages_empty": {
+      "zh-CN": "没有找到对应的原始消息（报告可能已重新生成）",
+      "en": "No matching original messages (the report may have been regenerated)",
+      "fr": "Aucun message d'origine correspondant (le rapport a peut-être été régénéré)"
+    },
+    "report_messages_reply": {
+      "zh-CN": "回复 {name}",
+      "en": "Replying to {name}",
+      "fr": "En réponse à {name}"
+    },
+    "report_messages_missing_image": {
+      "zh-CN": "图片未上传：{file}",
+      "en": "Image not uploaded: {file}",
+      "fr": "Image non envoyée : {file}"
+    },
+    "report_sec_brief": {
+      "zh-CN": "本期要点",
+      "en": "Highlights",
+      "fr": "Points clés"
+    },
+    "report_sec_highlights": {
+      "zh-CN": "要点",
+      "en": "Key points",
+      "fr": "Points"
+    },
+    "report_sec_judgments": {
+      "zh-CN": "关键判断",
+      "en": "Key judgments",
+      "fr": "Jugements clés"
+    },
+    "report_sec_actions": {
+      "zh-CN": "待办与跟踪",
+      "en": "Actions & follow-ups",
+      "fr": "Actions et suivis"
+    },
+    "report_col_action": {
+      "zh-CN": "事项",
+      "en": "Item",
+      "fr": "Élément"
+    },
+    "report_col_owner": {
+      "zh-CN": "负责人",
+      "en": "Owner",
+      "fr": "Responsable"
+    },
+    "report_col_theme": {
+      "zh-CN": "专题",
+      "en": "Topic",
+      "fr": "Thème"
+    },
+    "report_col_due": {
+      "zh-CN": "时间",
+      "en": "When",
+      "fr": "Échéance"
+    },
+    "report_theme_label": {
+      "zh-CN": "专题 {n}",
+      "en": "Topic {n}",
+      "fr": "Thème {n}"
+    },
+    "report_theme_messages": {
+      "zh-CN": "{count} 条消息",
+      "en": "{count} messages",
+      "fr": "{count} messages"
+    },
+    "report_sec_timeline": {
+      "zh-CN": "观点时间线",
+      "en": "Timeline of views",
+      "fr": "Chronologie des points de vue"
+    },
+    "report_sec_insight": {
+      "zh-CN": "启示",
+      "en": "Takeaway",
+      "fr": "Enseignement"
+    },
+    "report_sec_open": {
+      "zh-CN": "待验证 · 待跟踪",
+      "en": "To verify · to follow",
+      "fr": "À vérifier · à suivre"
+    },
+    "report_sec_theme_resources": {
+      "zh-CN": "本专题资料",
+      "en": "Resources for this topic",
+      "fr": "Ressources de ce thème"
+    },
+    "report_sec_events": {
+      "zh-CN": "活动与通知",
+      "en": "Events & notices",
+      "fr": "Événements et annonces"
+    },
+    "report_col_date": {
+      "zh-CN": "日期",
+      "en": "Date",
+      "fr": "Date"
+    },
+    "report_col_event": {
+      "zh-CN": "活动",
+      "en": "Event",
+      "fr": "Événement"
+    },
+    "report_col_host": {
+      "zh-CN": "主办 / 发起",
+      "en": "Host",
+      "fr": "Organisateur"
+    },
+    "report_sec_resources": {
+      "zh-CN": "资源索引",
+      "en": "Resource index",
+      "fr": "Index des ressources"
+    },
+    "report_sec_stats": {
+      "zh-CN": "数据概览",
+      "en": "At a glance",
+      "fr": "En chiffres"
+    },
+    "report_sec_appendix": {
+      "zh-CN": "未随文的图片与文件",
+      "en": "Images & files not placed inline",
+      "fr": "Images et fichiers non placés"
+    },
+    "report_sources": {
+      "zh-CN": "来源",
+      "en": "Sources",
+      "fr": "Sources"
+    },
+    "report_view_original": {
+      "zh-CN": "看原文 {count}",
+      "en": "Original ({count})",
+      "fr": "Original ({count})"
+    },
+    "report_confidence": {
+      "zh-CN": "置信度 {level}",
+      "en": "Confidence {level}",
+      "fr": "Confiance {level}"
+    },
+    "report_conf_high": {
+      "zh-CN": "高",
+      "en": "high",
+      "fr": "élevée"
+    },
+    "report_conf_medium": {
+      "zh-CN": "中",
+      "en": "medium",
+      "fr": "moyenne"
+    },
+    "report_conf_low": {
+      "zh-CN": "低",
+      "en": "low",
+      "fr": "faible"
+    },
+    "report_role_propose": {
+      "zh-CN": "提出",
+      "en": "raises",
+      "fr": "soulève"
+    },
+    "report_role_respond": {
+      "zh-CN": "回应",
+      "en": "responds",
+      "fr": "répond"
+    },
+    "report_role_challenge": {
+      "zh-CN": "质疑",
+      "en": "challenges",
+      "fr": "conteste"
+    },
+    "report_role_add": {
+      "zh-CN": "补充",
+      "en": "adds",
+      "fr": "complète"
+    },
+    "report_role_judge": {
+      "zh-CN": "判断",
+      "en": "judges",
+      "fr": "juge"
+    },
+    "report_role_progress": {
+      "zh-CN": "进展",
+      "en": "progress",
+      "fr": "avancée"
+    },
+    "report_role_conclude": {
+      "zh-CN": "结论",
+      "en": "concludes",
+      "fr": "conclut"
+    },
+    "report_role_notice": {
+      "zh-CN": "通知",
+      "en": "notice",
+      "fr": "annonce"
+    },
+    "report_tag_consensus": {
+      "zh-CN": "共识",
+      "en": "Consensus",
+      "fr": "Consensus"
+    },
+    "report_tag_divergence": {
+      "zh-CN": "分歧",
+      "en": "Divergence",
+      "fr": "Divergence"
+    },
+    "report_tag_judgment": {
+      "zh-CN": "判断",
+      "en": "Judgment",
+      "fr": "Jugement"
+    },
+    "report_tag_landscape": {
+      "zh-CN": "格局",
+      "en": "Landscape",
+      "fr": "Paysage"
+    },
+    "report_tag_leverage": {
+      "zh-CN": "杠杆",
+      "en": "Leverage",
+      "fr": "Levier"
+    },
+    "report_tag_risk": {
+      "zh-CN": "风险",
+      "en": "Risk",
+      "fr": "Risque"
+    },
+    "report_tag_progress": {
+      "zh-CN": "进展",
+      "en": "Progress",
+      "fr": "Avancée"
+    },
+    "report_stat_messages": {
+      "zh-CN": "消息",
+      "en": "Messages",
+      "fr": "Messages"
+    },
+    "report_stat_substantive": {
+      "zh-CN": "有信息量",
+      "en": "Substantive",
+      "fr": "Substantiels"
+    },
+    "report_stat_speakers": {
+      "zh-CN": "发言人",
+      "en": "Speakers",
+      "fr": "Intervenants"
+    },
+    "report_stat_links": {
+      "zh-CN": "链接",
+      "en": "Links",
+      "fr": "Liens"
+    },
+    "report_stat_attachments": {
+      "zh-CN": "图片/附件",
+      "en": "Images / files",
+      "fr": "Images / fichiers"
+    },
+    "report_stat_active_days": {
+      "zh-CN": "活跃天数",
+      "en": "Active days",
+      "fr": "Jours actifs"
+    },
+    "report_stat_peak": {
+      "zh-CN": "峰值日",
+      "en": "Peak day",
+      "fr": "Jour de pointe"
+    },
+    "report_stat_top_speakers": {
+      "zh-CN": "发言人 Top",
+      "en": "Top speakers",
+      "fr": "Intervenants les plus actifs"
+    },
+    "report_stat_by_day": {
+      "zh-CN": "按日活跃度",
+      "en": "Activity by day",
+      "fr": "Activité par jour"
+    },
+    "report_missing_file": {
+      "zh-CN": "缺失：{file}",
+      "en": "Missing: {file}",
+      "fr": "Manquant : {file}"
+    },
+    "report_kind_tag_daily": {
+      "zh-CN": "日报",
+      "en": "Daily",
+      "fr": "Quotidien"
+    },
+    "report_kind_tag_weekly": {
+      "zh-CN": "周报",
+      "en": "Weekly",
+      "fr": "Hebdomadaire"
+    },
+    "report_kind_tag_monthly": {
+      "zh-CN": "月报",
+      "en": "Monthly",
+      "fr": "Mensuel"
+    },
+    "report_kind_tag_custom": {
+      "zh-CN": "技术动态",
+      "en": "Tech digest",
+      "fr": "Veille technique"
+    },
+    "report_post_native_note": {
+      "zh-CN": "这是报告帖子：正文由报告数据原生渲染（时间线、来源侧栏、看原文）。这里编辑的正文只用于摘要、搜索与回退，不会改变报告视图；要改内容请重新生成报告。",
+      "en": "This is a report post: the body is rendered natively from the report data (timeline, source panel, originals). Text edited here is used only for the summary, search and fallback and does not change the report view; regenerate the report to change its content.",
+      "fr": "Ce billet est un rapport : le corps est rendu nativement depuis les données du rapport (chronologie, panneau des sources, originaux). Le texte modifié ici ne sert qu'au résumé, à la recherche et au repli ; régénérez le rapport pour en changer le contenu."
+    }
+  },
+  "api_errors": {
+    "zone_stale_revision": {
+      "zh-CN": "这篇帖子在你打开之后被别人保存过，请先查看最新版本",
+      "en": "Someone saved this post after you opened it — check the latest version first",
+      "fr": "Quelqu'un a enregistré ce billet après son ouverture — consultez d'abord la dernière version"
+    },
+    "zone_rate_limited_report": {
+      "zh-CN": "生成报告过于频繁（每小时最多 5 次），请稍后再试",
+      "en": "Too many reports (5 per hour) — please try again later",
+      "fr": "Trop de rapports (5 par heure) — réessayez plus tard"
+    },
+    "zone_report_not_failed": {
+      "zh-CN": "只有失败或中断的报告可以重试",
+      "en": "Only failed or interrupted reports can be retried",
+      "fr": "Seuls les rapports en échec ou interrompus peuvent être relancés"
+    },
+    "zone_report_already_published": {
+      "zh-CN": "这份报告已经发布为帖子",
+      "en": "This report has already been published as a post",
+      "fr": "Ce rapport a déjà été publié"
+    },
+    "zone_report_not_ready": {
+      "zh-CN": "报告还没有生成完成",
+      "en": "The report is not ready yet",
+      "fr": "Le rapport n'est pas encore prêt"
+    },
+    "zone_source_required": {
+      "zh-CN": "请上传聊天记录或 report.json",
+      "en": "Upload a chat export or a report.json",
+      "fr": "Importez une discussion ou un report.json"
+    }
+  }
+}
