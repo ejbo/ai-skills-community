@@ -13,13 +13,13 @@ import { newlyGrantedAudience, type AudiencePick, type AudienceState, type Conte
 import { notifyAudienceGranted } from '@/lib/notifications';
 import { createWithSlug, freeTitleSlug, isSlugConflict } from '@/lib/slug-server';
 import { ZoneError } from '@/lib/zones/queries';
-import { createZonePost, type AttachmentInput, type ZonePostInput } from '@/lib/zones/post-queries';
+import { createZonePost, updateZonePost, type AttachmentInput, type ZonePostInput } from '@/lib/zones/post-queries';
 import { ZONE_LIMITS, ZONE_MEDIA_KEY_RE, ZONE_POST_VISIBILITIES, type ZonePostVisibilityValue } from '@/lib/zones/shared';
 import { statZoneMediaAsync, zoneMediaPublicUrl } from '@/lib/zones/storage';
 import { authorMatchViews, type AuthorMatchRow, type AuthorMatchView } from './authors';
 import { librarySlugsForReport } from './library';
 import { effectiveStatus, triggerZoneReport } from './pipeline';
-import { renderReportMarkdown, reportSummaryText, reportTags } from './render-md';
+import { renderReportMarkdown, reportSummaryText } from './render-md';
 import { REPORT_KINDS, type Report } from './schema';
 
 export const MAX_REPORT_ASSETS = 300;
@@ -49,7 +49,7 @@ export interface ZoneReportView {
   updatedAt: string;
   createdBy: PublicAuthor;
   isMine: boolean;
-  post: { id: string; slug: string | null; title: string; zoneSlug: string; zoneName: string } | null;
+  post: { id: string; slug: string | null; title: string; zoneSlug: string; zoneName: string; coauthors: { userId: string; user: PublicAuthor }[] } | null;
 }
 
 export interface ZoneReportAssetView {
@@ -96,7 +96,16 @@ const REPORT_LIST_SELECT = {
   instructions: true,
   instructionMode: true,
   createdBy: AUTHOR_IDENTITY_SELECT,
-  post: { select: { id: true, slug: true, title: true, deletedAt: true, zone: { select: { slug: true, name: true } } } },
+  post: {
+    select: {
+      id: true,
+      slug: true,
+      title: true,
+      deletedAt: true,
+      zone: { select: { slug: true, name: true } },
+      coauthors: { select: { userId: true, user: AUTHOR_IDENTITY_SELECT }, orderBy: { sortOrder: 'asc' } },
+    },
+  },
   _count: { select: { assets: true } },
 } satisfies Prisma.ZoneReportSelect;
 
@@ -129,7 +138,7 @@ function toView(r: ReportListRow, viewerId: string | null, canSeeIdentity: boole
     updatedAt: r.updatedAt.toISOString(),
     createdBy: toPublicAuthor(r.createdBy, canSeeIdentity),
     isMine: !!viewerId && viewerId === r.createdById,
-    post: r.post && !r.post.deletedAt ? { id: r.post.id, slug: r.post.slug, title: r.post.title, zoneSlug: r.post.zone.slug, zoneName: r.post.zone.name } : null,
+    post: r.post && !r.post.deletedAt ? { id: r.post.id, slug: r.post.slug, title: r.post.title, zoneSlug: r.post.zone.slug, zoneName: r.post.zone.name, coauthors: r.post.coauthors.map((c) => ({ userId: c.userId, user: toPublicAuthor(c.user, canSeeIdentity) })) } : null,
   };
 }
 
@@ -153,7 +162,8 @@ export async function getReportDetail(reportId: string, viewerId: string | null,
   });
   if (!r) return null;
   const docIds = r.assets.map((a) => a.libraryDocId).filter((x): x is string => !!x);
-  const docs = docIds.length ? await prisma.libraryDoc.findMany({ where: { id: { in: docIds }, deletedAt: null }, select: { id: true, slug: true, title: true } }) : [];
+  // 只认收录完成的文档：processing / failed 的在知识库里打不开，给出去就是 404（owner 2026-10-21）
+  const docs = docIds.length ? await prisma.libraryDoc.findMany({ where: { id: { in: docIds }, deletedAt: null, status: 'ready' }, select: { id: true, slug: true, title: true } }) : [];
   const docById = new Map(docs.map((d) => [d.id, d]));
   const matches = ((r.authorMatches as unknown as AuthorMatchRow[] | null) ?? []).filter((m) => m && typeof m.account === 'string');
   const warnings = ((r.clusterJson as { warnings?: unknown } | null)?.warnings as string[] | undefined) ?? [];
@@ -165,6 +175,19 @@ export async function getReportDetail(reportId: string, viewerId: string | null,
     warnings: Array.isArray(warnings) ? warnings.slice(0, 50) : [],
     audience: opts.withAudience ? await loadAudience('report', r.id, canSeeIdentity) : [],
   };
+}
+
+// ── 合著者（分享到版块之后随时改）────────────────────────────────────────────
+
+/**
+ * 报告帖子的合著者随时可改（owner 2026-10-21：「如果当时没有添加，后面就无法再进行添加了，这个要随时都可以添加和删除」）。
+ * 走 updateZonePost 的 coauthorIds 分支：同一套校验（上限 / 去重 / 禁用账号丢弃）、新加的人收到通知、不动正文不生成版本。
+ */
+export async function setReportCoauthors(reportId: string, actorId: string, userIds: string[]): Promise<{ postId: string } | null> {
+  const r = await prisma.zoneReport.findUnique({ where: { id: reportId }, select: { postId: true, post: { select: { deletedAt: true } } } });
+  if (!r?.postId || r.post?.deletedAt) return null;
+  await updateZonePost(r.postId, { coauthorIds: userIds }, { actorId });
+  return { postId: r.postId };
 }
 
 // ── 创建 ────────────────────────────────────────────────────────────────────
@@ -368,7 +391,8 @@ export async function publishZoneReport(
     bodyMd,
     coverKey: null,
     linkUrl: null,
-    tags: reportTags(report),
+    // 不再自动打标签（owner 2026-10-21：「标题上面的 hashtag 都去掉，识别的根本不准」）；要标签去帖子编辑里手动加
+    tags: [],
     coauthorIds,
     attachments,
     status: input.status,

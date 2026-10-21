@@ -143,8 +143,13 @@ export function renderReportMarkdown(report: Report, opts: RenderMdOptions = {})
 }
 
 /** 卡片摘要：一句话主线 + 第一条要点。 */
+/** 帖子摘要是纯文本字段（列表卡片 / 搜索 / 邮件都用）：去掉模型文案里的 `**关键词**` / `code` 标记。 */
+export function plainReportText(text: string): string {
+  return text.replace(/\*\*(.+?)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1').replace(/\s+/g, ' ').trim();
+}
+
 export function reportSummaryText(report: Report, max = 300): string {
-  const s = `${report.summary.headline} ${report.summary.highlights[0]?.text ?? ''}`.trim();
+  const s = plainReportText(`${report.summary.headline} ${report.summary.highlights[0]?.text ?? ''}`);
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 

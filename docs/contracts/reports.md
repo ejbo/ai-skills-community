@@ -24,6 +24,7 @@ Owner 的诉求（三轮）：「我会生成这样的聊天记录，配合提�
 | 导出 Word / PDF | `GET …/export?format=docx\|pdf`（`export-docx.ts` / `export-pdf.ts`） | 能看分享页的人 |
 | 分享页 + 谁可读 | `/reports/[slug]`，`PATCH …/[id] { visibility, audienceUserIds }`（通用 audience，kind `report`） | 所有者改；读者按闸门 |
 | 分享到技术专区 | `POST …/[id]/publish { zoneSlug, columnId, visibility, coauthorUserIds… }` → `createZonePost`，帖子页原生渲染（§3a） | 所有者，且在目标版块 `canPost` |
+| 改合著者（分享后随时） | 工具详情页 `ReportCoauthors` → `PUT …/[id]/coauthors { userIds }` → `updateZonePost({ coauthorIds })` | 所有者 |
 
 四条设计决定：
 
@@ -145,6 +146,18 @@ skill 侧同一份逻辑：`scripts/coerce.mjs`（由 coerce.ts `tsc` 转出，�
 - 枚举显示文案走 i18n（`report_role_* / report_tag_* / report_conf_*`），存的值永远是模型词表里的中文。
 - 配色守 ui.md：chrome 全墨；颜色只出现在内容语义上（角色色标、`<mark>` 高亮、头像身份色）。
 
+**阅读布局（2026-10-21 第五轮，owner 看完第一份真实月报的反馈）**——`components/reports/report-view.tsx`，三处（工具详情预览 / 分享页 / 帖子页）共用：
+
+| 反馈 | 现在 |
+| --- | --- |
+| 「标题上面的 hashtag、日期都去掉，识别的根本不准」 | `publishZoneReport` 不再自动打标签（`tags: []`）；`PostHeader` 对报告帖子不渲染 `#tags`（老帖子的也藏掉）。要标签去帖子编辑里手动加 |
+| 「只显示一个月报，不知道是几月的」 | 标题下一行 `ReportMeta`：`月报 · 2026-09-20 ~ 2026-10-20 · 消息 371 · 发言人 32 · 专题 8`——帖子页（PostHeader）、分享页、工具页都有；要点卡顶部原来那行类型 / 起止删掉 |
+| 「摘要里加粗还是两个星号」 | 存库的 `summary` 过 `plainReportText`（去 `**` / `` ` ``）；`PostHeader` 对报告帖子用 `RichText` 渲染摘要（老帖子里残留的 `**` 也会高亮而不是露星号） |
+| 「外链没必要弹侧边框再点进去」「很多链接 404、没录入」 | `SourceChips`：有 url 的来源 = `<a target=_blank>` 直接开，**不再走 dock 的 link 卡片**；只有**收录完成**（`LibraryDoc.status = ready`）的附件才给「知识库文档」chip（`post-view.ts#librarySlugsByName`、`getReportDetail` 都加了 `status: 'ready'`）——processing / failed 的在知识库里就是 404 |
+| 「右侧都是空白的」「月报很长，拉到最底下非常困难」 | `ReportReader`：正文 + sticky 右栏（`lg` 起；dock 打开时 band narrow → 右栏让位）。右栏 = 目录（`reportHeadings`，随阅读位置高亮）→ 全部展开 / 收起 → 页面自己的段落（帖子页：作者 + **评论 N 按钮** → `CommentsDrawer` 从右侧滑入，开着时底部评论区不渲染，同一时刻只挂一份 `PostComments`；分享页：作者 + 「分享自 xx 版块」）→ 回到顶部。容器放宽到 `max-w-6xl` |
+| 「看起来还是非常的长和乱」 | 专题的**观点时间线默认收起**（`ReportViewProvider`）：一个专题先只看 编号 + 标题 + 定位 + 宏观总结 + 待验证 + 资料 + 启示，时间线折成一行头像带「N 条观点 · M 位发言人 — 点击展开」；右栏「展开全部观点」一键全开。没有 provider 的调用方（老代码）一律展开 |
+| 「合著者当时没加后面就加不了」 | `ReportCoauthors`（工具详情页，分享后出现）：发言人一键勾选 + 全站搜索，`PUT /api/tools/chat-report/[id]/coauthors` → `setReportCoauthors` → `updateZonePost({ coauthorIds })`（同一套校验、新加的人收到通知、不生成版本）。帖子编辑页的设置抽屉也能改 |
+
 ### 3b. 分享页与谁可读（`/reports/[slug]`，`visibility.ts`）
 
 `ZoneReport.visibility ContentVisibility @default(private)` + `ContentAudience(kind 'report')`，照 audience.md 接入：编辑用 `VisibilityField`，
@@ -207,6 +220,9 @@ lib/zones/reports/
   assemble.ts      report.json 装配 + 邻域配图
   render-md.ts     report.json → 帖子 Markdown（含 embed 令牌）
   authors.ts       工号 → 用户匹配
+  report-view.tsx (components/reports)  ReportViewProvider（时间线展开态）/ ReportMeta / ReportRail / ReportReader（§3a 阅读布局）
+  ReportCoauthors.tsx (components/reports)  分享后随时改合著者
+  CommentsDrawer.tsx (app/zones/_components/post)  报告帖子的评论抽屉
   bundle.ts        整包上传的识别规则（纯函数，向导与服务端共用）：挑出清单 / 姓名表 / 产物，其余文本全是候选 + 姓名表
   unpack.ts        zip → 每个候选真解析挑最好的 → zone media + ZoneReportAsset + 回写 source/manifest/import/names
   provider.ts      getReportProvider：ZoneReportSetting（沿用知识库 / 单独）→ LLMProvider，60 s 缓存
@@ -224,7 +240,7 @@ lib/zones/post-presence.ts    心跳 / 活跃编辑者
   export-docx.ts / export-pdf.ts   Word（docx 包）/ PDF（soffice）
   writing-guide.ts 向导里「查看默认写法」的文字
 lib/tools/catalog.ts   导航「工具」的工具目录（/tools 页与 NAV_MEGA 都读它）
-app/api/tools/chat-report/route.ts, upload/route.ts, [reportId]/route.ts, retry/route.ts, publish/route.ts, export/route.ts
+app/api/tools/chat-report/route.ts, upload/route.ts, [reportId]/route.ts, retry/route.ts, publish/route.ts, export/route.ts, coauthors/route.ts
 app/tools/page.tsx, chat-report/page.tsx, chat-report/new/page.tsx, chat-report/[reportId]/page.tsx
 app/reports/[slug]/page.tsx, messages/page.tsx
 components/reports/ReportWizard.tsx, ReportDetail.tsx, ReportList.tsx, ReportArticle.tsx, ReportMessages.tsx, report-bits.tsx

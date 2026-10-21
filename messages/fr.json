@@ -3321,7 +3321,8 @@
     "zone_report_not_failed": "Seuls les rapports en échec ou interrompus peuvent être relancés",
     "zone_report_already_published": "Ce rapport a déjà été publié",
     "zone_report_not_ready": "Le rapport n'est pas encore prêt",
-    "zone_source_required": "Importez une discussion ou un report.json"
+    "zone_source_required": "Importez une discussion ou un report.json",
+    "report_not_published": "Le rapport n'a pas encore été partagé dans une zone : aucune publication pour définir des co-auteurs"
   },
   "stickers": {
     "title": "Mes mèmes",
@@ -4805,7 +4806,7 @@
     "report_messages_empty": "Aucun message d'origine correspondant (le rapport a peut-être été régénéré)",
     "report_messages_reply": "En réponse à {name}",
     "report_messages_missing_image": "Image non envoyée : {file}",
-    "report_sec_brief": "Points clés",
+    "report_sec_brief": "L'essentiel",
     "report_sec_highlights": "Points",
     "report_sec_judgments": "Jugements clés",
     "report_sec_actions": "Actions et suivis",
@@ -4869,7 +4870,14 @@
     "report_instructions_show_guide": "Afficher le guide par défaut",
     "report_instructions_hide_guide": "Masquer le guide par défaut",
     "report_instructions_hint": "Ce texte est injecté dans chaque étape (regroupement / thèmes / recap / points clés). Les champs, la forme JSON et la règle « ne citer que ce qui est dans l'enregistrement » restent inchangés.",
-    "report_detected_guess": "Aucun journal reconnu d'emblée ; ces {count} fichiers texte seront essayés un par un, puis le modèle déduit le format si aucun ne passe"
+    "report_detected_guess": "Aucun journal reconnu d'emblée ; ces {count} fichiers texte seront essayés un par un, puis le modèle déduit le format si aucun ne passe",
+    "report_expand_all": "Déplier tous les points de vue",
+    "report_collapse_all": "Replier tous les points de vue",
+    "report_back_to_top": "Haut de page",
+    "report_timeline_expand": "Afficher {count} points de vue · {speakers} personnes",
+    "report_timeline_collapse": "Replier",
+    "report_timeline_collapsed": "{count} points de vue · {speakers} intervenants — cliquer pour déplier",
+    "report_comments_close": "Fermer les commentaires"
   },
   "translate": {
     "translate": "Traduire",
@@ -4954,6 +4962,10 @@
     "report_delete_failed": "Échec de la suppression",
     "report_manage": "Gérer",
     "report_shared_in": "Partagé dans « {zone} »",
-    "report_instructions_used": "Consignes utilisées ({mode})"
+    "report_instructions_used": "Consignes utilisées ({mode})",
+    "report_coauthors_hint": "Modifiable à tout moment après le partage : cliquez sur un intervenant pour l'ajouter / le retirer, ou cherchez n'importe qui sur le site ; les nouveaux co-auteurs sont notifiés.",
+    "report_coauthors_save": "Enregistrer les co-auteurs",
+    "report_coauthors_saved": "Co-auteurs mis à jour",
+    "report_coauthors_failed": "Impossible d'enregistrer les co-auteurs"
   }
 }

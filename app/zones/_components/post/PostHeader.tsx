@@ -36,6 +36,8 @@ import { relativeTime } from '@/lib/i18n-date';
 import { leadRoleOf, type LeadRoles } from '@/lib/zones/lead-roles';
 import { hostnameOf, zoneHref, zonePostEditHref, zonePostHref } from '@/lib/zones/shared';
 import type { ZonePostDetailView } from '@/lib/zones/types';
+import { ReportMeta } from '@/components/reports/report-view';
+import { RichText } from '@/components/reports/report-bits';
 import { RolePill } from '../RolePill';
 import { PILL_COLUMN, PILL_COLUMN_MEMBER, PILL_INK } from '../ui';
 import { LiveEditorsPill } from './LiveEditorsPill';
@@ -64,6 +66,9 @@ export function PostHeader({
   const VisibilityIcon = VISIBILITY_ICONS[post.visibility];
   const authors = [post.author, ...post.coauthors];
   const when = post.publishedAt ?? post.createdAt;
+  // 报告帖子（reports.md §3a）：标题上方不放 #标签（自动打的不准，owner 2026-10-21），标题下放 类型 · 起止 · 统计；
+  // 摘要里的 **关键词** 按高亮渲染而不是露出两个星号。
+  const report = post.report?.report ?? null;
 
   return (
     <header className="space-y-5">
@@ -115,7 +120,7 @@ export function PostHeader({
         {post.status === 'draft' && (
           <span className="rounded-full border border-dashed border-zinc-400 px-2 py-px text-muted dark:border-zinc-600">{t('post_badge_draft')}</span>
         )}
-        {post.tags.map((tag) => (
+        {!report && post.tags.map((tag) => (
           <Link
             key={tag}
             href={`${zoneHref(zone.slug)}?tag=${encodeURIComponent(tag)}`}
@@ -133,9 +138,11 @@ export function PostHeader({
         <TranslatedText field="title" fallback={post.title} />
       </h1>
 
+      {report && <ReportMeta report={report} className="-mt-2 text-[13px]" />}
+
       {post.summary && (
         <p className="text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
-          <TranslatedText field="summary" fallback={post.summary} />
+          {report ? <RichText text={post.summary} /> : <TranslatedText field="summary" fallback={post.summary} />}
         </p>
       )}
 

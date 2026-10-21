@@ -10,14 +10,15 @@
 
 import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
-import { CalendarDays, Hash, MessageSquareQuote, Quote } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronUp, Hash, MessageSquareQuote, Quote } from 'lucide-react';
 import { usePreview } from '@/components/zones/preview/PreviewProvider';
 import { REPORT_SECTION_IDS } from '@/lib/zones/reports/sections';
 import type { Report, ReportAttachment, ReportTheme, ReportViewpoint } from '@/lib/zones/reports/schema';
 import type { PublicAuthor } from '@/lib/user-identity';
 import type { EmbedData, ZonePostReportView } from '@/lib/zones/types';
-import { BTN_GHOST, PILL_MONO } from '@/app/zones/_components/ui';
+import { BTN_GHOST } from '@/app/zones/_components/ui';
 import { RichText, RoleChip, SourceChips, Speaker, Thumbs, useReportLabels, type SourceRef, type ThumbItem } from './report-bits';
+import { useReportView } from './report-view';
 
 const RES_KEY: Record<string, string> = { paper: '论文', repo: '代码', article: '文章', internal: '内部', video: '视频', doc: '文档', other: '链接' };
 
@@ -81,17 +82,9 @@ export function ReportArticle({ originalsHref, view, embeds }: { originalsHref: 
       {/* ── 本期要点 ─────────────────────────────────────────────────────── */}
       <section id={REPORT_SECTION_IDS.brief} className="scroll-mt-28 rounded-2xl border border-zinc-200 dark:border-zinc-800">
         <div className="border-b border-zinc-200 px-6 py-5 dark:border-zinc-800">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={PILL_MONO}>{t(`report_kind_tag_${report.kind}`)}</span>
-            <span className="font-mono text-xs text-muted">
-              {report.period.start} ~ {report.period.end}
-            </span>
-            <span className="font-mono text-xs text-muted">
-              · {t('report_stat_messages')} {st.messages} · {t('report_stat_speakers')} {st.speakers} · {t('report_col_theme')} {report.themes.length}
-            </span>
-          </div>
+          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{t('report_sec_brief')}</h2>
           {S.headline && (
-            <p className="mt-3 border-l-4 border-zinc-900 pl-4 text-lg font-semibold leading-snug tracking-tight text-zinc-900 dark:border-zinc-100 dark:text-zinc-50">
+            <p className="mt-2 border-l-4 border-zinc-900 pl-4 text-lg font-semibold leading-snug tracking-tight text-zinc-900 dark:border-zinc-100 dark:text-zinc-50">
               <RichText text={S.headline} />
             </p>
           )}
@@ -370,6 +363,9 @@ function ThemeSection({
   labels: ReturnType<typeof useReportLabels>;
 }) {
   const t = useTranslations('zones');
+  const view = useReportView();
+  const open = view.isOpen(th.id);
+  const speakerCount = new Set(th.viewpoints.map((v) => v.account)).size;
   const n = String(index + 1).padStart(2, '0');
   return (
     <section id={th.id} className="scroll-mt-28">
@@ -397,12 +393,39 @@ function ThemeSection({
         </ul>
       )}
 
-      <h3 className="mt-6 text-[11px] font-semibold uppercase tracking-wider text-muted">{t('report_sec_timeline')}</h3>
-      <ol className="relative mt-3 ml-3.5 space-y-6 border-l border-zinc-200 pl-7 dark:border-zinc-800">
-        {th.viewpoints.map((v) => (
-          <ViewpointItem key={v.id} v={v} user={userOf(v.account)} thumbs={thumbsOf(v.attachments)} librarySlug={librarySlugOf(v.attachments)} embeds={embeds} onOriginal={() => openOriginal(v.msgRefs, `${v.speaker} · ${v.dates.join(' / ')}`)} />
-        ))}
-      </ol>
+      {/* 观点时间线：可折叠（默认收起，右栏「全部展开」或这里逐个展开）——报告太长时先看定位 + 宏观 + 启示 */}
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{t('report_sec_timeline')}</h3>
+        {view.provided && (
+          <button
+            type="button"
+            onClick={() => view.toggle(th.id)}
+            aria-expanded={open}
+            aria-controls={`${th.id}-timeline`}
+            className="inline-flex h-7 items-center gap-1 rounded-md border border-zinc-200 px-2 text-xs font-medium text-zinc-700 transition hover:border-zinc-900 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-300 dark:hover:border-zinc-100 dark:hover:text-zinc-100"
+          >
+            {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            {open ? t('report_timeline_collapse') : t('report_timeline_expand', { count: th.viewpoints.length, speakers: speakerCount })}
+          </button>
+        )}
+      </div>
+      {open ? (
+        <ol id={`${th.id}-timeline`} className="relative mt-3 ml-3.5 space-y-6 border-l border-zinc-200 pl-7 dark:border-zinc-800">
+          {th.viewpoints.map((v) => (
+            <ViewpointItem key={v.id} v={v} user={userOf(v.account)} thumbs={thumbsOf(v.attachments)} librarySlug={librarySlugOf(v.attachments)} embeds={embeds} onOriginal={() => openOriginal(v.msgRefs, `${v.speaker} · ${v.dates.join(' / ')}`)} />
+          ))}
+        </ol>
+      ) : (
+        // 收起时留一行"谁说了"的头像带，点开即展开
+        <button type="button" onClick={() => view.toggle(th.id)} className="mt-3 flex w-full flex-wrap items-center gap-2 rounded-xl border border-dashed border-zinc-300 px-3 py-2 text-left text-xs text-muted transition hover:border-zinc-900 hover:text-zinc-900 dark:border-zinc-700 dark:hover:border-zinc-100 dark:hover:text-zinc-100">
+          <span className="flex -space-x-1.5">
+            {[...new Map(th.viewpoints.map((v) => [v.account, v])).values()].slice(0, 8).map((v) => (
+              <Speaker key={v.account} name={v.speaker} account={v.account} user={userOf(v.account)} size="xs" showName={false} />
+            ))}
+          </span>
+          <span>{t('report_timeline_collapsed', { count: th.viewpoints.length, speakers: speakerCount })}</span>
+        </button>
+      )}
 
       {th.openQuestions.length > 0 && (
         <>

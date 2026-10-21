@@ -50,7 +50,7 @@ async function librarySlugsByName(reportId: string): Promise<Record<string, stri
   const rows = await prisma.zoneReportAsset.findMany({ where: { reportId, libraryDocId: { not: null } }, select: { name: true, libraryDocId: true } });
   const ids = rows.map((r) => r.libraryDocId!).filter(Boolean);
   if (!ids.length) return {};
-  const docs = await prisma.libraryDoc.findMany({ where: { id: { in: ids }, deletedAt: null }, select: { id: true, slug: true } });
+  const docs = await prisma.libraryDoc.findMany({ where: { id: { in: ids }, deletedAt: null, status: 'ready' }, select: { id: true, slug: true } });
   const slugById = new Map(docs.map((d) => [d.id, d.slug]));
   const out: Record<string, string> = {};
   for (const r of rows) {

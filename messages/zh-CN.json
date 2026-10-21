@@ -3321,7 +3321,8 @@
     "zone_report_not_failed": "只有失败或中断的报告可以重试",
     "zone_report_already_published": "这份报告已经发布为帖子",
     "zone_report_not_ready": "报告还没有生成完成",
-    "zone_source_required": "请上传聊天记录或 report.json"
+    "zone_source_required": "请上传聊天记录或 report.json",
+    "report_not_published": "报告还没有分享到版块，没有帖子可以设置合著者"
   },
   "stickers": {
     "title": "我的表情包",
@@ -4869,7 +4870,14 @@
     "report_instructions_show_guide": "查看默认写法",
     "report_instructions_hide_guide": "收起默认写法",
     "report_instructions_hint": "这段话会进每一步提示词（聚类 / 专题 / 花絮 / 要点）。字段、JSON 形状与「只引用记录里的内容」的规则不受影响。",
-    "report_detected_guess": "没有一眼认出的聊天记录，会逐个试这 {count} 个文本文件；都认不出再让模型推断格式"
+    "report_detected_guess": "没有一眼认出的聊天记录，会逐个试这 {count} 个文本文件；都认不出再让模型推断格式",
+    "report_expand_all": "展开全部观点",
+    "report_collapse_all": "收起全部观点",
+    "report_back_to_top": "回到顶部",
+    "report_timeline_expand": "展开 {count} 条观点 · {speakers} 人",
+    "report_timeline_collapse": "收起",
+    "report_timeline_collapsed": "{count} 条观点 · {speakers} 位发言人 — 点击展开时间线",
+    "report_comments_close": "关闭评论"
   },
   "translate": {
     "translate": "翻译",
@@ -4954,6 +4962,10 @@
     "report_delete_failed": "删除失败",
     "report_manage": "管理",
     "report_shared_in": "已分享到「{zone}」",
-    "report_instructions_used": "本次使用的补充要求（{mode}）"
+    "report_instructions_used": "本次使用的补充要求（{mode}）",
+    "report_coauthors_hint": "分享到版块后随时可改：点一下发言人加入 / 移除，或搜索站内任何人；保存后新加的人会收到通知。",
+    "report_coauthors_save": "保存合著者",
+    "report_coauthors_saved": "合著者已更新",
+    "report_coauthors_failed": "合著者保存失败"
   }
 }

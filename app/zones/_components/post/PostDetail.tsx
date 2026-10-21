@@ -27,10 +27,13 @@
 // locked stub (returned above the scope — the loader would 404 it) nor on a draft
 // (every autosave would mint cache rows for text nobody else will ever read).
 
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { FileEdit, MessageCircle } from 'lucide-react';
+import { Avatar } from '@/components/Avatar';
+import { DeptTag } from '@/components/DeptTag';
+import { ReportReader } from '@/components/reports/report-view';
 import { TranslatableScope, TranslateControl, TranslateNote, useTranslated } from '@/components/translate/TranslatableScope';
 import { usePageBand } from '@/components/zones/preview/PreviewProvider';
 import { ZoneMarkdown } from '@/components/zones/ZoneMarkdown';
@@ -45,6 +48,7 @@ import { PostRail } from './PostRail';
 import { PostUnlock } from './PostUnlock';
 import { RelatedPosts } from './RelatedPosts';
 import { ReportArticle } from '@/components/reports/ReportArticle';
+import { CommentsDrawer } from './CommentsDrawer';
 import { useLikeBookmark } from './useLikeBookmark';
 import { zonePostEditHref } from '@/lib/zones/shared';
 
@@ -90,8 +94,14 @@ export function PostDetail({
   const titleRef = useRef<HTMLHeadingElement>(null);
   const commentsRef = useRef<HTMLElement>(null);
   const authors = [post.author, ...post.coauthors];
+  // 报告帖子的评论抽屉（CommentsDrawer）：开着时底部评论区不渲染，同一时刻只挂一份 PostComments。
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const closeComments = useCallback(() => setCommentsOpen(false), []);
 
-  const jumpToComments = () => commentsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const jumpToComments = () => {
+    if (post.report) return setCommentsOpen(true);
+    commentsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   // 指定成员可见 (ask #4): the RSC already handed us a stub — no body, cover,
   // attachments, headings or embeds — so nothing below this line may render.
@@ -104,12 +114,99 @@ export function PostDetail({
       ? 'grid grid-cols-1 gap-10 xl:grid-cols-[minmax(0,1fr)_240px]'
       : 'grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_40px]';
 
+  const comments = (
+    <PostComments
+      zoneSlug={zone.slug}
+      postId={post.id}
+      currentUser={currentUser}
+      canComment={access.canComment}
+      canModerate={access.canModerate}
+      isMember={access.isMember}
+      locked={post.locked}
+      focusId={focusId}
+      leadRoles={leadRoles}
+      onCountChange={(delta) => setCommentCount((n) => Math.max(0, n + delta))}
+    />
+  );
+
+  // ── 报告帖子（docs/contracts/reports.md §3a「阅读布局」）────────────────────────────────
+  // 正文 + 右栏（目录 / 全部展开收起 / 作者 / 评论抽屉入口 / 回到顶部）用 ReportReader；专题时间线默认收起。
+  // 站内翻译作用于 Markdown 正文，对原生视图无意义，不给翻译入口。
+  if (post.report) {
+    const rail = (
+      <>
+        <section>
+          <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">{t('rail_strip_authors')}</h3>
+          <ul className="space-y-2">
+            {authors.map((a) => (
+              <li key={a.handle} className="flex items-center gap-2 text-sm">
+                <Avatar name={a.displayName} src={a.avatarUrl} size="xs" handle={a.handle} />
+                <Link href={`/users/${a.handle}`} className="truncate font-medium hover:underline">
+                  {a.displayName}
+                </Link>
+                <DeptTag department={a.department} lab={a.lab} />
+              </li>
+            ))}
+          </ul>
+        </section>
+        <button
+          type="button"
+          onClick={() => setCommentsOpen(true)}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 text-xs font-medium text-zinc-700 transition hover:border-zinc-900 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-300 dark:hover:border-zinc-100 dark:hover:text-zinc-100"
+        >
+          <MessageCircle className="h-3.5 w-3.5" />
+          {t('post_comments')}
+          <span className="font-mono tabular-nums text-muted">{commentCount}</span>
+        </button>
+      </>
+    );
+    return (
+      <>
+        <ReportReader report={post.report.report} rail={rail} articleRef={articleRef}>
+          {post.status === 'draft' && (
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-zinc-400 px-4 py-3 text-sm dark:border-zinc-600">
+              <span className="inline-flex items-center gap-2">
+                <FileEdit className="h-4 w-4 text-muted" />
+                {t('post_draft_banner')}
+              </span>
+              {canEdit && (
+                <Link href={zonePostEditHref(zone.slug, post.id)} className="h-8 rounded-lg bg-zinc-900 px-3 text-xs font-medium leading-8 text-white transition hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200">
+                  {t('post_continue_editing')}
+                </Link>
+              )}
+            </div>
+          )}
+          <PostHeader post={post} zone={zone} leadRoles={leadRoles} titleRef={titleRef} canEdit={canEdit} />
+          <div className={`mt-8 ${HEADING_SCROLL_MARGIN}`}>
+            <ReportArticle originalsHref={`/reports/${encodeURIComponent(post.report.slug ?? post.report.id)}/messages`} view={post.report} embeds={post.embeds} />
+          </div>
+          {post.attachments.length > 0 && <PostAttachmentsPanel attachments={post.attachments} className="mt-8" />}
+          <PostActionBar className="mt-8" post={post} zoneSlug={zone.slug} access={access} canEdit={canEdit} currentUser={currentUser} lb={lb} commentCount={commentCount} onCommentJump={jumpToComments} />
+          {!commentsOpen && (
+            <section ref={commentsRef} id="comments" className="cv-auto mt-10 scroll-mt-24 border-t border-zinc-200 pt-8 dark:border-zinc-800">
+              <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold tracking-tight">
+                <MessageCircle className="h-4 w-4 text-muted" />
+                {t('post_comments')}
+                <span className="font-mono text-sm tabular-nums text-muted">{commentCount}</span>
+              </h2>
+              {comments}
+            </section>
+          )}
+          <RelatedPosts posts={related.filter((p) => p.id !== post.id)} className="cv-auto mt-12" />
+        </ReportReader>
+        <CommentsDrawer open={commentsOpen} onClose={closeComments} count={commentCount}>
+          {comments}
+        </CommentsDrawer>
+      </>
+    );
+  }
+
   return (
     <TranslatableScope
       kind="zone_post"
       id={post.id}
       fields={{ title: post.title, summary: post.summary, body: post.bodyMd }}
-      disabled={post.status === 'draft' || !!post.report}
+      disabled={post.status === 'draft'}
     >
     <div className={grid} data-post-band={band}>
       <article ref={articleRef} className={`min-w-0 ${ARTICLE_MEASURE_CLASS}`}>
@@ -135,21 +232,13 @@ export function PostDetail({
         <PostHeader post={post} zone={zone} leadRoles={leadRoles} titleRef={titleRef} canEdit={canEdit} />
 
         <div className={`mt-8 ${HEADING_SCROLL_MARGIN}`}>
-          {post.report ? (
-            // 报告帖子（docs/contracts/reports.md §3a）：原生渲染 reportJson；bodyMd 只做摘要 / 搜索 / 回退。
-            // 站内翻译作用于 Markdown 正文，对原生视图无意义，这里不给翻译入口。
-            <ReportArticle originalsHref={`/reports/${encodeURIComponent(post.report.slug ?? post.report.id)}/messages`} view={post.report} embeds={post.embeds} />
+          {/* One slot: 「译自… · 显示原文」 while translated, else 翻译 / 翻译中… / 显示译文. */}
+          <TranslateNote />
+          <TranslateControl className="mb-3" />
+          {post.bodyMd.trim() ? (
+            <PostBody post={post} />
           ) : (
-            <>
-              {/* One slot: 「译自… · 显示原文」 while translated, else 翻译 / 翻译中… / 显示译文. */}
-              <TranslateNote />
-              <TranslateControl className="mb-3" />
-              {post.bodyMd.trim() ? (
-                <PostBody post={post} />
-              ) : (
-                <p className="text-sm text-muted">{t('post_body_empty')}</p>
-              )}
-            </>
+            <p className="text-sm text-muted">{t('post_body_empty')}</p>
           )}
         </div>
 
@@ -173,18 +262,7 @@ export function PostDetail({
             {t('post_comments')}
             <span className="font-mono text-sm tabular-nums text-muted">{commentCount}</span>
           </h2>
-          <PostComments
-            zoneSlug={zone.slug}
-            postId={post.id}
-            currentUser={currentUser}
-            canComment={access.canComment}
-            canModerate={access.canModerate}
-            isMember={access.isMember}
-            locked={post.locked}
-            focusId={focusId}
-            leadRoles={leadRoles}
-            onCountChange={(delta) => setCommentCount((n) => Math.max(0, n + delta))}
-          />
+          {comments}
         </section>
 
         <RelatedPosts posts={related.filter((p) => p.id !== post.id)} className="cv-auto mt-12" />
