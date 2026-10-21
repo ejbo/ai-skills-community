@@ -39,20 +39,40 @@ const MAX_IMG_H = 360;
 const border = { style: BorderStyle.SINGLE, size: 4, color: LINE };
 const borders = { top: border, bottom: border, left: border, right: border };
 
-/** `**…**` → 红色加粗；`code` → 等宽。 */
-function runs(text: string, base: { size?: number; color?: string; bold?: boolean } = {}): TextRun[] {
-  const out: TextRun[] = [];
+const LINK_COLOR = '1A4D8F';
+const URL_IN_TEXT = /https?:\/\/[^\s"'<>（）()，。；！？《》「」【】\\|}]+/g;
+
+/** 正文里裸写的 URL → 可点击的超链接（owner 2026-10-21：「生成的 pdf 或 word 里这个链接需要可以点击的」）。 */
+function textWithLinks(text: string, opts: { size: number; color: string; bold?: boolean }): ParagraphChild[] {
+  const out: ParagraphChild[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  URL_IN_TEXT.lastIndex = 0;
+  while ((m = URL_IN_TEXT.exec(text))) {
+    const url = m[0].replace(/[.,;:!?]+$/, '');
+    if (m.index > last) out.push(new TextRun({ text: text.slice(last, m.index), ...opts }));
+    out.push(new ExternalHyperlink({ link: url, children: [new TextRun({ text: url, size: opts.size, color: LINK_COLOR, underline: {} })] }));
+    last = m.index + url.length;
+  }
+  if (last < text.length) out.push(new TextRun({ text: text.slice(last), ...opts }));
+  return out;
+}
+
+/** `**…**` → 红色加粗；`code` → 等宽；裸 URL → 超链接。 */
+function runs(text: string, base: { size?: number; color?: string; bold?: boolean } = {}): ParagraphChild[] {
+  const out: ParagraphChild[] = [];
   const re = /\*\*(.+?)\*\*|`([^`]+)`/g;
   let last = 0;
   let m: RegExpExecArray | null;
   const size = base.size ?? 21;
+  const plain = { size, color: base.color ?? INK, bold: base.bold };
   while ((m = re.exec(text))) {
-    if (m.index > last) out.push(new TextRun({ text: text.slice(last, m.index), size, color: base.color ?? INK, bold: base.bold }));
+    if (m.index > last) out.push(...textWithLinks(text.slice(last, m.index), plain));
     if (m[1] !== undefined) out.push(new TextRun({ text: m[1], size, color: RED, bold: true, shading: { type: ShadingType.CLEAR, fill: 'FFF2CC', color: 'auto' } }));
     else out.push(new TextRun({ text: m[2], size, font: 'Consolas', color: base.color ?? INK }));
     last = m.index + m[0].length;
   }
-  if (last < text.length) out.push(new TextRun({ text: text.slice(last), size, color: base.color ?? INK, bold: base.bold }));
+  if (last < text.length) out.push(...textWithLinks(text.slice(last), plain));
   return out;
 }
 
@@ -83,7 +103,7 @@ function muted(text: string): Paragraph {
   return p([new TextRun({ text, size: 18, color: SUB })]);
 }
 function link(label: string, url: string): ExternalHyperlink {
-  return new ExternalHyperlink({ link: url, children: [new TextRun({ text: label, size: 19, color: '1F1F1F', underline: {} })] });
+  return new ExternalHyperlink({ link: url, children: [new TextRun({ text: label, size: 19, color: LINK_COLOR, underline: {} })] });
 }
 function cell(children: Paragraph[], opts: { width?: number; fill?: string } = {}): TableCell {
   return new TableCell({
@@ -268,7 +288,11 @@ export async function buildReportDocx(report: Report): Promise<Buffer> {
   // Recap
   if (report.recap?.items.length) {
     body.push(h2('动态', report.recap.title || '非科研 · 快速 Recap'));
-    for (const it of report.recap.items) body.push(p([new TextRun({ text: `${(it.date ?? '').slice(5)} · ${it.speaker ?? ''}　`, size: 19, bold: true }), ...runs(it.text)]));
+    for (const it of report.recap.items) {
+      const children: ParagraphChild[] = [new TextRun({ text: `${(it.date ?? '').slice(5)} · ${it.speaker ?? ''}　`, size: 19, bold: true }), ...runs(it.text)];
+      for (const s of it.sources) if (s.url) children.push(new TextRun({ text: '　', size: 17 }), link(s.label, s.url));
+      body.push(p(children));
+    }
   }
 
   // 资源索引

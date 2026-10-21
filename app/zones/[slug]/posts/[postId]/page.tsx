@@ -139,7 +139,7 @@ export default async function ZonePostPage({
   const focus = firstParam(searchParams.focus);
 
   return (
-    <div className="container max-w-5xl py-8">
+    <div className="container py-8">
       <PostDetail
         post={post}
         zone={{ id: zone.id, slug: zone.slug, name: zone.name }}

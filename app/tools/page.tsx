@@ -22,7 +22,7 @@ export default async function ToolsPage() {
   if (!session?.user) redirect(loginHref('/tools'));
   const t = await getTranslations('tools');
   return (
-    <div className="container max-w-5xl py-8">
+    <div className="container py-8">
       <h1 className="text-2xl font-semibold tracking-tight">{t('title')}</h1>
       <p className="mt-1 max-w-2xl text-sm text-muted">{t('subtitle')}</p>
       <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
