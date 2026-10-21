@@ -18,7 +18,7 @@ import { DEFAULT_WRITING_GUIDE } from '@/lib/zones/reports/writing-guide';
 import { pushToast } from '@/components/Toaster';
 import { currentLoginHref } from '@/lib/auth/callback-path';
 import { MAX_ZONE_FILE_BYTES } from '@/lib/zones/shared';
-import { BUNDLE_IMAGE_RE, bundleBasename, bundleHasChat, HEAD_BYTES, isTextLike, MAX_SNIFF_BYTES, planReportBundle, type BundleFile } from '@/lib/zones/reports/bundle';
+import { BUNDLE_IMAGE_RE, bundleBasename, bundleHasChat, HEAD_BYTES, isTextLike, MAX_SNIFF_BYTES, planReportBundle, sureSources, type BundleFile } from '@/lib/zones/reports/bundle';
 import { BTN_PRIMARY, BTN_SECONDARY, INPUT_CLS, LABEL_CLS, HINT_CLS, SELECT_CLS, CARD_CLS, TEXTAREA_CLS } from '@/app/zones/_components/ui';
 
 type Kind = 'daily' | 'weekly' | 'monthly' | 'custom';
@@ -74,6 +74,9 @@ export function ReportWizard({ defaultSubject = '' }: { defaultSubject?: string 
   const plan = useMemo(() => planReportBundle<BundleFile>(zipFile ? (zipEntries ?? []) : picked), [picked, zipFile, zipEntries]);
   const totalBytes = zipFile ? zipFile.size : picked.reduce((n, p) => n + p.size, 0);
   const hasChat = bundleHasChat(plan);
+  const sure = sureSources(plan);
+  const guesses = plan.sources.filter((s) => s.guess);
+  const kindLabel = (k: string) => (k === 'welink_json' ? 'JSON' : k === 'welink_csv' ? 'CSV' : 'TXT');
   const ready = hasChat && !busy && (!zipFile || zipEntries !== null);
 
   function clear() {
@@ -264,9 +267,13 @@ export function ReportWizard({ defaultSubject = '' }: { defaultSubject?: string 
               <ul className="space-y-1">
                 {plan.importJson
                   ? row(true, t('report_detected_import'), bundleBasename(plan.importJson.path))
-                  : plan.sources.length > 1
-                    ? row(true, t('report_detected_pages', { count: plan.sources.length }), plan.sources.slice(0, 4).map((s) => bundleBasename(s.file.path)).join('、'))
-                    : row(plan.sources.length > 0, t('report_detected_chat'), plan.sources[0] ? `${bundleBasename(plan.sources[0].file.path)} · ${fmtSize(plan.sources[0].file.size)} · ${plan.sources[0].kind === 'welink_json' ? 'welink-cli JSON' : 'TXT'}` : undefined)}
+                  : sure.length > 1
+                    ? row(true, t('report_detected_pages', { count: sure.length }), sure.slice(0, 4).map((s) => `${bundleBasename(s.file.path)}（${kindLabel(s.kind)}）`).join('、'))
+                    : sure.length === 1
+                      ? row(true, t('report_detected_chat'), `${bundleBasename(sure[0].file.path)} · ${fmtSize(sure[0].file.size)} · ${kindLabel(sure[0].kind)}`)
+                      : guesses.length > 0
+                        ? row(true, t('report_detected_guess', { count: guesses.length }), guesses.slice(0, 4).map((s) => bundleBasename(s.file.path)).join('、'))
+                        : row(false, t('report_detected_chat'))}
                 {!plan.importJson && row(!!plan.manifest, t('report_detected_manifest'), plan.manifest ? bundleBasename(plan.manifest.path) : undefined)}
                 {row(plan.assets.length > 0, t('report_detected_assets', { images, files }))}
                 {plan.names.length > 0 && row(true, t('report_detected_names', { count: plan.names.length }))}
