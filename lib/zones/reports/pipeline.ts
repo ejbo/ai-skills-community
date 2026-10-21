@@ -14,7 +14,8 @@ import { assembleReport } from './assemble';
 import { matchRosterToUsers } from './authors';
 import { buildDigest, buildListBundle, buildOutline, buildThemeBundle, computeStats } from './digest';
 import { ingestReportAssets } from './library';
-import { callJson, ReportLlmError } from './llm';
+import { callJson, parseModelJson, ReportLlmError } from './llm';
+import { autofixCluster, coerceCluster, coerceImportedReport, coerceOverview, coerceRecap, coerceTheme, fallbackCluster, fallbackOverview, fallbackRecap, fallbackTheme } from './coerce';
 import { inferLineFormat, splitWithSpec } from './infer-format';
 import { describeUnparsed, parseChat, parseManifest, parseRawMessages } from './parse';
 import { unpackReportBundle } from './unpack';
@@ -157,8 +158,16 @@ export async function runZoneReport(id: string): Promise<boolean> {
       await setStage(id, 'assembling', '导入 report.json', 10);
       const text = await readKey(row.importKey);
       if (!text) throw new Error('读不到上传的 report.json');
-      const parsed = reportSchema.safeParse(JSON.parse(text));
-      if (!parsed.success) throw new Error(`report.json 不符合契约：${parsed.error.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.message}`).join('；')}`);
+      let importedRaw: unknown;
+      try {
+        importedRaw = JSON.parse(text);
+      } catch {
+        importedRaw = parseModelJson(text);
+      }
+      const coerced = coerceImportedReport(importedRaw);
+      for (const w of coerced.warnings) note(`导入：${w}`);
+      const parsed = reportSchema.safeParse(coerced.value);
+      if (!parsed.success) throw new Error(`report.json 不符合契约（已尽量修正仍不行）：${parsed.error.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.message}`).join('；')}`);
       const report = parsed.data as unknown as Report;
       // 附件按文件名对上上传的 assets
       for (const a of report.attachments ?? []) {
@@ -214,17 +223,42 @@ export async function runZoneReport(id: string): Promise<boolean> {
       await save('clustering', '模型归类主题', 15);
       const { parts } = buildDigest(chat, stats);
       if (parts.length === 1) {
-        const r = await callJson({ step: '聚类', prompt: clusterPrompt(parts[0], ins), schema: clusterSchema, validate: (v) => validateCluster(v, chat!), maxTokens: 6000 });
+        const r = await callJson({
+          step: '聚类',
+          prompt: clusterPrompt(parts[0], ins),
+          schema: clusterSchema,
+          coerce: (raw) => coerceCluster(raw, chat!),
+          validate: (v) => validateCluster(v, chat!),
+          onExhausted: ({ value }) => (value ? autofixCluster(value, chat!) : fallbackCluster(chat!)),
+          maxTokens: 6000,
+        });
         state.cluster = r.value;
         state.warnings.push(...r.warnings);
       } else {
         const partial: string[] = [];
         for (let i = 0; i < parts.length; i++) {
           await save('clustering', `模型归类主题（第 ${i + 1}/${parts.length} 片）`, 15 + Math.round((i / parts.length) * 10));
-          const r = await callJson({ step: `聚类分片 ${i + 1}`, prompt: clusterPrompt(parts[i], ins), schema: clusterSchema, maxTokens: 6000 });
-          partial.push(JSON.stringify(r.value));
+          const r = await callJson({
+            step: `聚类分片 ${i + 1}`,
+            prompt: clusterPrompt(parts[i], ins),
+            schema: clusterSchema,
+            coerce: (raw) => coerceCluster(raw, chat!),
+            // 这一片没聚出来就先空着：合并后的覆盖率校验 / autofix 会把漏掉的消息凑成「其他讨论」
+            onExhausted: ({ value }) => value ?? { themes: [], events: [], recap: [], skip: [] },
+            maxTokens: 6000,
+          });
+          state.warnings.push(...r.warnings);
+          if (r.value.themes.length) partial.push(JSON.stringify(r.value));
         }
-        const merged = await callJson({ step: '聚类合并', prompt: mergeClustersPrompt(partial), schema: clusterSchema, validate: (v) => validateCluster(v, chat!), maxTokens: 8000 });
+        const merged = await callJson({
+          step: '聚类合并',
+          prompt: mergeClustersPrompt(partial),
+          schema: clusterSchema,
+          coerce: (raw) => coerceCluster(raw, chat!),
+          validate: (v) => validateCluster(v, chat!),
+          onExhausted: ({ value }) => (value ? autofixCluster(value, chat!) : fallbackCluster(chat!)),
+          maxTokens: 8000,
+        });
         state.cluster = merged.value;
         state.warnings.push(...merged.warnings);
       }
@@ -246,7 +280,16 @@ export async function runZoneReport(id: string): Promise<boolean> {
           step: `主题 ${t.id}`,
           prompt: themePrompt(bundle, ins),
           schema: themeSchema,
+          coerce: (raw) => coerceTheme(raw, chat!, t, index),
           validate: (v) => validateTheme(v, chat!, state.cluster, index),
+          // 形状对了只是校验不过：再过一遍 coerce（会按引用消息修发言人、丢无效引用）；一个都没有就用原文节选
+          onExhausted: ({ value }) => {
+            if (value) {
+              const again = themeSchema.safeParse(coerceTheme(value, chat!, t, index).value);
+              if (again.success && !validateTheme(again.data, chat!, state.cluster, index).errors.length) return again.data;
+            }
+            return fallbackTheme(t, chat!, index);
+          },
           maxTokens: 8000,
         });
         state.themes[t.id] = { ...r.value, id: t.id };
@@ -262,8 +305,17 @@ export async function runZoneReport(id: string): Promise<boolean> {
       const rc = buildListBundle(chat, state.cluster.recap, '非科研 · 快速 Recap（花絮 / 终端 / 杂项）');
       if (ev || rc) {
         await save('summarizing', '整理活动与花絮', 72);
-        const r = await callJson({ step: '活动与花絮', prompt: recapPrompt(ev, rc, ins), schema: recapSchema, validate: (v) => validateRecap(v, chat!, index), maxTokens: 6000 });
+        const r = await callJson({
+          step: '活动与花絮',
+          prompt: recapPrompt(ev, rc, ins),
+          schema: recapSchema,
+          coerce: (raw) => coerceRecap(raw, chat!, index),
+          validate: (v) => validateRecap(v, chat!, index),
+          onExhausted: ({ value }) => value ?? fallbackRecap(state.cluster.events, state.cluster.recap, chat!, index),
+          maxTokens: 6000,
+        });
         state.recap = r.value;
+        state.warnings.push(...r.warnings);
       } else {
         state.recap = { recap: null, events: [] };
       }
@@ -278,10 +330,13 @@ export async function runZoneReport(id: string): Promise<boolean> {
         step: '要点',
         prompt: overviewPrompt(outline, ins),
         schema: overviewSchema,
+        coerce: (raw) => coerceOverview(raw, themes),
         validate: (v) => validateOverview(v, new Set(themes.map((t) => t.id))),
+        onExhausted: ({ value }) => value ?? fallbackOverview(themes),
         maxTokens: 4000,
       });
       state.overview = r.value;
+      state.warnings.push(...r.warnings);
       await save('summarizing', '要点完成', 82);
     }
 

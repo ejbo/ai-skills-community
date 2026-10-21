@@ -46,7 +46,8 @@ export const MAX_SNIFF_BYTES = 200 * 1024 * 1024;
 
 export const BUNDLE_IMAGE_RE = /\.(png|jpe?g|gif|webp|avif)$/i;
 const TEXT_EXT_RE = /\.(txt|json|csv|log|md)$/i;
-const SKIP_DIR_RE = /(^|\/)(__MACOSX|\.git|node_modules|work)(\/|$)/;
+// 工作目录：_work/ _tmp_dl/ _raw_pages/ 之类（agent 的脚本、原始分页、下载锁）——原始分页和合并后的 msgs.json 重复、还可能越出区间
+const SKIP_DIR_RE = /(^|\/)(__MACOSX|\.git|node_modules|work|tmp|temp|_[^/]*)\//i;
 const SKIP_NAME = new Set(['.ds_store', 'thumbs.db', 'desktop.ini']);
 const SKILL_OUTPUT_NAMES = new Set(['report.html', 'report.md', 'digest.md', 'stats.json', 'links.json', 'messages.json', 'themes.json', 'overview.json', 'recap.json']);
 const MANIFEST_HINT_RE = /清单|manifest|attach|image|图片/i;

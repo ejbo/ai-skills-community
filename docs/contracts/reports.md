@@ -61,8 +61,8 @@ Owner 的诉求（三轮）：「我会生成这样的聊天记录，配合提�
 ```
 queued ─parse（parse.ts: 任何形状 JSON / TXT / CSV → messages，都认不出时 infer-format.ts 让模型推断行头格式；manifest CSV → 附件对消息；assets 对文件名）
      ─digest（digest.ts: 有信息量的消息一行一条 + stats + links）
-     ─clustering（LLM ① → clusterSchema + 覆盖率校验；超 60k 字按天分片、逐片聚类再合并）
-     ─summarizing（slice.ts 切 bundle → LLM ② 逐主题，并发 2，validateTheme 引用校验；LLM ③ 活动与花絮；outline → LLM ④ 要点）
+     ─clustering（LLM ① → coerceCluster → clusterSchema + 覆盖率校验 → 重试用尽 autofix / fallbackCluster；超 60k 字按天分片、逐片聚类再合并）
+     ─summarizing（slice.ts 切 bundle → LLM ② 逐主题，并发 2，coerceTheme + validateTheme → fallbackTheme；LLM ③ 活动与花絮；outline → LLM ④ 要点；每一步都「收，不拒」§2d）
      ─assembling（assemble.ts: 统一姓名、编号、按消息邻域配图、未归类、stats → report.json；validateReport）
      ─ingesting（可选：PDF/HTML/PPTX/DOCX 附件 → createDocFromFile → asset.libraryDocId；失败只记日志）
      ─ready / failed（error 里是哪一步、什么错；retry 从失败的那一步继续，中间产物都在行上）
@@ -87,6 +87,24 @@ queued ─parse（parse.ts: 任何形状 JSON / TXT / CSV → messages，都认�
 `parseRawMessages` 认的形状（skill 的 `reference/welink-format.md` §1 同一张表）：JSON——页 / 数组 / 页数组 / 把消息数组藏在 `messages·data·items·list·records·result…` 下的任何 JSON（递归找），字段名宽（时间 `serverSendTime/sendTime/timestamp/ts/time/date/时间`，毫秒 / 秒 / ISO / 本地时间都行；账号 `sender/account/from/w3account/发送人`；内容 `content/text/msg/message/body/内容`…）；TXT——A1 `[日期 时间] 姓名（账号）`（括号 / 秒 / 分隔符都可变）、A2 日头 + `[时:分:秒] 姓名（账号）· 类型`（日头认 `####/====/----/【】/[]`）、A3 `姓名（账号） 日期 时间`；CSV——表头含「时间」+「内容」两列即可。
 
 服务端 `unpackReportBundle` 在 `parsing` 状态下跑（stage「解包上传的文件夹 / zip」），落盘成普通 zone media（key 永远是 nanoid，zip 内路径从不进磁盘路径，无 zip-slip），建 `ZoneReportAsset`（同名只建一次，可重入），回写 `sourceKey/manifestKey/importKey/namesJson`；之后的流程与逐个上传完全一样。条目 ≤ 3000、附件 ≤ 300、真解析的候选 ≤ 24 个 / 单个 ≤ 64 MB，超了跳过并记进日志。
+
+### 2d. 模型输出「收，不拒」（`coerce.ts` + `model-json.ts` + `llm.ts#callJson`）
+
+owner 2026-10-20 第四轮：「聚类：重试 2 次后仍有问题 — JSON 形状不符合要求……怎么还是有这种问题，如果 json 一直会出问题，就不要用，我需要的是一致性和可靠性」。
+以前每一步模型输出直接过 zod，id 写成数字、键名换叫法、标题超长、枚举写英文、引用了不存在的消息——任何一条都是 ✖ 贴回去重试，两次不行整条流水线 failed。现在 `callJson` 是四层：
+
+| 层 | 在哪 | 做什么 |
+| --- | --- | --- |
+| 解析 | `model-json.ts#parseModelJson` | `extractJsonObject`（围栏 / 废话 / 全角 / 推理标签）→ 直接 parse → `jsonrepair`（尾逗号、注释、单引号、裸键、**被截断的结尾**）；顶层数组也收 |
+| 规范化 | `coerce.ts#coerceCluster / coerceTheme / coerceRecap / coerceOverview`（`callJson` 的 `coerce`） | 过 zod **之前**：键名别名（`topics/messages/ids/refs/who/text…`）、`m12` ← `12 / "#12" / "m12-m15"`、`t1` ← `1 / theme_1`、超长截断、枚举映射（`consensus→共识`、`高→high`）、日期规整、**丢掉不存在的消息引用 / 记录里没有的 url**（记 warning）、**发言人与引用对不上 → 以引用消息的作者为准**、没引用 / 没正文的观点丢弃、主题 > 12 只留最大的 12 个 |
+| 重试 | `callJson` | 规范化后仍过不了 zod / 引用校验才贴回模型重试（`retries` 默认 2）——现在几乎只剩内容问题（覆盖率不够、所有观点都没引用） |
+| 兜底 | `callJson` 的 `onExhausted` → `autofixXxx / fallbackXxx` | 重试用尽：形状对了只是校验不过 → `autofixCluster`（没归类的凑成「其他讨论」/ 进 recap）、主题再过一遍 coerce；连形状都没有 → `fallbackCluster`（按日期分段 ≤ 8 段）、`fallbackTheme`（原文节选当观点、记录里的链接当资料）、`fallbackRecap`（每条原文一条）、`fallbackOverview`（主题定位拼要点）。**不抛错**，warnings 里记一条「模型 N 次输出都没过校验（…），已按规则兜底」，成品的 tagline / macro 里写着「模型…失败」让人看得出来 |
+
+所以 `ReportLlmError` 现在只剩两种情况会抛：模型接口本身调不通（provider 错误），或 `onExhausted` 没配（目前每一步都配了）。错误文案带前 4 条具体问题，不再只有一句「JSON 形状不符合要求」。
+
+导入模式同理：`coerceImportedReport` 修 `kind` 别名（月报 → monthly）、缺 `period`（从观点日期推）、主题 id、`summary`（缺 judgments / highlights 用主题定位补），再过 `reportSchema`——skill 那边 agent 产出的 report.json 不会因为外层小毛病进不来。
+
+skill 侧同一份逻辑：`scripts/coerce.mjs`（由 coerce.ts `tsc` 转出，常量就地定义）；`validate.mjs --fix` 规范化并改写文件，`--fallback` 生成素版本；`lib.mjs#repairJson` 是零依赖的 jsonrepair。**改 coerce.ts 要重新转一份过去**（`pnpm exec tsc lib/zones/reports/coerce.ts --outDir /tmp/x --module esnext --target es2022 --moduleResolution bundler --skipLibCheck --isolatedModules --noResolve`，换掉头部 import）。
 
 ### 2b. 用户的补充要求（`instructions` / `instructionMode`，`prompts.ts#withInstructions`）
 
@@ -180,6 +198,8 @@ lib/zones/reports/
   schema.ts        zod：cluster / theme / recap / overview / report + validate*（引用校验，可独立测）
   parse.ts         任何形状 JSON / 三种 TXT 行头 / CSV 记录 → messages（parseRawMessages 挑最好的）；manifest CSV；表情码、卡片、um_begin 协议
   infer-format.ts  确定性解析器都认不出时让模型推断行头正则，校验后确定性切分（模型只看格式）
+  model-json.ts    模型回复 → JSON（extractJsonObject → JSON.parse → jsonrepair），纯函数
+  coerce.ts        模型输出「收，不拒」：coerce / autofix / fallback 四步各一套（§2d），纯函数
   digest.ts        digest 文本 + stats + links（含按天分片）
   slice.ts         主题 bundle 文本
   prompts.ts       四段提示词（与 skill prompts/*.md 同文）
@@ -226,6 +246,7 @@ tests/zone-reports-*.test.ts, tests/zone-post-revisions.test.ts
 10. 版块里**没有**报告入口了（`PostFilters` 的「生成报告」按钮、`/zones/[slug]/reports/*`、`/api/zones/[slug]/reports/*` 都删了）——别加回去；
     版块保留的只有 `post.report` 原生渲染和帖子版本历史 / 并发编辑。
 11. 识别看内容、不筛文件：`bundle.ts` 只挑出"肯定不是记录"的，其余文本全是候选，`unpack.ts` 真解析挑最好的，`infer-format.ts` 是最后的模型兜底；`sniffText` 只影响向导里的排序 / 显示，**不要再往它里面加"不像就丢"的规则**。skill 的 `parse-chat.mjs` 目录模式是同一套逻辑的 JS 版（没有模型兜底，报错时把文件开头打出来让 agent 自己转格式）。
+13. 模型输出的形状问题不再是错（§2d）：新加一步模型调用时**必须**给 `callJson` 配 `coerce` 和 `onExhausted`，别再写"直接 safeParse、不过就 throw"；zod 的 `.max()` 是上限不是拒绝理由——coerce 里 `clip` 掉。要加字段：schema.ts、coerce.ts（别名 + 截断）、skill 的 validate.mjs / coerce.mjs 四处同改。
 12. 2026-10-20 第三轮的教训：owner 上传的目录是 `*_msgs.json`（agent 自己整理的形状，不是 welink-cli 原样）+ `*_消息记录.txt`，旧规则因为 json 字段名不对就把它当"认不出的 json"丢了，txt 又因为行头少了秒而不认——两边都"像不像"判断、没有一个真去解析，于是报"没有解析到任何消息"。现在三层都是"能解析出消息就用"。
 9. TXT 有三种行头版式（`parse.ts` 顶部注释，括号 / 秒 / 分隔符都可变），都是 agent 从 welink-cli JSON 转的；JSON 更全（附件协议块 / 引用卡片），所以整包上传时解析出的 JSON 条数不少于最佳 TXT 的 80% 就优先 JSON——用户目录里 TXT 和 JSON 通常并存。给 agent 的拉取话术在 skill 的 `reference/welink-fetch.md`。
 8. `ReportArticle` 是客户端组件：只能 import `sections.ts` 这类纯模块，**不要** import `post-view.ts` / `messages.ts`（它们带 prisma）；类型用 `import type`。
