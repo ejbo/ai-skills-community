@@ -20,7 +20,7 @@ export default async function NewChatReportPage() {
   const t = await getTranslations('tools');
   const tz = await getTranslations('zones');
   return (
-    <div className="container max-w-5xl py-8">
+    <div className="container py-8">
       <Link href="/tools/chat-report" className="text-xs text-muted hover:text-zinc-900 dark:hover:text-zinc-50">
         ← {t('chat_report_title')}
       </Link>

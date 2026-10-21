@@ -29,7 +29,7 @@ export default async function ChatReportDetailPage({ params }: { params: { repor
   const report = await getReportDetail(gate.id, session.user.id, siteViewer.canSeeIdentity, { withAudience: owner });
   if (!report) notFound();
   return (
-    <div className="container max-w-6xl py-8">
+    <div className="container py-8">
       <ReportDetail initial={report} currentUser={{ id: session.user.id, handle: session.user.handle ?? null }} isOwner={owner} />
     </div>
   );

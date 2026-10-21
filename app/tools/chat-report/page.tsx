@@ -24,7 +24,7 @@ export default async function ChatReportToolPage() {
   const t = await getTranslations('tools');
   const items = await listMyReports(session.user.id, can(session.user, 'identity'));
   return (
-    <div className="container max-w-5xl py-8">
+    <div className="container py-8">
       <Link href="/tools" className="text-xs text-muted hover:text-zinc-900 dark:hover:text-zinc-50">
         ← {t('title')}
       </Link>

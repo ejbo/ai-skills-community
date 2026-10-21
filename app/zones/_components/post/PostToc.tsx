@@ -90,7 +90,8 @@ export function PostToc({
 
   const tabs = headings.map((h) => ({
     key: h.id,
-    label: <span className={`block truncate ${h.level >= 3 ? 'pl-4 text-[13px]' : h.level === 2 ? 'pl-1' : 'font-medium'}`}>{h.text}</span>,
+    // 完整显示（最多两行），不再 truncate——owner 2026-10-21：「目录被夹断了，最好显示完整」
+    label: <span className={`line-clamp-2 block leading-snug ${h.level >= 3 ? 'pl-4 text-[13px]' : h.level === 2 ? 'pl-1' : 'font-medium'}`}>{h.text}</span>,
   }));
 
   return (

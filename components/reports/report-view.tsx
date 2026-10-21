@@ -9,13 +9,14 @@
 //   ReportReader        正文 + 右栏（目录 / 展开收起 / 页面自己塞的段落 / 回到顶部）的网格；
 //                       右栏在 lg 起出现，dock 打开（band narrow）时让位给正文。
 
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useTranslations } from 'next-intl';
+import { useReducedMotion } from 'framer-motion';
 import { ArrowUp, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
 import { usePageBand } from '@/components/zones/preview/PreviewProvider';
 import { reportHeadings } from '@/lib/zones/reports/sections';
 import type { Report } from '@/lib/zones/reports/schema';
-import { PostToc } from '@/app/zones/_components/post/PostToc';
+import { activeHeadingFor, TOP_OFFSET_PX } from '@/app/zones/_components/post/PostToc';
 
 interface ReportViewState {
   isOpen: (id: string) => boolean;
@@ -99,17 +100,110 @@ export function ExpandAllButton({ className = '' }: { className?: string }) {
   );
 }
 
+interface TocEntry {
+  id: string;
+  num: string | null;
+  text: string;
+}
+
+/** reportHeadings 的「NN 标题」拆成 编号 + 标题；非专题条目没有编号。 */
+export function reportTocEntries(report: Report): TocEntry[] {
+  return reportHeadings(report).map((h) => {
+    const m = /^t\d+$/.test(h.id) ? /^(\d{2}) (.*)$/.exec(h.text) : null;
+    return { id: h.id, num: m ? m[1] : null, text: m ? m[2] : h.text };
+  });
+}
+
+/**
+ * 报告目录：编号单独一个等宽小块、标题完整显示（不截断，最多折两行），随阅读位置高亮。
+ * owner 2026-10-21：「目录被夹断了，要显示完整；01、02 这些要和后面的标题区分开」。
+ */
+export function ReportToc({ report, className = '' }: { report: Report; className?: string }) {
+  const t = useTranslations('zones');
+  const reduce = useReducedMotion();
+  const entries = useMemo(() => reportTocEntries(report), [report]);
+  const [active, setActive] = useState(entries[0]?.id ?? '');
+
+  useEffect(() => {
+    if (!entries.length) return;
+    let observer: IntersectionObserver | null = null;
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    let retries = 0;
+    const recompute = (els: HTMLElement[]) => {
+      const cur = activeHeadingFor(els.map((el) => ({ id: el.id, top: el.getBoundingClientRect().top })));
+      setActive((prev) => (prev === cur ? prev : cur));
+    };
+    const bind = () => {
+      observer?.disconnect();
+      const els = entries.map((e) => document.getElementById(e.id)).filter((el): el is HTMLElement => el instanceof HTMLElement);
+      if (!els.length) {
+        if (retries++ < 12) retry = setTimeout(bind, 150);
+        return;
+      }
+      observer = new IntersectionObserver(() => recompute(els), { rootMargin: `-${TOP_OFFSET_PX}px 0px -55% 0px`, threshold: [0, 1] });
+      els.forEach((el) => observer?.observe(el));
+      recompute(els);
+    };
+    bind();
+    return () => {
+      observer?.disconnect();
+      if (retry) clearTimeout(retry);
+    };
+  }, [entries]);
+
+  const go = (id: string) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+    try {
+      history.replaceState(null, '', `#${id}`);
+    } catch {
+      /* ignore */
+    }
+    setActive(id);
+  };
+
+  return (
+    <nav className={className} aria-label={t('post_toc')}>
+      <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">{t('post_toc')}</h3>
+      <ol className="space-y-0.5 border-l border-zinc-200 dark:border-zinc-800">
+        {entries.map((e) => {
+          const on = e.id === active;
+          return (
+            <li key={e.id} className="-ml-px">
+              <button
+                type="button"
+                onClick={() => go(e.id)}
+                aria-current={on ? 'location' : undefined}
+                className={`flex w-full items-start gap-2 border-l-2 py-1 pl-3 pr-1 text-left text-[13px] leading-snug transition ${
+                  on ? 'border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-50' : 'border-transparent text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100'
+                }`}
+              >
+                {e.num ? (
+                  <span className={`mt-px inline-flex h-4 shrink-0 items-center rounded border px-1 font-mono text-[10px] font-semibold tabular-nums ${on ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900' : 'border-zinc-300 text-zinc-500 dark:border-zinc-700 dark:text-zinc-400'}`}>
+                    {e.num}
+                  </span>
+                ) : null}
+                <span className={`line-clamp-2 min-w-0 ${e.num ? '' : 'font-medium'} ${on ? 'font-semibold' : ''}`}>{e.text}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+
 /**
  * 报告的右栏：目录（本期要点 → 各专题 → 活动 / Recap / 资料 / 数据，随阅读位置高亮）→ 全部展开 / 收起 →
- * 调用方塞进来的段落（作者、评论按钮…）→ 回到顶部。sticky；只在 lg 起渲染（调用方控制）。
+ * 调用方塞进来的段落（作者、评论按钮…）→ 回到顶部。sticky，超过视口高度时栏内滚动（目录永远完整）；只在 lg 起渲染（调用方控制）。
  */
-export function ReportRail({ report, articleRef, children, className = '' }: { report: Report; articleRef?: RefObject<HTMLElement>; children?: ReactNode; className?: string }) {
+export function ReportRail({ report, children, className = '' }: { report: Report; articleRef?: RefObject<HTMLElement>; children?: ReactNode; className?: string }) {
   const t = useTranslations('zones');
-  const headings = useMemo(() => reportHeadings(report), [report]);
   const toTop = useCallback(() => window.scrollTo({ top: 0, behavior: 'smooth' }), []);
   return (
-    <div className={`sticky top-24 space-y-6 ${className}`}>
-      <PostToc headings={headings} articleRef={articleRef} />
+    <div className={`sticky top-24 max-h-[calc(100vh-7rem)] space-y-6 overflow-y-auto pr-1 ${className}`}>
+      <ReportToc report={report} />
       <div className="flex flex-wrap items-center gap-2">
         <ExpandAllButton />
         <button
@@ -138,7 +232,7 @@ export function ReportReader({ report, children, rail, articleRef, className = '
   const wide = band === 'wide';
   return (
     <ReportViewProvider themeIds={themeIds}>
-      <div className={`grid grid-cols-1 gap-10 ${wide ? 'lg:grid-cols-[minmax(0,1fr)_240px]' : ''} ${className}`} data-report-band={band}>
+      <div className={`grid grid-cols-1 gap-10 ${wide ? 'lg:grid-cols-[minmax(0,1fr)_260px]' : ''} ${className}`} data-report-band={band}>
         <article ref={ref} className="min-w-0">
           {children}
         </article>
