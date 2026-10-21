@@ -4882,7 +4882,9 @@
     "report_timeline_expand": "Afficher {count} points de vue · {speakers} personnes",
     "report_timeline_collapse": "Replier",
     "report_timeline_collapsed": "{count} points de vue · {speakers} intervenants — cliquer pour déplier",
-    "report_comments_close": "Fermer les commentaires"
+    "report_comments_close": "Fermer les commentaires",
+    "lightbox_prev": "Image précédente",
+    "lightbox_next": "Image suivante"
   },
   "translate": {
     "translate": "Traduire",

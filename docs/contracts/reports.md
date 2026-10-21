@@ -156,6 +156,7 @@ skill 侧同一份逻辑：`scripts/coerce.mjs`（由 coerce.ts `tsc` 转出，�
 | 「外链没必要弹侧边框再点进去」「很多链接 404、没录入」 | `SourceChips`：有 url 的来源 = `<a target=_blank>` 直接开，**不再走 dock 的 link 卡片**；只有**收录完成**（`LibraryDoc.status = ready`）的附件才给「知识库文档」chip（`post-view.ts#librarySlugsByName`、`getReportDetail` 都加了 `status: 'ready'`）——processing / failed 的在知识库里就是 404 |
 | 「右侧都是空白的」「月报很长，拉到最底下非常困难」 | `ReportReader`：正文 + sticky 右栏（`lg` 起；dock 打开时 band narrow → 右栏让位）。右栏 = 目录（`reportHeadings`，随阅读位置高亮）→ 全部展开 / 收起 → 页面自己的段落（帖子页：作者 + **评论 N 按钮** → `CommentsDrawer` 从右侧滑入，开着时底部评论区不渲染，同一时刻只挂一份 `PostComments`；分享页：作者 + 「分享自 xx 版块」）→ 回到顶部。容器放宽到 `max-w-6xl` |
 | 「看起来还是非常的长和乱」 | 专题的**观点时间线默认收起**（`ReportViewProvider`）：一个专题先只看 编号 + 标题 + 定位 + 宏观总结 + 待验证 + 资料 + 启示，时间线折成一行头像带「N 条观点 · M 位发言人 — 点击展开」；右栏「展开全部观点」一键全开。没有 provider 的调用方（老代码）一律展开 |
+| 「图片放大后关闭屏幕闪一下」「最好能左右切换」 | 灯箱（`BodyImageLightbox`）关闭时不再立刻清掉 FLIP 状态（AnimatePresence 退场期间图片会瞬间 invisible，只剩黑底在淡——那就是"闪"），改在 `onExitComplete` 清，并且退场时图片飞回缩略图；FLIP 状态按 src 键控。`ReportArticle` 把整篇报告的图片按正文顺序排成相册（`ReportGalleryContext`），一个灯箱、两侧按钮 + ← → 切换、底部「n / N」和说明；相邻图切换不做 FLIP（淡入）。看原文页的 Thumbs 没有 provider，仍各自开 |
 | 「合著者当时没加后面就加不了」 | `ReportCoauthors`（工具详情页，分享后出现）：发言人一键勾选 + 全站搜索，`PUT /api/tools/chat-report/[id]/coauthors` → `setReportCoauthors` → `updateZonePost({ coauthorIds })`（同一套校验、新加的人收到通知、不生成版本）。帖子编辑页的设置抽屉也能改 |
 
 ### 3b. 分享页与谁可读（`/reports/[slug]`，`visibility.ts`）

@@ -8,7 +8,7 @@
 // section 的 id 必须与 lib/zones/reports/post-view.ts reportHeadings 一致（右栏目录靠它滚动）。
 // 配色遵守 ui.md：chrome 全墨；颜色只出现在内容语义上（角色色标、高亮、头像身份色）。
 
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { CalendarDays, ChevronDown, ChevronUp, Hash, MessageSquareQuote, Quote } from 'lucide-react';
 import { usePreview } from '@/components/zones/preview/PreviewProvider';
@@ -17,7 +17,9 @@ import type { Report, ReportAttachment, ReportTheme, ReportViewpoint } from '@/l
 import type { PublicAuthor } from '@/lib/user-identity';
 import type { EmbedData, ZonePostReportView } from '@/lib/zones/types';
 import { BTN_GHOST } from '@/app/zones/_components/ui';
-import { RichText, RoleChip, SourceChips, Speaker, Thumbs, useReportLabels, type SourceRef, type ThumbItem } from './report-bits';
+import { withBasePath } from '@/lib/base-path';
+import { BodyImageLightbox, type BodyImage, type LightboxRect } from '@/app/zones/_components/post/BodyImageLightbox';
+import { ReportGalleryContext, RichText, RoleChip, SourceChips, Speaker, Thumbs, useReportLabels, type SourceRef, type ThumbItem } from './report-bits';
 import { useReportView } from './report-view';
 
 const RES_KEY: Record<string, string> = { paper: '论文', repo: '代码', article: '文章', internal: '内部', video: '视频', doc: '文档', other: '链接' };
@@ -38,7 +40,37 @@ export function ReportArticle({ originalsHref, view, embeds }: { originalsHref: 
     ids
       .map((id) => attById.get(id))
       .filter((a): a is ReportAttachment => !!a)
-      .map((a) => ({ file: a.file, kind: a.kind, url: assetUrls[a.id] ?? null, caption: `${a.name} · ${(a.time || '').slice(5, 16)}`, sizeBytes: a.size }));
+      .map((a) => ({ id: a.id, file: a.file, kind: a.kind, url: assetUrls[a.id] ?? null, caption: `${a.name} · ${(a.time || '').slice(5, 16)}`, sizeBytes: a.size }));
+
+  // ── 相册：整篇报告的图片按正文顺序排成一列，灯箱里可以左右切换（owner 2026-10-21）────────────
+  const gallery = useMemo(() => {
+    const order: string[] = [];
+    const push = (ids: string[]) => ids.forEach((id) => !order.includes(id) && order.push(id));
+    for (const th of report.themes) for (const v of th.viewpoints) push(v.attachments);
+    for (const e of report.events) push(e.attachments);
+    for (const it of report.recap?.items ?? []) push(it.attachments);
+    push(report.attachments.filter((a) => a.placement.kind === 'appendix').map((a) => a.id));
+    push(report.attachments.map((a) => a.id)); // 其余（没挂到任何地方的）
+    return order
+      .map((id) => attById.get(id))
+      .filter((a): a is ReportAttachment => !!a && a.kind === 'image' && !!assetUrls[a.id])
+      .map((a) => ({ id: a.id, src: withBasePath(assetUrls[a.id]), alt: a.file, caption: `${a.file} · ${a.name} · ${(a.time || '').slice(5, 16)}` }));
+  }, [report, attById, assetUrls]);
+  const [shown, setShown] = useState<{ index: number; rect: LightboxRect; flip: boolean } | null>(null);
+  const galleryApi = useMemo(
+    () => ({
+      open: (id: string, rect: DOMRect) => {
+        const index = gallery.findIndex((g) => g.id === id);
+        if (index < 0) return false;
+        setShown({ index, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height }, flip: true });
+        return true;
+      },
+    }),
+    [gallery],
+  );
+  const closeGallery = useCallback(() => setShown(null), []);
+  const step = (d: number) => setShown((s) => (s ? { index: Math.min(gallery.length - 1, Math.max(0, s.index + d)), rect: s.rect, flip: false } : s));
+  const lightboxImage: BodyImage | null = shown && gallery[shown.index] ? { src: gallery[shown.index].src, alt: gallery[shown.index].alt, rect: shown.rect, flip: shown.flip, caption: gallery[shown.index].caption } : null;
   const librarySlugOf = (ids: string[]): string | null => {
     for (const id of ids) {
       const a = attById.get(id);
@@ -78,6 +110,7 @@ export function ReportArticle({ originalsHref, view, embeds }: { originalsHref: 
   const maxSp = topSpeakers[0]?.count ?? 1;
 
   return (
+    <ReportGalleryContext.Provider value={galleryApi}>
     <div className="space-y-12">
       {/* ── 本期要点 ─────────────────────────────────────────────────────── */}
       <section id={REPORT_SECTION_IDS.brief} className="scroll-mt-28 rounded-2xl border border-zinc-200 dark:border-zinc-800">
@@ -331,6 +364,9 @@ export function ReportArticle({ originalsHref, view, embeds }: { originalsHref: 
         </section>
       )}
     </div>
+    {/* 整篇报告一个灯箱：← → / 两侧按钮按正文顺序切换 */}
+    <BodyImageLightbox image={lightboxImage} onClose={closeGallery} nav={shown && gallery.length > 1 ? { index: shown.index, count: gallery.length, onPrev: () => step(-1), onNext: () => step(1) } : null} />
+    </ReportGalleryContext.Provider>
   );
 }
 

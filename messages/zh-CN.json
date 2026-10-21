@@ -4882,7 +4882,9 @@
     "report_timeline_expand": "展开 {count} 条观点 · {speakers} 人",
     "report_timeline_collapse": "收起",
     "report_timeline_collapsed": "{count} 条观点 · {speakers} 位发言人 — 点击展开时间线",
-    "report_comments_close": "关闭评论"
+    "report_comments_close": "关闭评论",
+    "lightbox_prev": "上一张",
+    "lightbox_next": "下一张"
   },
   "translate": {
     "translate": "翻译",

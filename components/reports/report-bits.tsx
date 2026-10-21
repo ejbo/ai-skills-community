@@ -8,7 +8,7 @@
 //   Thumbs     图片缩略图 → BodyImageLightbox 放大；文件 → dock 的 file 卡片 / 新窗口
 //   roleLabel / tagLabel / confLabel  枚举显示文案走 i18n（存的值永不翻译）
 
-import { useCallback, useState, type MouseEvent, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useState, type MouseEvent, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { ExternalLink, FileText, ImageOff } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
@@ -138,7 +138,12 @@ export function SourceChips({ sources, label, librarySlug, embeds }: { sources: 
   );
 }
 
+/** 整篇报告的图片相册（ReportArticle 提供）：有它时缩略图点开走统一灯箱，能左右切换；没有就各列表自己开。 */
+export const ReportGalleryContext = createContext<{ open: (id: string, rect: DOMRect) => boolean } | null>(null);
+
 export interface ThumbItem {
+  /** 附件 id（报告相册按它定位；看原文页没有，用文件名）。 */
+  id?: string;
   file: string;
   kind: 'image' | 'file';
   /** 根相对 URL（这里过 withBasePath）；null = 没上传。 */
@@ -163,13 +168,16 @@ function filePreset(a: ThumbItem): EmbedData {
 export function Thumbs({ items, size = 'md' }: { items: ThumbItem[]; size?: 'sm' | 'md' }) {
   const t = useTranslations('zones');
   const preview = usePreview();
+  const gallery = useContext(ReportGalleryContext);
   const [lightbox, setLightbox] = useState<BodyImage | null>(null);
   const close = useCallback(() => setLightbox(null), []);
   if (!items.length) return null;
   const box = size === 'sm' ? 'h-20 w-28' : 'h-28 w-40';
-  const onImg = (e: MouseEvent<HTMLImageElement>) => {
+  const onImg = (a: ThumbItem) => (e: MouseEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
-    setLightbox({ src: img.currentSrc || img.src, alt: img.alt, rect: img.getBoundingClientRect() });
+    const rect = img.getBoundingClientRect();
+    if (gallery && a.id && gallery.open(a.id, rect)) return;
+    setLightbox({ src: img.currentSrc || img.src, alt: img.alt, rect, caption: a.caption });
   };
   const onFile = (a: ThumbItem) => (e: MouseEvent<HTMLAnchorElement>) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; // 让浏览器开新标签
@@ -182,7 +190,7 @@ export function Thumbs({ items, size = 'md' }: { items: ThumbItem[]; size?: 'sm'
         a.kind === 'image' && a.url ? (
           <figure key={`${a.file}-${i}`} className={`${box} m-0 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900`}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={withBasePath(a.url)} alt={a.caption || a.file} loading="lazy" className="h-full w-full cursor-zoom-in object-cover" onClick={onImg} />
+            <img src={withBasePath(a.url)} alt={a.caption || a.file} loading="lazy" className="h-full w-full cursor-zoom-in object-cover" onClick={onImg(a)} />
           </figure>
         ) : a.url ? (
           <a
