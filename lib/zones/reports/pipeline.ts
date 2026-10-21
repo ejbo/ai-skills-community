@@ -13,7 +13,6 @@ import { zoneMediaAbsPath } from '@/lib/zones/storage';
 import { assembleReport } from './assemble';
 import { matchRosterToUsers } from './authors';
 import { buildDigest, buildListBundle, buildOutline, buildThemeBundle, computeStats } from './digest';
-import { ingestReportAssets } from './library';
 import { callJson, parseModelJson, ReportLlmError } from './llm';
 import { autofixCluster, coerceCluster, coerceImportedReport, coerceOverview, coerceRecap, coerceTheme, fallbackCluster, fallbackOverview, fallbackRecap, fallbackTheme } from './coerce';
 import { inferLineFormat, splitWithSpec } from './infer-format';
@@ -177,9 +176,9 @@ export async function runZoneReport(id: string): Promise<boolean> {
       }
       const roster = (report.stats?.bySpeaker ?? []).map((s) => ({ account: s.account, name: s.name, count: s.count, substantive: s.count }));
       const matches = await matchRosterToUsers(roster);
-      await setStage(id, 'ingesting', '收录附件到知识库', 80, { reportJson: report as unknown as Prisma.InputJsonValue, authorMatches: matches as unknown as Prisma.InputJsonValue, title: report.title, subject: report.subject });
-      await ingestReportAssets(id, row.createdById, note);
-      await setStage(id, 'ready', '完成', 100, { model: report.generator?.model ?? modelName, error: null });
+      // 附件不再自动进全站知识库（owner 2026-10-21：「月报里的内容直接发到 library 会变得很乱」）——留在报告里，
+      // 由所有者按需「分享到知识库」（library.ts#ingestOneReportAsset）。
+      await setStage(id, 'ready', '完成', 100, { reportJson: report as unknown as Prisma.InputJsonValue, authorMatches: matches as unknown as Prisma.InputJsonValue, title: report.title, subject: report.subject, model: report.generator?.model ?? modelName, error: null });
       await notifyReportReady(id); // 提醒失败绝不影响状态（notifications.ts 自己吞错）
       return true;
     }
@@ -356,10 +355,7 @@ export async function runZoneReport(id: string): Promise<boolean> {
       model: modelName,
       assetKeys,
     });
-    await setStage(id, 'ingesting', '收录附件到知识库', 90, { reportJson: report as unknown as Prisma.InputJsonValue, title: report.title });
-
-    // ── 5. 收录 ───────────────────────────────────────────────────────────
-    await ingestReportAssets(id, row.createdById, note);
+    // ── 5. 完成（附件不再自动收录进知识库——按需分享，见 library.ts） ─────────────
     await setStage(id, 'ready', `完成：${report.themes.length} 个主题 · ${report.themes.reduce((n, t) => n + t.viewpoints.length, 0)} 条观点${state.warnings.length ? ` · ${state.warnings.length} 条校验警告` : ''}`, 100, { error: null, model: modelName });
     await notifyReportReady(id);
     return true;

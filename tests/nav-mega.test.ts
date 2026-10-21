@@ -51,6 +51,17 @@ function labelSpecs(): string[] {
 }
 
 describe('NAV_MEGA is a small curated menu', () => {
+  it('every label namespace has a case in NavMegaPanel.useLabel (a missing one renders a raw key)', () => {
+    // 2026-10-21: the 工具 panel showed `nav.chat_report_title` because useLabel had no `tools` case.
+    const src = readFileSync(resolve(__dirname, '..', 'components', 'NavMegaPanel.tsx'), 'utf8');
+    const handled = new Set([...src.matchAll(/case '([a-z_]+)':/g)].map((m) => m[1]));
+    handled.add('nav'); // the default branch
+    for (const spec of labelSpecs()) {
+      const ns = spec.slice(0, spec.indexOf(':'));
+      expect(handled.has(ns), `useLabel() has no case for namespace "${ns}" (${spec})`).toBe(true);
+    }
+  });
+
   it('only keys sections that are actually in the nav row', () => {
     const primary = new Set(PRIMARY_NAV.map((i) => i.href));
     for (const href of Object.keys(NAV_MEGA)) expect(primary.has(href), href).toBe(true);

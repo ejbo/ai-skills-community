@@ -27,6 +27,7 @@ import {
   saveLibraryBuffer,
   type LibraryUploadFormat,
 } from './storage';
+import { assignPoolCoverIfMissing } from './cover-pool';
 import { htmlToPlainText, sanitizeChapterHtml } from './sanitize';
 import {
   countWords,
@@ -190,7 +191,7 @@ async function downloadCover(docId: string, coverRemoteUrl: string): Promise<voi
     await saveLibraryBuffer(key, fetched.buf);
     await prisma.libraryDoc.update({
       where: { id: docId },
-      data: { coverUrl: libraryPublicUrl(key) },
+      data: { coverUrl: libraryPublicUrl(key), coverFromPool: false },
     });
   } catch (e) {
     console.error('[library] cover download failed', e);
@@ -203,7 +204,7 @@ async function saveCoverBuffer(docId: string, data: Buffer, ext: string): Promis
     await saveLibraryBuffer(key, data);
     await prisma.libraryDoc.update({
       where: { id: docId },
-      data: { coverUrl: libraryPublicUrl(key) },
+      data: { coverUrl: libraryPublicUrl(key), coverFromPool: false },
     });
   } catch (e) {
     console.error('[library] cover save failed', e);
@@ -428,6 +429,7 @@ export async function createDocFromUrl(opts: {
     // before the uploader is ever handed it.
     slugOut = (await reslugFromTitle(doc.id).catch(() => null)) ?? doc.slug;
     if (extracted.coverRemoteUrl) await downloadCover(doc.id, extracted.coverRemoteUrl);
+    await assignPoolCoverIfMissing(doc.id); // 没抓到封面 → 图片库随机配一张（cover-pool.ts）
     triggerIndexing(doc.id);
   } catch (e) {
     await markFailed(doc.id, e);
@@ -514,6 +516,7 @@ export async function createDocFromFile(opts: {
     if (extracted.coverBuffer) {
       await saveCoverBuffer(doc.id, extracted.coverBuffer.data, extracted.coverBuffer.ext);
     }
+    await assignPoolCoverIfMissing(doc.id);
     triggerIndexing(doc.id);
   } catch (e) {
     await markFailed(doc.id, e);
@@ -709,6 +712,7 @@ export async function reprocessDoc(docId: string): Promise<void> {
         fileKey: true,
         deletedAt: true,
         coverUrl: true,
+        coverFromPool: true,
       },
     })
     .catch(() => null);
@@ -731,7 +735,7 @@ export async function reprocessDoc(docId: string): Promise<void> {
         data: { contentHash: sha256Hex(page.html) },
       });
       await persistExtraction(docId, extracted);
-      if (!doc.coverUrl && extracted.coverRemoteUrl) {
+      if ((!doc.coverUrl || doc.coverFromPool) && extracted.coverRemoteUrl) {
         await downloadCover(docId, extracted.coverRemoteUrl);
       }
     } else {
@@ -748,10 +752,11 @@ export async function reprocessDoc(docId: string): Promise<void> {
         extracted.title = current?.title ?? '未命名文档';
       }
       await persistExtraction(docId, extracted);
-      if (!doc.coverUrl && extracted.coverBuffer) {
+      if ((!doc.coverUrl || doc.coverFromPool) && extracted.coverBuffer) {
         await saveCoverBuffer(docId, extracted.coverBuffer.data, extracted.coverBuffer.ext);
       }
     }
+    await assignPoolCoverIfMissing(docId);
 
     triggerIndexing(docId);
   } catch (e) {

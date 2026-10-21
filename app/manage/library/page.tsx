@@ -3,6 +3,7 @@ import { requirePermission } from '@/lib/admin';
 import { LibraryManager } from './LibraryManager';
 import { AiSettingsCard } from './AiSettingsCard';
 import { EgressTestPanel } from './EgressTestPanel';
+import { CoverPoolCard } from './CoverPoolCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +39,7 @@ export default async function AdminLibraryPage() {
       </p>
       <AiSettingsCard />
       <EgressTestPanel />
+      <CoverPoolCard />
       <LibraryManager
         docs={docs.map((d) => ({
           id: d.id,

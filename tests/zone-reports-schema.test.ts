@@ -15,7 +15,7 @@ import {
   type ThemeResult,
 } from '@/lib/zones/reports/schema';
 import { assembleReport, guessKind } from '@/lib/zones/reports/assemble';
-import { renderReportMarkdown, reportTags } from '@/lib/zones/reports/render-md';
+import { plainReportText, renderReportMarkdown, reportSummaryText, reportTags } from '@/lib/zones/reports/render-md';
 
 const TXT = `[2026-09-20 07:08:22] 李思昊（l00974474）
 Jev 引爆了决策模型这个类别 https://typesafe.ai/
@@ -167,7 +167,14 @@ describe('overview', () => {
     it('derives kind and tags', () => {
       expect(guessKind('2026-09-01', '2026-09-30')).toBe('monthly');
       expect(guessKind('2026-09-01', '2026-09-07')).toBe('weekly');
-      expect(reportTags(report)).toEqual(['决策模型']);
+      expect(reportTags(report)).toEqual(['决策模型']); // 仍可用，但 publishZoneReport 不再自动打标签（owner 2026-10-21）
+    });
+
+    it('post summary is plain text: no ** / ` markers (they rendered as literal stars under the title)', () => {
+      expect(plainReportText('**Jev** 的 `harness` 设计  值得看')).toBe('Jev 的 harness 设计 值得看');
+      const s = reportSummaryText({ ...report, summary: { ...report.summary, headline: '**关键词**在这', highlights: [{ text: '第一条 **要点**', themeId: null }, ...report.summary.highlights.slice(1)] } }, 300);
+      expect(s).toBe('关键词在这 第一条 要点');
+      expect(s).not.toContain('*');
     });
   });
 });

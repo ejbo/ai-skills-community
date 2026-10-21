@@ -26,6 +26,9 @@ import { RelTime } from '@/app/zones/_components/RelTime';
 import { BTN_DANGER, BTN_PRIMARY, BTN_SECONDARY, CARD_CLS, INPUT_CLS, LABEL_CLS, PILL_MONO, SECTION_TITLE_CLS, SELECT_CLS } from '@/app/zones/_components/ui';
 import { VisibilityPicker } from '@/app/zones/_components/post/VisibilityPicker';
 import { ReportArticle } from './ReportArticle';
+import { ReportAssets } from './ReportAssets';
+import { ReportCoauthors } from './ReportCoauthors';
+import { ReportReader } from './report-view';
 
 const POLL_MS = 3000;
 const RUNNING = new Set(['queued', 'parsing', 'clustering', 'summarizing', 'assembling', 'ingesting']);
@@ -343,7 +346,9 @@ export function ReportDetail({
               {t('report_preview_counts', { events: r.events.length, recap: r.recap?.items.length ?? 0, attachments: r.attachments.filter((a) => a.assetKey).length, unassigned: r.unassigned.length })}
             </p>
           </div>
-          <ReportArticle originalsHref={`${pageHref}/messages`} view={nativeView} embeds={{}} />
+          <ReportReader report={r}>
+            <ReportArticle originalsHref={`${pageHref}/messages`} view={nativeView} embeds={{}} />
+          </ReportReader>
           {view.warnings.length > 0 && (
             <details className="mt-6 text-xs text-muted">
               <summary className="cursor-pointer">{t('report_warnings', { count: view.warnings.length })}</summary>
@@ -355,6 +360,21 @@ export function ReportDetail({
             </details>
           )}
         </section>
+      )}
+
+      {/* 附件：留在报告里；所有者按需分享到知识库 */}
+      {r && <ReportAssets reportId={view.id} assets={view.assets} isOwner={isOwner} onChange={(assets) => setView((v) => ({ ...v, assets }))} />}
+
+      {/* 合著者：分享到版块之后随时改 */}
+      {isOwner && view.post && (
+        <ReportCoauthors
+          key={view.post.id}
+          reportId={view.id}
+          matched={matched}
+          initial={view.post.coauthors}
+          currentUser={currentUser}
+          onSaved={(next) => setView((v) => (v.post ? { ...v, post: { ...v.post, coauthors: next } } : v))}
+        />
       )}
 
       {/* 分享页设置 */}

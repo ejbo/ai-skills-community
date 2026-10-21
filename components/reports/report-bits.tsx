@@ -3,7 +3,8 @@
 // 报告原生视图的小部件（ReportArticle / ReportMessages 共用，docs/contracts/reports.md §3a）：
 //   RichText   模型文案里的 **粗体** → 高亮关键词（浅黄底 + 加粗，内容色不是 chrome 色），`code` → code
 //   Speaker    头像（工号匹配到站内用户就带悬停名片）+ 姓名 + 账号
-//   SourceChips 来源 → 右侧 dock（外链 = link 卡片，预置数据不发请求；知识库文档 = library）
+//   SourceChips 来源：外链直接新窗口打开（owner 2026-10-21：侧栏再点一次进外链是重复无意义的操作）；
+//               知识库文档（收录完成的）才走右侧 dock
 //   Thumbs     图片缩略图 → BodyImageLightbox 放大；文件 → dock 的 file 卡片 / 新窗口
 //   roleLabel / tagLabel / confLabel  枚举显示文案走 i18n（存的值永不翻译）
 
@@ -96,12 +97,7 @@ export interface SourceRef {
   when?: string;
 }
 
-function linkPreset(s: SourceRef, description: string): EmbedData {
-  const url = s.url!;
-  return { kind: 'link', ref: url, ok: true, data: { url, hostname: hostnameOf(url), title: s.label, description, imageUrl: null, siteName: '' } };
-}
-
-/** 来源 chips：有 url 的点开右侧 dock（link 卡片 + 打开链接按钮），没有 url 的只是文字（如「群内观点」）。 */
+/** 来源 chips：有 url 的直接新窗口打开（title 里带主机名和谁在何时分享），没有 url 的只是文字（如「群内观点」）；知识库文档走 dock。 */
 export function SourceChips({ sources, label, librarySlug, embeds }: { sources: SourceRef[]; label?: string; librarySlug?: string | null; embeds?: Record<string, EmbedData> }) {
   const preview = usePreview();
   const t = useTranslations('zones');
@@ -121,16 +117,17 @@ export function SourceChips({ sources, label, librarySlug, embeds }: { sources: 
       )}
       {sources.map((s, i) =>
         s.url ? (
-          <button
+          <a
             key={`${s.url}-${i}`}
-            type="button"
-            title={s.url}
+            href={s.url}
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+            title={[hostnameOf(s.url), s.who, s.when].filter(Boolean).join(' · ')}
             className="inline-flex max-w-[18rem] items-center gap-1 truncate rounded-md border border-zinc-300 px-1.5 py-0.5 font-medium text-zinc-700 transition hover:border-zinc-900 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-zinc-100 dark:hover:text-zinc-100"
-            onClick={() => preview.open({ kind: 'link', ref: s.url!, title: s.label, data: linkPreset(s, [s.who, s.when].filter(Boolean).join(' · ')), via: 'pointer' })}
           >
             <ExternalLink className="h-3 w-3 shrink-0" />
             <span className="truncate">{s.label}</span>
-          </button>
+          </a>
         ) : (
           <span key={`${s.label}-${i}`} className="rounded-md bg-zinc-100 px-1.5 py-0.5 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
             {s.label}
@@ -147,11 +144,25 @@ export interface ThumbItem {
   /** 根相对 URL（这里过 withBasePath）；null = 没上传。 */
   url: string | null;
   caption?: string;
+  sizeBytes?: number;
 }
 
-/** 图片缩略图（点开灯箱）+ 文件卡片（新窗口打开）。灯箱是每个列表自己的（受控）。 */
+/** 文件卡片 → 预览 dock 的 file 目标（预置数据，不发请求：PDF 直接在面板里读，office 类给下载卡）。 */
+function filePreset(a: ThumbItem): EmbedData {
+  const url = a.url!;
+  const ext = (/\.([a-z0-9]{1,5})$/i.exec(a.file)?.[1] ?? '').toLowerCase();
+  return {
+    kind: 'file',
+    ref: url,
+    ok: true,
+    data: { id: '', kind: 'file', url, name: a.file, mimeType: '', sizeBytes: a.sizeBytes ?? 0, width: null, height: null, posterUrl: null, ext, previewStatus: 'none', previewUrl: null, postId: '', zoneSlug: '' },
+  };
+}
+
+/** 图片缩略图（点开灯箱）+ 文件卡片（点开预览 dock；中键 / 新标签仍是直链）。灯箱是每个列表自己的（受控）。 */
 export function Thumbs({ items, size = 'md' }: { items: ThumbItem[]; size?: 'sm' | 'md' }) {
   const t = useTranslations('zones');
+  const preview = usePreview();
   const [lightbox, setLightbox] = useState<BodyImage | null>(null);
   const close = useCallback(() => setLightbox(null), []);
   if (!items.length) return null;
@@ -159,6 +170,11 @@ export function Thumbs({ items, size = 'md' }: { items: ThumbItem[]; size?: 'sm'
   const onImg = (e: MouseEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     setLightbox({ src: img.currentSrc || img.src, alt: img.alt, rect: img.getBoundingClientRect() });
+  };
+  const onFile = (a: ThumbItem) => (e: MouseEvent<HTMLAnchorElement>) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; // 让浏览器开新标签
+    e.preventDefault();
+    preview.open({ kind: 'file', ref: a.url!, title: a.file, data: filePreset(a), via: 'pointer' });
   };
   return (
     <div className="mt-2 flex flex-wrap gap-2">
@@ -174,6 +190,7 @@ export function Thumbs({ items, size = 'md' }: { items: ThumbItem[]; size?: 'sm'
             href={withBasePath(a.url)}
             target="_blank"
             rel="noopener"
+            onClick={onFile(a)}
             className={`${box} flex flex-col items-center justify-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 px-2 text-center text-[11px] text-zinc-600 transition hover:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400`}
           >
             <FileText className="h-5 w-5" />

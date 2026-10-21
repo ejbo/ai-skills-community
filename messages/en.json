@@ -3321,7 +3321,11 @@
     "zone_report_not_failed": "Only failed or interrupted reports can be retried",
     "zone_report_already_published": "This report has already been published as a post",
     "zone_report_not_ready": "The report is not ready yet",
-    "zone_source_required": "Upload a chat export or a report.json"
+    "zone_source_required": "Upload a chat export or a report.json",
+    "report_not_published": "The report has not been shared into a zone yet, so there is no post to set co-authors on",
+    "report_asset_unsupported": "The library does not ingest this file type (PDF / EPUB / HTML / PPTX / DOCX only)",
+    "report_asset_share_failed": "Could not share to the library",
+    "report_asset_not_found": "Attachment not found"
   },
   "stickers": {
     "title": "My stickers",
@@ -4805,7 +4809,7 @@
     "report_messages_empty": "No matching original messages (the report may have been regenerated)",
     "report_messages_reply": "Replying to {name}",
     "report_messages_missing_image": "Image not uploaded: {file}",
-    "report_sec_brief": "Highlights",
+    "report_sec_brief": "Brief",
     "report_sec_highlights": "Key points",
     "report_sec_judgments": "Key judgments",
     "report_sec_actions": "Actions & follow-ups",
@@ -4869,7 +4873,14 @@
     "report_instructions_show_guide": "Show the default guide",
     "report_instructions_hide_guide": "Hide the default guide",
     "report_instructions_hint": "This text goes into every step's prompt (clustering / topics / recap / highlights). Field names, JSON shape and the \"cite only what is in the record\" rule are unaffected.",
-    "report_detected_guess": "No chat record recognised at a glance; these {count} text files will each be tried, and the model infers the format if none parses"
+    "report_detected_guess": "No chat record recognised at a glance; these {count} text files will each be tried, and the model infers the format if none parses",
+    "report_expand_all": "Expand all viewpoints",
+    "report_collapse_all": "Collapse all viewpoints",
+    "report_back_to_top": "Back to top",
+    "report_timeline_expand": "Show {count} viewpoints · {speakers} people",
+    "report_timeline_collapse": "Collapse",
+    "report_timeline_collapsed": "{count} viewpoints · {speakers} speakers — click to expand the timeline",
+    "report_comments_close": "Close comments"
   },
   "translate": {
     "translate": "Translate",
@@ -4929,8 +4940,8 @@
   "tools": {
     "title": "Tools",
     "subtitle": "Standalone utilities: upload material, generate asynchronously, then export, share a page or post to a zone.",
-    "chat_report_title": "Chat → report",
-    "chat_report_desc": "Turn a WeLink group export plus its images and files into a daily / weekly / monthly report: export to Word / PDF, publish a share page with its own audience, or post it into a zone column.",
+    "chat_report_title": "Export chat as report",
+    "chat_report_desc": "Turn a WeLink group chat into a daily / weekly / monthly report: themes, viewpoint timelines, sources and images; export Word / PDF, share page, share into a zone",
     "chat_report_new": "New report",
     "report_export": "Export",
     "report_export_failed": "Export failed",
@@ -4954,6 +4965,18 @@
     "report_delete_failed": "Delete failed",
     "report_manage": "Manage",
     "report_shared_in": "Shared in “{zone}”",
-    "report_instructions_used": "Extra instructions used ({mode})"
+    "report_instructions_used": "Extra instructions used ({mode})",
+    "report_coauthors_hint": "Editable any time after sharing: click a speaker to add / remove, or search anyone on the site; newly added people are notified on save.",
+    "report_coauthors_save": "Save co-authors",
+    "report_coauthors_saved": "Co-authors updated",
+    "report_coauthors_failed": "Could not save co-authors",
+    "report_assets_title": "{count} attachments",
+    "report_assets_hint": "Attachments stay inside this report (openable from the report / post page). Click \"Share to library\" to make one searchable site-wide.",
+    "report_asset_share": "Share to library",
+    "report_asset_in_library": "In library",
+    "report_asset_shared": "Shared to the library (extracting in the background)",
+    "report_asset_share_existing": "The library already had this file; linked",
+    "report_asset_share_failed": "Could not share to the library",
+    "report_assets_images": "{count} more images are placed inline / in the appendix"
   }
 }

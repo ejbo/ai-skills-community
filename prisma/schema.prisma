@@ -1560,6 +1560,7 @@ model LibraryDoc {
   siteName         String? // og:site_name / readable domain / null
   publishedAt      DateTime? // original publish date
   coverUrl         String? // root-relative stored cover, null => deterministic placeholder
+  coverFromPool    Boolean           @default(false) // 封面来自图片库（随机配的）：以后抓到真封面可以覆盖
   fileKey          String? // original pdf/epub key in storage
   fileUrl          String? // root-relative /api/library/file/<key>
   mimeType         String?
@@ -1915,6 +1916,17 @@ model LibraryRating {
 
 // Admin-configured LLM override for 知识库 AI (indexing / chat). Single row
 // (id 'default'); null fields fall back to the env-configured provider.
+// 知识库封面图片库（owner 2026-10-21：「首页的图片非常丑，我希望有一个图片库，随机把图片贴上去」）：
+// 管理员上传一批图，没有封面的文档按 id 稳定地随机配一张（lib/library/cover-pool.ts）。
+model LibraryCoverPoolImage {
+  id          String   @id @default(cuid())
+  key         String   @unique // library storage key（cover/<nanoid>.<ext>）
+  name        String   @default("")
+  sizeBytes   Int      @default(0)
+  createdById String
+  createdAt   DateTime @default(now())
+}
+
 model LibrarySetting {
   id                 String   @id @default("default")
   llmProvider        String? // 'anthropic' | 'openai'

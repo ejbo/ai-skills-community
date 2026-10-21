@@ -269,3 +269,16 @@
     DOMPurify unwraps them and `<div>a</div><div>b</div>` would otherwise collapse into "ab",
     destroying `htmlToPlainText`'s paragraph boundaries and every offset derived from them.
     Editing a chapter does NOT remap existing highlights — the quote fallback re-anchors them.
+  - **封面图片库** (migration `20261021120000_library_cover_pool`, `lib/library/cover-pool.ts`,
+    `/manage/library` 的 CoverPoolCard, `/api/admin/library/cover-pool[/id|/backfill]`)：owner 2026-10-21
+    「抓来的封面非常丑 / 很多根本没有，我希望有一个图片库，随机把合适的图贴上去」。管理员上传一批图
+    （魔数判断 png / jpg / webp / gif，≤ 5 MB，存 library storage 的 `cover/` 下）；文档收录完成后没有封面
+    （url 抓不到 OG 图、上传的文件抽不出首页）→ `assignPoolCoverIfMissing` 按 **文档 id 的 sha1** 从图片库
+    稳定地挑一张（同一篇永远同一张，图片库不变就不跳），写 `coverUrl` + `coverFromPool = true`；
+    重新处理时抓到真封面允许覆盖（`!coverUrl || coverFromPool`），真封面写回时清掉 `coverFromPool`。
+    「给没有封面的文档配图」一键补齐已有文档。移除图片库里的一张不动已配出去的封面（同 key），
+    没有任何文档引用时才删文件。图片库为空 ⇒ 行为与以前完全一样（`DocCover` 的确定性占位）。
+  - **报告附件不进知识库**（2026-10-21，docs/contracts/reports.md §2 / §5）：「聊天记录 → 报告」的
+    PDF / PPTX 等附件留在报告里（预览 dock 直接打开），只有报告所有者点「分享到知识库」
+    （`POST /api/tools/chat-report/[id]/assets/[assetId]/library` → `ingestOneReportAsset`）才走
+    `createDocFromFile`。owner：「月报里的所有内容直接发到 library 会变得很乱」。
