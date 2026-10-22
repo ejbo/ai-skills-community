@@ -4884,7 +4884,10 @@
     "report_timeline_collapsed": "{count} 条观点 · {speakers} 位发言人 — 点击展开时间线",
     "report_comments_close": "关闭评论",
     "lightbox_prev": "上一张",
-    "lightbox_next": "下一张"
+    "lightbox_next": "下一张",
+    "report_messages_loading": "正在取原文…",
+    "report_messages_load_failed": "原文加载失败",
+    "report_messages_collapse": "收起原文"
   },
   "translate": {
     "translate": "翻译",

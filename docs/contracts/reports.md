@@ -141,7 +141,7 @@ skill 侧同一份逻辑：`scripts/coerce.mjs`（由 coerce.ts `tsc` 转出，�
 - `getZonePostDetail` 多带 `post.report`（`lib/zones/reports/post-view.ts`：`reportJson` + 发言人账号→站内用户（工号匹配，`toPublicAuthor` 脱敏）+ 附件文件名→知识库 slug + 附件 id→媒体 URL），`headings` 改由 `reportHeadings(report)`（`sections.ts`）生成，右栏目录照常工作。
 - `PostDetail`：`post.report` 存在 ⇒ 渲染 `app/zones/_components/reports/ReportArticle.tsx`，否则照旧 Markdown。发布前的预览页（`ReportDetail`）用的是**同一个组件**，所见即所得。
 - `ReportArticle` 做 Markdown 做不到的事：要点卡（编号圆点 / ■ 判断 + 置信度 / 待办表，负责人是头像）；专题 = 宏观总结面板 → **观点时间线**（头像骑在线上、匹配上的带悬停名片；角色色标 提出=墨 / 质疑=琥珀 / 判断·结论=绿 / 进展=天蓝；`**…**` 高亮关键词；原话引用；配图缩略 → `BodyImageLightbox`；来源 chips → 右侧 dock 的 `link` 卡片（**预置 `data`，不发 /api/zones/embed**，外网链接内网机器本来也抓不到）；已收录文档 → dock 的 `library` 卡片；「看原文 N」→ dock 以 `page` 目标装 `/zones/[slug]/reports/[id]/messages?ids=m1,m2`）→ 待验证 → 资料 → 启示框；活动表、Recap、资源索引、数据概览（横条）、未随文附件。
-- `/zones/[slug]/reports/[reportId]/messages`（`lib/zones/reports/messages.ts`）：按 id 从 `messagesJson` 取原始消息（时间 / 发言人 / 原话 / 引用 / 链接卡片 / 图片），`canRead` 门；装在 iframe 里时 `holdNavBarHidden()` 藏掉导航栏。一次 ≤ 60 条。
+- 「看原文」数据：`GET /api/tools/chat-report/[id]/messages?ids=`（`lib/zones/reports/messages.ts#getReportMessages`）按 id 从 `messagesJson` 取原始消息（时间 / 发言人 / 原话 / 引用 / 链接卡片 / 图片），canSeeReport 门，一次 ≤ 60 条；正文里就地展开（见下表）。`/reports/[slug]/messages` 独立页仍在（直接打开 / 老链接）。
 - **编辑**：报告帖子的 `bodyMd` 仍由 `renderReportMarkdown` 生成，只做摘要 / 搜索 / 回退；编辑器顶部有一条说明（`report_post_native_note`），改正文不会改报告视图——要改内容请重新生成。站内翻译对原生视图不适用（`TranslatableScope` disabled）。
 - 枚举显示文案走 i18n（`report_role_* / report_tag_* / report_conf_*`），存的值永远是模型词表里的中文。
 - 配色守 ui.md：chrome 全墨；颜色只出现在内容语义上（角色色标、`<mark>` 高亮、头像身份色）。
@@ -157,6 +157,7 @@ skill 侧同一份逻辑：`scripts/coerce.mjs`（由 coerce.ts `tsc` 转出，�
 | 「右侧都是空白的」「月报很长，拉到最底下非常困难」 | `ReportReader`：正文 + sticky 右栏（`lg` 起；dock 打开时 band narrow → 右栏让位）。右栏 = 目录（`reportHeadings`，随阅读位置高亮）→ 全部展开 / 收起 → 页面自己的段落（帖子页：作者 + **评论 N 按钮** → `CommentsDrawer` 从右侧滑入，开着时底部评论区不渲染，同一时刻只挂一份 `PostComments`；分享页：作者 + 「分享自 xx 版块」）→ 回到顶部。容器放宽到 `max-w-6xl` |
 | 「看起来还是非常的长和乱」 | 专题的**观点时间线默认收起**（`ReportViewProvider`）：一个专题先只看 编号 + 标题 + 定位 + 宏观总结 + 待验证 + 资料 + 启示，时间线折成一行头像带「N 条观点 · M 位发言人 — 点击展开」；右栏「展开全部观点」一键全开。没有 provider 的调用方（老代码）一律展开 |
 | 「图片放大后关闭屏幕闪一下」「最好能左右切换」 | 灯箱（`BodyImageLightbox`）关闭时不再立刻清掉 FLIP 状态（AnimatePresence 退场期间图片会瞬间 invisible，只剩黑底在淡——那就是"闪"），改在 `onExitComplete` 清，并且退场时图片飞回缩略图；FLIP 状态按 src 键控。`ReportArticle` 把整篇报告的图片按正文顺序排成相册（`ReportGalleryContext`），一个灯箱、两侧按钮 + ← → 切换、底部「n / N」和说明；相邻图切换不做 FLIP（淡入）。看原文页的 Thumbs 没有 provider，仍各自开 |
+| 「看原文不要新建网页，放进当前网页里；还显示一个 navbar 很鸡肋」 | 「看原文 N」改为**就地展开**：`OriginalMessages`（`components/reports/ReportMessages.tsx`）在那条观点 / 活动 / 花絮下面拉 `GET /api/tools/chat-report/[id]/messages?ids=…`（同 canSeeReport 闸门，≤ 60 条，组件内按 ids 缓存），渲染同一份 `MessageList`；再点收起；同一时刻只展开一处。独立页 `/reports/[slug]/messages` 保留给直接打开 / 老链接，不再被 dock 以 page 目标装载 |
 | 「合著者当时没加后面就加不了」 | `ReportCoauthors`（工具详情页，分享后出现）：发言人一键勾选 + 全站搜索，`PUT /api/tools/chat-report/[id]/coauthors` → `setReportCoauthors` → `updateZonePost({ coauthorIds })`（同一套校验、新加的人收到通知、不生成版本）。帖子编辑页的设置抽屉也能改 |
 
 ### 3b. 分享页与谁可读（`/reports/[slug]`，`visibility.ts`）
@@ -250,7 +251,7 @@ lib/zones/post-presence.ts    心跳 / 活跃编辑者
   export-docx.ts / export-pdf.ts   Word（docx 包）/ PDF（soffice）
   writing-guide.ts 向导里「查看默认写法」的文字
 lib/tools/catalog.ts   导航「工具」的工具目录（/tools 页与 NAV_MEGA 都读它）
-app/api/tools/chat-report/route.ts, upload/route.ts, [reportId]/route.ts, retry/route.ts, publish/route.ts, export/route.ts, coauthors/route.ts
+app/api/tools/chat-report/route.ts, upload/route.ts, [reportId]/route.ts, retry/route.ts, publish/route.ts, export/route.ts, coauthors/route.ts, messages/route.ts, assets/[assetId]/library/route.ts
 app/tools/page.tsx, chat-report/page.tsx, chat-report/new/page.tsx, chat-report/[reportId]/page.tsx
 app/reports/[slug]/page.tsx, messages/page.tsx
 components/reports/ReportWizard.tsx, ReportDetail.tsx, ReportList.tsx, ReportArticle.tsx, ReportMessages.tsx, report-bits.tsx
@@ -274,7 +275,7 @@ tests/zone-reports-*.test.ts, tests/zone-post-revisions.test.ts
 11. 识别看内容、不筛文件：`bundle.ts` 只挑出"肯定不是记录"的，其余文本全是候选，`unpack.ts` 真解析挑最好的，`infer-format.ts` 是最后的模型兜底；`sniffText` 只影响向导里的排序 / 显示，**不要再往它里面加"不像就丢"的规则**。skill 的 `parse-chat.mjs` 目录模式是同一套逻辑的 JS 版（没有模型兜底，报错时把文件开头打出来让 agent 自己转格式）。
 13. 模型输出的形状问题不再是错（§2d）：新加一步模型调用时**必须**给 `callJson` 配 `coerce` 和 `onExhausted`，别再写"直接 safeParse、不过就 throw"；zod 的 `.max()` 是上限不是拒绝理由——coerce 里 `clip` 掉。要加字段：schema.ts、coerce.ts（别名 + 截断）、skill 的 validate.mjs / coerce.mjs 四处同改。
 15. `/reports/[slug]` 的动态段是**百分号编码**的（App Router 行为），而 `titleSlug` 保留中文，所以 `resolveReportParam` 必须先 `decodeSlugParam`——漏了就是中文标题的报告分享页 / 看原文全 404（2026-10-21）。任何新的 `[slug]` 页都照 `lib/title-slugs.ts` 的做法先解码。
-14. 「看原文」「知识库文档」、文件卡都靠 `usePreview()`（右侧 dock），而 PreviewProvider 只挂在 section layout 上：`/zones`、`/library`、`/discussion`，以及 2026-10-21 补的 `/reports`、`/tools`。新开一个会渲染 ReportArticle 的路由，**layout 必须挂 `<PreviewProvider mode="dock">`**，否则 `usePreview()` 是 no-op，按钮点了没有任何反应（分享页上「看原文」没东西就是这个）。
+14. 「知识库文档」chip 和文件卡都靠 `usePreview()`（右侧 dock；「看原文」2026-10-21 起就地展开、不再用 dock），而 PreviewProvider 只挂在 section layout 上：`/zones`、`/library`、`/discussion`，以及 2026-10-21 补的 `/reports`、`/tools`。新开一个会渲染 ReportArticle 的路由，**layout 必须挂 `<PreviewProvider mode="dock">`**，否则 `usePreview()` 是 no-op，按钮点了没有任何反应（分享页上「看原文」没东西就是这个）。
 12. 2026-10-20 第三轮的教训：owner 上传的目录是 `*_msgs.json`（agent 自己整理的形状，不是 welink-cli 原样）+ `*_消息记录.txt`，旧规则因为 json 字段名不对就把它当"认不出的 json"丢了，txt 又因为行头少了秒而不认——两边都"像不像"判断、没有一个真去解析，于是报"没有解析到任何消息"。现在三层都是"能解析出消息就用"。
 9. TXT 有三种行头版式（`parse.ts` 顶部注释，括号 / 秒 / 分隔符都可变），都是 agent 从 welink-cli JSON 转的；JSON 更全（附件协议块 / 引用卡片），所以整包上传时解析出的 JSON 条数不少于最佳 TXT 的 80% 就优先 JSON——用户目录里 TXT 和 JSON 通常并存。给 agent 的拉取话术在 skill 的 `reference/welink-fetch.md`。
 8. `ReportArticle` 是客户端组件：只能 import `sections.ts` 这类纯模块，**不要** import `post-view.ts` / `messages.ts`（它们带 prisma）；类型用 `import type`。

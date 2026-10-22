@@ -11,7 +11,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { CalendarDays, ChevronDown, ChevronUp, Hash, MessageSquareQuote, Quote } from 'lucide-react';
-import { usePreview } from '@/components/zones/preview/PreviewProvider';
 import { REPORT_SECTION_IDS } from '@/lib/zones/reports/sections';
 import type { Report, ReportAttachment, ReportTheme, ReportViewpoint } from '@/lib/zones/reports/schema';
 import type { PublicAuthor } from '@/lib/user-identity';
@@ -20,18 +19,22 @@ import { BTN_GHOST } from '@/app/zones/_components/ui';
 import { withBasePath } from '@/lib/base-path';
 import { BodyImageLightbox, type BodyImage, type LightboxRect } from '@/app/zones/_components/post/BodyImageLightbox';
 import { ReportGalleryContext, RichText, RoleChip, SourceChips, Speaker, Thumbs, useReportLabels, type SourceRef, type ThumbItem } from './report-bits';
+import { OriginalMessages } from './ReportMessages';
 import { useReportView } from './report-view';
 
 const RES_KEY: Record<string, string> = { paper: '论文', repo: '代码', article: '文章', internal: '内部', video: '视频', doc: '文档', other: '链接' };
 
-/**
- * @param originalsHref 「看原文」页的路径（不带 query），如 `/reports/<slug>/messages`；dock 以 page 目标装它。
- */
-export function ReportArticle({ originalsHref, view, embeds }: { originalsHref: string; view: ZonePostReportView; embeds: Record<string, EmbedData> }) {
+export function ReportArticle({ view, embeds }: { view: ZonePostReportView; embeds: Record<string, EmbedData> }) {
   const t = useTranslations('zones');
   const labels = useReportLabels();
-  const preview = usePreview();
   const { report, speakers, librarySlugs, assetUrls } = view;
+  // 「看原文」就地展开（owner 2026-10-21：不要新建网页）：同一时刻只展开一处，key = 观点 / 活动 / 花絮的 id
+  const [originalsOpen, setOriginalsOpen] = useState<string | null>(null);
+  const originals = (key: string, msgRefs: string[]) => ({
+    open: originalsOpen === key,
+    toggle: () => setOriginalsOpen((cur) => (cur === key ? null : key)),
+    panel: originalsOpen === key ? <OriginalMessages reportId={view.id} ids={msgRefs} onClose={() => setOriginalsOpen(null)} /> : null,
+  });
   const attById = useMemo(() => new Map(report.attachments.map((a) => [a.id, a])), [report.attachments]);
   const themeNo = useMemo(() => new Map(report.themes.map((th, i) => [th.id, String(i + 1).padStart(2, '0')])), [report.themes]);
 
@@ -77,10 +80,6 @@ export function ReportArticle({ originalsHref, view, embeds }: { originalsHref: 
       if (a && librarySlugs[a.file]) return librarySlugs[a.file];
     }
     return null;
-  };
-  const openOriginal = (msgRefs: string[], title: string) => {
-    if (!msgRefs.length) return;
-    preview.open({ kind: 'page', ref: `${originalsHref}?ids=${msgRefs.join(',')}`, title, via: 'pointer' });
   };
   const themeRef = (id?: string | null) =>
     id && themeNo.has(id) ? (
@@ -197,7 +196,7 @@ export function ReportArticle({ originalsHref, view, embeds }: { originalsHref: 
           userOf={userOf}
           thumbsOf={thumbsOf}
           librarySlugOf={librarySlugOf}
-          openOriginal={openOriginal}
+          originals={originals}
           embeds={embeds}
           labels={labels}
         />
@@ -231,14 +230,10 @@ export function ReportArticle({ originalsHref, view, embeds }: { originalsHref: 
                         )}
                         <div className="flex flex-wrap items-center gap-2">
                           {e.url && <SourceChips sources={[{ label: e.title, url: e.url }]} label="" />}
-                          {e.msgRefs.length > 0 && (
-                            <button type="button" className={`${BTN_GHOST} mt-1.5 h-6 px-1.5 text-[11px]`} onClick={() => openOriginal(e.msgRefs, e.title)}>
-                              <MessageSquareQuote className="h-3 w-3" />
-                              {t('report_view_original', { count: e.msgRefs.length })}
-                            </button>
-                          )}
+                          {e.msgRefs.length > 0 && <OriginalsButton state={originals(`e:${e.id}`, e.msgRefs)} count={e.msgRefs.length} />}
                         </div>
                         <Thumbs items={thumbsOf(e.attachments)} size="sm" />
+                        {originals(`e:${e.id}`, e.msgRefs).panel}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs">{e.host ?? '—'}</td>
                     </tr>
@@ -260,18 +255,14 @@ export function ReportArticle({ originalsHref, view, embeds }: { originalsHref: 
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     {it.speaker && <Speaker name={it.speaker} account={it.account} user={userOf(it.account)} size="xs" showAccount={false} />}
-                    {it.msgRefs.length > 0 && (
-                      <button type="button" className={`${BTN_GHOST} h-6 px-1.5 text-[11px]`} onClick={() => openOriginal(it.msgRefs, it.speaker ?? '')}>
-                        <MessageSquareQuote className="h-3 w-3" />
-                        {t('report_view_original', { count: it.msgRefs.length })}
-                      </button>
-                    )}
+                    {it.msgRefs.length > 0 && <OriginalsButton state={originals(`r:${it.id}`, it.msgRefs)} count={it.msgRefs.length} />}
                   </div>
                   <p className="mt-0.5 leading-relaxed">
                     <RichText text={it.text} />
                   </p>
                   <SourceChips sources={it.sources} />
                   <Thumbs items={thumbsOf(it.attachments)} size="sm" />
+                  {originals(`r:${it.id}`, it.msgRefs).panel}
                 </div>
               </li>
             ))}
@@ -385,7 +376,7 @@ function ThemeSection({
   userOf,
   thumbsOf,
   librarySlugOf,
-  openOriginal,
+  originals,
   embeds,
   labels,
 }: {
@@ -394,7 +385,7 @@ function ThemeSection({
   userOf: (account?: string | null) => PublicAuthor | null;
   thumbsOf: (ids: string[]) => ThumbItem[];
   librarySlugOf: (ids: string[]) => string | null;
-  openOriginal: (msgRefs: string[], title: string) => void;
+  originals: OriginalsFor;
   embeds: Record<string, EmbedData>;
   labels: ReturnType<typeof useReportLabels>;
 }) {
@@ -448,7 +439,7 @@ function ThemeSection({
       {open ? (
         <ol id={`${th.id}-timeline`} className="relative mt-3 ml-3.5 space-y-6 border-l border-zinc-200 pl-7 dark:border-zinc-800">
           {th.viewpoints.map((v) => (
-            <ViewpointItem key={v.id} v={v} user={userOf(v.account)} thumbs={thumbsOf(v.attachments)} librarySlug={librarySlugOf(v.attachments)} embeds={embeds} onOriginal={() => openOriginal(v.msgRefs, `${v.speaker} · ${v.dates.join(' / ')}`)} />
+            <ViewpointItem key={v.id} v={v} user={userOf(v.account)} thumbs={thumbsOf(v.attachments)} librarySlug={librarySlugOf(v.attachments)} embeds={embeds} originals={originals(`v:${v.id}`, v.msgRefs)} />
           ))}
         </ol>
       ) : (
@@ -503,8 +494,7 @@ function ThemeSection({
   );
 }
 
-function ViewpointItem({ v, user, thumbs, librarySlug, embeds, onOriginal }: { v: ReportViewpoint; user: PublicAuthor | null; thumbs: ThumbItem[]; librarySlug: string | null; embeds: Record<string, EmbedData>; onOriginal: () => void }) {
-  const t = useTranslations('zones');
+function ViewpointItem({ v, user, thumbs, librarySlug, embeds, originals }: { v: ReportViewpoint; user: PublicAuthor | null; thumbs: ThumbItem[]; librarySlug: string | null; embeds: Record<string, EmbedData>; originals: OriginalsState }) {
   return (
     <li className="relative border-b border-dashed border-zinc-200 pb-5 last:border-b-0 last:pb-0 dark:border-zinc-800">
       {/* 头像骑在时间线上 */}
@@ -529,13 +519,27 @@ function ViewpointItem({ v, user, thumbs, librarySlug, embeds, onOriginal }: { v
       <Thumbs items={thumbs} />
       <div className="flex flex-wrap items-center gap-x-3">
         <SourceChips sources={v.sources.map((s) => ({ ...s, who: v.speaker, when: v.dates[0] }))} librarySlug={librarySlug} embeds={embeds} />
-        {v.msgRefs.length > 0 && (
-          <button type="button" className={`${BTN_GHOST} mt-1.5 h-6 px-1.5 text-[11px]`} onClick={onOriginal}>
-            <MessageSquareQuote className="h-3 w-3" />
-            {t('report_view_original', { count: v.msgRefs.length })}
-          </button>
-        )}
+        {v.msgRefs.length > 0 && <OriginalsButton state={originals} count={v.msgRefs.length} />}
       </div>
+      {originals.panel}
     </li>
+  );
+}
+
+interface OriginalsState {
+  open: boolean;
+  toggle: () => void;
+  panel: React.ReactNode;
+}
+type OriginalsFor = (key: string, msgRefs: string[]) => OriginalsState;
+
+/** 「看原文 N」/「收起原文」切换按钮（面板由调用方放在合适的位置）。 */
+function OriginalsButton({ state, count }: { state: OriginalsState; count: number }) {
+  const t = useTranslations('zones');
+  return (
+    <button type="button" className={`${BTN_GHOST} mt-1.5 h-6 px-1.5 text-[11px] ${state.open ? 'border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100' : ''}`} aria-expanded={state.open} onClick={state.toggle}>
+      <MessageSquareQuote className="h-3 w-3" />
+      {state.open ? t('report_messages_collapse') : t('report_view_original', { count })}
+    </button>
   );
 }

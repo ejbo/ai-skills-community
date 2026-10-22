@@ -178,7 +178,7 @@ export function PostDetail({
           )}
           <PostHeader post={post} zone={zone} leadRoles={leadRoles} titleRef={titleRef} canEdit={canEdit} />
           <div className={`mt-8 ${HEADING_SCROLL_MARGIN}`}>
-            <ReportArticle originalsHref={`/reports/${encodeURIComponent(post.report.slug ?? post.report.id)}/messages`} view={post.report} embeds={post.embeds} />
+            <ReportArticle view={post.report} embeds={post.embeds} />
           </div>
           {post.attachments.length > 0 && <PostAttachmentsPanel attachments={post.attachments} className="mt-8" />}
           <PostActionBar className="mt-8" post={post} zoneSlug={zone.slug} access={access} canEdit={canEdit} currentUser={currentUser} lb={lb} commentCount={commentCount} onCommentJump={jumpToComments} />

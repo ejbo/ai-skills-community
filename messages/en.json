@@ -4884,7 +4884,10 @@
     "report_timeline_collapsed": "{count} viewpoints · {speakers} speakers — click to expand the timeline",
     "report_comments_close": "Close comments",
     "lightbox_prev": "Previous image",
-    "lightbox_next": "Next image"
+    "lightbox_next": "Next image",
+    "report_messages_loading": "Loading the original messages…",
+    "report_messages_load_failed": "Could not load the original messages",
+    "report_messages_collapse": "Hide originals"
   },
   "translate": {
     "translate": "Translate",

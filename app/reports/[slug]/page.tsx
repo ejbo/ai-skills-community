@@ -56,7 +56,6 @@ export default async function ReportSharePage({ params }: { params: { slug: stri
   for (const a of r.attachments) if (a.assetKey && urlByKey.has(a.assetKey)) assetUrls[a.id] = urlByKey.get(a.assetKey)!;
   const view: ZonePostReportView = { id: detail.id, slug: detail.slug, report: r, speakers, librarySlugs, assetUrls };
   const owner = isReportOwner(row, viewer);
-  const base = `/reports/${encodeURIComponent(detail.slug ?? detail.id)}`;
 
   const rail = (
     <section className="space-y-2 text-sm">
@@ -101,7 +100,7 @@ export default async function ReportSharePage({ params }: { params: { slug: stri
             {owner && <VisibilityBadge visibility={detail.visibility} />}
           </p>
         </header>
-        <ReportArticle originalsHref={`${base}/messages`} view={view} embeds={{}} />
+        <ReportArticle view={view} embeds={{}} />
       </ReportReader>
     </div>
   );

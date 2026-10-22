@@ -4884,7 +4884,10 @@
     "report_timeline_collapsed": "{count} points de vue · {speakers} intervenants — cliquer pour déplier",
     "report_comments_close": "Fermer les commentaires",
     "lightbox_prev": "Image précédente",
-    "lightbox_next": "Image suivante"
+    "lightbox_next": "Image suivante",
+    "report_messages_loading": "Chargement des messages originaux…",
+    "report_messages_load_failed": "Impossible de charger les messages originaux",
+    "report_messages_collapse": "Masquer les originaux"
   },
   "translate": {
     "translate": "Traduire",
