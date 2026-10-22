@@ -80,7 +80,7 @@ export default async function ReportSharePage({ params }: { params: { slug: stri
 
   return (
     <div className="container py-8">
-      <ReportReader report={r} rail={rail}>
+      <ReportReader report={r} speakers={speakers} rail={rail}>
         <header className="mb-8 space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <h1 className="min-w-0 text-3xl font-semibold leading-tight tracking-tight">{detail.title}</h1>

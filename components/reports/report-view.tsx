@@ -13,8 +13,10 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useTranslations } from 'next-intl';
 import { useReducedMotion } from 'framer-motion';
 import { ArrowUp, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
+import { Avatar } from '@/components/Avatar';
 import { usePageBand } from '@/components/zones/preview/PreviewProvider';
-import { reportHeadings } from '@/lib/zones/reports/sections';
+import type { PublicAuthor } from '@/lib/user-identity';
+import { REPORT_SECTION_IDS, reportHeadings } from '@/lib/zones/reports/sections';
 import type { Report } from '@/lib/zones/reports/schema';
 import { activeHeadingFor, TOP_OFFSET_PX } from '@/app/zones/_components/post/PostToc';
 
@@ -24,12 +26,17 @@ interface ReportViewState {
   setAll: (open: boolean) => void;
   /** 有没有一个是收起的（右栏按钮用来决定显示「全部展开」还是「全部收起」）。 */
   anyClosed: boolean;
+  /** 按发言人筛选（owner 2026-10-22：「根据选中人来看他的内容，可多选」）：选中的账号（小写）；空 = 不筛。 */
+  speakers: ReadonlySet<string>;
+  toggleSpeaker: (account: string) => void;
+  clearSpeakers: () => void;
 }
 
 const Ctx = createContext<ReportViewState | null>(null);
 
 export function ReportViewProvider({ themeIds, defaultOpen = false, children }: { themeIds: string[]; defaultOpen?: boolean; children: ReactNode }) {
   const [closed, setClosed] = useState<ReadonlySet<string>>(() => new Set(defaultOpen ? [] : themeIds));
+  const [speakers, setSpeakers] = useState<ReadonlySet<string>>(() => new Set());
   const value = useMemo<ReportViewState>(
     () => ({
       isOpen: (id) => !closed.has(id),
@@ -42,13 +49,87 @@ export function ReportViewProvider({ themeIds, defaultOpen = false, children }: 
         }),
       setAll: (open) => setClosed(new Set(open ? [] : themeIds)),
       anyClosed: themeIds.some((id) => closed.has(id)),
+      speakers,
+      toggleSpeaker: (account) =>
+        setSpeakers((prev) => {
+          const next = new Set(prev);
+          const key = account.toLowerCase();
+          if (next.has(key)) next.delete(key);
+          else next.add(key);
+          return next;
+        }),
+      clearSpeakers: () => setSpeakers(new Set()),
     }),
-    [closed, themeIds],
+    [closed, themeIds, speakers],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
-const ALL_OPEN: ReportViewState = { isOpen: () => true, toggle: () => {}, setAll: () => {}, anyClosed: false };
+const ALL_OPEN: ReportViewState = { isOpen: () => true, toggle: () => {}, setAll: () => {}, anyClosed: false, speakers: new Set(), toggleSpeaker: () => {}, clearSpeakers: () => {} };
+
+/** 筛选发言人时，哪些专题还有内容（含所选人的观点）。空选 = 全部。 */
+export function visibleThemeIds(report: Report, speakers: ReadonlySet<string>): Set<string> {
+  if (!speakers.size) return new Set(report.themes.map((t) => t.id));
+  return new Set(report.themes.filter((t) => t.viewpoints.some((v) => speakers.has(v.account.toLowerCase()))).map((t) => t.id));
+}
+
+/**
+ * 发言人筛选器（右栏 + 窄屏时正文顶部）：按发言量排序的头像 chips，多选；选了之后正文只剩这些人的观点
+ * （专题里没有他们的直接隐藏、目录里变灰）、Recap 只剩他们的条目，要点 / 活动 / 资料 / 数据暂时隐藏。
+ */
+export function SpeakerFilter({ report, speakers, className = '' }: { report: Report; speakers?: Record<string, PublicAuthor>; className?: string }) {
+  const t = useTranslations('zones');
+  const view = useReportView();
+  const [showAll, setShowAll] = useState(false);
+  if (!view.provided) return null;
+  const all = report.stats.bySpeaker;
+  if (all.length < 2) return null;
+  const limit = 8;
+  const list = showAll || all.length <= limit + 2 ? all : all.slice(0, limit);
+  const hiddenSelected = all.slice(limit).filter((s) => view.speakers.has(s.account.toLowerCase()));
+  const rows = showAll ? list : [...list, ...hiddenSelected.filter((s) => !list.includes(s))];
+  return (
+    <section className={className}>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{t('report_filter_speakers')}</h3>
+        {view.speakers.size > 0 && (
+          <button type="button" onClick={view.clearSpeakers} className="text-[11px] text-muted underline-offset-2 hover:text-zinc-900 hover:underline dark:hover:text-zinc-100">
+            {t('report_filter_clear')}
+          </button>
+        )}
+      </div>
+      <ul className="flex flex-wrap gap-1.5">
+        {rows.map((sp) => {
+          const key = sp.account.toLowerCase();
+          const on = view.speakers.has(key);
+          const u = speakers?.[key];
+          return (
+            <li key={sp.account}>
+              <button
+                type="button"
+                onClick={() => view.toggleSpeaker(sp.account)}
+                aria-pressed={on}
+                title={`${sp.name} · ${sp.account} · ${sp.count}`}
+                className={`inline-flex max-w-[11rem] items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2 text-xs transition ${on ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900' : 'border-zinc-200 text-zinc-700 hover:border-zinc-900 dark:border-zinc-800 dark:text-zinc-300 dark:hover:border-zinc-100'}`}
+              >
+                <Avatar name={u?.displayName || sp.name} src={u?.avatarUrl ?? null} size="xs" />
+                <span className="truncate">{u?.displayName || sp.name}</span>
+                <span className={`font-mono text-[10px] tabular-nums ${on ? 'opacity-70' : 'text-muted'}`}>{sp.count}</span>
+              </button>
+            </li>
+          );
+        })}
+        {all.length > limit + 2 && (
+          <li>
+            <button type="button" onClick={() => setShowAll((v) => !v)} className="inline-flex h-6 items-center rounded-full border border-dashed border-zinc-300 px-2 text-[11px] text-muted hover:border-zinc-900 hover:text-zinc-900 dark:border-zinc-700 dark:hover:border-zinc-100 dark:hover:text-zinc-100">
+              {showAll ? t('report_filter_fewer') : t('report_filter_more', { count: all.length - limit })}
+            </button>
+          </li>
+        )}
+      </ul>
+    </section>
+  );
+}
 
 export function useReportView(): ReportViewState & { provided: boolean } {
   const ctx = useContext(Ctx);
@@ -121,7 +202,10 @@ export function reportTocEntries(report: Report): TocEntry[] {
 export function ReportToc({ report, className = '' }: { report: Report; className?: string }) {
   const t = useTranslations('zones');
   const reduce = useReducedMotion();
+  const view = useReportView();
   const entries = useMemo(() => reportTocEntries(report), [report]);
+  const visible = useMemo(() => visibleThemeIds(report, view.speakers), [report, view.speakers]);
+  const filtering = view.speakers.size > 0;
   const [active, setActive] = useState(entries[0]?.id ?? '');
 
   useEffect(() => {
@@ -169,13 +253,16 @@ export function ReportToc({ report, className = '' }: { report: Report; classNam
       <ol className="space-y-0.5 border-l border-zinc-200 dark:border-zinc-800">
         {entries.map((e) => {
           const on = e.id === active;
+          // 筛选发言人时：没有所选人观点的专题、以及被整体隐藏的区块（要点 / 活动 / 资料 / 数据）变灰、不可点
+          const dimmed = filtering && (e.num ? !visible.has(e.id) : e.id !== REPORT_SECTION_IDS.recap);
           return (
             <li key={e.id} className="-ml-px">
               <button
                 type="button"
                 onClick={() => go(e.id)}
+                disabled={dimmed}
                 aria-current={on ? 'location' : undefined}
-                className={`flex w-full items-start gap-2 border-l-2 py-1 pl-3 pr-1 text-left text-[13px] leading-snug transition ${
+                className={`flex w-full items-start gap-2 border-l-2 py-1 pl-3 pr-1 text-left text-[13px] leading-snug transition disabled:cursor-default ${dimmed ? 'opacity-35' : ''} ${
                   on ? 'border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-50' : 'border-transparent text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100'
                 }`}
               >
@@ -198,12 +285,13 @@ export function ReportToc({ report, className = '' }: { report: Report; classNam
  * 报告的右栏：目录（本期要点 → 各专题 → 活动 / Recap / 资料 / 数据，随阅读位置高亮）→ 全部展开 / 收起 →
  * 调用方塞进来的段落（作者、评论按钮…）→ 回到顶部。sticky，超过视口高度时栏内滚动（目录永远完整）；只在 lg 起渲染（调用方控制）。
  */
-export function ReportRail({ report, children, className = '' }: { report: Report; articleRef?: RefObject<HTMLElement>; children?: ReactNode; className?: string }) {
+export function ReportRail({ report, speakers, children, className = '' }: { report: Report; speakers?: Record<string, PublicAuthor>; articleRef?: RefObject<HTMLElement>; children?: ReactNode; className?: string }) {
   const t = useTranslations('zones');
   const toTop = useCallback(() => window.scrollTo({ top: 0, behavior: 'smooth' }), []);
   return (
     <div className={`sticky top-24 max-h-[calc(100vh-7rem)] space-y-6 overflow-y-auto pr-1 ${className}`}>
       <ReportToc report={report} />
+      <SpeakerFilter report={report} speakers={speakers} />
       <div className="flex flex-wrap items-center gap-2">
         <ExpandAllButton />
         <button
@@ -224,7 +312,7 @@ export function ReportRail({ report, children, className = '' }: { report: Repor
  * 正文 + 右栏的网格。`rail` 是右栏里目录之后的段落；`railHidden` 时（dock 打开）右栏整个不渲染、正文占满。
  * 调用方把 ReportViewProvider 包在外面（或由这里包：`themeIds` 给了就包）。
  */
-export function ReportReader({ report, children, rail, articleRef, className = '' }: { report: Report; children: ReactNode; rail?: ReactNode; articleRef?: RefObject<HTMLElement>; className?: string }) {
+export function ReportReader({ report, speakers, children, rail, articleRef, className = '' }: { report: Report; speakers?: Record<string, PublicAuthor>; children: ReactNode; rail?: ReactNode; articleRef?: RefObject<HTMLElement>; className?: string }) {
   const band = usePageBand();
   const innerRef = useRef<HTMLElement>(null);
   const ref = articleRef ?? innerRef;
@@ -238,7 +326,7 @@ export function ReportReader({ report, children, rail, articleRef, className = '
         </article>
         {wide && (
           <aside className="hidden lg:block">
-            <ReportRail report={report} articleRef={ref}>
+            <ReportRail report={report} speakers={speakers} articleRef={ref}>
               {rail}
             </ReportRail>
           </aside>

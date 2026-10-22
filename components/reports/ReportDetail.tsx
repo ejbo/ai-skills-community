@@ -353,7 +353,7 @@ export function ReportDetail({
               {t('report_preview_counts', { events: r.events.length, recap: r.recap?.items.length ?? 0, attachments: r.attachments.filter((a) => a.assetKey).length, unassigned: r.unassigned.length })}
             </p>
           </div>
-          <ReportReader report={r}>
+          <ReportReader report={r} speakers={nativeView.speakers}>
             <ReportArticle view={nativeView} embeds={{}} />
           </ReportReader>
           {view.warnings.length > 0 && (

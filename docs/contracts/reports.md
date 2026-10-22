@@ -158,6 +158,7 @@ skill 侧同一份逻辑：`scripts/coerce.mjs`（由 coerce.ts `tsc` 转出，�
 | 「看起来还是非常的长和乱」 | 专题的**观点时间线默认收起**（`ReportViewProvider`）：一个专题先只看 编号 + 标题 + 定位 + 宏观总结 + 待验证 + 资料 + 启示，时间线折成一行头像带「N 条观点 · M 位发言人 — 点击展开」；右栏「展开全部观点」一键全开。没有 provider 的调用方（老代码）一律展开 |
 | 「图片放大后关闭屏幕闪一下」「最好能左右切换」 | 灯箱（`BodyImageLightbox`）关闭时不再立刻清掉 FLIP 状态（AnimatePresence 退场期间图片会瞬间 invisible，只剩黑底在淡——那就是"闪"），改在 `onExitComplete` 清，并且退场时图片飞回缩略图；FLIP 状态按 src 键控。`ReportArticle` 把整篇报告的图片按正文顺序排成相册（`ReportGalleryContext`），一个灯箱、两侧按钮 + ← → 切换、底部「n / N」和说明；相邻图切换不做 FLIP（淡入）。看原文页的 Thumbs 没有 provider，仍各自开 |
 | 「看原文不要新建网页，放进当前网页里；还显示一个 navbar 很鸡肋」 | 「看原文 N」改为**就地展开**：`OriginalMessages`（`components/reports/ReportMessages.tsx`）在那条观点 / 活动 / 花絮下面拉 `GET /api/tools/chat-report/[id]/messages?ids=…`（同 canSeeReport 闸门，≤ 60 条，组件内按 ids 缓存），渲染同一份 `MessageList`；再点收起；同一时刻只展开一处。独立页 `/reports/[slug]/messages` 保留给直接打开 / 老链接，不再被 dock 以 page 目标装载 |
+| 「月报里可以根据选中人来看他的内容，可多选」（2026-10-22） | `SpeakerFilter`（右栏目录下方；窄屏在正文顶部）：按发言量排序的头像 chips，多选，状态在 `ReportViewProvider.speakers`。选了人：专题只剩这些人的观点（没有的专题整个隐藏、目录里变灰不可点）、时间线强制展开、宏观 / 待验证 / 资料 / 启示先藏；Recap 只剩他们的条目；要点 / 活动 / 资源索引 / 数据 / 附录隐藏；顶部一条「只看 X、Y 的内容 · N 条观点 · 清除筛选」。账号比较一律小写 |
 | 「合著者当时没加后面就加不了」 | `ReportCoauthors`（工具详情页，分享后出现）：发言人一键勾选 + 全站搜索，`PUT /api/tools/chat-report/[id]/coauthors` → `setReportCoauthors` → `updateZonePost({ coauthorIds })`（同一套校验、新加的人收到通知、不生成版本）。帖子编辑页的设置抽屉也能改 |
 
 ### 3b. 分享页与谁可读（`/reports/[slug]`，`visibility.ts`）

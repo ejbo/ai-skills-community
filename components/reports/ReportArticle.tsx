@@ -20,7 +20,7 @@ import { withBasePath } from '@/lib/base-path';
 import { BodyImageLightbox, type BodyImage, type LightboxRect } from '@/app/zones/_components/post/BodyImageLightbox';
 import { ReportGalleryContext, RichText, RoleChip, SourceChips, Speaker, Thumbs, useReportLabels, type SourceRef, type ThumbItem } from './report-bits';
 import { OriginalMessages } from './ReportMessages';
-import { useReportView } from './report-view';
+import { SpeakerFilter, useReportView } from './report-view';
 
 const RES_KEY: Record<string, string> = { paper: '论文', repo: '代码', article: '文章', internal: '内部', video: '视频', doc: '文档', other: '链接' };
 
@@ -28,6 +28,13 @@ export function ReportArticle({ view, embeds }: { view: ZonePostReportView; embe
   const t = useTranslations('zones');
   const labels = useReportLabels();
   const { report, speakers, librarySlugs, assetUrls } = view;
+  // 按发言人筛选（report-view.tsx）：选了人 → 只剩这些人的观点 / Recap 条目；要点、活动、资料、数据、附录先藏起来
+  const rv = useReportView();
+  const sel = rv.speakers;
+  const filtering = sel.size > 0;
+  const bySel = (account: string | null | undefined) => !filtering || (!!account && sel.has(account.toLowerCase()));
+  const selNames = filtering ? report.stats.bySpeaker.filter((s) => sel.has(s.account.toLowerCase())).map((s) => speakers[s.account.toLowerCase()]?.displayName || s.name) : [];
+  const selViewpoints = filtering ? report.themes.reduce((n, th) => n + th.viewpoints.filter((v) => bySel(v.account)).length, 0) : 0;
   // 「看原文」就地展开（owner 2026-10-21：不要新建网页）：同一时刻只展开一处，key = 观点 / 活动 / 花絮的 id
   const [originalsOpen, setOriginalsOpen] = useState<string | null>(null);
   const originals = (key: string, msgRefs: string[]) => ({
@@ -111,7 +118,20 @@ export function ReportArticle({ view, embeds }: { view: ZonePostReportView; embe
   return (
     <ReportGalleryContext.Provider value={galleryApi}>
     <div className="space-y-12">
+      {/* 窄屏（没有右栏）时的发言人筛选器 */}
+      {rv.provided && <SpeakerFilter report={report} speakers={speakers} className="lg:hidden" />}
+
+      {filtering && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-zinc-900 px-5 py-3 text-sm dark:border-zinc-100">
+          <span className="font-medium">{t('report_filter_banner', { names: selNames.join('、'), count: selViewpoints })}</span>
+          <button type="button" onClick={rv.clearSpeakers} className="text-xs text-muted underline-offset-2 hover:text-zinc-900 hover:underline dark:hover:text-zinc-100">
+            {t('report_filter_clear')}
+          </button>
+        </div>
+      )}
+
       {/* ── 本期要点 ─────────────────────────────────────────────────────── */}
+      {!filtering && (
       <section id={REPORT_SECTION_IDS.brief} className="scroll-mt-28 rounded-2xl border border-zinc-200 dark:border-zinc-800">
         <div className="border-b border-zinc-200 px-6 py-5 dark:border-zinc-800">
           <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{t('report_sec_brief')}</h2>
@@ -186,6 +206,7 @@ export function ReportArticle({ view, embeds }: { view: ZonePostReportView; embe
           </div>
         )}
       </section>
+      )}
 
       {/* ── 专题 ─────────────────────────────────────────────────────────── */}
       {report.themes.map((th, i) => (
@@ -193,6 +214,7 @@ export function ReportArticle({ view, embeds }: { view: ZonePostReportView; embe
           key={th.id}
           theme={th}
           index={i}
+          onlySpeakers={filtering ? sel : null}
           userOf={userOf}
           thumbsOf={thumbsOf}
           librarySlugOf={librarySlugOf}
@@ -203,7 +225,7 @@ export function ReportArticle({ view, embeds }: { view: ZonePostReportView; embe
       ))}
 
       {/* ── 活动与通知 ──────────────────────────────────────────────────── */}
-      {report.events.length > 0 && (
+      {!filtering && report.events.length > 0 && (
         <section id={REPORT_SECTION_IDS.events} className="scroll-mt-28">
           <SectionTitle icon={<CalendarDays className="h-4 w-4" />} title={t('report_sec_events')} />
           <div className="mt-4 overflow-x-auto rounded-2xl border border-zinc-200 dark:border-zinc-800">
@@ -245,11 +267,11 @@ export function ReportArticle({ view, embeds }: { view: ZonePostReportView; embe
       )}
 
       {/* ── Recap ──────────────────────────────────────────────────────── */}
-      {report.recap && report.recap.items.length > 0 && (
+      {report.recap && report.recap.items.some((it) => bySel(it.account)) && (
         <section id={REPORT_SECTION_IDS.recap} className="scroll-mt-28">
           <SectionTitle title={report.recap.title || 'Recap'} />
           <ol className="mt-4 divide-y divide-zinc-100 rounded-2xl border border-zinc-200 dark:divide-zinc-900 dark:border-zinc-800">
-            {report.recap.items.map((it) => (
+            {report.recap.items.filter((it) => bySel(it.account)).map((it) => (
               <li key={it.id} className="flex gap-3 px-4 py-3 text-sm">
                 <span className="w-12 shrink-0 pt-0.5 font-mono text-[11px] text-muted">{(it.date ?? '').slice(5)}</span>
                 <div className="min-w-0 flex-1">
@@ -271,7 +293,7 @@ export function ReportArticle({ view, embeds }: { view: ZonePostReportView; embe
       )}
 
       {/* ── 资源索引 ────────────────────────────────────────────────────── */}
-      {resourceGroups.length > 0 && (
+      {!filtering && resourceGroups.length > 0 && (
         <section id={REPORT_SECTION_IDS.resources} className="scroll-mt-28">
           <SectionTitle title={t('report_sec_resources')} />
           <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -296,6 +318,7 @@ export function ReportArticle({ view, embeds }: { view: ZonePostReportView; embe
       )}
 
       {/* ── 数据概览 ────────────────────────────────────────────────────── */}
+      {!filtering && (
       <section id={REPORT_SECTION_IDS.stats} className="scroll-mt-28">
         <SectionTitle title={t('report_sec_stats')} />
         <dl className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-200 sm:grid-cols-4 dark:border-zinc-800 dark:bg-zinc-800">
@@ -346,9 +369,10 @@ export function ReportArticle({ view, embeds }: { view: ZonePostReportView; embe
           </div>
         </div>
       </section>
+      )}
 
       {/* ── 附录 ──────────────────────────────────────────────────────────── */}
-      {appendix.length > 0 && (
+      {!filtering && appendix.length > 0 && (
         <section id={REPORT_SECTION_IDS.appendix} className="scroll-mt-28">
           <SectionTitle title={t('report_sec_appendix')} />
           <Thumbs items={thumbsOf(appendix.map((a) => a.id))} />
@@ -379,6 +403,7 @@ function ThemeSection({
   originals,
   embeds,
   labels,
+  onlySpeakers,
 }: {
   theme: ReportTheme;
   index: number;
@@ -386,13 +411,18 @@ function ThemeSection({
   thumbsOf: (ids: string[]) => ThumbItem[];
   librarySlugOf: (ids: string[]) => string | null;
   originals: OriginalsFor;
+  /** 按发言人筛选时选中的账号；null = 不筛。 */
+  onlySpeakers: ReadonlySet<string> | null;
   embeds: Record<string, EmbedData>;
   labels: ReturnType<typeof useReportLabels>;
 }) {
   const t = useTranslations('zones');
   const view = useReportView();
-  const open = view.isOpen(th.id);
-  const speakerCount = new Set(th.viewpoints.map((v) => v.account)).size;
+  const viewpoints = onlySpeakers ? th.viewpoints.filter((v) => onlySpeakers.has(v.account.toLowerCase())) : th.viewpoints;
+  if (onlySpeakers && !viewpoints.length) return null; // 这个专题里没有所选人的观点
+  const filtering = !!onlySpeakers;
+  const open = filtering || view.isOpen(th.id); // 筛选时直接展开，别让人再点一次
+  const speakerCount = new Set(viewpoints.map((v) => v.account)).size;
   const n = String(index + 1).padStart(2, '0');
   return (
     <section id={th.id} className="scroll-mt-28">
@@ -407,7 +437,7 @@ function ThemeSection({
         </p>
       )}
 
-      {th.macro.length > 0 && (
+      {!filtering && th.macro.length > 0 && (
         <ul className="mt-4 space-y-2 rounded-2xl bg-zinc-50 px-5 py-4 dark:bg-zinc-900/60">
           {th.macro.map((m, i) => (
             <li key={i} className="flex gap-3 text-sm leading-relaxed">
@@ -423,7 +453,7 @@ function ThemeSection({
       {/* 观点时间线：可折叠（默认收起，右栏「全部展开」或这里逐个展开）——报告太长时先看定位 + 宏观 + 启示 */}
       <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">{t('report_sec_timeline')}</h3>
-        {view.provided && (
+        {view.provided && !filtering && (
           <button
             type="button"
             onClick={() => view.toggle(th.id)}
@@ -438,7 +468,7 @@ function ThemeSection({
       </div>
       {open ? (
         <ol id={`${th.id}-timeline`} className="relative mt-3 ml-3.5 space-y-6 border-l border-zinc-200 pl-7 dark:border-zinc-800">
-          {th.viewpoints.map((v) => (
+          {viewpoints.map((v) => (
             <ViewpointItem key={v.id} v={v} user={userOf(v.account)} thumbs={thumbsOf(v.attachments)} librarySlug={librarySlugOf(v.attachments)} embeds={embeds} originals={originals(`v:${v.id}`, v.msgRefs)} />
           ))}
         </ol>
@@ -454,7 +484,7 @@ function ThemeSection({
         </button>
       )}
 
-      {th.openQuestions.length > 0 && (
+      {!filtering && th.openQuestions.length > 0 && (
         <>
           <h3 className="mt-6 text-[11px] font-semibold uppercase tracking-wider text-muted">{t('report_sec_open')}</h3>
           <ul className="mt-2 space-y-1.5">
@@ -468,7 +498,7 @@ function ThemeSection({
         </>
       )}
 
-      {th.resources.length > 0 && (
+      {!filtering && th.resources.length > 0 && (
         <>
           <h3 className="mt-6 text-[11px] font-semibold uppercase tracking-wider text-muted">{t('report_sec_theme_resources')}</h3>
           <ul className="mt-2 space-y-1">
@@ -482,7 +512,7 @@ function ThemeSection({
         </>
       )}
 
-      {th.conclusion && (
+      {!filtering && th.conclusion && (
         <div className="mt-6 flex gap-4 rounded-2xl border-l-4 border-zinc-900 bg-zinc-50 px-5 py-4 dark:border-zinc-100 dark:bg-zinc-900/60">
           <span className="shrink-0 pt-0.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-900 dark:text-zinc-100">{t('report_sec_insight')}</span>
           <p className="text-sm font-medium leading-relaxed text-zinc-900 dark:text-zinc-50">

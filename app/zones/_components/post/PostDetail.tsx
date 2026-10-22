@@ -167,7 +167,7 @@ export function PostDetail({
     );
     return (
       <>
-        <ReportReader report={post.report.report} rail={rail} articleRef={articleRef}>
+        <ReportReader report={post.report.report} speakers={post.report.speakers} rail={rail} articleRef={articleRef}>
           {post.status === 'draft' && (
             <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-zinc-400 px-4 py-3 text-sm dark:border-zinc-600">
               <span className="inline-flex items-center gap-2">

@@ -4895,7 +4895,12 @@
     "post_viewers_failed": "读取失败",
     "post_viewers_empty": "还没有带身份的浏览记录。",
     "post_viewers_hint": "每人每天记一次。另有 {anonymous} 次没有身份的记录（2026-10-22 之前的老记录）。",
-    "post_viewers_row": "最近 {last} · 看过 {days} 天"
+    "post_viewers_row": "最近 {last} · 看过 {days} 天",
+    "report_filter_speakers": "按发言人看",
+    "report_filter_clear": "清除筛选",
+    "report_filter_more": "还有 {count} 人",
+    "report_filter_fewer": "收起",
+    "report_filter_banner": "只看 {names} 的内容 · {count} 条观点"
   },
   "translate": {
     "translate": "翻译",

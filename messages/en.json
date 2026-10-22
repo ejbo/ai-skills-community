@@ -4895,7 +4895,12 @@
     "post_viewers_failed": "Could not load",
     "post_viewers_empty": "No identified views yet.",
     "post_viewers_hint": "One record per person per day. {anonymous} further views carry no identity (records from before 2026-10-22).",
-    "post_viewers_row": "Last {last} · {days} days"
+    "post_viewers_row": "Last {last} · {days} days",
+    "report_filter_speakers": "By speaker",
+    "report_filter_clear": "Clear filter",
+    "report_filter_more": "{count} more",
+    "report_filter_fewer": "Fewer",
+    "report_filter_banner": "Showing only {names} · {count} viewpoints"
   },
   "translate": {
     "translate": "Translate",
