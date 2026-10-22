@@ -4895,7 +4895,12 @@
     "post_viewers_failed": "Chargement impossible",
     "post_viewers_empty": "Aucune lecture identifiée pour le moment.",
     "post_viewers_hint": "Un enregistrement par personne et par jour. {anonymous} autres lectures sans identité (avant le 2026-10-22).",
-    "post_viewers_row": "Dernière {last} · {days} jours"
+    "post_viewers_row": "Dernière {last} · {days} jours",
+    "report_filter_speakers": "Par intervenant",
+    "report_filter_clear": "Effacer le filtre",
+    "report_filter_more": "{count} de plus",
+    "report_filter_fewer": "Réduire",
+    "report_filter_banner": "Seulement {names} · {count} points de vue"
   },
   "translate": {
     "translate": "Traduire",

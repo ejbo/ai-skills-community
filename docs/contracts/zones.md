@@ -269,3 +269,9 @@
 `EMBED_REF_RE` 放开到 `[\p{L}\p{N}\p{M}_-]{1,120}`：拼音切换（slugs.md）之前收录的知识库文档 / Wiki 页 slug 含中文，
 `[embed:library:中文slug]` 曾被判成「无效的引用」。库文档的 href 现在 `encodeURIComponent`。跑过 `pnpm slugs:ascii` 之后旧 slug 走 SlugAlias，正文里的旧引用照常解析。
 
+## 搜索覆盖的字段（2026-10-22）
+
+版块内列表（`listZonePosts` 的 `q`）和跨版块 feed（`zoneFeedAnd`）共用 `postSearchWhere(q)`：标题 / 摘要 / **正文 bodyMd** / 标签（精确）/
+**作者与合著者的姓名、账号**（owner：「搜索要支持对人以及对文章内容」）。报告帖子的 bodyMd 是 `renderReportMarkdown` 的 Markdown，
+发言人姓名和观点都在里面，所以搜人名也能搜到他参与的月报。两处以后只改这一个函数。
+

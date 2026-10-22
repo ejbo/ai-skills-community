@@ -442,15 +442,7 @@ export async function listZonePosts(
   if (authorHandle) {
     and.push({ OR: [{ author: { handle: authorHandle } }, { coauthors: { some: { user: { handle: authorHandle } } } }] });
   }
-  if (q) {
-    and.push({
-      OR: [
-        { title: { contains: q, mode: 'insensitive' } },
-        { summary: { contains: q, mode: 'insensitive' } },
-        { bodyMd: { contains: q, mode: 'insensitive' } },
-      ],
-    });
-  }
+  if (q) and.push(postSearchWhere(q));
   const filters: Prisma.ZonePostWhereInput = { AND: and };
 
   const pinned =
@@ -2140,17 +2132,28 @@ function zoneFeedAnd(f: ZoneFeedFilters): Prisma.ZonePostWhereInput[] {
     and.push({ OR: [{ column: { is: { name: { in: columns } } } }, { column: { is: { slug: { in: columns } } } }] });
   }
   if (types.length > 0) and.push({ type: { in: types } });
-  if (q) {
-    and.push({
-      OR: [
-        { title: { contains: q, mode: 'insensitive' } },
-        { summary: { contains: q, mode: 'insensitive' } },
-        // tags is a String[]: `has` is an exact member match, not a substring.
-        { tags: { has: q } },
-      ],
-    });
-  }
+  if (q) and.push(postSearchWhere(q));
   return and;
+}
+
+/**
+ * 关键词搜索覆盖哪些字段（版块内列表和跨版块 feed 共用，两处不会再不一致）：
+ * 标题 / 摘要 / **正文**（报告帖子的正文是 renderReportMarkdown 出来的 Markdown，发言人姓名、观点都在里面，
+ * 所以搜一个人名也能搜到他参与的月报）/ 标签（精确）/ **作者与合著者的姓名、账号**（owner 2026-10-22：「搜索要支持对人以及对文章内容」）。
+ */
+export function postSearchWhere(q: string): Prisma.ZonePostWhereInput {
+  const contains = { contains: q, mode: 'insensitive' as const };
+  return {
+    OR: [
+      { title: contains },
+      { summary: contains },
+      { bodyMd: contains },
+      // tags is a String[]: `has` is an exact member match, not a substring.
+      { tags: { has: q } },
+      { author: { OR: [{ displayName: contains }, { handle: contains }] } },
+      { coauthors: { some: { user: { OR: [{ displayName: contains }, { handle: contains }] } } } },
+    ],
+  };
 }
 
 /** Total posts the feed would list under these filters (cursor ignored). */
