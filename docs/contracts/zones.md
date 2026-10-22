@@ -256,3 +256,16 @@
   带回，不等 ⇒ PATCH 409 `stale_revision`，守卫式 increment 在 `updateZonePost` 事务里）；`ZonePostDetailView.revision /
   revisionCount`；`updateZonePost` 在「已发布 + 内容变化」时写 `ZonePostRevision` 快照（首次补写 #1 = 保存前的内容）——
   这是和 `editedAt` 同一条件，草稿自动保存不进历史。报告发布就是一次 `createZonePost`，没有新的帖子类型。
+
+## 谁看过这篇（超级管理员，2026-10-22）
+
+`ZonePostView.userId`（migration `20261022100000_zone_post_view_user`）从 2026-10-22 起随每次浏览写入（`recordZonePostView(postId, viewerKey, userId)`，
+每人每天一条不变）；老记录 `userId = null`，只计数。`GET /api/zones/[slug]/posts/[postId]/viewers` **只给超级管理员**（`gateApi('super')`——这是对读者的追踪，
+不下放给版主或 zones 权限），返回按人聚合的 `{ user, days, firstAt, lastAt }` + `anonymousDays`；帖子头部「阅读 N」旁的「谁看过」按钮
+（`PostViewersButton`，RSC 用 `isSuperAdmin(session.user)` 决定渲染）开右侧抽屉（`SideDrawer`，和报告的评论抽屉同一个壳）。
+
+## 嵌入引用允许 Unicode slug（2026-10-22）
+
+`EMBED_REF_RE` 放开到 `[\p{L}\p{N}\p{M}_-]{1,120}`：拼音切换（slugs.md）之前收录的知识库文档 / Wiki 页 slug 含中文，
+`[embed:library:中文slug]` 曾被判成「无效的引用」。库文档的 href 现在 `encodeURIComponent`。跑过 `pnpm slugs:ascii` 之后旧 slug 走 SlugAlias，正文里的旧引用照常解析。
+

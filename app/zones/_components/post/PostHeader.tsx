@@ -41,6 +41,7 @@ import { RichText } from '@/components/reports/report-bits';
 import { RolePill } from '../RolePill';
 import { PILL_COLUMN, PILL_COLUMN_MEMBER, PILL_INK } from '../ui';
 import { LiveEditorsPill } from './LiveEditorsPill';
+import { PostViewersButton } from './PostViewers';
 import { VISIBILITY_ICONS } from './VisibilityPicker';
 
 export function PostHeader({
@@ -49,6 +50,7 @@ export function PostHeader({
   leadRoles,
   titleRef,
   canEdit = false,
+  canSeeViewers = false,
 }: {
   post: ZonePostDetailView;
   zone: { slug: string; name: string };
@@ -58,6 +60,8 @@ export function PostHeader({
   titleRef?: RefObject<HTMLHeadingElement>;
   /** May this viewer edit the content? Decided on the server (canViewerEditZonePost). */
   canEdit?: boolean;
+  /** 超级管理员：显示「谁看过」（RSC 用 isSuperAdmin 决定）。 */
+  canSeeViewers?: boolean;
 }) {
   const t = useTranslations('zones');
   const tc = useTranslations('common');
@@ -216,6 +220,7 @@ export function PostHeader({
           <Eye className="h-3 w-3" />
           {t('post_views', { count: post.viewCount })}
         </span>
+        {canSeeViewers && post.status === 'published' && <PostViewersButton zoneSlug={zone.slug} postId={post.id} />}
         {/* 正在编辑（docs/contracts/reports.md §4）：只读提示，没人时不渲染。 */}
         {post.status === 'published' && <LiveEditorsPill zoneSlug={zone.slug} postId={post.id} />}
         {/* 版本历史（docs/contracts/reports.md §4）：有快照才显示，能看帖子就能看历史。 */}

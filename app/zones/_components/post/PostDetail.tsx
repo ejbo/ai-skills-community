@@ -73,6 +73,7 @@ export function PostDetail({
   related = [],
   leadRoles,
   canEdit,
+  canSeeViewers = false,
 }: {
   post: ZonePostDetailView;
   zone: { id: string; slug: string; name: string };
@@ -85,6 +86,8 @@ export function PostDetail({
   leadRoles?: LeadRoles;
   /** Server-decided content-edit gate (see the file header). */
   canEdit: boolean;
+  /** 超级管理员：帖子头部显示「谁看过」。 */
+  canSeeViewers?: boolean;
 }) {
   const t = useTranslations('zones');
   const band = usePageBand();
@@ -109,10 +112,12 @@ export function PostDetail({
   // fetch a surface this viewer has not unlocked.
   if (post.accessLocked) return <PostUnlock post={post} zone={zone} />;
 
+  // 右栏从 lg（1024）起出现（2026-10-22 owner：「普通帖子右侧也有空白，目录怎么没了」——容器放宽到 1280 后，
+  // 1024–1279 的窗口下 xl 断点还没到，正文又被量尺卡在 880，右边就空着）。报告页同样是 lg。
   const grid =
     band === 'wide'
-      ? 'grid grid-cols-1 gap-10 xl:grid-cols-[minmax(0,1fr)_240px]'
-      : 'grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_40px]';
+      ? 'grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_240px]'
+      : 'grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_40px]';
 
   const comments = (
     <PostComments
@@ -176,7 +181,7 @@ export function PostDetail({
               )}
             </div>
           )}
-          <PostHeader post={post} zone={zone} leadRoles={leadRoles} titleRef={titleRef} canEdit={canEdit} />
+          <PostHeader post={post} zone={zone} leadRoles={leadRoles} titleRef={titleRef} canEdit={canEdit} canSeeViewers={canSeeViewers} />
           <div className={`mt-8 ${HEADING_SCROLL_MARGIN}`}>
             <ReportArticle view={post.report} embeds={post.embeds} />
           </div>
@@ -229,7 +234,7 @@ export function PostDetail({
 
         {/* First in the column so `sticky` pins it at the top; zero-height until the h1 leaves. */}
 
-        <PostHeader post={post} zone={zone} leadRoles={leadRoles} titleRef={titleRef} canEdit={canEdit} />
+        <PostHeader post={post} zone={zone} leadRoles={leadRoles} titleRef={titleRef} canEdit={canEdit} canSeeViewers={canSeeViewers} />
 
         <div className={`mt-8 ${HEADING_SCROLL_MARGIN}`}>
           {/* One slot: 「译自… · 显示原文」 while translated, else 翻译 / 翻译中… / 显示译文. */}
@@ -242,7 +247,7 @@ export function PostDetail({
           )}
         </div>
 
-        {post.attachments.length > 0 && <PostAttachmentsPanel attachments={post.attachments} className="mt-8 xl:hidden" />}
+        {post.attachments.length > 0 && <PostAttachmentsPanel attachments={post.attachments} className="mt-8 lg:hidden" />}
 
         <PostActionBar
           className="mt-8"
@@ -268,7 +273,7 @@ export function PostDetail({
         <RelatedPosts posts={related.filter((p) => p.id !== post.id)} className="cv-auto mt-12" />
       </article>
 
-      <aside className="hidden xl:block">
+      <aside className="hidden lg:block">
         <PostRail band={band} post={post} authors={authors} leadRoles={leadRoles} articleRef={articleRef} />
       </aside>
     </div>

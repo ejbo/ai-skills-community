@@ -33,6 +33,6 @@ export async function POST(_req: Request, { params }: { params: { slug: string; 
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
-  await recordZonePostView(post.id, session.user.id);
+  await recordZonePostView(post.id, session.user.id, session.user.id);
   return NextResponse.json({ ok: true });
 }

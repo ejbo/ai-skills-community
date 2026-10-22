@@ -3014,12 +3014,15 @@ model ZonePostView {
   id          String   @id @default(cuid())
   postId      String
   sessionHash String // sha256( (userId | ipHash) + postId + UTC-day ) — day-bucket dedupe
+  // 登录用户的 id（2026-10-22 起写；老行为 null）：超级管理员看「谁看过这篇」用。匿名 / 老记录只计数。
+  userId      String?
   createdAt   DateTime @default(now())
 
   post ZonePost @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@unique([postId, sessionHash])
   @@index([postId])
+  @@index([postId, userId])
 }
 
 // Wiki 页面树（每个版块一棵）。slug 版块内唯一。

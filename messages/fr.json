@@ -4887,7 +4887,15 @@
     "lightbox_next": "Image suivante",
     "report_messages_loading": "Chargement des messages originaux…",
     "report_messages_load_failed": "Impossible de charger les messages originaux",
-    "report_messages_collapse": "Masquer les originaux"
+    "report_messages_collapse": "Masquer les originaux",
+    "post_viewers_button": "Qui a lu",
+    "post_viewers_title": "Personnes ayant lu ceci",
+    "post_viewers_close": "Fermer",
+    "post_viewers_loading": "Chargement…",
+    "post_viewers_failed": "Chargement impossible",
+    "post_viewers_empty": "Aucune lecture identifiée pour le moment.",
+    "post_viewers_hint": "Un enregistrement par personne et par jour. {anonymous} autres lectures sans identité (avant le 2026-10-22).",
+    "post_viewers_row": "Dernière {last} · {days} jours"
   },
   "translate": {
     "translate": "Traduire",

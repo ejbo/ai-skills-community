@@ -4887,7 +4887,15 @@
     "lightbox_next": "Next image",
     "report_messages_loading": "Loading the original messages…",
     "report_messages_load_failed": "Could not load the original messages",
-    "report_messages_collapse": "Hide originals"
+    "report_messages_collapse": "Hide originals",
+    "post_viewers_button": "Who viewed",
+    "post_viewers_title": "People who viewed this",
+    "post_viewers_close": "Close",
+    "post_viewers_loading": "Loading…",
+    "post_viewers_failed": "Could not load",
+    "post_viewers_empty": "No identified views yet.",
+    "post_viewers_hint": "One record per person per day. {anonymous} further views carry no identity (records from before 2026-10-22).",
+    "post_viewers_row": "Last {last} · {days} days"
   },
   "translate": {
     "translate": "Translate",
