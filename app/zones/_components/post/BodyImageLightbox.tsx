@@ -20,8 +20,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useTranslations } from 'next-intl';
-import { X } from 'lucide-react';
-import { SPRING_DRAWER } from '@/lib/motion';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { SPRING_DRAWER, TWEEN } from '@/lib/motion';
 import { usePortalHost } from '@/components/usePortalHost';
 
 export interface LightboxRect {
@@ -36,6 +36,18 @@ export interface BodyImage {
   alt: string;
   /** Viewport rect of the clicked <img> at click time (`getBoundingClientRect`). */
   rect: LightboxRect;
+  /** false = 不做 FLIP（左右切换到的相邻图：没有被点击的缩略图可飞），直接淡入。 */
+  flip?: boolean;
+  /** 底部说明（报告：文件名 · 发送人 · 时间）。 */
+  caption?: string;
+}
+
+/** 左右切换（报告里的图片按正文顺序成一个相册）。 */
+export interface LightboxNav {
+  index: number;
+  count: number;
+  onPrev: () => void;
+  onNext: () => void;
 }
 
 /** A type alias, not an interface: Motion's `Target` carries an index signature that only type literals satisfy. */
@@ -63,7 +75,7 @@ function isIdentity(f: FlipFrom): boolean {
   return f.x === 0 && f.y === 0 && f.scaleX === 1 && f.scaleY === 1;
 }
 
-export function BodyImageLightbox({ image, onClose }: { image: BodyImage | null; onClose: () => void }) {
+export function BodyImageLightbox({ image, onClose, nav }: { image: BodyImage | null; onClose: () => void; nav?: LightboxNav | null }) {
   const tc = useTranslations('common');
   const t = useTranslations('zones');
   const reduce = useReducedMotion();
@@ -71,16 +83,21 @@ export function BodyImageLightbox({ image, onClose }: { image: BodyImage | null;
   const imgRef = useRef<HTMLImageElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
-  // null = resting box not measured yet (the img is kept invisible meanwhile).
-  const [from, setFrom] = useState<FlipFrom | null>(null);
+  const navRef = useRef(nav);
+  // FLIP delta keyed by src：换图（左右切换 / 快速再点另一张）自动回到「未测量」而不用先清状态；
+  // 关闭时保留着（退场动画还要用），onExitComplete 再清。null = resting box not measured yet (img invisible meanwhile).
+  const [flip, setFlip] = useState<{ src: string; from: FlipFrom } | null>(null);
+  const from: FlipFrom | null = image && flip && flip.src === image.src ? flip.from : null;
+  const setFrom = useCallback((f: FlipFrom | null) => setFlip(f && image ? { src: image.src, from: f } : null), [image]);
 
   useEffect(() => {
     onCloseRef.current = onClose;
+    navRef.current = nav;
   });
 
   const measure = useCallback(() => {
     if (!image) return;
-    if (reduce) {
+    if (reduce || image.flip === false) {
       setFrom(IDENTITY);
       return;
     }
@@ -90,24 +107,29 @@ export function BodyImageLightbox({ image, onClose }: { image: BodyImage | null;
     // A 0×0 box means the browser has not laid the image out yet — onLoad re-measures.
     if (isIdentity(f) && el.naturalWidth === 0) return;
     setFrom(f);
-  }, [image, reduce]);
+  }, [image, reduce, setFrom]);
 
+  // 关闭时**不要**在这里把 from 清掉：AnimatePresence 还在放退场动画，清掉 = 图片立刻 invisible、只剩黑底在淡——
+  // 看起来就是「关闭时屏幕闪一下」（owner 2026-10-21）。改在 onExitComplete 里清。
   useLayoutEffect(() => {
-    if (!image) {
-      setFrom(null);
-      return;
-    }
+    if (!image) return;
     measure();
   }, [image, measure]);
 
-  // ESC + body scroll lock + focus, keyed on `image` only (an unstable
+  // ESC / ← → + body scroll lock + focus, keyed on `image` only (an unstable
   // onClose must not re-run the lock).
   useEffect(() => {
     if (!image) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.stopPropagation();
-      onCloseRef.current();
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onCloseRef.current();
+        return;
+      }
+      const n = navRef.current;
+      if (!n || n.count < 2) return;
+      if (e.key === 'ArrowLeft') (e.preventDefault(), n.onPrev());
+      else if (e.key === 'ArrowRight') (e.preventDefault(), n.onNext());
     };
     window.addEventListener('keydown', onKey);
     const prevOverflow = document.body.style.overflow;
@@ -123,12 +145,13 @@ export function BodyImageLightbox({ image, onClose }: { image: BodyImage | null;
   if (!host) return null;
 
   const fade = { duration: reduce ? 0 : 0.2 };
+  const navBtn = 'absolute top-1/2 z-[1] flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/25 disabled:opacity-30 disabled:hover:bg-white/10';
 
   return createPortal(
-    <AnimatePresence>
+    <AnimatePresence onExitComplete={() => setFrom(null)}>
       {image && (
         <motion.div
-          key={image.src}
+          key="lightbox"
           ref={dialogRef}
           role="dialog"
           aria-modal="true"
@@ -149,11 +172,40 @@ export function BodyImageLightbox({ image, onClose }: { image: BodyImage | null;
           >
             <X className="h-5 w-5" />
           </button>
+          {nav && nav.count > 1 && (
+            <>
+              <button
+                type="button"
+                aria-label={t('lightbox_prev')}
+                disabled={nav.index <= 0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  nav.onPrev();
+                }}
+                className={`${navBtn} left-3`}
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+              <button
+                type="button"
+                aria-label={t('lightbox_next')}
+                disabled={nav.index >= nav.count - 1}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  nav.onNext();
+                }}
+                className={`${navBtn} right-3`}
+              >
+                <ChevronRight className="h-6 w-6" />
+              </button>
+            </>
+          )}
           {/* The measuring instance is invisible; once the resting box is known
-              the element REMOUNTS (key) so `initial` carries the FLIP delta. */}
+              the element REMOUNTS (key) so `initial` carries the FLIP delta.
+              Closing flies the image back onto its thumbnail (exit = the same delta). */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <motion.img
-            key={from ? 'ready' : 'measure'}
+            key={`${image.src}|${from ? 'ready' : 'measure'}`}
             ref={imgRef}
             src={image.src}
             alt={image.alt}
@@ -162,11 +214,22 @@ export function BodyImageLightbox({ image, onClose }: { image: BodyImage | null;
             onLoad={() => {
               if (!from) measure();
             }}
-            className={`max-h-[92vh] max-w-[94vw] select-none rounded-lg object-contain shadow-2xl ${from ? '' : 'invisible'}`}
-            initial={from ?? false}
-            animate={from ? IDENTITY : undefined}
-            transition={reduce ? { duration: 0 } : SPRING_DRAWER}
+            className={`max-h-[88vh] max-w-[94vw] select-none rounded-lg object-contain shadow-2xl ${from ? '' : 'invisible'}`}
+            initial={from ? (image.flip === false ? { opacity: 0 } : from) : false}
+            animate={from ? { ...IDENTITY, opacity: 1 } : undefined}
+            exit={from && !reduce && image.flip !== false ? { ...from, opacity: 0.4, transition: TWEEN } : { opacity: 0, transition: fade }}
+            transition={reduce ? { duration: 0 } : image.flip === false ? TWEEN : SPRING_DRAWER}
           />
+          {(nav && nav.count > 1) || image.caption ? (
+            <div className="pointer-events-none absolute inset-x-0 bottom-4 flex flex-col items-center gap-1 px-16 text-center text-xs text-white/80">
+              {image.caption && <span className="max-w-full truncate">{image.caption}</span>}
+              {nav && nav.count > 1 && (
+                <span className="font-mono tabular-nums">
+                  {nav.index + 1} / {nav.count}
+                </span>
+              )}
+            </div>
+          ) : null}
         </motion.div>
       )}
     </AnimatePresence>,

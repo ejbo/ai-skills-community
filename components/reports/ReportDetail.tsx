@@ -354,7 +354,7 @@ export function ReportDetail({
             </p>
           </div>
           <ReportReader report={r}>
-            <ReportArticle originalsHref={`${pageHref}/messages`} view={nativeView} embeds={{}} />
+            <ReportArticle view={nativeView} embeds={{}} />
           </ReportReader>
           {view.warnings.length > 0 && (
             <details className="mt-6 text-xs text-muted">

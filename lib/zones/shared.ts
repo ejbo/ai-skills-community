@@ -365,7 +365,9 @@ const KIND_ALT = EMBED_KINDS.join('|');
 export const EMBED_TOKEN_RE = new RegExp(`^ {0,3}\\\\?\\[embed:(${KIND_ALT}):([^\\n\\]]{1,512}?)\\\\?\\][ \\t]*$`);
 /** Global strip/excerpt sibling (both escaped and plain forms). */
 export const EMBED_TOKEN_GLOBAL_RE = new RegExp(`\\\\?\\[embed:(?:${KIND_ALT}):[^\\n\\]]{1,512}?\\\\?\\]`, 'g');
-export const EMBED_REF_RE = /^[A-Za-z0-9_-]{1,80}$/;
+// 2026-10-22：允许 Unicode 字母——拼音切换之前收录的知识库文档 / Wiki 页 slug 是中文，`[embed:library:中文slug]`
+// 曾被这里判成「无效的引用」（owner：「明明知识库的文章可以正常打开」）。仍不许空格 / 括号 / 斜杠。
+export const EMBED_REF_RE = /^[\p{L}\p{N}\p{M}_-]{1,120}$/u;
 /**
  * `file` refs may also be a storage KEY (`file/<nanoid>.<ext>`, `image/…`, `video/…`):
  * a body-inserted upload exists on disk before the post — and therefore its

@@ -103,7 +103,12 @@ export function WikiEditor({ zoneSlug, tree, page = null, initialParentId = null
 
   function onTitleChange(v: string) {
     setTitle(v);
-    if (!slugTouched) setSlug(titleSlug(v, WIKI_SLUG_MAX));
+    // 浏览器里没有拼音表：标题含中文时留空，由服务端按标题生成拼音地址（lib/slug-ascii.ts）；纯英文标题照旧预填
+    if (!slugTouched) {
+      const auto = titleSlug(v, WIKI_SLUG_MAX);
+      // eslint-disable-next-line no-control-regex
+      setSlug(/^[\x00-\x7f]*$/.test(auto) ? auto : '');
+    }
   }
 
   const slugTrimmed = slug.trim().toLowerCase();

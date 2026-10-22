@@ -7,6 +7,7 @@ import { prisma } from '@/lib/db';
 import { loadZoneBySlug, resolveZoneAccess, zoneSiteViewer, type ZoneAccessRow, type ZoneSiteViewer } from '@/lib/zones/access';
 import { buildLeadRoles, type LeadRoles } from '@/lib/zones/lead-roles';
 import { ZONE_MODERATOR_ROLE_KEY } from '@/lib/zones/permissions';
+import { isSuperAdmin } from '@/lib/permissions';
 import { canViewerEditZonePost } from '@/lib/zones/post-edit';
 import { getZonePostDetail, listZonePosts, recordZonePostView } from '@/lib/zones/post-queries';
 import type { ZoneAccess, ZoneCurrentUser, ZonePostCardView, ZonePostDetailView } from '@/lib/zones/types';
@@ -127,7 +128,7 @@ export default async function ZonePostPage({
   // A locked `restricted` post is NOT a read: neither the view nor the related
   // band (which would query the zone on this viewer's behalf) may run for it.
   if (post.status === 'published' && session?.user && !post.accessLocked) {
-    await recordZonePostView(post.id, session.user.id);
+    await recordZonePostView(post.id, session.user.id, session.user.id);
   }
 
   const related = post.status === 'published' && !post.accessLocked ? await loadRelated(zone, access, viewer, post) : [];
@@ -149,6 +150,7 @@ export default async function ZonePostPage({
         related={related}
         leadRoles={leadRoles}
         canEdit={canEdit}
+        canSeeViewers={isSuperAdmin(session?.user)}
       />
     </div>
   );

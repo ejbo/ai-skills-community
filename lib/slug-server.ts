@@ -6,7 +6,8 @@
 
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { allocateSlug, decodeSlugParam, looksLikeCuid, titleSlug } from '@/lib/slug';
+import { allocateSlug, decodeSlugParam, looksLikeCuid } from '@/lib/slug';
+import { asciiTitleSlug } from '@/lib/slug-ascii';
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -27,7 +28,8 @@ export async function freeTitleSlug(opts: {
   db?: Db;
 }): Promise<string> {
   const db = opts.db ?? prisma;
-  const base = titleSlug(opts.title) || opts.fallback;
+  // 2026-10-21 owner：全站链接都用 ASCII（中文 → 拼音），粘进聊天工具不再是一串百分号（slugs.md）
+  const base = asciiTitleSlug(opts.title) || opts.fallback;
   const [live, retired] = await Promise.all([
     opts.takenUnder(base),
     db.slugAlias.findMany({

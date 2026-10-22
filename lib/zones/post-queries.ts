@@ -27,7 +27,7 @@ import { z } from 'zod';
 import { withRichTextLimit } from '@/lib/rich-text-limit';
 import { prisma } from '@/lib/db';
 import { extractMentionHandles, newMentionHandles } from '@/lib/mentions';
-import { AUTHOR_IDENTITY_SELECT, toPublicAuthor, type PublicAuthor } from '@/lib/user-identity';
+import { AUTHOR_IDENTITY_FIELDS, AUTHOR_IDENTITY_SELECT, toPublicAuthor, type PublicAuthor } from '@/lib/user-identity';
 import type { ZoneAccessRow, ZoneSiteViewer } from './access';
 import { listColumnPresets, orderColumnFacet } from './column-presets';
 import { getOrCreateColumn, recountZoneColumns } from './columns';
@@ -1874,17 +1874,47 @@ export async function softDeleteZonePost(postId: string): Promise<void> {
 }
 
 /** Day-bucketed view dedupe (array tx: a duplicate insert rolls the increment back). */
-export async function recordZonePostView(postId: string, viewerKey: string): Promise<void> {
+export async function recordZonePostView(postId: string, viewerKey: string, userId: string | null = null): Promise<void> {
   try {
     const day = new Date().toISOString().slice(0, 10);
     const sessionHash = createHash('sha256').update(`${viewerKey}:${postId}:${day}`).digest('hex');
     await prisma.$transaction([
-      prisma.zonePostView.create({ data: { postId, sessionHash } }),
+      prisma.zonePostView.create({ data: { postId, sessionHash, userId } }),
       prisma.zonePost.update({ where: { id: postId }, data: { viewCount: { increment: 1 } } }),
     ]);
   } catch {
     /* already viewed today, or post gone — fine */
   }
+}
+
+export interface ZonePostViewerRow {
+  user: PublicAuthor;
+  /** 看过的天数（每人每天记一次）。 */
+  days: number;
+  firstAt: string;
+  lastAt: string;
+}
+
+/**
+ * 「谁看过这篇」（超级管理员，2026-10-22 owner）：按 userId 聚合有身份的浏览记录；身份不脱敏（超级管理员本来就能看）。
+ * `anonymousDays` = 没有 userId 的记录数（2026-10-22 之前的老记录 / 匿名）。
+ */
+export async function listZonePostViewers(postId: string): Promise<{ viewers: ZonePostViewerRow[]; anonymousDays: number }> {
+  const [grouped, anonymousDays] = await Promise.all([
+    prisma.zonePostView.groupBy({ by: ['userId'], where: { postId, userId: { not: null } }, _count: { _all: true }, _min: { createdAt: true }, _max: { createdAt: true } }),
+    prisma.zonePostView.count({ where: { postId, userId: null } }),
+  ]);
+  const ids = grouped.map((g) => g.userId!).filter(Boolean);
+  const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, ...AUTHOR_IDENTITY_FIELDS } }) : [];
+  const byId = new Map(users.map((u) => [u.id, u]));
+  const viewers = grouped
+    .flatMap((g) => {
+      const u = g.userId ? byId.get(g.userId) : undefined;
+      if (!u) return [];
+      return [{ user: toPublicAuthor(u, true), days: g._count._all, firstAt: (g._min.createdAt ?? new Date()).toISOString(), lastAt: (g._max.createdAt ?? new Date()).toISOString() }];
+    })
+    .sort((a, b) => b.lastAt.localeCompare(a.lastAt));
+  return { viewers, anonymousDays };
 }
 
 // ── Comments (2-level flat threads) ──────────────────────────────────────────

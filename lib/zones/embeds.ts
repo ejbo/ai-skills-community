@@ -151,7 +151,7 @@ async function libraryDataFor(doc: LibraryEmbedRow, ctx: EmbedContext): Promise<
     chapterCount: doc.chapterCount,
     uploader: { handle: doc.uploader.handle, displayName: doc.uploader.displayName, avatarUrl: doc.uploader.avatarUrl },
     canRead,
-    href: `/library/${doc.slug}`,
+    href: `/library/${encodeURIComponent(doc.slug)}`,
   };
 }
 
